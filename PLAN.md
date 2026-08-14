@@ -96,7 +96,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-004
 **Title:** OIK-002/004/007 — CI skeleton, banned-mode grep (N2 per ADR-002 §4), secret scanning ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002, OIK-004, OIK-007; docs/decisions/ADR-002-permission-bypass-ban-scope.md §4
@@ -110,15 +110,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Allowlist file cites ADR-002 and contains only §2-enumerated paths + docs/decisions/** (ADR-002 §4)
 - [ ] Secret scan blocks a planted obviously-fake fixture key in CI and via pre-commit; no realistic-looking credentials anywhere (WBS OIK-007; N4)
 - [ ] No edits outside .github/** and infra/ci/** (protected-path discipline)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-004-gb
+**Started_At:** 2026-08-14T15:08:22Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T15:08:22Z
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
