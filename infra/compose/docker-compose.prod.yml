@@ -1,0 +1,28 @@
+# Operations note: on clawsrv, set TAILSCALE_POSTGRES_HOST to the host's Tailscale
+# IPv4 address and verify from a non-Tailscale interface that port 5432 is refused.
+# That live network verification is a deferred operations step, outside this task.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: oikonomos-postgres-prod
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${TAILSCALE_POSTGRES_HOST}:5432:5432"
+    volumes:
+      - oikonomos-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  oikonomos-postgres-data:

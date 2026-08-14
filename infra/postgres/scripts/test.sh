@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+: "${DATABASE_URL:?Set DATABASE_URL, for example postgresql://user:password@127.0.0.1:5432/oikonomos}"
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$script_dir/test-append-only.sql"
