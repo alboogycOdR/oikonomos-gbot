@@ -7,12 +7,23 @@
  * (N4; the DEVDEPARTMENT PreToolUse hook blocks realistic writes).
  *
  * Test fixtures must be obviously fake and contain PLACEHOLDER text.
+ *
+ * ADR-002 Amendment A: exempt exactly `hooks/run-tests.js` (the pack's
+ * own detector corpus). One named file, never a glob.
  */
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { relPosix, repoRoot, walkFiles } from './lib/walk.mjs';
+
+/** Single named exemption — ADR-002 Amendment A. Not a glob. */
+export const SECRET_SCAN_EXEMPT_FILES = Object.freeze(['hooks/run-tests.js']);
+
+function isSecretExempt(relPath) {
+  const norm = relPath.replace(/\\/g, '/');
+  return SECRET_SCAN_EXEMPT_FILES.includes(norm);
+}
 
 export function secretPatterns() {
   const openAi = ['sk', '-[A-Za-z0-9_-]{16,}'].join('');
@@ -82,6 +93,8 @@ export function scanSecrets({
 
   if (staged) {
     for (const rel of stagedFiles(root)) {
+      const posix = rel.replace(/\\/g, '/');
+      if (isSecretExempt(posix)) continue;
       let text;
       try {
         text = stagedContent(root, rel);
@@ -89,7 +102,7 @@ export function scanSecrets({
         continue;
       }
       const hits = findSecretHits(text, patterns);
-      if (hits.length > 0) findings.push({ file: rel.replace(/\\/g, '/'), hits });
+      if (hits.length > 0) findings.push({ file: posix, hits });
     }
     return findings;
   }
@@ -98,6 +111,7 @@ export function scanSecrets({
   for (const abs of targets) {
     const rel = relPosix(root, abs);
     if (rel.startsWith('..') && !(files && files.length > 0)) continue;
+    if (isSecretExempt(rel)) continue;
     let text;
     try {
       text = readFileSync(abs, 'utf8');

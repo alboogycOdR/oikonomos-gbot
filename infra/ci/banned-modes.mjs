@@ -2,9 +2,12 @@
 /**
  * OIK-004 / CAN-03 banned-mode grep.
  *
- * Implements ADR-002 §4: scan the repo for the three banned permission-mode
- * tokens; fail the build on any hit outside the allowlist. The allowlist
- * lives beside this file and cites ADR-002.
+ * Implements ADR-002 Amendment A: scan the repo for the three banned
+ * permission-mode tokens; fail the build on any hit outside the prose /
+ * dev-tooling carve-out. Enforcement surfaces (packages/**, apps/**,
+ * services/**, infra/**, evals/**, .github/**, .claude/settings*.json,
+ * .claude/agents/**) are never skipped. The allowlist lives beside this
+ * file and cites ADR-002 Amendment A.
  *
  * Tokens are assembled at runtime. ADR-002 §1 forbids those literals under
  * infra/** (this path), so this source must never contain them contiguously.

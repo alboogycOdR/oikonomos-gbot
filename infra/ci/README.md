@@ -27,13 +27,22 @@ On Windows (Git Bash): `cp infra/ci/hooks/pre-commit .git/hooks/pre-commit`
 
 ## Banned-mode grep (OIK-004 / CAN-03)
 
-`banned-modes.mjs` implements ADR-002 §4. The allowlist is
-`banned-modes-allowlist.txt`, next to the grep, and cites ADR-002. It is the
-closed §2 development-tooling set plus `docs/decisions/**`. Tokens are
-assembled at runtime so this `infra/**` path never contains them (ADR-002 §1).
+`banned-modes.mjs` implements ADR-002 Amendment A. The allowlist is
+`banned-modes-allowlist.txt`, next to the grep, and cites that amendment.
 
-Self-test plants a violation under a temporary `packages/` tree (must fail)
-and checks the current checkout against the same allowlist (must pass).
+- **Enforcement surfaces (scanned, no exceptions):** `packages/**`,
+  `apps/**`, `services/**`, `infra/**`, `evals/**`, `.github/**`,
+  `.claude/settings*.json`, `.claude/agents/**`. Hard-coded in
+  `lib/allowlist.mjs` so a carve-out line cannot override them.
+- **Prose + §2(2) carve-outs:** `docs/**`, `specs/**`, `dossiers/**`,
+  `briefings/**`, `.claude/commands/**`, `PLAN.md`, `REVIEW.md`,
+  `AUTOPILOT_LOG.md`, `INSTINCTS.md`, root `*.md`, `autopilot.json`,
+  `scripts/**`.
+
+Tokens are assembled at runtime so this `infra/**` path never contains them
+(ADR-002 §1). Self-test plants a violation under a temporary `packages/`
+tree (must fail) and checks the current checkout against the same allowlist
+(must pass).
 
 ## Secret scan (OIK-007)
 
@@ -41,6 +50,9 @@ and checks the current checkout against the same allowlist (must pass).
 plants an obviously-fake key that contains `PLACEHOLDER` text — never a
 realistic-looking value (N4). The same scanner backs the pre-commit hook
 (`--staged`) and the CI `secret-scan` job.
+
+ADR-002 Amendment A exempts exactly one named file, `hooks/run-tests.js`
+(the DEVDEPARTMENT pack's own detector corpus). Not a glob.
 
 ## Workflow
 

@@ -1,13 +1,27 @@
 # Allowlist for the N2 / CAN-03 banned-mode grep (OIK-004).
-# Authority: docs/decisions/ADR-002-permission-bypass-ban-scope.md §2 and §4.
-# Closed set: the §2 development-tooling carve-out, plus docs/decisions/**
-# (prohibition text is not a violation). Do not add product paths or extra
-# coordination files without an ADR amendment.
-autopilot.json
-CLAUDE.md
-AGENTS.md
+# Authority: docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment A.
+# Deny-by-default: any path not listed below is scanned.
+#
+# Enforcement surfaces — scanned, no exceptions (hard-coded in
+# lib/allowlist.mjs ENFORCEMENT_SURFACES; a line below cannot override them):
+#   packages/**, apps/**, services/**, infra/**, evals/**, .github/**
+#   .claude/settings*.json, .claude/agents/**
+# A token on those paths is a live permission grant.
+#
+# Prose surfaces — carved out, because a token here is a quotation:
+#   docs/**, specs/**, dossiers/**, briefings/**, .claude/commands/**
+#   PLAN.md, REVIEW.md, AUTOPILOT_LOG.md, INSTINCTS.md, root *.md
+# Dev-tooling configuration — carved out per ADR-002 §2(2), unchanged:
+#   autopilot.json, scripts/**
 docs/**
-docs/decisions/**
-.claude/commands/**
+specs/**
+dossiers/**
 briefings/**
+.claude/commands/**
+PLAN.md
+REVIEW.md
+AUTOPILOT_LOG.md
+INSTINCTS.md
+*.md
+autopilot.json
 scripts/**
