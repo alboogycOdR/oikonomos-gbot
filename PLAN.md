@@ -16,7 +16,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-001
 **Title:** OIK-001 — Monorepo scaffold (pnpm workspaces, Node 22, TS strict)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-001; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3
@@ -32,13 +32,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Node 22 pinned: `engines.node` >=22, `.nvmrc` present (Handover §3 "Node 22 LTS")
 **Branch:** task/TASK-001-gb
 **Started_At:** 2026-08-14T14:26:48Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-14T14:38:31Z] [SV:GB] pnpm monorepo scaffold complete: 10 packages + 4 services as compiling stubs, Node 22, TS strict, Vitest in-source stubs, lockfile committed. Branch task/TASK-001-gb @ d9c0b8e.
+**Artifacts:** package.json, pnpm-workspace.yaml, pnpm-lock.yaml, tsconfig.base.json, vitest.workspace.ts, .npmrc, .nvmrc, .editorconfig, packages/*/package.json, packages/*/tsconfig.json, packages/*/vitest.config.ts, packages/*/src/index.ts, services/*/package.json, services/*/tsconfig.json, services/*/src/index.ts, dossiers/TASK-001.md
+**Test_Evidence:** pnpm install exit 0 (15 projects, lockfile written). pnpm -r typecheck exit 0 (14/14 tsc --noEmit). pnpm -r build exit 0 (14/14 tsc). pnpm -r test exit 0 — 14/14 workspaces, 1 in-source test each, 14 passed / 0 failed (Vitest 3.2.7). tsconfig.base.json strict:true; no workspace sets strict:false. .nvmrc=22; engines.node>=22 on every package.json.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-14T14:26:48Z
+**Updated_At:** 2026-08-14T14:38:31Z
 
 ### TASK-002
 **Title:** OIK-011/012/013 (local scope) — Postgres 16 + pgvector compose, schema v1 migrations, append-only audit
