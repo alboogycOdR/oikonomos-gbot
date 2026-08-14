@@ -16,7 +16,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-001
 **Title:** OIK-001 — Monorepo scaffold (pnpm workspaces, Node 22, TS strict)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-001; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3
@@ -30,15 +30,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Workspace layout matches Build Handover §3 names exactly — packages: broker, policy, approvals, audit, agent-providers, harness-factory, db, connectors, memory, shared; services: control-api, worker, gateway-telegram, workspace
 - [ ] `pnpm -r test` runs (stub test per workspace acceptable) under Vitest
 - [ ] Node 22 pinned: `engines.node` >=22, `.nvmrc` present (Handover §3 "Node 22 LTS")
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-001-gb
+**Started_At:** 2026-08-14T14:26:48Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T14:26:48Z
 
 ### TASK-002
 **Title:** OIK-011/012/013 (local scope) — Postgres 16 + pgvector compose, schema v1 migrations, append-only audit
