@@ -1,0 +1,6 @@
+{
+  "name": "@oikonomos/devdepartment-hooks",
+  "private": true,
+  "type": "commonjs",
+  "_comment": "SCOPE FIX, not a workspace. The DEVDEPARTMENT hooks are CommonJS (require), but the repo root package.json sets \"type\": \"module\" (added by TASK-001/OIK-001 per Handover §3). Node resolves module type from the NEAREST package.json, so without this file every hook dies with 'require is not defined in ES module scope' — verified live 2026-08-14: territory-firewall.js crashed instead of enforcing, and a crashed PreToolUse hook exits 1, which Claude Code treats as a non-blocking error. The firewall therefore FAILED OPEN and silently stopped enforcing Owned_Paths for S5 (the only builder whose CLI loads hooks). This file restores CommonJS for hooks/ only and is deliberately excluded from pnpm-workspace.yaml so it never becomes a workspace package."
+}
