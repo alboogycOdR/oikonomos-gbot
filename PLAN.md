@@ -70,7 +70,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-003
 **Title:** OIK-017/018 — packages/shared: canonical JSON + sha256 action digest
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-017, OIK-018; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3
@@ -84,15 +84,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Non-finite numbers and undefined reject with a typed error, not silent coercion (fail-closed posture, directive §4)
 - [ ] README byte-level spec covers every edge case above (WBS OIK-018)
 - [ ] Zero runtime dependencies; strict types, no `any` (CLAUDE.md)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-003-s5
+**Started_At:** 2026-08-14T15:08:45Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T15:08:45Z
 
 ### TASK-004
 **Title:** OIK-002/004/007 — CI skeleton, banned-mode grep (N2 per ADR-002 §4), secret scanning ⚑ protected
