@@ -1,0 +1,13 @@
+# Allowlist for the N2 / CAN-03 banned-mode grep (OIK-004).
+# Authority: docs/decisions/ADR-002-permission-bypass-ban-scope.md §2 and §4.
+# Closed set: the §2 development-tooling carve-out, plus docs/decisions/**
+# (prohibition text is not a violation). Do not add product paths or extra
+# coordination files without an ADR amendment.
+autopilot.json
+CLAUDE.md
+AGENTS.md
+docs/**
+docs/decisions/**
+.claude/commands/**
+briefings/**
+scripts/**
