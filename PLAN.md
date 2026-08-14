@@ -105,7 +105,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** PROTECTED PATH (infra/ci) — author is GB, review is ORCH on opus-4-8: different-model rule satisfied. Three deliverables. (1) CI skeleton (OIK-002): GitHub Actions workflow running lint, typecheck, test, build on every PR; each job also invocable locally (`pnpm run ci:*` mirrors) since the repo has no remote yet — local runnability is the verifiable acceptance. (2) Banned-mode grep (OIK-004) implemented exactly per ADR-002 §4: matches `bypassPermissions`, `acceptEdits`, AND `--dangerously-skip-permissions`; allowlist ONLY the ADR-002 §2 dev-tooling paths (autopilot.json, CLAUDE.md DEVDEPARTMENT appendix, AGENTS.md, docs/**, .claude/commands/**, briefings/**, scripts/**) plus docs/decisions/**; allowlist lives beside the grep and cites ADR-002. Include self-tests: a fixture violation in a temp packages/ path fails; the current repo passes. (3) Secret scanning (OIK-007): pre-commit + CI job; test fixture uses an OBVIOUSLY fake pattern (e.g. structured like a key but containing PLACEHOLDER text) — never a realistic-looking value (N4; the DEVDEPARTMENT secret-scan hook will mechanically block realistic ones).
 **Acceptance_Criteria:**
 - [ ] Workflow defines lint/typecheck/test/build jobs, triggered on PR and push; any red job fails the run (WBS OIK-002)
-- [ ] Each CI job runnable locally via pnpm script and demonstrated green (local mirror of WBS OIK-002 acceptance, no-remote adaptation)
+- [ ] Each CI job runnable locally and demonstrated green (local mirror of WBS OIK-002 acceptance, no-remote adaptation). **ORCH clarification 15:15Z:** call the root scripts TASK-001 already provides (`pnpm typecheck` / `build` / `test`) and, for lint, `pnpm lint` which TASK-005 is adding — do NOT add scripts to root package.json yourself; it is outside your territory and currently granted to TASK-005. Your own grep/secret-scan jobs are scripts under infra/ci/ invoked directly. If lint is not yet merged when you run, note it and demonstrate the other three.
 - [ ] Banned-mode grep fails the build on any occurrence of the three patterns outside the ADR-002 §4 allowlist; self-test proves both the catch and the current-repo pass (WBS OIK-004; ADR-002 §4)
 - [ ] Allowlist file cites ADR-002 and contains only §2-enumerated paths + docs/decisions/** (ADR-002 §4)
 - [ ] Secret scan blocks a planted obviously-fake fixture key in CI and via pre-commit; no realistic-looking credentials anywhere (WBS OIK-007; N4)
@@ -122,13 +122,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-005, OIK-006
-**Owned_Paths:** eslint.config.mjs, infra/lint/**
+**Owned_Paths:** eslint.config.mjs, infra/lint/**, package.json, pnpm-lock.yaml
 **Depends_On:** TASK-001
-**Description:** Two custom lint rules that mechanize non-negotiables N9 and the policy-purity rule. (1) OIK-005: any import/call of the Agent SDK `query()` (and the SDK's client entry points) outside `packages/harness-factory` fails lint with an actionable message naming packages/harness-factory as the only sanctioned path. (2) OIK-006: any import of fs, net, http(s), child_process, worker_threads, a DB driver, or process-env access inside `packages/policy` fails lint — policy is pure functions only (CLAUDE.md "zero I/O imports (lint-enforced)"). Implement as an ESLint flat config at root plus custom rules under infra/lint/ with rule unit tests (ESLint RuleTester). Wire `pnpm lint` at root. eslint.config.mjs is a root file: TASK-001 will be done before you start (Depends_On), and no concurrent task owns root config — territory is clean.
+**Description:** Two custom lint rules that mechanize non-negotiables N9 and the policy-purity rule. (1) OIK-005: any import/call of the Agent SDK `query()` (and the SDK's client entry points) outside `packages/harness-factory` fails lint with an actionable message naming packages/harness-factory as the only sanctioned path. (2) OIK-006: any import of fs, net, http(s), child_process, worker_threads, a DB driver, or process-env access inside `packages/policy` fails lint — policy is pure functions only (CLAUDE.md "zero I/O imports (lint-enforced)"). Implement as an ESLint flat config at root plus custom rules under infra/lint/ with rule unit tests (ESLint RuleTester). Wire `pnpm lint` at root. **ORCH grant 2026-08-14T15:15Z (resolves your correct OWNERSHIP_CONFLICT block):** `package.json` and `pnpm-lock.yaml` are added to your Owned_Paths for this task, NARROWLY — you may add the `lint` script and the eslint/RuleTester devDependencies (and the lockfile entries that follow from `pnpm install`), and nothing else. Do not touch existing scripts, engines, packageManager, onlyBuiltDependencies, or any other key; TASK-001 authored those and a change there is out of scope. The grant is territorially safe: TASK-001 is done, and the two concurrently active tasks own packages/shared/** (TASK-003) and .github/**+infra/ci/** (TASK-004) — neither intersects root manifests.
 **Acceptance_Criteria:**
 - [ ] A fixture file calling `query()` outside packages/harness-factory fails lint with the actionable message; the same code inside harness-factory passes (WBS OIK-005)
 - [ ] Fixture I/O imports in packages/policy each independently fail lint (fs, net/http, child_process, DB driver, process.env) (WBS OIK-006)
@@ -139,12 +139,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-14T15:08:32Z
 **Progress_Notes:**
 - [2026-08-14T15:10:24Z] [SV:CX] Created task/TASK-005-cx and recorded preflight evidence; implementation cannot begin without root package.json ownership for pnpm lint.
+- [2026-08-14T15:15:00Z] [ORCH] UNBLOCKED — correct block, and an ORCH planning error, not yours: the `pnpm lint` acceptance criterion required a root manifest edit that the territory never granted. Fixed by a narrow grant of package.json + pnpm-lock.yaml (see Description) rather than a separate integration task, because TASK-001 is done and neither active task touches root manifests, so single-writer discipline still holds. Scope is the `lint` script + eslint devDeps ONLY — anything wider is rework at review. Resume on the existing branch task/TASK-005-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: acceptance requires adding root package.json script "lint", but package.json is outside TASK-005 Owned_Paths.
-**Updated_By:** SV
-**Updated_At:** 2026-08-14T15:10:24Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T15:15:00Z
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
