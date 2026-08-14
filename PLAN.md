@@ -122,7 +122,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-005, OIK-006
@@ -137,13 +137,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Rules documented in infra/lint/README.md with the N9/policy-purity rationale one-liners
 **Branch:** task/TASK-005-cx
 **Started_At:** 2026-08-14T15:08:32Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-14T15:10:24Z] [SV:CX] Created task/TASK-005-cx and recorded preflight evidence; implementation cannot begin without root package.json ownership for pnpm lint.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: acceptance requires adding root package.json script "lint", but package.json is outside TASK-005 Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-08-14T15:08:32Z
+**Updated_At:** 2026-08-14T15:10:24Z
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
