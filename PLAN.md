@@ -42,7 +42,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-002
 **Title:** OIK-011/012/013 (local scope) — Postgres 16 + pgvector compose, schema v1 migrations, append-only audit
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-011, OIK-012, OIK-013; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -56,15 +56,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Prod compose variant binds Postgres to a Tailscale-only interface by config, with the clawsrv live-verification step documented as deferred ops (WBS OIK-011 acceptance noted as environment-bound; Handover §8)
 - [ ] Zero Node/npm dependencies introduced anywhere in Owned_Paths (territory-isolation constraint, this plan)
 - [ ] No credentials anywhere — compose uses env-var references with a `.env.example` carrying obvious placeholders only (N4)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-002-cx
+**Started_At:** 2026-08-14T14:27:03Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T14:27:03Z
 
 ### TASK-003
 **Title:** OIK-017/018 — packages/shared: canonical JSON + sha256 action digest
