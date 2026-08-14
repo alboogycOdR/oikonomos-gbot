@@ -206,7 +206,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-008
 **Title:** OIK-004/007 fast-follow — CI scanners must honor .gitignore (walk.mjs) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §6; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment A; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-004, OIK-007
@@ -219,12 +219,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A planted violation in an IGNORED path is skipped, and the test asserts the reason is gitignore-membership, not an allowlist carve-out (ADR-002 Amendment A)
 - [ ] Documented fallback when git is unavailable; behavior identical on a clean checkout with no .devteam/
 - [ ] Existing self-tests (6/6 banned-modes, 9/9 secret-scan) stay green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-008-gb
+**Started_At:** 2026-08-14T21:17:41Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T21:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T21:17:41Z
