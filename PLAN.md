@@ -158,7 +158,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-014, OIK-016; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -175,12 +175,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-08-14T22:05:00Z] [ORCH] UNBLOCKED — correct block on the dependency half, and the SAME ORCH planning error as TASK-005: a task that must add a runtime dependency was given source territory but not the manifest that declares it. GRANT (narrow): `packages/db/package.json` and `pnpm-lock.yaml` are added to Owned_Paths — add ONLY `pg` and `@types/pg` (plus the lockfile entries `pnpm install` generates). Do not touch any other manifest key, and do not add dependencies to any other workspace. Territorially safe: TASK-005 is merged so its lockfile grant is inactive, and the one concurrently active task (TASK-008) owns infra/ci/lib + its two test files. On the SYNC_MISMATCH half: the branch not existing is EXPECTED on a fresh claim in strict mode — the dispatcher claims, you create `task/TASK-006-cx` yourself (your briefing's step 2 says exactly this). Create it and proceed; do not re-claim. Blocking on it cost a full session, so read step 2 carefully this time.
 - [2026-08-14T21:58:54Z] [SV:CX] Preflight completed and blocker recorded in the TASK-006 dossier.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-14T22:07:45Z] [SV:CX] Typed pg repository, bounded private connection pool, executable inbox-triage seed, and compose-backed idempotency integration coverage are complete on commit da6ca06.
+**Artifacts:** packages/db/src/database.ts, packages/db/src/types.ts, packages/db/src/seedInboxTriage.ts, packages/db/src/index.ts, packages/db/test/inbox-triage.integration.test.ts, packages/db/package.json, pnpm-lock.yaml, dossiers/TASK-006.md
+**Test_Evidence:** Local compose Postgres migration applied; DATABASE_URL=â€¦ pnpm --filter @oikonomos/db test passed 2/2. pnpm --filter @oikonomos/db typecheck/build, compiled seed double-run, pnpm lint, pnpm typecheck, pnpm build, pnpm test, pnpm install --frozen-lockfile, and git diff --check all passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T22:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T22:07:45Z
 
 ### TASK-007
 **Title:** OIK-019 — packages/policy: risk-tier resolution, pure functions, 100% branch coverage ⚑ protected
