@@ -158,7 +158,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-014, OIK-016; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -170,15 +170,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Pool limits configured and documented (WBS OIK-014)
 - [ ] Seed script idempotent — double-run yields identical rows; tiers match connector-manifest values (WBS OIK-016)
 - [ ] Integration tests green against the local compose Postgres
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-006-cx
+**Started_At:** 2026-08-14T21:17:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T21:17:28Z
 
 ### TASK-007
 **Title:** OIK-019 — packages/policy: risk-tier resolution, pure functions, 100% branch coverage ⚑ protected
