@@ -1,0 +1,11 @@
+#!/bin/sh
+# OIK-007 pre-commit hook — secret scan of the staged index.
+# Install from the repo root:
+#   ln -sf ../../infra/ci/hooks/pre-commit .git/hooks/pre-commit
+# Windows (Git Bash):
+#   cp infra/ci/hooks/pre-commit .git/hooks/pre-commit
+# The hook is also a valid local entrypoint: sh infra/ci/hooks/pre-commit
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+exec node "$root/infra/ci/secret-scan.mjs" --staged
