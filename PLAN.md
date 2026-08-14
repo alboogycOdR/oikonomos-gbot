@@ -1,8 +1,8 @@
 ---
-plan_version: 1.0
-last_updated: 2026-08-14T14:08:59Z
+plan_version: 1.1
+last_updated: 2026-08-14T16:58:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.0 — STATUS SCAN 14:50Z: Wave 1 COMPLETE at builder level. TASK-001 (GB) and TASK-002 (CX) both needs_review with evidence; branches verified real, territories clean (61 + 11 files, all inside Owned_Paths + own dossiers), commits tagged. No blocked, no stale. Dispatch bugs fixed same-day in scripts/dispatch.ps1 (7573d52: codex stdin prompt, UTF-16 log, EAP stderr abort) — sync upstream to pack. NEXT: /devteam-review both tasks (opus-4-8 headless per review_cmd); on TASK-001 merge, Wave B eligible (TASK-003 S5, TASK-004 GB, TASK-005 CX). Original planning note follows. Decomposed from specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md (Master WBS + Addendum A backlog). Critical path E1→E2→E3→E4→G-GOV. Wave A (dispatch now): TASK-001 (GB, scaffold) + TASK-002 (CX, data layer bootstrap) — territories disjoint, TASK-002 is deliberately Node-free so it cannot collide with the scaffold. Wave B (eligible when TASK-001 is done): TASK-003 (S5, shared canonical JSON), TASK-004 (GB, CI + banned-mode grep per ADR-002 §4), TASK-005 (CX, lint rules N9/policy-zero-I/O). Backlog TBD: TASK-006 (db typed layer + seed), TASK-007 (policy tier resolution — PROTECTED, never assign S5; GB or CX only, per directive §3 different-model review rule). Prior plan v2.5 content was DEVDEPARTMENT pack history (ATLAS tasks), removed at decompose; recoverable at commit 0c6d341. control.mode=strict: builders never write this file — emit devteam-control blocks."
+orchestrator_notes: "Plan v1.1 — REVIEW COMPLETE 16:58Z (opus-4-8): Wave 1 DONE. TASK-001 (GB) and TASK-002 (CX) both APPROVED first-pass and merged --no-ff to master (ac55f31, c8ca135); branches deleted; dossiers landed. Verification was independent, not builder-claim: TASK-001 pnpm install/typecheck/build/test all exit 0 (15 projects resolved, 14/14 tests) re-run in wt-grok worktree; TASK-002 validated on live Docker Postgres 16 (extensions vector+pgcrypto, 8/8 tables, single mandated HNSW index, append-only UPDATE 0/DELETE 0 assertion passed, down→0, idempotent re-apply) — schema is verbatim-faithful to Synthesis §5.1, layout verbatim to Handover §3. Both matched Test_Evidence exactly. WAVE B NOW ELIGIBLE (all Depends_On TASK-001 satisfied): TASK-003 (S5, shared canonical JSON), TASK-004 (GB, CI+banned-mode grep, PROTECTED infra/ci — GB author/ORCH-opus reviewer satisfies different-model rule), TASK-005 (CX, lint rules N9/policy-zero-I/O). TASK-006 needs TASK-001+TASK-002 (both done) but stays TBD backlog until assigned. NEXT: /devteam-dispatch Wave B. Prior v1.0 status/planning note follows. Decomposed from specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md (Master WBS + Addendum A backlog). Critical path E1→E2→E3→E4→G-GOV. Wave A (dispatch now): TASK-001 (GB, scaffold) + TASK-002 (CX, data layer bootstrap) — territories disjoint, TASK-002 is deliberately Node-free so it cannot collide with the scaffold. Wave B (eligible when TASK-001 is done): TASK-003 (S5, shared canonical JSON), TASK-004 (GB, CI + banned-mode grep per ADR-002 §4), TASK-005 (CX, lint rules N9/policy-zero-I/O). Backlog TBD: TASK-006 (db typed layer + seed), TASK-007 (policy tier resolution — PROTECTED, never assign S5; GB or CX only, per directive §3 different-model review rule). Prior plan v2.5 content was DEVDEPARTMENT pack history (ATLAS tasks), removed at decompose; recoverable at commit 0c6d341. control.mode=strict: builders never write this file — emit devteam-control blocks."
 ---
 
 # Project Plan
@@ -16,7 +16,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-001
 **Title:** OIK-001 — Monorepo scaffold (pnpm workspaces, Node 22, TS strict)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-001; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3
@@ -24,26 +24,26 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** Single-owner integration task — the workspace skeleton every later task builds inside. Create the pnpm monorepo exactly per Build Handover §3: ten packages (broker, policy, approvals, audit, agent-providers, harness-factory, db, connectors, memory, shared) and four services (control-api, worker, gateway-telegram, workspace) as minimal compiling stubs (package.json, tsconfig extending tsconfig.base.json, src/index.ts). Node 22 (engines + .nvmrc), TypeScript strict everywhere, Vitest wired at the workspace level. apps/dashboard and apps/mobile are E9 work — do NOT scaffold them now. Do not add lint rules (TASK-005) or CI (TASK-004). Commit the lockfile. Root .gitignore is ORCH-owned and already covers node_modules/dist — do not edit it; if you need an ignore entry, note it and block if essential.
 **Acceptance_Criteria:**
-- [ ] `pnpm install` succeeds from a clean checkout; `pnpm-lock.yaml` committed (WBS OIK-001 "workspace graph resolves")
-- [ ] `pnpm -r typecheck` and `pnpm -r build` green across all 14 workspaces (WBS OIK-001 "All packages build; typecheck clean")
-- [ ] `tsconfig.base.json` has `strict: true`; every workspace extends it; no workspace overrides strict off (CLAUDE.md "Strict TypeScript")
-- [ ] Workspace layout matches Build Handover §3 names exactly — packages: broker, policy, approvals, audit, agent-providers, harness-factory, db, connectors, memory, shared; services: control-api, worker, gateway-telegram, workspace
-- [ ] `pnpm -r test` runs (stub test per workspace acceptable) under Vitest
-- [ ] Node 22 pinned: `engines.node` >=22, `.nvmrc` present (Handover §3 "Node 22 LTS")
+- [x] `pnpm install` succeeds from a clean checkout; `pnpm-lock.yaml` committed (WBS OIK-001 "workspace graph resolves")
+- [x] `pnpm -r typecheck` and `pnpm -r build` green across all 14 workspaces (WBS OIK-001 "All packages build; typecheck clean")
+- [x] `tsconfig.base.json` has `strict: true`; every workspace extends it; no workspace overrides strict off (CLAUDE.md "Strict TypeScript")
+- [x] Workspace layout matches Build Handover §3 names exactly — packages: broker, policy, approvals, audit, agent-providers, harness-factory, db, connectors, memory, shared; services: control-api, worker, gateway-telegram, workspace
+- [x] `pnpm -r test` runs (stub test per workspace acceptable) under Vitest
+- [x] Node 22 pinned: `engines.node` >=22, `.nvmrc` present (Handover §3 "Node 22 LTS")
 **Branch:** task/TASK-001-gb
 **Started_At:** 2026-08-14T14:26:48Z
 **Progress_Notes:**
 - [2026-08-14T14:38:31Z] [SV:GB] pnpm monorepo scaffold complete: 10 packages + 4 services as compiling stubs, Node 22, TS strict, Vitest in-source stubs, lockfile committed. Branch task/TASK-001-gb @ d9c0b8e.
 **Artifacts:** package.json, pnpm-workspace.yaml, pnpm-lock.yaml, tsconfig.base.json, vitest.workspace.ts, .npmrc, .nvmrc, .editorconfig, packages/*/package.json, packages/*/tsconfig.json, packages/*/vitest.config.ts, packages/*/src/index.ts, services/*/package.json, services/*/tsconfig.json, services/*/src/index.ts, dossiers/TASK-001.md
 **Test_Evidence:** pnpm install exit 0 (15 projects, lockfile written). pnpm -r typecheck exit 0 (14/14 tsc --noEmit). pnpm -r build exit 0 (14/14 tsc). pnpm -r test exit 0 — 14/14 workspaces, 1 in-source test each, 14 passed / 0 failed (Vitest 3.2.7). tsconfig.base.json strict:true; no workspace sets strict:false. .nvmrc=22; engines.node>=22 on every package.json.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH opus-4-8, 2026-08-14T16:58Z). Territory clean (61 files all in Owned_Paths + own dossier), preflight c8b9872 evidence in dossier, no PLAN.md edits on branch. Layout verbatim to Handover §3 (10 pkgs + 4 svcs). strict:true with no overrides, engines>=22 on all 15, in-source test on all 14. Independent re-run in wt-grok worktree: install/typecheck/build/test all exit 0, 14/14 tests — matches Test_Evidence. Merged ac55f31, branch deleted. Non-blocking: scaffold stubs carry one placeholder test each — real logic arrives in later E-tasks (expected).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-14T14:38:31Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T16:58:00Z
 
 ### TASK-002
 **Title:** OIK-011/012/013 (local scope) — Postgres 16 + pgvector compose, schema v1 migrations, append-only audit
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-011, OIK-012, OIK-013; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -51,22 +51,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** Data-layer bootstrap, deliberately Node-free so it runs concurrently with TASK-001 (no package.json, no npm deps — plain SQL + shell/psql + docker compose only; the typed query layer is TASK-006). Deliver: (1) `infra/compose/docker-compose.local.yml` — Postgres 16 with pgvector, localhost-bound, named volume; plus a `docker-compose.prod.yml` variant whose port binding is written for Tailscale-interface-only exposure with a comment noting live verification happens on clawsrv (ops step, out of this task's scope — Handover §8). (2) Numbered SQL migrations in `infra/postgres/migrations/` (NOT under packages/ — territory isolation from TASK-001's workspace scaffold; TASK-006's typed layer will consume them from there) implementing Synthesis Spec §5.1 exactly: enums task_status, run_status, risk_tier, approval_status; tables tasks, runs, capabilities, role_grants, approvals, audit_events, profile_facts, knowledge_chunks; all §5.1 indexes. (3) Append-only enforcement on audit_events (OIK-013): rules/triggers making UPDATE and DELETE provable no-ops. (4) `infra/postgres/scripts/` — apply/verify shell scripts (psql-based, idempotent re-run) and a SQL test script proving the append-only property and pgvector availability. Schema questions: Synthesis §5.1 is authoritative for v1 — do not improvise columns; a §5.1 ambiguity is a SPEC_AMBIGUITY block, not a judgment call.
 **Acceptance_Criteria:**
-- [ ] `docker compose -f infra/compose/docker-compose.local.yml up -d` yields a healthy Postgres 16 with `CREATE EXTENSION vector` live (WBS OIK-011 "pgvector extension live")
-- [ ] Apply script creates every §5.1 enum, table, and index; re-running it is a no-op (WBS OIK-012 "idempotent"); down/reversal scripts exist per migration (WBS OIK-012 "reversible")
-- [ ] UPDATE and DELETE on audit_events are provable no-ops — test script demonstrates row survives both, and the attempt is not an error that breaks callers (WBS OIK-013)
-- [ ] Prod compose variant binds Postgres to a Tailscale-only interface by config, with the clawsrv live-verification step documented as deferred ops (WBS OIK-011 acceptance noted as environment-bound; Handover §8)
-- [ ] Zero Node/npm dependencies introduced anywhere in Owned_Paths (territory-isolation constraint, this plan)
-- [ ] No credentials anywhere — compose uses env-var references with a `.env.example` carrying obvious placeholders only (N4)
+- [x] `docker compose -f infra/compose/docker-compose.local.yml up -d` yields a healthy Postgres 16 with `CREATE EXTENSION vector` live (WBS OIK-011 "pgvector extension live")
+- [x] Apply script creates every §5.1 enum, table, and index; re-running it is a no-op (WBS OIK-012 "idempotent"); down/reversal scripts exist per migration (WBS OIK-012 "reversible")
+- [x] UPDATE and DELETE on audit_events are provable no-ops — test script demonstrates row survives both, and the attempt is not an error that breaks callers (WBS OIK-013)
+- [x] Prod compose variant binds Postgres to a Tailscale-only interface by config, with the clawsrv live-verification step documented as deferred ops (WBS OIK-011 acceptance noted as environment-bound; Handover §8)
+- [x] Zero Node/npm dependencies introduced anywhere in Owned_Paths (territory-isolation constraint, this plan)
+- [x] No credentials anywhere — compose uses env-var references with a `.env.example` carrying obvious placeholders only (N4)
 **Branch:** task/TASK-002-cx
 **Started_At:** 2026-08-14T14:27:03Z
 **Progress_Notes:**
 - [2026-08-14T14:45:00Z] [ORCH] State repaired by ORCH: CX completed the task (commits a2a852c feat + 50d43a9 dossier evidence on task/TASK-002-cx, work log says "Ready for review") but its devteam-control block was lost to a dispatch.ps1 stdout-capture bug (codex stderr banner aborted the log pipeline under EAP=Stop; fixed same day in dispatch.ps1). Status set to needs_review by ORCH per the dossier evidence — no protocol violation by CX.
 **Artifacts:** infra/compose/docker-compose.local.yml, infra/compose/docker-compose.prod.yml, infra/compose/.env.example, infra/postgres/migrations/001_schema_v1.up.sql, infra/postgres/migrations/001_schema_v1.down.sql, infra/postgres/scripts/apply.sh, infra/postgres/scripts/revert.sh, infra/postgres/scripts/verify.sh, infra/postgres/scripts/test.sh, infra/postgres/scripts/test-append-only.sql, dossiers/TASK-002.md
 **Test_Evidence:** [from dossiers/TASK-002.md work log, 14:42:00Z] Isolated compose project oikonomos-task002-test: up -d --wait healthy (Postgres 16); local/prod `docker compose config` rendered 127.0.0.1:5432 and the Tailscale address respectively. 001_schema_v1.up.sql applied twice (second run only expected "already exists" notices); vector extension, all 8 §5.1 tables, 1 HNSW index verified. test-append-only.sql → UPDATE 0, DELETE 0, "append-only assertion passed", vector cast OK. Down migration → 0 tables, clean reapply OK. bash -n clean on all four scripts. Test project resources removed after validation.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH opus-4-8, 2026-08-14T16:58Z). Territory clean (infra/compose/** + infra/postgres/** + own dossier, no PLAN.md edits), preflight c8b9872 evidence in dossier. Schema verified verbatim against Synthesis §5.1 via spec extraction: 4 enums (values identical), 8 tables (columns/types/FKs/UNIQUE identical), the ONE mandated HNSW index on knowledge_chunks.embedding vector_cosine_ops, 2 append-only rules (DO INSTEAD NOTHING) — no missing/improvised columns or indexes. Independent live validation on Docker Postgres 16 (fresh container, host-port-isolated): extensions vector+pgcrypto live, 8/8 tables, idempotent second apply, append-only UPDATE 0/DELETE 0 assertion passed, down→0 tables. N4 clean (.env.example placeholders CHANGE_ME_LOCAL_ONLY only). Prod compose binds ${TAILSCALE_POSTGRES_HOST} with clawsrv verification documented as deferred ops. Merged c8ca135, branch deleted.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:45:00Z
+**Updated_At:** 2026-08-14T16:58:00Z
 
 ### TASK-003
 **Title:** OIK-017/018 — packages/shared: canonical JSON + sha256 action digest
