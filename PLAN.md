@@ -70,7 +70,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-003
 **Title:** OIK-017/018 — packages/shared: canonical JSON + sha256 action digest
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-017, OIK-018; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3
@@ -87,18 +87,19 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** task/TASK-003-s5
 **Started_At:** 2026-08-14T15:08:45Z
 **Progress_Notes:**
+- [2026-08-14T18:50:00Z] [ORCH] State set to needs_review BY ORCH, not by the builder. S5 did emit a control block but with bare unquoted JSON keys (`{control_version: 1, task: TASK-003, ...}`), which is not valid JSON, so control.py correctly rejected it fail-closed and logged UNREPORTED. Work itself is committed and complete on task/TASK-003-s5 @ 3560027 (8 files). Compounding factor, now fixed: every hook in this repo was crashing at the time (root `type: module` vs CommonJS hooks — see hooks/package.json fix), so this session ended with a SessionEnd hook traceback. REVIEWER: treat the block format as a protocol finding against S5 (briefing shows quoted JSON), but note the harness was simultaneously broken.
 - [2026-08-14T15:20:00Z] [ORCH] Session KILLED externally mid-run (not a builder fault, no protocol violation). Branch task/TASK-003-s5 exists with ZERO commits — no work survived, nothing to salvage. Status left `claimed` deliberately: protocol §10a resume-first means a re-dispatch picks this task back up on the existing branch. Re-dispatch with `scripts/dispatch.ps1 -Builder S5` when work resumes.
 - [2026-08-14T18:36:03Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-003-2026-08-14T17-55-04Z.log
-**Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:** packages/shared/src/index.ts, packages/shared/src/canonicalJson.ts, packages/shared/src/actionDigest.ts, packages/shared/README.md, packages/shared/test/canonicalJson.test.ts, packages/shared/test/actionDigest.test.ts, packages/shared/test/reproducibility.test.ts, packages/shared/test/prng.ts, dossiers/TASK-003.md (commit 3560027)
+**Test_Evidence:** [recovered by ORCH from run log .devteam/runs/TASK-003-2026-08-14T17-55-04Z.log] pnpm typecheck (tsc --noEmit) clean/exit 0. pnpm test (vitest run): 5 test files, 36/36 passed in 2.35s — includes a 200-trial key-order property test and a cross-process (child_process spawn) digest reproducibility test. Preflight run; grepped for credential-like fixtures, none found. NOT independently re-run by ORCH — reviewer must verify per review standard step 3.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-14T15:08:45Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T18:50:00Z
 
 ### TASK-004
 **Title:** OIK-002/004/007 — CI skeleton, banned-mode grep (N2 per ADR-002 §4), secret scanning ⚑ protected
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002, OIK-004, OIK-007; docs/decisions/ADR-002-permission-bypass-ban-scope.md §4
@@ -109,20 +110,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Workflow defines lint/typecheck/test/build jobs, triggered on PR and push; any red job fails the run (WBS OIK-002)
 - [ ] Each CI job runnable locally and demonstrated green (local mirror of WBS OIK-002 acceptance, no-remote adaptation). **ORCH clarification 15:15Z:** call the root scripts TASK-001 already provides (`pnpm typecheck` / `build` / `test`) and, for lint, `pnpm lint` which TASK-005 is adding — do NOT add scripts to root package.json yourself; it is outside your territory and currently granted to TASK-005. Your own grep/secret-scan jobs are scripts under infra/ci/ invoked directly. If lint is not yet merged when you run, note it and demonstrate the other three.
 - [ ] Banned-mode grep fails the build on any occurrence of the three patterns outside the ADR-002 §4 allowlist; self-test proves both the catch and the current-repo pass (WBS OIK-004; ADR-002 §4)
-- [ ] Allowlist file cites ADR-002 and contains only §2-enumerated paths + docs/decisions/** (ADR-002 §4)
-- [ ] Secret scan blocks a planted obviously-fake fixture key in CI and via pre-commit; no realistic-looking credentials anywhere (WBS OIK-007; N4)
+- [ ] Allowlist file cites ADR-002 **Amendment A** and implements its enforcement-surface / prose-surface split exactly — scanned: packages/**, apps/**, services/**, infra/**, evals/**, .github/**, .claude/settings*.json, .claude/agents/**; carved out: docs/**, specs/**, dossiers/**, briefings/**, .claude/commands/**, PLAN.md, REVIEW.md, AUTOPILOT_LOG.md, INSTINCTS.md, root *.md, autopilot.json, scripts/** (ADR-002 Amendment A)
+- [ ] Secret scan blocks a planted obviously-fake fixture key in CI and via pre-commit; no realistic-looking credentials anywhere (WBS OIK-007; N4). **ORCH decision (ADR-002 Amendment A):** exempt the single file `hooks/run-tests.js` — its realistic-looking keys are the DEVDEPARTMENT pack's own test corpus for its secret detector, and it ships from upstream. One named file, never a glob; anything else the scanner trips is a real finding.
 - [ ] No edits outside .github/** and infra/ci/** (protected-path discipline)
 **Branch:** task/TASK-004-gb
 **Started_At:** 2026-08-14T15:08:22Z
 **Progress_Notes:**
+- [2026-08-14T18:45:00Z] [ORCH] UNBLOCKED — excellent block, and a real defect in ADR-002 that you found, not a misreading. Decision: option A, generalised. ADR-002 now carries **Amendment A** (docs/decisions/ADR-002-permission-bypass-ban-scope.md) splitting ENFORCEMENT surfaces (packages/**, apps/**, services/**, infra/**, evals/**, .github/**, .claude/settings*.json, .claude/agents/** — scanned, no exceptions) from PROSE surfaces (docs/**, specs/**, dossiers/**, briefings/**, .claude/commands/**, PLAN.md, REVIEW.md, AUTOPILOT_LOG.md, INSTINCTS.md, root *.md — carved out, because a token there is a quotation, not a grant). Globs not file lists, so new dossiers/specs never re-break it. Deny-by-default is retained. Second issue: your option A2 — exempt the single named file hooks/run-tests.js (pack's own detector fixtures, ships upstream); never a glob. Both ACs in this task have been rewritten to match; re-read them fresh. Resume on task/TASK-004-gb.
 - [2026-08-14T15:20:00Z] [ORCH] Session KILLED externally mid-run (not a builder fault). GB never got as far as creating branch task/TASK-004-gb — the Branch field names a branch that does not exist yet; a re-dispatch creates it. Zero work to salvage. NOTE for whoever resumes: the acceptance criterion about local job runs was amended at 15:15Z (1780b55) AFTER this session started, so GB never read it — re-dispatch picks up the corrected version, which says do NOT add root package.json scripts.
 - [2026-08-14T18:36:03Z] [SV:GB] CI workflow + ADR-002 banned-mode grep + secret-scan/pre-commit implemented on task/TASK-004-gb; catch self-tests green; current-repo-pass cannot be met without widening the closed allowlist or editing files outside Owned_Paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** SPEC_AMBIGUITY: ADR-002 ┬º4 and this task require a closed allowlist (autopilot.json, CLAUDE.md, AGENTS.md, docs/**, docs/decisions/**, .claude/commands/**, briefings/**, scripts/**) AND 'current repo passes'. Faithful closed allowlist fails on prohibition text in PLAN.md:106, specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md:40/48, dossiers/TASK-004.md:5, DEVDEPARTMENT_HANDOVER_PROMPT.md:41. Widening the allowlist violates the other AC; editing those files is outside Owned_Paths (PLAN.md forbidden in strict mode; specs/ read-only). Need (A) amend ADR-002 ┬º4 + this task to add PLAN.md, specs/**, dossiers/**, DEVDEPARTMENT_HANDOVER_PROMPT.md as prohibition-text carve-outs; (B) ORCH strips the tokens from those four files; or (C) other. Second issue, same AC, OIK-007: secret-scan correctly flags hooks/run-tests.js (pack fixtures that look like real vendor keys). Need (A2) allowlist that file; (B2) restrict scan to packages/**, apps/**, services/**, infra/**, evals/**, .github/**; or (C2) ORCH rewrites those fixtures to PLACEHOLDER form.
-**Updated_By:** SV
-**Updated_At:** 2026-08-14T18:36:03Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T18:45:00Z
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
