@@ -1,14 +1,11 @@
-export const workspaceName = "db";
-
-export function ping(): string {
-  return workspaceName;
-}
-
-if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
-  describe("@oikonomos/db", () => {
-    it("ping returns the workspace name", () => {
-      expect(ping()).toBe("db");
-    });
-  });
-}
+export {
+  Database,
+  defaultPoolConfig,
+  type DatabaseOptions,
+} from "./database.js";
+export {
+  inboxTriageCapabilities,
+  inboxTriageRoleGrants,
+  seedInboxTriage,
+} from "./seedInboxTriage.js";
+export { riskTiers, type Capability, type RiskTier, type RoleGrant } from "./types.js";
