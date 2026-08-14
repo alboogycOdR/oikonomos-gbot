@@ -1,0 +1,11 @@
+# ATLAS (DEVDEPARTMENT) — derived, machine-local, rebuildable from scratch (R2)
+.devteam/atlas.db
+.devteam/atlas.db-*
+
+# Python bytecode (DEVDEPARTMENT scripts/tests)
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/

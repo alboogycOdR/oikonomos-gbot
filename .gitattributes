@@ -1,0 +1,12 @@
+# Force LF line endings for shell scripts regardless of the checking-out
+# machine's core.autocrlf setting. A CRLF line ending inside `set -euo
+# pipefail` (or any bash control-flow line) breaks parsing outright —
+# confirmed as a real failure mode (see the git log around the
+# test_dispatch_worktree.py fixture fix).
+*.sh text eol=lf
+
+# Python/JS tolerate either line ending at runtime, so this pin is pure
+# hygiene (clean diffs, no autocrlf-induced churn on Windows checkouts) —
+# not a correctness fix like the *.sh rule above.
+*.py text eol=lf
+*.js text eol=lf
