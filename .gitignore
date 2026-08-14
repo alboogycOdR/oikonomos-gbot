@@ -1,6 +1,13 @@
-# ATLAS (DEVDEPARTMENT) — derived, machine-local, rebuildable from scratch (R2)
-.devteam/atlas.db
-.devteam/atlas.db-*
+# DEVDEPARTMENT machine-local runtime state — derived, rebuildable, NEVER tracked.
+# Includes .devteam/atlas.db (ATLAS R2) and .devteam/runs/*.log (builder session
+# transcripts). The transcripts are the load-bearing reason this is a whole-dir
+# ignore rather than a file list: a dispatch log contains the verbatim builder
+# prompt and output, so it carries permission-bypass tokens and API-key-shaped
+# test fixtures as a matter of course. Untracked-but-not-ignored meant one
+# `git add .` would have committed credential-shaped content (N4). Caught
+# 2026-08-14 by infra/ci/secret-scan.mjs flagging .devteam/runs/.
+.devteam/
+.autopilot_state.json
 
 # Python bytecode (DEVDEPARTMENT scripts/tests)
 __pycache__/

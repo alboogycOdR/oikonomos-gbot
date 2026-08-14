@@ -203,3 +203,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-14T14:08:59Z
+
+### TASK-008
+**Title:** OIK-004/007 fast-follow — CI scanners must honor .gitignore (walk.mjs) ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §6; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment A; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-004, OIK-007
+**Owned_Paths:** infra/ci/lib/**, infra/ci/test-banned-modes.mjs, infra/ci/test-secret-scan.mjs
+**Depends_On:** TASK-004
+**Description:** Backlog (TBD — **GB or CX only, never S5**: protected path infra/ci, different-model review rule per directive §3). Raised by the opus-4-8 reviewer as a non-blocking fast-follow on TASK-004 and confirmed live by ORCH at 21:10Z: `infra/ci/lib/walk.mjs` walks the whole tree without honoring .gitignore, so a local full-tree run of `banned-modes.mjs` and `secret-scan.mjs` both exit 1 on `.devteam/runs/*.log` — machine-local builder transcripts that legitimately contain bypass tokens and API-key-shaped fixtures. CI on a clean checkout and the pre-commit staged path are both unaffected, which is why this is not a TASK-004 rework, but a scanner that cries wolf locally is a scanner developers learn to ignore — and that is how a real finding gets missed. ORCH has separately added `.devteam/` to .gitignore (the untracked-but-not-ignored state was a genuine N4 exposure: one `git add .` would have committed credential-shaped content); this task makes the scanners agree with git about what is part of the repo. Implement gitignore-awareness in walk.mjs (`git check-ignore --stdin` when inside a work tree, with a documented fallback skip-list when git is absent so CI containers without git still behave). Do NOT weaken Amendment A's enforcement surfaces: an ignored path is skipped because it is not part of the repo, never because it is carved out.
+**Acceptance_Criteria:**
+- [ ] `node infra/ci/banned-modes.mjs` and `node infra/ci/secret-scan.mjs` both exit 0 on the real working tree with .devteam/ present (the live failure this task exists to fix)
+- [ ] A planted violation in a TRACKED enforcement path is still caught — proven by test, so the fix cannot have been achieved by over-skipping (WBS OIK-004/007)
+- [ ] A planted violation in an IGNORED path is skipped, and the test asserts the reason is gitignore-membership, not an allowlist carve-out (ADR-002 Amendment A)
+- [ ] Documented fallback when git is unavailable; behavior identical on a clean checkout with no .devteam/
+- [ ] Existing self-tests (6/6 banned-modes, 9/9 secret-scan) stay green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T21:10:00Z
