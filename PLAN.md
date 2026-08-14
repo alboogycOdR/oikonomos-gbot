@@ -97,7 +97,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-004
 **Title:** OIK-002/004/007 — CI skeleton, banned-mode grep (N2 per ADR-002 §4), secret scanning ⚑ protected
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002, OIK-004, OIK-007; docs/decisions/ADR-002-permission-bypass-ban-scope.md §4
@@ -115,12 +115,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-14T15:08:22Z
 **Progress_Notes:**
 - [2026-08-14T15:20:00Z] [ORCH] Session KILLED externally mid-run (not a builder fault). GB never got as far as creating branch task/TASK-004-gb — the Branch field names a branch that does not exist yet; a re-dispatch creates it. Zero work to salvage. NOTE for whoever resumes: the acceptance criterion about local job runs was amended at 15:15Z (1780b55) AFTER this session started, so GB never read it — re-dispatch picks up the corrected version, which says do NOT add root package.json scripts.
+- [2026-08-14T18:36:03Z] [SV:GB] CI workflow + ADR-002 banned-mode grep + secret-scan/pre-commit implemented on task/TASK-004-gb; catch self-tests green; current-repo-pass cannot be met without widening the closed allowlist or editing files outside Owned_Paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SPEC_AMBIGUITY: ADR-002 ┬º4 and this task require a closed allowlist (autopilot.json, CLAUDE.md, AGENTS.md, docs/**, docs/decisions/**, .claude/commands/**, briefings/**, scripts/**) AND 'current repo passes'. Faithful closed allowlist fails on prohibition text in PLAN.md:106, specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md:40/48, dossiers/TASK-004.md:5, DEVDEPARTMENT_HANDOVER_PROMPT.md:41. Widening the allowlist violates the other AC; editing those files is outside Owned_Paths (PLAN.md forbidden in strict mode; specs/ read-only). Need (A) amend ADR-002 ┬º4 + this task to add PLAN.md, specs/**, dossiers/**, DEVDEPARTMENT_HANDOVER_PROMPT.md as prohibition-text carve-outs; (B) ORCH strips the tokens from those four files; or (C) other. Second issue, same AC, OIK-007: secret-scan correctly flags hooks/run-tests.js (pack fixtures that look like real vendor keys). Need (A2) allowlist that file; (B2) restrict scan to packages/**, apps/**, services/**, infra/**, evals/**, .github/**; or (C2) ORCH rewrites those fixtures to PLACEHOLDER form.
 **Updated_By:** SV
-**Updated_At:** 2026-08-14T15:08:22Z
+**Updated_At:** 2026-08-14T18:36:03Z
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
