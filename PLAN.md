@@ -207,7 +207,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-008
 **Title:** OIK-004/007 fast-follow — CI scanners must honor .gitignore (walk.mjs) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §6; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment A; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-004, OIK-007
@@ -222,10 +222,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing self-tests (6/6 banned-modes, 9/9 secret-scan) stay green
 **Branch:** task/TASK-008-gb
 **Started_At:** 2026-08-14T21:17:41Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-14T21:58:54Z] [SV:GB] walk.mjs honors .gitignore via git check-ignore --stdin (FALLBACK_SKIP_DIRS when git absent); live banned-modes+secret-scan exit 0 with .devteam present; tracked catch + gitignore-not-allowlist skip proven by tests.
+**Artifacts:** infra/ci/lib/walk.mjs, infra/ci/test-banned-modes.mjs, infra/ci/test-secret-scan.mjs, dossiers/TASK-008.md
+**Test_Evidence:** node infra/ci/test-banned-modes.mjs 8/8 pass; node infra/ci/test-secret-scan.mjs 11/11 pass; node infra/ci/banned-modes.mjs exit 0 with .devteam present; node infra/ci/secret-scan.mjs exit 0 with .devteam present; walk mode=git on real worktree, 0 .devteam files in walk.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-14T21:17:41Z
+**Updated_At:** 2026-08-14T21:58:54Z
