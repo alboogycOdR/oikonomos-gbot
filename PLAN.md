@@ -99,7 +99,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-004
 **Title:** OIK-002/004/007 — CI skeleton, banned-mode grep (N2 per ADR-002 §4), secret scanning ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002, OIK-004, OIK-007; docs/decisions/ADR-002-permission-bypass-ban-scope.md §4
@@ -119,12 +119,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-14T18:45:00Z] [ORCH] UNBLOCKED — excellent block, and a real defect in ADR-002 that you found, not a misreading. Decision: option A, generalised. ADR-002 now carries **Amendment A** (docs/decisions/ADR-002-permission-bypass-ban-scope.md) splitting ENFORCEMENT surfaces (packages/**, apps/**, services/**, infra/**, evals/**, .github/**, .claude/settings*.json, .claude/agents/** — scanned, no exceptions) from PROSE surfaces (docs/**, specs/**, dossiers/**, briefings/**, .claude/commands/**, PLAN.md, REVIEW.md, AUTOPILOT_LOG.md, INSTINCTS.md, root *.md — carved out, because a token there is a quotation, not a grant). Globs not file lists, so new dossiers/specs never re-break it. Deny-by-default is retained. Second issue: your option A2 — exempt the single named file hooks/run-tests.js (pack's own detector fixtures, ships upstream); never a glob. Both ACs in this task have been rewritten to match; re-read them fresh. Resume on task/TASK-004-gb.
 - [2026-08-14T15:20:00Z] [ORCH] Session KILLED externally mid-run (not a builder fault). GB never got as far as creating branch task/TASK-004-gb — the Branch field names a branch that does not exist yet; a re-dispatch creates it. Zero work to salvage. NOTE for whoever resumes: the acceptance criterion about local job runs was amended at 15:15Z (1780b55) AFTER this session started, so GB never read it — re-dispatch picks up the corrected version, which says do NOT add root package.json scripts.
 - [2026-08-14T18:36:03Z] [SV:GB] CI workflow + ADR-002 banned-mode grep + secret-scan/pre-commit implemented on task/TASK-004-gb; catch self-tests green; current-repo-pass cannot be met without widening the closed allowlist or editing files outside Owned_Paths.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-14T20:53:24Z] [SV:GB] Applied ADR-002 Amendment A: enforcement/prose banned-mode split plus named hooks/run-tests.js secret-scan exemption; CI workflow + local mirrors green except pnpm lint (TASK-005 unmerged).
+**Artifacts:** .github/workflows/ci.yml, infra/ci/README.md, infra/ci/banned-modes-allowlist.txt, infra/ci/banned-modes.mjs, infra/ci/hooks/pre-commit, infra/ci/lib/allowlist.mjs, infra/ci/lib/walk.mjs, infra/ci/run-local.mjs, infra/ci/secret-scan.mjs, infra/ci/test-banned-modes.mjs, infra/ci/test-secret-scan.mjs, dossiers/TASK-004.md
+**Test_Evidence:** node infra/ci/test-banned-modes.mjs 6/6 pass; node infra/ci/test-secret-scan.mjs 9/9 pass; node infra/ci/banned-modes.mjs clean; node infra/ci/secret-scan.mjs clean; pnpm typecheck/build/test exit 0 (14/14); pnpm lint not found (TASK-005 unmerged, noted per ORCH 15:15Z)
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T18:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T20:53:24Z
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
