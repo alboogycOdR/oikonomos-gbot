@@ -122,7 +122,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-005, OIK-006
@@ -135,15 +135,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] RuleTester unit tests cover positive and negative cases for both rules
 - [ ] `pnpm lint` runs workspace-wide and is green on the current tree
 - [ ] Rules documented in infra/lint/README.md with the N9/policy-purity rationale one-liners
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-005-cx
+**Started_At:** 2026-08-14T15:08:32Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T15:08:32Z
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
