@@ -88,6 +88,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-14T15:08:45Z
 **Progress_Notes:**
 - [2026-08-14T15:20:00Z] [ORCH] Session KILLED externally mid-run (not a builder fault, no protocol violation). Branch task/TASK-003-s5 exists with ZERO commits — no work survived, nothing to salvage. Status left `claimed` deliberately: protocol §10a resume-first means a re-dispatch picks this task back up on the existing branch. Re-dispatch with `scripts/dispatch.ps1 -Builder S5` when work resumes.
+- [2026-08-14T18:36:03Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-003-2026-08-14T17-55-04Z.log
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
