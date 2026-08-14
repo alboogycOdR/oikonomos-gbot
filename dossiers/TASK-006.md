@@ -1,20 +1,9 @@
-# Dossier — TASK-006 · ATLAS A5 — pack-wide integration
+# TASK-006 — OIK-014/016 packages/db typed layer + seed (BACKLOG, TBD)
 
-**Brief:** Wire ATLAS into dispatch, nightly maintenance, autopilot.json, onboarding, all three briefings, and the decompose command — every touchpoint fail-open, shipping disabled by default. This is cross-cutting surgery on ORCH's own machinery: read each file fully before editing, keep diffs minimal, and preserve the byte-identical-when-disabled guarantee.
+**Brief:** Typed query layer over the TASK-002 schema with pooling limits, plus the idempotent capabilities/role_grants seed for inbox-triage. Assign at next dispatch once TASK-001 and TASK-002 are merged.
 
-**Spec:** specs/DEVDEPARTMENT_ATLAS_SPEC.md — read in full; load-bearing: §5 (every integration point, one bullet each), §6 row A5, §7 A5 exit criteria, R2 (onboarding .gitignore block), R3 (briefings must present plain-CLI usage — GB/CX cannot see MCP).
+**Spec pointers:** WBS OIK-014/016. Synthesis §5.1 (schema). Handover §4.4 (Gmail manifest shape — seed tiers must match: email.list T0_observe, email.create_draft T1_draft, email.send T3_external disabled; inbox-triage max_tier T1_draft, rate 40/h).
 
-**Intended approach:**
-- dispatch.sh/.ps1: mirror the instincts-injection pattern exactly — after it, `if db exists && autopilot.json atlas.enabled: append "## PROJECT MAP (ATLAS) — a map, not the ground" section from atlas.py pack`; any error → one warning line, dispatch proceeds. Both scripts, identical semantics.
-- maintenance.py: nightly scan + `episodes --reindex` + (if atlas.cards_auto_refresh) capped `cards --generate --max <atlas.max_cards_per_night>` (default 30). Failure = one logged audit line; only a corrupt db escalates, and the prescribed remedy is delete + full rescan.
-- autopilot.json: add the §5 atlas block verbatim, `"enabled": false`.
-- onboard.md: ask-step following the control.mode/roster "ask, don't auto-flip" pattern; include the R2 .gitignore block.
-- briefings/GROK_BUILD_BRIEFING.md, CODEX_BRIEFING.md, S5_BUILD_BRIEFING.md: one short section each — what the ATLAS prompt section is, R1 verbatim, `atlas.py query/where/impact` as shell commands builders may run mid-session.
-- .claude/commands/devteam-decompose.md: one prose instruction — consult `atlas.py impact` when carving Owned_Paths; record surprising couplings in Descriptions.
-- board_publisher.py: optional `"atlas"` key — cosmetic, skip if risky.
-- docs/ATLAS.md: append Integration section.
-- §7 verification: dry-run dispatch shows the section when enabled; **byte-identical prompts when disabled** (diff them); nightly audit runs scan clean.
-
-**Territory note:** almost everything here is builder-protected ORCH machinery — the Owned_Paths are a deliberate, reviewed, per-task grant (firewall exceptions added at dispatch, removed at done). Anything outside them is automatic rework.
+**Intended approach:** pg (node-postgres) with a typed function per access path, pool limits in config; no raw SQL escapes the package. Seed as an idempotent upsert script. Integration tests against the compose database.
 
 ## Work Log
