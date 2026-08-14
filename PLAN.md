@@ -43,7 +43,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-002
 **Title:** OIK-011/012/013 (local scope) — Postgres 16 + pgvector compose, schema v1 migrations, append-only audit
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-011, OIK-012, OIK-013; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -59,13 +59,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No credentials anywhere — compose uses env-var references with a `.env.example` carrying obvious placeholders only (N4)
 **Branch:** task/TASK-002-cx
 **Started_At:** 2026-08-14T14:27:03Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-14T14:45:00Z] [ORCH] State repaired by ORCH: CX completed the task (commits a2a852c feat + 50d43a9 dossier evidence on task/TASK-002-cx, work log says "Ready for review") but its devteam-control block was lost to a dispatch.ps1 stdout-capture bug (codex stderr banner aborted the log pipeline under EAP=Stop; fixed same day in dispatch.ps1). Status set to needs_review by ORCH per the dossier evidence — no protocol violation by CX.
+**Artifacts:** infra/compose/docker-compose.local.yml, infra/compose/docker-compose.prod.yml, infra/compose/.env.example, infra/postgres/migrations/001_schema_v1.up.sql, infra/postgres/migrations/001_schema_v1.down.sql, infra/postgres/scripts/apply.sh, infra/postgres/scripts/revert.sh, infra/postgres/scripts/verify.sh, infra/postgres/scripts/test.sh, infra/postgres/scripts/test-append-only.sql, dossiers/TASK-002.md
+**Test_Evidence:** [from dossiers/TASK-002.md work log, 14:42:00Z] Isolated compose project oikonomos-task002-test: up -d --wait healthy (Postgres 16); local/prod `docker compose config` rendered 127.0.0.1:5432 and the Tailscale address respectively. 001_schema_v1.up.sql applied twice (second run only expected "already exists" notices); vector extension, all 8 §5.1 tables, 1 HNSW index verified. test-append-only.sql → UPDATE 0, DELETE 0, "append-only assertion passed", vector cast OK. Down migration → 0 tables, clean reapply OK. bash -n clean on all four scripts. Test project resources removed after validation.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-14T14:27:03Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-14T14:45:00Z
 
 ### TASK-003
 **Title:** OIK-017/018 — packages/shared: canonical JSON + sha256 action digest

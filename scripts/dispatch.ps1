@@ -76,6 +76,7 @@ $Wt = Join-Path $ParentDir ("wt-" + $Reg["WORKTREE_SUFFIX"] + "-" + $ProjectName
 # CLI-invocation table — keyed by CLI FAMILY, not unit (S5/S5B share the
 # claude row). These quirks are properties of the CLI binaries, not project
 # config, so they stay here:
+$PromptViaStdin = $false
 switch ($Cli) {
     "grok" {
         # Bare `grok <prompt>` starts the INTERACTIVE TUI with a trust-dialog
@@ -92,10 +93,19 @@ switch ($Cli) {
         # cmd /c invokes codex.cmd, which has no such pipeline semantics.
         # --reasoning-effort is NOT a valid codex exec flag (codex-cli 0.144.5);
         # model_reasoning_effort is authoritative via .codex/config.toml.
+        # PROMPT VIA STDIN (fix 2026-08-14, oikonomos live failure): cmd.exe
+        # treats embedded newlines in an argument as command breaks and drops
+        # into "More?" continuation reading stdin — the multiline prompt never
+        # reached codex ("Builder process error: Reading additional input from
+        # stdin...", zero-work session). Same principle as the legacy-mode
+        # launcher's prompt file: a file has no quoting. `codex exec -` reads
+        # the prompt from stdin; the strict-mode launch path below redirects
+        # the prompt file into it inside a single-line cmd string.
         $Cmd = "cmd"
         $CmdArgs = @("/c", "codex", "exec")
         if ($Model) { $CmdArgs += @("--model", $Model) }
         $CmdArgs += @("-s", "danger-full-access")
+        $PromptViaStdin = $true
     }
     "claude" {
         # claude.exe is a native binary (not an npm .ps1 shim) -- no cmd /c
@@ -430,17 +440,46 @@ if ($ControlMode -eq "strict") {
 
     Push-Location $Wt
     $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
+    $PrevEAP = $ErrorActionPreference
     try {
         if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
-        & $Cmd @($CmdArgs + @($Prompt)) 2>&1 | Tee-Object -FilePath $LogPath
+        # EAP Continue during the builder run: under Stop, the first native
+        # stderr line routed through `2>&1 |` throws (PS 5.1 NativeCommandError)
+        # and aborts the pipeline before the log is written — codex's version
+        # banner on stderr killed a live dispatch this way (2026-08-14). The
+        # legacy-mode runner already sets Continue for the same reason.
+        $ErrorActionPreference = "Continue"
+        if ($PromptViaStdin) {
+            # Multiline prompt cannot survive a cmd /c argument (see codex case
+            # comment). Write it to a file and redirect into `codex exec -`.
+            # Log redirection also happens INSIDE cmd (raw UTF-8, no PS streams,
+            # no Tee-Object UTF-16, no stderr-to-pipeline exception surface).
+            $PromptFile = Join-Path $DevteamDir "$TaskId-$RunTs.prompt.txt"
+            [System.IO.File]::WriteAllText($PromptFile, $Prompt, (New-Object System.Text.UTF8Encoding($false)))
+            $NativeArgs = @($CmdArgs | Select-Object -Skip 1)  # drop leading /c
+            $CmdLine = ($NativeArgs -join " ") + " - < `"$PromptFile`" > `"$LogPath`" 2>&1"
+            & cmd /c $CmdLine
+            if (Test-Path $LogPath) { Get-Content $LogPath | Write-Host }
+        } else {
+            & $Cmd @($CmdArgs + @($Prompt)) 2>&1 | Tee-Object -FilePath $LogPath
+        }
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
         if ($null -eq $PrevConfigDir) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
         else { $env:CLAUDE_CONFIG_DIR = $PrevConfigDir }
         Pop-Location
+        $ErrorActionPreference = $PrevEAP
     }
 
+    # Re-encode the captured log to UTF-8 (no BOM) before extraction: PS 5.1's
+    # Tee-Object writes UTF-16 LE, and control.py reads utf-8 — the fence regex
+    # can never match interleaved NULs (live failure 2026-08-14, oikonomos:
+    # builder emitted a valid CONTROL block, extract said UNREPORTED).
+    if (Test-Path $LogPath) {
+        $RawLog = Get-Content $LogPath -Raw
+        [System.IO.File]::WriteAllText($LogPath, $RawLog, (New-Object System.Text.UTF8Encoding($false)))
+    }
     Write-Host "[dispatch] Session ended. Extracting devteam-control block..." -ForegroundColor Cyan
     $ExtractOut = (& $Py "scripts\control.py" "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String).Trim()
     Write-Host "[dispatch] $ExtractOut"
