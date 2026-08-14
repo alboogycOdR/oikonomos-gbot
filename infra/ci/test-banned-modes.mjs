@@ -5,6 +5,7 @@
  * prose surfaces do not; a packages/ fixture fails; the current repo passes.
  */
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -18,6 +19,14 @@ import {
   loadAllowlist,
   matchPath,
 } from './lib/allowlist.mjs';
+import {
+  FALLBACK_SKIP_DIRS,
+  gitIgnoredPaths,
+  isInsideGitWorkTree,
+  relPosix,
+  resolveIgnoreMode,
+  walkFiles,
+} from './lib/walk.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const allowlistPath = join(here, 'banned-modes-allowlist.txt');
@@ -174,4 +183,91 @@ test('current repo has no hits outside the ADR-002 Amendment A allowlist', () =>
     [],
     violations.map((v) => `${v.file}:${v.line}:${v.token}`).join('\n'),
   );
+});
+
+test('tracked enforcement violation is still caught; gitignored twin is skipped by check-ignore', () => {
+  const token = bannedTokens()[0];
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-gi-'));
+  try {
+    const init = spawnSync('git', ['init'], { cwd: root, encoding: 'utf8' });
+    assert.equal(init.status, 0, init.stderr);
+    spawnSync('git', ['config', 'user.email', 'ci@example.test'], { cwd: root });
+    spawnSync('git', ['config', 'user.name', 'ci'], { cwd: root });
+
+    // local-scratch/ is gitignored. It sits under packages/** (enforcement
+    // surface) so Amendment A would NOT carve it out — skip must be gitignore.
+    writeFileSync(join(root, '.gitignore'), 'local-scratch/\n', 'utf8');
+    mkdirSync(join(root, 'packages', 'policy', 'src'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'local-scratch'), { recursive: true });
+
+    const trackedRel = 'packages/policy/src/tracked-violation.ts';
+    const ignoredRel = 'packages/local-scratch/ignored-violation.ts';
+    writeFileSync(join(root, trackedRel), `export const mode = ${JSON.stringify(token)};\n`, 'utf8');
+    writeFileSync(join(root, ignoredRel), `export const mode = ${JSON.stringify(token)};\n`, 'utf8');
+
+    assert.equal(isEnforcementSurface(ignoredRel), true, 'ignored path is still an enforcement surface');
+    assert.equal(
+      isAllowlisted(ignoredRel, loadAllowlist(allowlistPath)),
+      false,
+      'skip must not be explainable as an allowlist carve-out',
+    );
+    assert.equal(isInsideGitWorkTree(root), true);
+    assert.equal(resolveIgnoreMode(root).mode, 'git');
+    assert.ok(
+      gitIgnoredPaths(root, [ignoredRel]).has(ignoredRel),
+      'git check-ignore must report the planted ignored path',
+    );
+    assert.equal(gitIgnoredPaths(root, [trackedRel]).has(trackedRel), false);
+
+    const walked = new Set(walkFiles(root).map((abs) => relPosix(root, abs)));
+    assert.ok(walked.has(trackedRel), 'tracked enforcement file must remain in the walk');
+    assert.equal(walked.has(ignoredRel), false, 'gitignored file must be omitted from the walk');
+
+    const { violations } = scanBannedModes({ root, allowlistPath });
+    assert.ok(
+      violations.some((v) => v.file === trackedRel && v.token === token),
+      'tracked enforcement violation must still be caught',
+    );
+    assert.equal(
+      violations.some((v) => v.file === ignoredRel),
+      false,
+      'gitignored enforcement path must not surface as a violation',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fallback skip-list omits .devteam when git is unavailable (not an allowlist carve-out)', () => {
+  const token = bannedTokens()[0];
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-fb-'));
+  try {
+    assert.equal(isInsideGitWorkTree(root), false);
+    assert.equal(resolveIgnoreMode(root).mode, 'fallback');
+    assert.ok(FALLBACK_SKIP_DIRS.has('.devteam'));
+
+    mkdirSync(join(root, 'packages', 'broker', 'src'), { recursive: true });
+    mkdirSync(join(root, '.devteam', 'runs'), { recursive: true });
+    const trackedRel = 'packages/broker/src/tracked.ts';
+    const noiseRel = '.devteam/runs/session.log';
+    writeFileSync(join(root, trackedRel), `export const mode = ${JSON.stringify(token)};\n`, 'utf8');
+    writeFileSync(join(root, noiseRel), `mentions ${token}\n`, 'utf8');
+
+    assert.equal(isEnforcementSurface(noiseRel), false);
+    assert.equal(
+      isAllowlisted(noiseRel, loadAllowlist(allowlistPath)),
+      false,
+      '.devteam is not an Amendment A prose carve-out; fallback skip is independent',
+    );
+
+    const walked = new Set(walkFiles(root).map((abs) => relPosix(root, abs)));
+    assert.ok(walked.has(trackedRel));
+    assert.equal(walked.has(noiseRel), false);
+
+    const { violations } = scanBannedModes({ root, allowlistPath });
+    assert.ok(violations.some((v) => v.file === trackedRel && v.token === token));
+    assert.equal(violations.some((v) => v.file === noiseRel), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

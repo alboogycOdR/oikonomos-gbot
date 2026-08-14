@@ -17,7 +17,18 @@ import {
   scanSecrets,
   SECRET_SCAN_EXEMPT_FILES,
 } from './secret-scan.mjs';
-import { repoRoot } from './lib/walk.mjs';
+import {
+  FALLBACK_SKIP_DIRS,
+  gitIgnoredPaths,
+  isInsideGitWorkTree,
+  relPosix,
+  repoRoot,
+  resolveIgnoreMode,
+  walkFiles,
+} from './lib/walk.mjs';
+import { isAllowlisted, isEnforcementSurface, loadAllowlist } from './lib/allowlist.mjs';
+
+const allowlistPath = join(dirname(fileURLToPath(import.meta.url)), 'banned-modes-allowlist.txt');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const hookPath = join(here, 'hooks', 'pre-commit');
@@ -114,4 +125,71 @@ test('current repo has no known-secret pattern hits (after Amendment A exemption
     [],
     findings.map((f) => `${f.file}: ${f.hits.join('; ')}`).join('\n'),
   );
+});
+
+test('tracked secret is still caught; gitignored twin is skipped by check-ignore', () => {
+  const fake = fakePlaceholderKey();
+  const root = mkdtempSync(join(tmpdir(), 'oik-secret-gi-'));
+  try {
+    const init = spawnSync('git', ['init'], { cwd: root, encoding: 'utf8' });
+    assert.equal(init.status, 0, init.stderr);
+    spawnSync('git', ['config', 'user.email', 'ci@example.test'], { cwd: root });
+    spawnSync('git', ['config', 'user.name', 'ci'], { cwd: root });
+
+    writeFileSync(join(root, '.gitignore'), 'local-scratch/\n', 'utf8');
+    mkdirSync(join(root, 'packages', 'broker', 'src'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'local-scratch'), { recursive: true });
+
+    const trackedRel = 'packages/broker/src/tracked.env';
+    const ignoredRel = 'packages/local-scratch/ignored.env';
+    writeFileSync(join(root, trackedRel), `API_TOKEN=${fake}\n`, 'utf8');
+    writeFileSync(join(root, ignoredRel), `API_TOKEN=${fake}\n`, 'utf8');
+
+    assert.equal(isEnforcementSurface(ignoredRel), true);
+    assert.equal(
+      isAllowlisted(ignoredRel, loadAllowlist(allowlistPath)),
+      false,
+      'skip must be gitignore-membership, not an allowlist carve-out',
+    );
+    assert.equal(resolveIgnoreMode(root).mode, 'git');
+    assert.ok(gitIgnoredPaths(root, [ignoredRel]).has(ignoredRel));
+    assert.equal(gitIgnoredPaths(root, [trackedRel]).has(trackedRel), false);
+
+    const walked = new Set(walkFiles(root).map((abs) => relPosix(root, abs)));
+    assert.ok(walked.has(trackedRel));
+    assert.equal(walked.has(ignoredRel), false);
+
+    const findings = scanSecrets({ root });
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].file, trackedRel);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fallback skip-list omits .devteam secrets when git is unavailable', () => {
+  const fake = fakePlaceholderKey();
+  const root = mkdtempSync(join(tmpdir(), 'oik-secret-fb-'));
+  try {
+    assert.equal(isInsideGitWorkTree(root), false);
+    assert.equal(resolveIgnoreMode(root).mode, 'fallback');
+    assert.ok(FALLBACK_SKIP_DIRS.has('.devteam'));
+
+    mkdirSync(join(root, 'packages', 'broker', 'src'), { recursive: true });
+    mkdirSync(join(root, '.devteam', 'runs'), { recursive: true });
+    const trackedRel = 'packages/broker/src/tracked.env';
+    const noiseRel = '.devteam/runs/session.log';
+    writeFileSync(join(root, trackedRel), `API_TOKEN=${fake}\n`, 'utf8');
+    writeFileSync(join(root, noiseRel), `API_TOKEN=${fake}\n`, 'utf8');
+
+    const walked = new Set(walkFiles(root).map((abs) => relPosix(root, abs)));
+    assert.ok(walked.has(trackedRel));
+    assert.equal(walked.has(noiseRel), false);
+
+    const findings = scanSecrets({ root });
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].file, trackedRel);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
