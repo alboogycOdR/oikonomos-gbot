@@ -125,7 +125,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-005
 **Title:** OIK-005/006 — Lint enforcement: no direct query() outside harness-factory (N9); packages/policy zero I/O (lint)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-005, OIK-006
@@ -144,12 +144,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-14T15:10:24Z] [SV:CX] Created task/TASK-005-cx and recorded preflight evidence; implementation cannot begin without root package.json ownership for pnpm lint.
 - [2026-08-14T15:20:00Z] [ORCH] Resumed session KILLED externally shortly after launch (not a builder fault). Branch task/TASK-005-cx holds only the blocker dossier commit 6e05ea3 — implementation had not started. The 15:15Z grant below stands; a re-dispatch resumes on the same branch with the widened territory.
 - [2026-08-14T15:15:00Z] [ORCH] UNBLOCKED — correct block, and an ORCH planning error, not yours: the `pnpm lint` acceptance criterion required a root manifest edit that the territory never granted. Fixed by a narrow grant of package.json + pnpm-lock.yaml (see Description) rather than a separate integration task, because TASK-001 is done and neither active task touches root manifests, so single-writer discipline still holds. Scope is the `lint` script + eslint devDeps ONLY — anything wider is rework at review. Resume on the existing branch task/TASK-005-cx.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-14T18:36:03Z] [SV:CX] Implemented root ESLint flat config plus N9 Agent SDK and policy-purity custom rules; added pnpm lint and documentation.
+**Artifacts:** eslint.config.mjs, infra/lint/README.md, infra/lint/rules/no-direct-agent-sdk-query.mjs, infra/lint/rules/policy-no-io.mjs, infra/lint/test/no-direct-agent-sdk-query.test.mjs, infra/lint/test/policy-no-io.test.mjs, package.json, pnpm-lock.yaml, dossiers/TASK-005.md
+**Test_Evidence:** pnpm exec node --test infra/lint/test/*.test.mjs: 2/2 passed; pnpm lint passed; pnpm install --frozen-lockfile passed; pnpm test, pnpm typecheck, and pnpm build passed across all 14 workspace projects; git diff --check master...HEAD passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T15:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-14T18:36:03Z
 
 ### TASK-006
 **Title:** OIK-014/016 — packages/db: typed query layer, pooling, seed data (inbox-triage)
