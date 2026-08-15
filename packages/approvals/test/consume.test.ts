@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { consumeApproval } from "../../db/src/approvals.js";
+import { consumeApproval } from "@oikonomos/db";
+
 import { verifyAndConsume } from "../src/consume.js";
 import type { ApprovalStore, ConsumeApprovalResult } from "../src/store.js";
 import { createMemoryStore, fixtureRequest, grantMemoryRow } from "./helpers.js";
@@ -38,6 +39,8 @@ describe("verifyAndConsume — row count gates the action", () => {
         consumeCalls += 1;
         return { rowCount: 0, approval: null };
       },
+      invalidate: async () => ({ rowCount: 0, approval: null }),
+      expirePending: async () => 0,
     };
 
     const result = await verifyAndConsume(randomUUID(), { store });
@@ -52,6 +55,8 @@ describe("verifyAndConsume — row count gates the action", () => {
       },
       getByNonce: async () => null,
       consume: async () => ({ rowCount: 1, approval: null }),
+      invalidate: async () => ({ rowCount: 0, approval: null }),
+      expirePending: async () => 0,
     };
 
     await expect(verifyAndConsume(randomUUID(), { store })).rejects.toThrow(/rowCount/);
@@ -112,6 +117,8 @@ describe("verifyAndConsume — fail closed on invalid input", () => {
         consumeCalls += 1;
         return { rowCount: 0, approval: null };
       },
+      invalidate: async () => ({ rowCount: 0, approval: null }),
+      expirePending: async () => 0,
     };
 
     await expect(verifyAndConsume("not-a-uuid", { store })).rejects.toThrow(/nonce/);

@@ -1,11 +1,24 @@
 import { randomUUID } from "node:crypto";
 
 import type { Approval, NewApproval } from "@oikonomos/db";
+import type { ActionDigestInput } from "@oikonomos/shared";
 
-import type { ApprovalStore, ConsumeApprovalResult } from "../src/store.js";
 import type { IssueApprovalRequest } from "../src/issue.js";
+import { actionRender } from "../src/render.js";
+import type { ApprovalStore, ConsumeApprovalResult } from "../src/store.js";
 
 export const FIXTURE_RUN_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+export function fixtureAction(
+  overrides: Partial<ActionDigestInput> = {},
+): ActionDigestInput {
+  return {
+    toolName: "mcp__gmail__create_draft",
+    input: { to: "review@example.test", subject: "placeholder subject" },
+    destination: "review@example.test",
+    ...overrides,
+  };
+}
 
 export function fixtureRequest(
   overrides: Partial<IssueApprovalRequest> = {},
@@ -16,9 +29,16 @@ export function fixtureRequest(
     toolName: "mcp__gmail__create_draft",
     input: { to: "review@example.test", subject: "placeholder subject" },
     destination: "review@example.test",
-    actionRender: "create draft to review@example.test",
     ...overrides,
   };
+}
+
+export function expectedRender(request: IssueApprovalRequest): string {
+  return actionRender({
+    toolName: request.toolName,
+    input: request.input,
+    destination: request.destination,
+  });
 }
 
 export interface MemoryStore {
@@ -77,6 +97,35 @@ export function createMemoryStore(): MemoryStore {
       };
       rows.set(nonce, consumed);
       return { rowCount: 1, approval: consumed };
+    },
+    async invalidate(nonce: string): Promise<ConsumeApprovalResult> {
+      events.push("invalidate");
+      const row = rows.get(nonce);
+      if (row === undefined || row.status !== "granted" || row.consumedAt !== null) {
+        return { rowCount: 0, approval: null };
+      }
+      const invalidated: Approval = {
+        ...row,
+        status: "invalidated",
+      };
+      rows.set(nonce, invalidated);
+      return { rowCount: 1, approval: invalidated };
+    },
+    async expirePending(scope?: { readonly runId: string }): Promise<number> {
+      events.push("expire");
+      const now = Date.now();
+      let expired = 0;
+      for (const [nonce, row] of rows) {
+        if (row.status !== "pending" || row.expiresAt.getTime() > now) {
+          continue;
+        }
+        if (scope !== undefined && row.runId !== scope.runId) {
+          continue;
+        }
+        rows.set(nonce, { ...row, status: "expired" });
+        expired += 1;
+      }
+      return expired;
     },
   };
 

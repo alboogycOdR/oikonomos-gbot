@@ -3,6 +3,7 @@ import type { JsonValue } from "@oikonomos/shared";
 
 import { actionDigestToBytes, bindActionDigest } from "./bind.js";
 import { generateNonce } from "./nonce.js";
+import { actionRender } from "./render.js";
 import { createDatabaseStore, type ApprovalStore } from "./store.js";
 
 /** Synthesis §5.1: `expires_at` defaults to now + 4 hours. */
@@ -17,7 +18,6 @@ export interface IssueApprovalRequest {
   readonly toolName: string;
   readonly input: JsonValue;
   readonly destination: string;
-  readonly actionRender: string;
   readonly tenantId?: string;
   readonly expiresAt?: Date;
 }
@@ -107,16 +107,17 @@ export async function issueApproval(
   const capabilityId = requireNonEmpty(request.capabilityId, "capabilityId");
   const toolName = requireNonEmpty(request.toolName, "toolName");
   const destination = requireNonEmpty(request.destination, "destination");
-  const actionRender = requireNonEmpty(request.actionRender, "actionRender");
   const expiresAt = resolveExpiresAt(request.expiresAt);
   const tenantId =
     request.tenantId === undefined ? undefined : requireNonEmpty(request.tenantId, "tenantId");
 
-  const actionDigestHex = bindActionDigest({
+  const action = {
     toolName,
     input: request.input,
     destination,
-  });
+  };
+  const actionDigestHex = bindActionDigest(action);
+  const derivedRender = actionRender(action);
   const nonce = generateNonce();
   const store = resolveStore(deps);
 
@@ -125,7 +126,7 @@ export async function issueApproval(
     runId,
     capabilityId,
     actionDigest: actionDigestToBytes(actionDigestHex),
-    actionRender,
+    actionRender: derivedRender,
     destination,
     nonce,
     expiresAt,

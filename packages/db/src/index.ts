@@ -16,9 +16,12 @@ export {
 } from "./auditEvents.js";
 export {
   approvalStatuses,
+  CONSUME_APPROVAL_SQL,
+  consumeApproval,
   getApprovalByNonce,
   insertApproval,
   type Approval,
   type ApprovalStatus,
+  type ConsumeApprovalResult,
   type NewApproval,
 } from "./approvals.js";
