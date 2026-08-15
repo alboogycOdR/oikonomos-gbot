@@ -91,6 +91,7 @@ describe("issueApproval — persist before wait", () => {
         return gate.then(() => row);
       },
       getByNonce: (nonce) => backing.store.getByNonce(nonce),
+      consume: (nonce) => backing.store.consume(nonce),
     };
 
     const pending = issueApproval(fixtureRequest(), { store }).then((signal) => {
@@ -133,6 +134,7 @@ describe("issueApproval — persist before wait", () => {
         throw new Error("write failed");
       },
       getByNonce: async () => null,
+      consume: async () => ({ rowCount: 0, approval: null }),
     };
 
     await expect(issueApproval(fixtureRequest(), { store })).rejects.toThrow("write failed");
