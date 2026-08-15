@@ -55,6 +55,30 @@ The carve-outs are glob-shaped rather than file-enumerated on purpose: dossiers 
 
 **Residual risk, stated plainly.** A prose surface could carry a token that a future tool one day reads as configuration (e.g. if `PLAN.md` ever became machine-executable). Accepted as low: the platform runtime reads none of these paths, and any change that made it do so would itself be a protected-path change requiring review.
 
+## Amendment B — §5's exception had no mechanism for two of three units (2026-08-15, ACCEPTED)
+
+**Raised by:** ORCH at the wave-3 dispatch gate, before launching. **Decision owner:** Alister Witbooi (Option D of four presented).
+
+**The gap.** §5 permits builder permission-bypass on product paths "except where the territory firewall is active for that unit (`DEVTEAM_UNIT` set), **which mechanically confines writes to the task's `Owned_Paths`**". The parenthetical made `DEVTEAM_UNIT` the test, and `scripts/dispatch.ps1` sets it for every builder — so the condition read as satisfied. It was not. `hooks/territory-firewall.js` is a Claude Code **PreToolUse** hook, and `scripts/dispatch.ps1:427` states in its own comment that neither grok nor codex reads `.claude/settings.json`, "so territory-firewall.js never fires for them at all". The env var was set; nothing read it. Only S5 (the literal `claude` CLI) was ever confined.
+
+So for GB and CX the clause's *letter* was met while the *mechanism it names* was absent — the failure mode is a condition that looks checked because a variable is set, rather than because an enforcement path exists. Five builder tasks merged under the gap: TASK-001 (`packages/**`, `services/**`), TASK-004 (`.github/**`, `infra/ci/**`), TASK-008 (`infra/ci/**`), TASK-009 (three manifests + lockfile) and TASK-010 (`packages/policy/**`, a **protected** path). All five were territory-clean at review, so no out-of-territory write occurred — but the only control in force was post-hoc ORCH review, which is precisely what §5's exception was written to avoid relying on.
+
+**Second finding, independent of the first.** CX's invocation is `codex exec -s danger-full-access`. That is functionally equivalent permission bypass, but it is **not** one of the three tokens CAN-03 greps for (`bypassPermissions`, `acceptEdits`, `--dangerously-skip-permissions`), so the banned-mode scanner would not flag it even on an enforcement surface. CAN-03's token list tracks the Claude Code vocabulary and does not generalise across CLIs.
+
+**Decision.** Restore the mechanism at the git layer rather than widen the carve-out or remove the flags.
+
+`hooks/territory-precommit.js` rejects any commit staging a path outside the committing unit's active `Owned_Paths`. Git resolves hooks from the common git dir, so one installed file covers the main checkout and every present and future worktree (`scripts/install_git_hooks.ps1`; it composes with the OIK-007 secret-scan hook rather than replacing it). Three properties make it a control rather than a restatement:
+
+1. **It fails closed.** `territory-firewall.js` fails *open* by design — a hook bug must never brick an interactive session, and review is its backstop. This hook is the only mechanical control for grok and codex, so any error, unresolvable unit, or unreadable `PLAN.md` **rejects** the commit.
+2. **The unit comes from the worktree, not the environment.** Git hooks inherit the environment of whatever ran `git commit`; `lib.unit()` maps an unset `DEVTEAM_UNIT` to unrestricted ORCH, so trusting it here would let the control silently disable itself in exactly the case it exists to catch. The unit is derived from the worktree directory against `autopilot.json`'s registry (`wt-<worktree_suffix>-<project>`); `DEVTEAM_UNIT` is consulted only to cross-check, and disagreement is a rejection.
+3. **`PLAN.md` is read from the main checkout.** A worktree's copy is whatever its branch carries; reading territory from it would let a commit widen the `Owned_Paths` that authorise it.
+
+§5 is unchanged in wording — this amendment makes its premise true for every CLI instead of only for S5. The ban in CLAUDE.md non-negotiable #2 is not weakened, and no new carve-out is created.
+
+**Verification.** `hooks/test-territory-precommit.js` builds a throwaway repo with registered worktrees and drives real `git commit` invocations: 10/10, asserting the catch direction (out-of-territory, `PLAN.md` under strict mode, another task's dossier, unit/worktree mismatch) and the pass direction separately (in-territory file, own dossier, ORCH in the main checkout) — a hook that rejected everything would satisfy the former alone. Fail-closed states are asserted explicitly: no active task, unregistered worktree, unreadable `PLAN.md`.
+
+**Residual risk, stated plainly.** (a) `--no-verify` bypasses the hook; it is not a defence against a deliberately hostile builder, only against the drift and accident that post-hoc review was silently carrying. Review remains the backstop and `git log -p` remains mandatory at review. (b) The hook governs **commits**, not writes: a builder can still create out-of-territory files in its worktree and simply not stage them — harmless to the integration branch, visible in review. (c) `scripts/install_git_hooks.sh` is **not yet written**, so Linux/clawsrv installation is manual until it is; this is tracked, not done. (d) The CAN-03 token-list gap for non-Claude CLIs (`-s danger-full-access`) is **not** closed by this amendment and remains open — the territory hook makes it materially less dangerous, but a future change should either generalise the grep or record why it need not be.
+
 ## References
 
 - ADR-001 — Broker enforcement point (L4, CAN-03; PreToolUse-deny-holds-under-bypass finding)
