@@ -45,15 +45,18 @@ function runGate(root, base, approvalMarker) {
 }
 
 test('every protected path required by CLAUDE.md has a review rule', () => {
-  assert.deepEqual(PROTECTED_PATHS.slice(0, 8), [
+  assert.deepEqual(PROTECTED_PATHS, [
     'packages/broker/**',
     'packages/policy/**',
     'packages/approvals/**',
     'packages/harness-factory/**',
     'infra/ci/**',
     'docs/decisions/**',
-    '.claude/settings*.json',
-    '.claude/agents/**',
+    '.claude/**',
+    '.codex/**',
+    'hooks/**',
+    '.github/CODEOWNERS',
+    '.github/workflows/**',
   ]);
 });
 
@@ -109,9 +112,11 @@ test('a protected diff passes after the required marker', () => {
   assert.equal(result.approved, true);
 });
 
-test('settings and subagent configurations are protected', () => {
+test('control-plane configuration paths are protected', () => {
   assert.equal(isProtectedPath('.claude/settings.local.json'), true);
   assert.equal(isProtectedPath('.claude/agents/reviewer.md'), true);
+  assert.equal(isProtectedPath('.claude/commands/review.md'), true);
   assert.equal(isProtectedPath('.codex/config.toml'), true);
   assert.equal(isProtectedPath('.codex/agents/reviewer.toml'), true);
+  assert.equal(isProtectedPath('hooks/territory-precommit.js'), true);
 });

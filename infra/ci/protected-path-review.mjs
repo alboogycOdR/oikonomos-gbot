@@ -19,9 +19,9 @@ export const PROTECTED_PATHS = Object.freeze([
   'packages/harness-factory/**',
   'infra/ci/**',
   'docs/decisions/**',
-  '.claude/settings*.json',
-  '.claude/agents/**',
+  '.claude/**',
   '.codex/**',
+  'hooks/**',
   '.github/CODEOWNERS',
   '.github/workflows/**',
 ]);

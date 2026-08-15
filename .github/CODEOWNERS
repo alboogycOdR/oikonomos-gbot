@@ -9,8 +9,8 @@
 /packages/harness-factory/** @basileia/fable-reviewers
 /infra/ci/** @basileia/fable-reviewers
 /docs/decisions/** @basileia/fable-reviewers
-/.claude/settings*.json @basileia/fable-reviewers
-/.claude/agents/** @basileia/fable-reviewers
+/.claude/** @basileia/fable-reviewers
 /.codex/** @basileia/fable-reviewers
+/hooks/** @basileia/fable-reviewers
 /.github/CODEOWNERS @basileia/fable-reviewers
 /.github/workflows/** @basileia/fable-reviewers

@@ -9,7 +9,7 @@ invoked directly.
 ## Local entrypoints
 
 ```
-node infra/ci/run-local.mjs
+node infra/ci/run-local.mjs [--approval-marker fable-reviewed]
 node infra/ci/banned-modes.mjs
 node infra/ci/secret-scan.mjs
 node infra/ci/test-banned-modes.mjs
@@ -66,17 +66,19 @@ ADR-002 Amendment A exempts exactly one named file, `hooks/run-tests.js`
 
 `.github/CODEOWNERS` assigns Fable review ownership for the protected paths in
 `CLAUDE.md`: broker, policy, approvals, harness factory, CI, ADRs, and all
-settings/subagent configurations (including `.codex/**`). It also protects the
-CODEOWNERS file and CI workflow themselves so the enforcement cannot be
-weakened without review.
+control-plane configuration (`.claude/**`, `.codex/**`, and `hooks/**`). It
+also protects the CODEOWNERS file and CI workflow themselves so the enforcement
+cannot be weakened without review.
 
 CODEOWNERS is inert until this repository has a GitHub remote and its branch
 protection requires Code Owner review. Replace `@basileia/fable-reviewers`
 with the provisioned GitHub review team when that remote is configured.
 
-Until then, `protected-path-review.mjs` is the operative local control. It
-compares `--base <git-ref>` with `HEAD`; a protected diff fails unless an
-independent Fable reviewer supplies `--approval-marker fable-reviewed`. A
-clean, unprotected diff passes without a marker. The marker demonstrates the
-local gate only; it does not substitute for GitHub's authenticated required
-Code Owner review once a remote exists.
+Until then, `run-local.mjs` is the operative local control: it runs the real
+`protected-path-review.mjs` gate against the merge-base of `HEAD` and the local
+integration branch (`master`, with `main` as a fallback), as well as running
+its self-test. A protected diff fails unless an independent Fable reviewer supplies
+`--approval-marker fable-reviewed` to `run-local.mjs`; a clean, unprotected
+diff passes without a marker. The marker demonstrates the local gate only; it
+does not substitute for GitHub's authenticated required Code Owner review once
+a remote exists.
