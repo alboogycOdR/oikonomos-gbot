@@ -76,3 +76,24 @@ jobs:
           node-version-file: .nvmrc
       - run: node infra/ci/test-secret-scan.mjs
       - run: node infra/ci/secret-scan.mjs
+
+  protected-path-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verify protected-path review marker
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          marker=""
+          if printf '%s' "$PR_BODY" | grep -Fq '<!-- oikonomos-fable-review: approved -->'; then
+            marker='--approval-marker fable-reviewed'
+          fi
+          node infra/ci/protected-path-review.mjs --base "${{ github.event.pull_request.base.sha }}" $marker
+      - run: node infra/ci/test-protected-path-review.mjs
