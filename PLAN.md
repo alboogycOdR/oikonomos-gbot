@@ -536,7 +536,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -563,12 +563,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-15T19:10:47Z] [SV:CX] Implemented and committed the controls-live gate plus stronger induced-failure exit-status proof; merged current master and verified build then workspace tests pass. The liveness gate correctly reports only ATLAS as stale.
 - [2026-08-15T19:10:47Z] [SV:CX] Implemented and committed the controls-live gate plus stronger induced-failure exit-status proof; merged current master and verified build then workspace tests pass. The liveness gate correctly reports only ATLAS as stale.
 - [2026-08-15T19:26:55Z] [SV:CX] Committed 66fd77f: ATLAS liveness now measures against the integration merge-base, not builder HEAD. All CI-equivalent jobs pass except the correctly fail-closed shared ATLAS freshness gate.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-15T20:36:35Z] [SV:CX] Descoped unmaintained per-worktree ATLAS liveness to TASK-024; five required ADR-005 liveness checks remain documented, self-tested, and integrated in local CI.
+**Artifacts:** infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, infra/ci/run-local.mjs, infra/ci/README.md, dossiers/TASK-021.md
+**Test_Evidence:** node infra/ci/run-local.mjs --approval-marker fable-reviewed: all 12 local CI jobs PASS (typecheck, build, tests, lint, all infra self-tests, controls-live, protected review). node infra/ci/protected-path-review.mjs --base <merge-base> without marker: exit 1 as expected. node infra/ci/controls-live.mjs: all five checks PASS.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T19:26:55Z
+**Updated_At:** 2026-08-15T20:36:35Z
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
