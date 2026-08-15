@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
   checkCoverageEvidence,
+  checkControlQueue,
   checkDistFreshness,
   checkHookEvidence,
+  collectControlQueueEvidence,
   collectHookRejectionEvidence,
   livenessExitCode,
   runLivenessChecks,
@@ -49,21 +51,20 @@ test('each liveness assertion rejects its induced inert state', () => {
 });
 
 test('control queue distinguishes a missing directory from an empty drained queue', () => {
-  const root = mkdtempSync(join(tmpdir(), 'oikonomos-controls-live-test-'));
-  try {
-    const missing = runLivenessChecks(root, { hook, coverage, config, packages });
-    assert.equal(missing.find((item) => item.label === 'devteam control queue').status, 1);
+  assert.notEqual(checkControlQueue({ exists: false, files: [] }), null);
+  assert.equal(checkControlQueue({ exists: true, files: [] }), null);
+  assert.notEqual(checkControlQueue({ exists: true, files: ['stuck.json'] }), null);
+});
 
-    mkdirSync(join(root, '.devteam', 'control'), { recursive: true });
-    const drained = runLivenessChecks(root, { hook, coverage, config, packages });
-    assert.equal(drained.find((item) => item.label === 'devteam control queue').status, 0);
-
-    writeFileSync(join(root, '.devteam', 'control', 'stuck.json'), '{}');
-    const undrained = runLivenessChecks(root, { hook, coverage, config, packages });
-    assert.equal(undrained.find((item) => item.label === 'devteam control queue').status, 1);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test('control queue collector reads the main checkout queue, not this worktree queue', () => {
+  const commonDir = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  assert.equal(commonDir.status, 0);
+  const expected = join(dirname(resolve(process.cwd(), commonDir.stdout.trim())), '.devteam', 'control');
+  assert.equal(collectControlQueueEvidence(process.cwd()).directory, expected);
 });
 
 test('coverage evidence accepts real ANSI-coloured Vitest output', () => {

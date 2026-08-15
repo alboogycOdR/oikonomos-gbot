@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/walk.mjs';
 
@@ -67,8 +67,34 @@ export function checkHookEvidence(result) {
 }
 
 export function checkControlQueue(queue) {
-  if (!queue.exists) return 'devteam control queue directory is missing; drain state is unobservable';
+  if (!queue.exists) {
+    return queue.error ?? 'devteam control queue directory is missing; drain state is unobservable';
+  }
   return queue.files.length === 0 ? null : `${queue.files.length} undrained devteam control block(s): ${queue.files.join(', ')}`;
+}
+
+/**
+ * The supervisor drains the queue in the primary checkout, not in the
+ * independently gitignored .devteam/ directory of a linked worktree.
+ */
+export function collectControlQueueEvidence(root) {
+  const commonDirResult = command('git', ['rev-parse', '--git-common-dir'], root);
+  const commonDir = commonDirResult.output.trim();
+  if (commonDirResult.status !== 0 || !commonDir) {
+    return {
+      exists: false,
+      files: [],
+      error: 'cannot resolve git common directory; devteam control drain state is unobservable',
+    };
+  }
+
+  const mainRoot = dirname(resolve(root, commonDir));
+  const directory = join(mainRoot, '.devteam', 'control');
+  return {
+    directory,
+    exists: existsSync(directory),
+    files: existsSync(directory) ? readdirSync(directory).filter((name) => name.endsWith('.json')) : [],
+  };
 }
 
 export function checkBuilderModels(config) {
@@ -134,11 +160,7 @@ export function livenessExitCode(checks) {
 export function runLivenessChecks(root, supplied = {}) {
   const hook = supplied.hook ?? collectHookRejectionEvidence(root);
   const coverage = supplied.coverage ?? command('pnpm', ['--filter', '@oikonomos/policy', 'test'], root);
-  const controlDirectory = join(root, '.devteam', 'control');
-  const queued = supplied.queued ?? {
-    exists: existsSync(controlDirectory),
-    files: existsSync(controlDirectory) ? readdirSync(controlDirectory).filter((name) => name.endsWith('.json')) : [],
-  };
+  const queued = supplied.queued ?? collectControlQueueEvidence(root);
   const config = supplied.config ?? JSON.parse(readFileSync(join(root, 'autopilot.json'), 'utf8'));
   const packages = supplied.packages ?? workspacePackages(root);
   return [
