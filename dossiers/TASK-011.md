@@ -30,3 +30,34 @@
   2. `packages/audit/package.json` (+ `pnpm-lock.yaml`) is granted `pg` as a direct dependency, reversing TASK-009's deliberate decision — which only ORCH can weigh, since it contradicts a just-merged, reviewed decision.
 
   Did not write any implementation code against a guessed API — no `Database` method exists to target, and guessing one risks exactly the kind of drift TASK-009 was created to prevent. Stopping here per AGENTS.md commandment 10 ("When in doubt, block — don't improvise") and the briefing's "reaching is always worse than blocking."
+
+- [2026-08-15T15:50:00Z] [S5] Session start (control.mode=strict, resumed). No `task/TASK-011-s5` git branch existed anywhere in the repo (checked all four worktrees + `git for-each-ref` + `packed-refs`) — the branch created last session was apparently never persisted as a ref, only the dossier commit `d86c4ba` survived (reachable as a loose object). Recreated the branch: `git checkout -b task/TASK-011-s5` from the worktree's then-HEAD, `git cherry-pick d86c4ba --no-commit` to restore the blocked-analysis work-log entry, committed as `892f3b5` → `9f657c0` after rebase. Also found the worktree's checked-out `PLAN.md` was 4 commits stale (`Status: pending` instead of the main checkout's `claimed`) — `git rebase master` (local, same object store, no remote) brought it current; territory-firewall correctly refused writes until this was done (`no active claimed/in_progress task`), which is exactly the fail-closed behaviour working as intended, not a bug to route around.
+
+  TASK-020 (blocking dependency) is now `done` and merged — `@oikonomos/db` exports `insertAuditEvent(options, event): Promise<AuditEvent>` (write errors propagate, never swallowed) from `packages/db/src/auditEvents.ts`. Read it in full plus `packages/db/src/index.ts`, `database.ts`, `types.ts`, and TASK-020's own `persistence-surface.test.ts` precedent (structural "does not export a mutating operation" test) before writing any code.
+
+  Implemented `packages/audit/src/index.ts`:
+  - `recordAuditEvent(options, event)` — thin wrapper over `insertAuditEvent`; catches and re-throws as `AuditWriteError` (carries `actor`, `eventType`, `cause`) so a caller can tell "audited" from "not audited" (ADR-001 R3) — never swallows, always rejects.
+  - `recordDecision` / `toDecisionAuditEvent` — maps a policy/broker verdict (`allow` | `require_approval` | `deny`, per Synthesis Spec §5.2 `PolicyDecision`) to a `policy.decision` audit event; `reason` folds into `payload`. `toDecisionAuditEvent` is a pure function exported separately so the mapping is unit-testable without a database (4 in-source tests, no I/O).
+  - No update/delete/mutate export exists anywhere in the module — verified structurally in `test/persistence-surface.test.ts` (mirrors TASK-020's own `approvalsApi` structural test almost exactly), which is how AC3 ("UPDATE and DELETE ... provable no-ops when exercised through this package") is satisfied: there is no exported function through which one could even be attempted, on top of the DB's own `DO INSTEAD NOTHING` rules from TASK-002 (which the task description explicitly says not to re-test).
+
+  **`pg` is not reachable from `packages/audit/test/**` under this repo's strict pnpm linking** (`packages/audit/package.json` — out of `Owned_Paths` — declares only `@oikonomos/db` and `@oikonomos/shared`; confirmed via `pnpm-lock.yaml`'s `packages/audit:` block). So unlike `packages/db`'s own integration tests, this package's tests cannot open a second raw connection to independently re-query rows after insert. Proof of persistence instead rests on the `RETURNING` row Postgres itself hands back through `insertAuditEvent` (a real generated `event_id`, not a mock) — the same standard TASK-020's own review already accepted.
+
+  Test evidence (own ephemeral container, not the shared compose volume — same isolation TASK-020 used):
+  ```
+  docker run -d --name oikonomos-audit-test-pg -p 127.0.0.1:55433:5432 \
+    -e POSTGRES_DB=oikonomos -e POSTGRES_USER=oikonomos -e POSTGRES_PASSWORD=local_test_only \
+    pgvector/pgvector:pg16
+  docker exec -i oikonomos-audit-test-pg psql -U oikonomos -d oikonomos < infra/postgres/migrations/001_schema_v1.up.sql
+  cd packages/audit
+  DATABASE_URL=postgresql://oikonomos:local_test_only@127.0.0.1:55433/oikonomos pnpm test
+    → 3 files, 14/14 tests pass (denial produces a row w/ distinct event_id from the allow written
+      alongside it; require_approval written the same way; generic tool.request event type; induced
+      uuid write failure rejects as AuditWriteError with actor/eventType/cause populated; empty
+      connectionString rejects as AuditWriteError before opening a pool)
+  pnpm test   # no DATABASE_URL
+    → 3 files, 9 passed / 5 skipped (integration suite skips cleanly, unit + structural tests still run)
+  docker rm -f oikonomos-audit-test-pg   # own container torn down, shared compose volume untouched
+  ```
+  Also: `pnpm --filter @oikonomos/audit typecheck` clean; `pnpm -r typecheck` clean (all 14 buildable packages/services); `pnpm lint` (root, eslint over whole repo) clean; `node infra/ci/secret-scan.mjs` → `secret-scan: clean`.
+
+  All 5 acceptance criteria met. Committed to `task/TASK-011-s5` as `9b5868e` (`feat(audit): append-only writer over @oikonomos/db insertAuditEvent [TASK-011]`) on top of the restored dossier commit. Handing off `needs_review`.
