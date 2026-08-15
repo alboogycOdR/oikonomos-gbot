@@ -564,7 +564,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (approvals); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/decisions/ADR-005-control-liveness.md
@@ -577,15 +577,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The exact-export-list pin is retained (not loosened to a substring or a `not.toHaveProperty` on a single name), so an unexpected NEW export also trips it
 - [ ] The assertion is correct against the barrel whether or not TASK-015 has merged, or a comment states which state it assumes and why
 - [ ] No change outside `packages/db/test/**` — in particular do not "fix" this by editing `packages/db/src/**`
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-022-cx
+**Started_At:** 2026-08-15T16:46:38Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T16:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T16:46:38Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
