@@ -536,7 +536,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -561,12 +561,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-15T16:39:18Z] [SV:CX] Implemented and committed ADR-005 controls-live gate; all six liveness checks pass after a real ATLAS scan.
 - [2026-08-15T19:10:47Z] [SV:CX] Implemented and committed the controls-live gate plus stronger induced-failure exit-status proof; merged current master and verified build then workspace tests pass. The liveness gate correctly reports only ATLAS as stale.
 - [2026-08-15T19:10:47Z] [SV:CX] Implemented and committed the controls-live gate plus stronger induced-failure exit-status proof; merged current master and verified build then workspace tests pass. The liveness gate correctly reports only ATLAS as stale.
+- [2026-08-15T19:26:55Z] [SV:CX] Committed 66fd77f: ATLAS liveness now measures against the integration merge-base, not builder HEAD. All CI-equivalent jobs pass except the correctly fail-closed shared ATLAS freshness gate.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Refreshing the stale shared ATLAS index requires writing .devteam/atlas.db, outside TASK-021 Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T19:10:47Z
+**Updated_At:** 2026-08-15T19:26:55Z
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
