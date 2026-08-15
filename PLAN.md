@@ -415,7 +415,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-015
 **Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-023, OIK-024; docs/decisions/ADR-001-broker-enforcement-point.md CAN-07
@@ -431,13 +431,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] TASK-013 and TASK-014 tests still pass unchanged
 **Branch:** task/TASK-015-gb
 **Started_At:** 2026-08-15T15:09:29Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-15T16:02:36Z] [SV:GB] Barrel exports consumeApproval; action_render is derived from the same canonical payload as the digest; digest mismatch invalidates granted rows; expiry sweeper is idempotent under concurrent runs. 55/55 tests pass.
+**Artifacts:** packages/db/src/index.ts, packages/approvals/src/store.ts, packages/approvals/src/render.ts, packages/approvals/src/consume.ts, packages/approvals/src/issue.ts, packages/approvals/src/sweep.ts, packages/approvals/src/index.ts, packages/approvals/test/render.test.ts, packages/approvals/test/invalidate.test.ts, packages/approvals/test/invalidate.integration.test.ts, packages/approvals/test/sweep.test.ts, packages/approvals/test/sweep.integration.test.ts, dossiers/TASK-015.md
+**Test_Evidence:** DATABASE_URL=postgresql://oikonomos:local_test_only@127.0.0.1:55436/oikonomos pnpm --filter @oikonomos/approvals test — 55/55 pass (TASK-013/014 suites unchanged-green plus ADR-004 render, CAN-07 invalidate, OIK-024 concurrent+idempotent sweep). Without DATABASE_URL: 41 passed / 14 skipped. typecheck+build+lint+secret-scan+git diff --check clean. Isolated pg16 torn down.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T15:09:29Z
+**Updated_At:** 2026-08-15T16:02:36Z
 
 ### TASK-016
 **Title:** OIK-027 — packages/broker: PreToolUse endpoint handler ⚑ protected
