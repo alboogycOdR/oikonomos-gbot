@@ -536,7 +536,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -564,6 +564,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-15T19:10:47Z] [SV:CX] Implemented and committed the controls-live gate plus stronger induced-failure exit-status proof; merged current master and verified build then workspace tests pass. The liveness gate correctly reports only ATLAS as stale.
 - [2026-08-15T19:26:55Z] [SV:CX] Committed 66fd77f: ATLAS liveness now measures against the integration merge-base, not builder HEAD. All CI-equivalent jobs pass except the correctly fail-closed shared ATLAS freshness gate.
 - [2026-08-15T20:36:35Z] [SV:CX] Descoped unmaintained per-worktree ATLAS liveness to TASK-024; five required ADR-005 liveness checks remain documented, self-tested, and integrated in local CI.
+- [2026-08-15T21:20:44Z] [SV:CX] Reworked all review blockers and committed f268fe1 plus dossier commit a72043f. controls-live now observes real hook rejection, ANSI-safe coverage, queue absence, and dist staleness. Full local CI has exactly one failure: missing .devteam/control queue directory.
 **Artifacts:** infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, infra/ci/run-local.mjs, infra/ci/README.md, dossiers/TASK-021.md
 **Test_Evidence:** node infra/ci/run-local.mjs --approval-marker fable-reviewed: all 12 local CI jobs PASS (typecheck, build, tests, lint, all infra self-tests, controls-live, protected review). node infra/ci/protected-path-review.mjs --base <merge-base> without marker: exit 1 as expected. node infra/ci/controls-live.mjs: all five checks PASS.
 **Review_Findings:** —
@@ -576,9 +577,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING] The dist-freshness induced state hits the `distFiles.length === 0` early return, so the actual `oldestDist < latestSource` staleness arm is never exercised by any test — I proved it works by ageing packages/shared, but you should assert it. Also: `sourceFiles.length === 0` silently skips a package whose src vanished (fail-open), and `workspacePackages` scans only `packages` and `services` while CLAUDE.md names `apps/` as a source root too.
 - [NON-BLOCKING] `command('powershell', ...)` is a hard Windows-and-PowerShell-5 dependency; on Linux/macOS this check fails closed with "verifier rejected the installed hook", which is a false accusation rather than an honest "cannot observe". Given the CI job runs `ubuntu-latest`, worth making the inability to observe explicit. Also `const here = ...` at line 15 is assigned and never used.
 - NOTE ON SCOPE: none of this is a criticism of the task's shape, which is right, or of your instinct — the induced-failure self-test and the aggregate-exit assertion were both beyond what I specified. Three of the four blocking items are the same underlying mistake (a check that observes something other than the control), which is a genuinely hard thing to get right and is exactly why ADR-005 §2 spends a paragraph on it.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T20:36:35Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T21:20:44Z
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
