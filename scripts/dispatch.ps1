@@ -414,6 +414,31 @@ if ($AuthMode -eq "config_dir" -and $AuthValue) {
 $AuthNote = ""
 if ($AuthDir) { $AuthNote = "CLAUDE_CONFIG_DIR=$AuthDir " }
 
+# PROMPT QUOTING (fix 2026-08-15, oikonomos live failure — GB/TASK-020 died in 2s).
+#
+# Windows PowerShell 5.1 does NOT escape embedded double quotes when it builds the
+# command line for a native exe. The target's CRT argv parser then re-splits the
+# argument at an unbalanced quote run, so ONE prompt arrives as TWO argv entries.
+# Observed exactly: grok got `-p <first-half>` plus a positional `<remainder>` and
+# refused with "the argument '--single <PROMPT>' cannot be used with '[PROMPT]'",
+# the split landing mid-ATLAS-excerpt. Measured with an argv probe on the real
+# 3392-char prompt (42 double quotes): ARGC=6 unescaped, ARGC=5 escaped.
+#
+# This is CONTENT-DEPENDENT, which is why GB succeeded on TASK-001/004/008/010 and
+# then failed here: the ATLAS project-map section varies per task, and the index was
+# rebuilt at 27faec6 just before this wave. A latent intermittent, not a regression.
+#
+# Applies to every CLI that takes the prompt as an ARGUMENT — grok AND claude (S5),
+# whose prompt is likewise a trailing positional. S5 has not tripped it yet; it is
+# the same landmine, so it is fixed here rather than left for a future wave.
+# codex is exempt: it already routes the prompt through stdin ($PromptViaStdin),
+# because a file has no quoting — the same principle, applied one layer earlier.
+#
+# Escaping is content-preserving: verified that `{"control_version": 1` arrives with
+# real quotes and no literal \" over-escaping, which matters because a mangled
+# control-block spec is what produced S5's invalid devteam-control block on TASK-003.
+$PromptArg = if ($PromptViaStdin) { $Prompt } else { $Prompt -replace '"', '\"' }
+
 if ($DryRun) {
     Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $AuthNote$Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
     Write-Host "--- Prompt ---"
@@ -461,7 +486,7 @@ if ($ControlMode -eq "strict") {
             & cmd /c $CmdLine
             if (Test-Path $LogPath) { Get-Content $LogPath | Write-Host }
         } else {
-            & $Cmd @($CmdArgs + @($Prompt)) 2>&1 | Tee-Object -FilePath $LogPath
+            & $Cmd @($CmdArgs + @($PromptArg)) 2>&1 | Tee-Object -FilePath $LogPath
         }
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
@@ -517,7 +542,16 @@ if ($ControlMode -eq "strict") {
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += @(
-        "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')",
+        "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')"
+    )
+    if (-not $PromptViaStdin) {
+        # Same PS 5.1 embedded-quote defect as the in-process path (see the
+        # $PromptArg comment above). The file read hands back the RAW prompt, so
+        # the escape has to happen here too -- the file solves BOM and newlines,
+        # not argv splitting.
+        $RunnerLines += "`$Prompt = `$Prompt -replace '`"', '\`"'"
+    }
+    $RunnerLines += @(
         "Write-Host '[$Id] starting in $Wt' -ForegroundColor Green",
         # Same invocation shape as the in-process path below -- one flat array of
         # args with the prompt appended -- so both paths pass arguments identically.
@@ -543,7 +577,7 @@ if ($ControlMode -eq "strict") {
     $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
     try {
         if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
-        & $Cmd @($CmdArgs + @($Prompt))
+        & $Cmd @($CmdArgs + @($PromptArg))
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
