@@ -536,7 +536,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -566,8 +566,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-15T19:26:55Z] [SV:CX] Committed 66fd77f: ATLAS liveness now measures against the integration merge-base, not builder HEAD. All CI-equivalent jobs pass except the correctly fail-closed shared ATLAS freshness gate.
 - [2026-08-15T20:36:35Z] [SV:CX] Descoped unmaintained per-worktree ATLAS liveness to TASK-024; five required ADR-005 liveness checks remain documented, self-tested, and integrated in local CI.
 - [2026-08-15T21:20:44Z] [SV:CX] Reworked all review blockers and committed f268fe1 plus dossier commit a72043f. controls-live now observes real hook rejection, ANSI-safe coverage, queue absence, and dist staleness. Full local CI has exactly one failure: missing .devteam/control queue directory.
+- [2026-08-15T21:30:24Z] [SV:CX] Resolved control-queue liveness against the main checkout via Git common-dir; all five live checks and local CI now pass.
 **Artifacts:** infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, infra/ci/run-local.mjs, infra/ci/README.md, dossiers/TASK-021.md
-**Test_Evidence:** node infra/ci/run-local.mjs --approval-marker fable-reviewed: all 12 local CI jobs PASS (typecheck, build, tests, lint, all infra self-tests, controls-live, protected review). node infra/ci/protected-path-review.mjs --base <merge-base> without marker: exit 1 as expected. node infra/ci/controls-live.mjs: all five checks PASS.
+**Test_Evidence:** node infra/ci/test-controls-live.mjs: 6/6 pass; node infra/ci/controls-live.mjs: all five checks pass; node infra/ci/run-local.mjs --approval-marker fable-reviewed: all 12 jobs pass; protected-path-review without marker exits 1.
 **Review_Findings:** —
 - REWORK (ORCH opus-4-8, 2026-08-15T21:05Z; protected path infra/ci, author CX / reviewer ORCH-opus, different-model rule holds). READ THE POSITIVES FIRST, THEY ARE THE LARGER PART: the central claim of this task holds in form. All FIVE assertions genuinely induce failure in test-controls-live.mjs, and the self-test asserts BOTH the individual check status and the aggregate exit code, which is more than the AC asked. I independently broke FOUR of the five real conditions rather than trusting the fixtures — moved the installed .git/hooks/pre-commit, dropped a stray json into .devteam/control, nulled GB's model pin, and touched packages/shared/src to age its dist — and in every case the correct NAMED check flipped to FAIL. controls-live.mjs contains not a single try/catch and fails closed on spawn failure (`status ?? 1`) and on an unreadable autopilot.json. run-local integration is correct and BLOCKING, not advisory: the job's status is counted into `failed` and the process exits 1 unconditionally. The ATLAS descope is HONEST — 58 lines genuinely deleted, one remaining reference and it is the README explaining the deferral to TASK-024 with the correct reason (per-worktree gitignored index, refreshed only in the main checkout, no builder-worktree maintainer). Territory clean, all commits tagged, no authored PLAN.md edits.
 - [BLOCKING 1 — the coverage check's verdict is decided by TERMINAL COLOUR, not by the control it observes] `controls-live.mjs:61` matches `/% Coverage report from v8[\s\S]*All files/i` against captured vitest stdout. Real vitest output interleaves ANSI escapes THROUGH that phrase — captured verbatim: `^[[34m % ^[[39m^[[2mCoverage report from ^[[22m^[[33mv8^[[39m` — so the literal sequence cannot match when colour is on. THE REVIEWER SAW THIS CHECK FAIL AND EXIT 1; I SAW IT PASS AND EXIT 0. Neither of us is wrong: the determinant is whether the spawned child believes it is on a TTY, which differs between harnesses. That is worse than a check that is always red or always green, because the gate's verdict depends on the terminal rather than on whether policy coverage was collected — the precise ADR-005 failure class, sitting inside the gate written to enforce ADR-005. FIX: strip ANSI before matching (or match a colour-immune anchor), and prove it by asserting the check against REAL captured output containing escapes, not a hand-written clean string.
@@ -579,8 +580,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING] `command('powershell', ...)` is a hard Windows-and-PowerShell-5 dependency; on Linux/macOS this check fails closed with "verifier rejected the installed hook", which is a false accusation rather than an honest "cannot observe". Given the CI job runs `ubuntu-latest`, worth making the inability to observe explicit. Also `const here = ...` at line 15 is assigned and never used.
 - NOTE ON SCOPE: none of this is a criticism of the task's shape, which is right, or of your instinct — the induced-failure self-test and the aggregate-exit assertion were both beyond what I specified. Three of the four blocking items are the same underlying mistake (a check that observes something other than the control), which is a genuinely hard thing to get right and is exactly why ADR-005 §2 spends a paragraph on it.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T21:20:44Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T21:30:24Z
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
