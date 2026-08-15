@@ -328,7 +328,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-012
 **Title:** OIK-026 — packages/audit: redaction middleware (N4)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-026; docs/architecture/OIKONOMOS_Gap_Closure_Plan_v0.2.md §2
@@ -344,13 +344,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] TASK-011's writer tests still pass unchanged
 **Branch:** task/TASK-012-s5
 **Started_At:** 2026-08-15T14:31:33Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-15T14:55:27Z] [SV:S5] Redaction middleware (packages/audit/src/redact.ts) recursively strips secret-shaped strings from audit payloads at any nesting depth before recordAuditEvent's sole write path, verified against the actual RETURNING-persisted row. Also closes the TASK-011 AC3 re-scope: append-only UPDATE/DELETE proof via a raw pg Client (narrow devDependency grant) against a real written row. Worktree was rebased onto the current integration branch first (was stale, picked up PLAN.md's narrow package.json/pnpm-lock.yaml grant with zero code conflicts).
+**Artifacts:** packages/audit/src/redact.ts, packages/audit/src/index.ts, packages/audit/test/append-only.integration.test.ts, packages/audit/test/redaction.integration.test.ts, packages/audit/package.json, pnpm-lock.yaml, dossiers/TASK-012.md
+**Test_Evidence:** pnpm --filter @oikonomos/audit typecheck: clean. pnpm -r typecheck (15 packages/services): clean. pnpm lint: clean. pnpm --filter @oikonomos/audit test, no DATABASE_URL: 6 files, 24 passed/11 skipped, all integration suites skip cleanly. Same command against an isolated migrated pgvector/pg16 container (127.0.0.1:55434, torn down after): 6 files, 35/35 passed, 0 skipped/0 failed -- includes new append-only.integration.test.ts (raw UPDATE/DELETE rowCount=0, row unchanged) and redaction.integration.test.ts (secrets stripped from the persisted row incl. 3-level nesting and a recordDecision denial payload), plus TASK-011's audit-writer.integration.test.ts and persistence-surface.test.ts unchanged and green (AC6). node infra/ci/secret-scan.mjs on all touched files and full-repo: clean (exit 0) both times. pnpm --filter @oikonomos/audit build: clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T14:31:33Z
+**Updated_At:** 2026-08-15T14:55:27Z
 
 ### TASK-013
 **Title:** OIK-021 — packages/approvals: issue + bind ⚑ protected
