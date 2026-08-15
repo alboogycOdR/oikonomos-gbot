@@ -415,7 +415,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-015
 **Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-023, OIK-024; docs/decisions/ADR-001-broker-enforcement-point.md CAN-07
@@ -443,8 +443,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING, fix while you are in there] Dead code: `ConsumeApprovalFn` (store.ts:17-20, re-exported from index.ts) has zero consumers in src/ - it is the injection seam left over from the dynamic-import design the barrel fix replaced. Delete it.
 - [NON-BLOCKING - NOT YOUR DEFECT, recorded so it is not lost] store.ts:86-91 still resolves the pg driver through `createRequire(fileURLToPath(new URL("../../db/package.json", import.meta.url)))` because pg is a dependency of @oikonomos/db and not of packages/approvals. This is materially LESS fragile than the old dist path (it anchors on a committed file present from both src and dist) and it was not in your Owned_Paths to fix properly, but it is the same class: a hardcoded relative path across a package boundary. The clean fix is either adding pg to packages/approvals or re-exporting a pool helper from @oikonomos/db, and that is a decomposition decision, not yours.
 - [ORCH-OWNED, NOT REWORK - the deeper issue behind BLOCKING 2] @oikonomos/db's exports map points at ./dist/index.js and dist/ is gitignored, so moving packages/db/dist aside makes 10 of 13 approvals test files fail to load outright, and every cross-package test in this repo may be executing stale build output whenever a rebuild is skipped. That predates this task and is not GB's to fix. It is a textbook ADR-005 instance - a suite that looks like it guards src while running dist - so I am adding it as a sixth liveness assertion to TASK-021 rather than a rework item here.
+- APPROVED on RE-REVIEW (ORCH opus-4-8, 2026-08-15T17:25Z; protected path, author GB / reviewer ORCH-opus, different-model rule holds). BOTH BLOCKING FINDINGS GENUINELY FIXED, and in both cases the fix is better than the minimum that would have cleared the finding. (1) FLAKINESS CURED BY REAL ISOLATION, NOT BY LOOSENING. store.ts:163 scopes the sweep to the fixture's own run — `${EXPIRE_PENDING_SQL} AND run_id=$1` — via an OPTIONAL scope parameter, so production still uses the unscoped path and only the TEST's data was isolated. Critically it did NOT go sequential to dodge the race: RACERS=8 still execute concurrently and a grep for sequential/fileParallelism/maxConcurrency/singleThread/poolOptions/isolate across the package and root configs returns nothing — vitest.config.ts is untouched by the rework. THE ASSERTION IS SHARPER THAN BEFORE, not looser: mutating EXPIRE_PENDING_SQL to drop `status='pending'` still fails, now with a deterministic `expected 96 to be 12` where the old unscoped version produced a noisy 416. The vacuous `expect(raced.every(r => r.expired >= 0)).toBe(true)` was DELETED outright rather than left in, and replaced with a real unit test proving a scoped sweep does not touch another run's pending rows. VERIFIED ACROSS 10 CONSECUTIVE FULL-SUITE RUNS, ALL GREEN — the reviewer ran four beyond the six I asked for on the correct reasoning that at a 1-in-4 historical failure rate six runs still leave ~18% chance of missing it, ten about 5.6%. (2) THE AC MISS IS FULLY CORRECTED: zero `db/src` imports remain anywhere in packages/approvals, both offenders now import CONSUME_APPROVAL_SQL from @oikonomos/db, AND a mechanical regression guard was added that reads every .ts file in the test directory and fails if `db/src/approvals` reappears — so the miss cannot recur silently. SRC/DIST BLINDNESS IS CLOSED AND THE FIX IS REAL, characterised by two mutations: changing packages/db/src/approvals.ts WITHOUT rebuilding leaves the suite passing 57/57 (unbuilt src is genuinely not what executes), while the SAME mutation after `pnpm -r build` fails 7 tests including the pin itself. The pin now tracks the executed artifact, which is exactly the direction the AC intended. NO REGRESSION on any previously mutation-proven property: constant actionRender still fails 2 tests; relaxing consume's `status='granted'` still fails 4 including the N8 pin and CAN-07; and `git diff master...HEAD -- packages/db/src/approvals.ts` is EMPTY, so the atomic statement remains byte-identical to Handover §4.3. Dead code removed as suggested (ConsumeApprovalFn is gone from store.ts and the barrel, replaced by the purposeful ExpirePendingScope). lint/typecheck/build all exit 0. Merged --no-ff; master verified green afterwards with `pnpm install --frozen-lockfile` FIRST per the TASK-022 lesson, then `pnpm -r build` and `pnpm -r test` — exit 0, approvals 43 passed / 14 skipped. NON-BLOCKING RESIDUAL, not this task's to fix: the `createRequire(new URL("../../db/package.json"))` pg-resolution hack remains in five places (store.ts plus four integration tests). It borrows @oikonomos/db's pg across a package boundary; the clean fix is adding pg as a direct devDependency of packages/approvals, which was never in these Owned_Paths. ORCH-OWNED FINDING RAISED BY THIS REVIEW, PRE-EXISTING AND NOT A TASK-015 DEFECT: CI's test job never builds — .github/workflows/ci.yml runs install then `pnpm test`, and root test is just `pnpm -r test` — while dist/ is gitignored, so on a clean checkout @oikonomos/* cannot resolve at all (moving dist aside collapses 11 of 13 approvals files with "Failed to resolve entry for package @oikonomos/shared"). The workflow has never executed because the repo has no remote, so this is latent until the first push. Tracked as TASK-023.
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-08-15T16:39:18Z
 
 ### TASK-016
@@ -589,6 +590,31 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-15T17:03:25Z
+
+### TASK-023
+**Title:** CI test job never builds — workspace imports cannot resolve on a clean checkout ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002
+**Owned_Paths:** .github/workflows/**, infra/ci/**
+**Depends_On:** TASK-021
+**Description:** **GB or CX only, never S5** (protected: .github + infra/ci). **SEQUENCED BEHIND TASK-021 at creation (2026-08-15T17:28Z): I drew this task's Owned_Paths overlapping TASK-021's `infra/ci/**` and did not check before writing it. `validate_plan.py` caught it as a LATENT ISOLATION warning - legal only while the two are not simultaneously active - which is precisely the class of error the validator exists to catch and which I would otherwise have carried into a dispatch. TASK-021 goes first: it is further along (CX has two commits on a retained branch) and this task's own description already tells you to coordinate with its `controls-live` job rather than duplicate it, so building on a merged TASK-021 is the correct order regardless.** Raised by the TASK-015 re-review; pre-existing and repo-wide, NOT a defect in any single task. `.github/workflows/ci.yml`'s `test` job runs `pnpm install` then `pnpm test`, and root `test` is `pnpm -r test` — **with no build step anywhere.** Every workspace package resolves its siblings through an `exports` map pointing at `./dist/…`, and `dist/` is gitignored. So on a clean checkout there is no `dist`, and `@oikonomos/*` imports cannot resolve at all: moving `dist/` aside collapses 11 of 13 `packages/approvals` test files with `Failed to resolve entry for package "@oikonomos/shared"`. **The job would fail outright on the first CI run.** It has never been observed because the repo has no remote and the workflow has never executed — which makes it a textbook ADR-005 instance: a CI job that appears to verify the workspace while being incapable of running. Fix the ordering (build before test in the workflow and in any local mirror), and make the gap detectable rather than latent — a green `run-local.mjs` should not be possible while CI would fail. Coordinate with TASK-021's `controls-live` job rather than duplicating it: TASK-021 already asserts dist-staleness per package, and this is the adjacent question of whether dist exists at all in a fresh tree.
+**Acceptance_Criteria:**
+- [ ] The CI `test` job builds before testing, so `pnpm -r test` can resolve workspace imports on a clean checkout
+- [ ] Proven against a genuinely clean tree: with every `dist/` removed, the CI-equivalent local sequence completes green — demonstrate it, do not assert it
+- [ ] The local mirror (`run-local.mjs`) reflects the same ordering, so a green local run implies a green CI run rather than diverging from it
+- [ ] A check fails if the ordering regresses (e.g. test invoked with no prior build in a tree lacking dist) — per ADR-005, keyed on evidence, and proven able to FAIL
+- [ ] Existing infra/ci self-tests and the protected-path gate stay green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T17:25:00Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
