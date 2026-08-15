@@ -13,6 +13,7 @@ node infra/ci/run-local.mjs [--approval-marker fable-reviewed]
 node infra/ci/banned-modes.mjs
 node infra/ci/secret-scan.mjs
 node infra/ci/test-banned-modes.mjs
+node infra/ci/test-controls-live.mjs
 node infra/ci/test-secret-scan.mjs
 node infra/ci/test-protected-path-review.mjs
 node infra/ci/protected-path-review.mjs --base <base-ref>
@@ -89,12 +90,6 @@ a remote exists.
 work; configuration, database mtimes, and no-op exit codes are not evidence.
 The job fails `run-local.mjs` if any of these checks is inert:
 
-- ATLAS must report a recorded scan timestamp, no commits after that scan on
-  the integration branch (the merge-base of `HEAD` and `master`, falling back
-  to `main`), and an indexed-file count within 25% (at least five files) of
-  `git ls-files`. This avoids treating a builder's unmerged task commits as
-  index drift. Failures state both counts or the number of commits behind so
-  staleness is judgeable without timestamp arithmetic.
 - `install_git_hooks.ps1 -Verify` must emit its installed-hook confirmation;
   this is evidence from the territory hook installer, not merely a hook path
   that happens to exist.
@@ -107,6 +102,12 @@ The job fails `run-local.mjs` if any of these checks is inert:
 - Every workspace package with `src/` must have a `dist/` newer than its source;
   failures name the package and seconds behind (or missing output). This keeps
   tests from silently executing old exported build output.
+
+ATLAS liveness is deliberately deferred to TASK-024. `.devteam/atlas.db` is
+gitignored and therefore per-worktree, while dispatch refreshes only the main
+checkout's index; no process maintains the builder worktree copy. Checking it
+here would make the CI job fail for a state this job cannot truthfully observe
+or repair.
 
 Liveness checks are controls too: their self-test deliberately induces an
 inert state for every assertion and requires a non-zero result. They can rot

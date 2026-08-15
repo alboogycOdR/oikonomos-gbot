@@ -13,8 +13,6 @@ import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/walk.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const ATLAS_COUNT_TOLERANCE = 0.25;
-
 function command(command, args, root) {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -36,37 +34,6 @@ function walkFiles(directory) {
     else if (entry.isFile()) files.push(path);
   }
   return files;
-}
-
-function parseAtlasStatus(output) {
-  const fields = new Map(
-    output
-      .split(/\r?\n/)
-      .map((line) => line.match(/^([^:]+):\s*(.*)$/))
-      .filter(Boolean)
-      .map((match) => [match[1], match[2]]),
-  );
-  return {
-    files: Number(fields.get('files')),
-    lastScan: fields.get('last scan'),
-  };
-}
-
-export function checkAtlasEvidence({ status, trackedFiles, commitsBehind }) {
-  const atlas = parseAtlasStatus(status.output);
-  if (status.status !== 0) return 'atlas status command failed';
-  if (!Number.isFinite(atlas.files) || !atlas.lastScan || atlas.lastScan === 'never') {
-    return 'ATLAS emitted no recorded scan timestamp or indexed file count';
-  }
-  const allowedDifference = Math.max(5, Math.ceil(trackedFiles * ATLAS_COUNT_TOLERANCE));
-  const difference = Math.abs(atlas.files - trackedFiles);
-  if (difference > allowedDifference) {
-    return `ATLAS indexed ${atlas.files} files; ${trackedFiles} tracked files (difference ${difference}, tolerance ${allowedDifference})`;
-  }
-  if (commitsBehind > 0) {
-    return `ATLAS recorded scan is ${commitsBehind} commit(s) behind the integration merge-base`;
-  }
-  return null;
 }
 
 export function checkHookEvidence(result) {
@@ -136,30 +103,11 @@ function result(label, error) {
   return { label, status: error ? 1 : 0, detail: error ?? 'live evidence observed' };
 }
 
-function integrationMergeBase(root) {
-  const integrationRef = ['master', 'main'].find((ref) => (
-    command('git', ['rev-parse', '--verify', '--quiet', ref], root).status === 0
-  ));
-  if (!integrationRef) return null;
-
-  const mergeBase = command('git', ['merge-base', 'HEAD', integrationRef], root);
-  return mergeBase.status === 0 && mergeBase.output.trim() ? mergeBase.output.trim() : null;
-}
-
 export function livenessExitCode(checks) {
   return checks.some((check) => check.status !== 0) ? 1 : 0;
 }
 
 export function runLivenessChecks(root, supplied = {}) {
-  const atlasStatus = supplied.atlasStatus ?? command('python', ['scripts/atlas.py', 'status'], root);
-  const tracked = supplied.trackedFiles ?? command('git', ['ls-files'], root);
-  const atlas = parseAtlasStatus(atlasStatus.output);
-  const integrationBase = supplied.integrationBase ?? integrationMergeBase(root);
-  const commits = supplied.commitsBehind ?? (atlas.lastScan && atlas.lastScan !== 'never'
-    ? integrationBase
-      ? command('git', ['rev-list', '--count', `--after=${atlas.lastScan}`, integrationBase], root)
-      : { status: 1, output: '' }
-    : { status: 1, output: '' });
   const hook = supplied.hook ?? command('powershell', ['-ExecutionPolicy', 'Bypass', '-File', 'scripts/install_git_hooks.ps1', '-Verify'], root);
   const coverage = supplied.coverage ?? command('pnpm', ['--filter', '@oikonomos/policy', 'test'], root);
   const controlDirectory = join(root, '.devteam', 'control');
@@ -168,13 +116,7 @@ export function runLivenessChecks(root, supplied = {}) {
     : []);
   const config = supplied.config ?? JSON.parse(readFileSync(join(root, 'autopilot.json'), 'utf8'));
   const packages = supplied.packages ?? workspacePackages(root);
-  const trackedFiles = tracked.status === 0 ? tracked.output.split(/\r?\n/).filter(Boolean).length : 0;
-  const commitsBehind = commits.status === 0 && /^\d+\s*$/.test(commits.output)
-    ? Number(commits.output.trim())
-    : Number.POSITIVE_INFINITY;
-
   return [
-    result('ATLAS freshness', checkAtlasEvidence({ status: atlasStatus, trackedFiles, commitsBehind })),
     result('territory pre-commit hook', checkHookEvidence(hook)),
     result('devteam control queue', checkControlQueue(queued)),
     result('active builder model pins', checkBuilderModels(config)),
