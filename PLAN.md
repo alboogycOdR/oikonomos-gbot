@@ -387,7 +387,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-014
 **Title:** OIK-022 — packages/approvals: verify + atomic consume (N8) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-022; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/decisions/ADR-001-broker-enforcement-point.md CAN-06
@@ -402,13 +402,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
 **Branch:** task/TASK-014-gb
 **Started_At:** 2026-08-15T14:31:37Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-15T14:55:27Z] [SV:GB] consumeApproval is the pinned Handover §4.3 UPDATE; verifyAndConsume allows the action only on rowCount 1. 16-way parallel consume and 16 pre-connected clients racing one nonce each yield exactly one success; expiry and CAN-06 replay deny. Barrel index.ts not touched (out of territory); persistence-surface reservation test now fails as expected.
+**Artifacts:** packages/db/src/approvals.ts, packages/approvals/src/consume.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts, packages/approvals/test/consume.test.ts, packages/approvals/test/consume.integration.test.ts, packages/approvals/test/consume-sql.test.ts, packages/approvals/test/helpers.ts, packages/approvals/test/issue.test.ts, dossiers/TASK-014.md
+**Test_Evidence:** DATABASE_URL=<isolated pgvector/pgvector:pg16 127.0.0.1:55435> pnpm --filter @oikonomos/approvals test — 37/37 pass (9 issue unit + 3 nonce + 1 N10 + 3 consume-sql + 9 consume unit + 3 issue integration + 9 consume integration: rowCount 1, expiry, CAN-06 replay, pending/invalidated/unknown deny, 16-way Promise.all consumeApproval exactly one success, 16 pre-connected clients racing the pinned statement exactly one success, verifyAndConsume DatabaseOptions path). Without DATABASE_URL: 25 passed / 12 skipped. typecheck+build+lint+secret-scan clean. Sibling note: pnpm --filter @oikonomos/db test — 7 passed / 1 failed (TASK-020 persistence-surface reservation; out of territory).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T14:31:37Z
+**Updated_At:** 2026-08-15T14:55:27Z
 
 ### TASK-015
 **Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
