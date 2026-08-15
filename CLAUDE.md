@@ -28,6 +28,7 @@ AI teammate control plane for Basileia Technologies. TypeScript, Node 22, pnpm w
 - All harness invocations go through `packages/harness-factory`. Direct `query()` calls elsewhere fail lint.
 - Canonical JSON + digest has exactly one implementation, in `packages/shared`.
 - Markdown for all docs. ADR for every decision that conflicts with an existing document.
+- **Every mechanical control ships a liveness assertion** — a check that fails when the control is *inert*, separate from the check that it behaves correctly when it runs. Key it on evidence the control emits by doing its job, never on config being present or a file's mtime. Reviewers reject its absence like a missing test. Seven controls were found configured-but-inert in one day; see `docs/decisions/ADR-005-control-liveness.md`.
 
 ## Document precedence
 

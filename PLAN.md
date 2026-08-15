@@ -525,6 +525,32 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_By:** SV
 **Updated_At:** 2026-08-15T14:00:18Z
 
+### TASK-021
+**Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
+**Owned_Paths:** infra/ci/**
+**Depends_On:** TASK-018
+**Description:** **GB or CX only, never S5** (protected path infra/ci). Implements ADR-005. Seven controls in this repo were found configured-but-inert in one day, and three of the seven were caught by luck rather than by any mechanism. The shared property is that a working control and an inert one present IDENTICAL symptoms: config present, command exits 0, output plausible. ATLAS is the sharpest case — `pack` opens the index on every dispatch, updating its mtime, so it looked freshly written at the exact second of each dispatch while its contents were six hours and eight merges stale. Add a `controls-live` job to `infra/ci/run-local.mjs` asserting LIVENESS — that each control actually ran — as distinct from correctness, which the existing jobs already cover. **Read ADR-005 §2 before writing anything: each assertion must key on evidence the control emits BY DOING ITS JOB (a recorded scan timestamp, a drained queue, a coverage report, a rejected commit) and NEVER on the presence of config, a file's mtime, or an exit code from a command that may have no-opped.** An assertion keyed on an mtime would reproduce the exact ATLAS failure one layer up. Where a control cannot emit such evidence, say so in the README rather than inventing a proxy. Keep every check able to FAIL: a liveness assertion that cannot fail is the thing this task exists to eliminate.
+**Acceptance_Criteria:**
+- [ ] `run-local.mjs` gains a `controls-live` job whose failure fails the run, covering at minimum: (a) ATLAS index freshness — the RECORDED scan timestamp (`atlas.py status`), not `atlas.db`'s mtime, plus indexed-file-count against tracked-file-count within a stated tolerance; (b) the territory pre-commit hook is installed and is ours (`scripts/install_git_hooks.ps1 -Verify` already reports this); (c) `.devteam/control/*.json` is empty, i.e. no undrained control blocks; (d) every unit in `autopilot.json`'s `builders.active` has a non-null `model`; (e) `packages/policy` coverage is actually COLLECTED on an ordinary test run, not merely configured
+- [ ] Each assertion is proven able to FAIL — a self-test induces the inert state for every check and asserts a non-zero result. This is the criterion that matters: a liveness check that cannot fail is indistinguishable from no check
+- [ ] No assertion keys on a file mtime, on the presence of a config key alone, or on an exit code from a command that may have no-opped (ADR-005 §2). State in the README, per check, WHICH emitted evidence it reads
+- [ ] Staleness is reported in judgeable units — commits behind, files missing — not a bare timestamp the reader must date-arithmetic (ADR-005 §5)
+- [ ] `infra/ci/README.md` documents the job, and states plainly that liveness checks are themselves controls that can rot
+- [ ] Existing `run-local.mjs` jobs and the infra/ci self-tests stay green; the protected-path gate still fails this branch without a marker
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T15:25:00Z
+
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
 **Status:** pending
