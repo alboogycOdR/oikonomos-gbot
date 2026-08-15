@@ -386,7 +386,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-014
 **Title:** OIK-022 — packages/approvals: verify + atomic consume (N8) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-022; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/decisions/ADR-001-broker-enforcement-point.md CAN-06
@@ -399,15 +399,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Expiry is honoured — an expired but still `granted` approval cannot be consumed (WBS OIK-022 "expiry honoured")
 - [ ] Replay of a consumed nonce is denied and leaves `status='consumed'` unchanged (ADR-001 CAN-06)
 - [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-014-gb
+**Started_At:** 2026-08-15T14:31:37Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T14:31:37Z
 
 ### TASK-015
 **Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
