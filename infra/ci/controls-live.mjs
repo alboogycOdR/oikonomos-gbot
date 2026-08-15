@@ -136,6 +136,10 @@ function result(label, error) {
   return { label, status: error ? 1 : 0, detail: error ?? 'live evidence observed' };
 }
 
+export function livenessExitCode(checks) {
+  return checks.some((check) => check.status !== 0) ? 1 : 0;
+}
+
 export function runLivenessChecks(root, supplied = {}) {
   const atlasStatus = supplied.atlasStatus ?? command('python', ['scripts/atlas.py', 'status'], root);
   const tracked = supplied.trackedFiles ?? command('git', ['ls-files'], root);
@@ -172,7 +176,7 @@ function main() {
   for (const check of checks) {
     process.stdout.write(`controls-live: ${check.status === 0 ? 'PASS' : 'FAIL'} ${check.label} — ${check.detail}\n`);
   }
-  if (checks.some((check) => check.status !== 0)) process.exit(1);
+  process.exit(livenessExitCode(checks));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { runLivenessChecks } from './controls-live.mjs';
+import { livenessExitCode, runLivenessChecks } from './controls-live.mjs';
 
 const freshAtlas = { status: 0, output: 'files: 100\ncards: 0\nstale cards: 0\ndb size: 1\nlast scan: 2026-08-15T18:00:00Z\n' };
 const hook = { status: 0, output: '[install-hooks] installed: /fixture/.git/hooks/pre-commit\n' };
@@ -28,6 +28,7 @@ function assertInducedFailure(name, mutate) {
   const checks = runLivenessChecks('/fixture', evidence);
   const check = checks.find((item) => item.label === name);
   assert.equal(check.status, 1, `${name} must fail when its control is inert`);
+  assert.equal(livenessExitCode(checks), 1, `${name} must make controls-live exit non-zero`);
 }
 
 test('each liveness assertion rejects its induced inert state', () => {
