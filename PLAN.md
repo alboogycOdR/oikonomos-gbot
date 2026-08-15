@@ -526,7 +526,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-020
 **Title:** packages/db persistence surface for audit_events + approvals (single-owner integration)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (audit_events, approvals column definitions); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-014, §5 E3 OIK-021, OIK-025; infra/postgres/migrations/001_schema_v1.up.sql (the authoritative live schema)
@@ -544,9 +544,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-15T12:45:39Z
 **Progress_Notes:**
 - [2026-08-15T12:57:00Z] [ORCH] First launch at 12:45:40Z FAILED IN 2 SECONDS — TOOLING_FAILURE in scripts/dispatch.ps1, no builder fault and nothing for GB to answer for. grok exited on an argument error before reading anything; the entire session log is 566 bytes. Cause (measured, not inferred): Windows PowerShell 5.1 does not escape embedded double quotes when building a native command line, so the 3392-char prompt with its 42 quotes was re-split by grok's argv parser into two entries — `-p` consumed the first, the second arrived as a positional PROMPT, and grok refused the combination. Probed with an argv stub on the real prompt: ARGC=6 unescaped vs ARGC=5 escaped. Content-dependent, which is why GB's four previous dispatches succeeded. FIXED in dispatch.ps1 ($PromptArg, all three call sites, escaping verified content-preserving) and GB re-dispatched at 12:53Z on the existing claim — resume path, not a re-claim. No work was lost because none had started.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-15T13:05:41Z] [SV:GB] Delivered insertAuditEvent, insertApproval, getApprovalByNonce (DatabaseOptions + row; no consumeApproval). Migration-001 columns, RETURNING persisted rows, write failures reject. 0663ef1 on task/TASK-020-gb.
+**Artifacts:** packages/db/src/auditEvents.ts, packages/db/src/approvals.ts, packages/db/src/index.ts, packages/db/test/audit-events.integration.test.ts, packages/db/test/approvals.integration.test.ts, packages/db/test/persistence-surface.test.ts, dossiers/TASK-020.md
+**Test_Evidence:** DATABASE_URL=<isolated pg16> pnpm --filter @oikonomos/db test: 8/8 pass (persist+RETURNING, induced uuid write-fail rejects, approval round-trip, unknown nonce null, surface has no consumeApproval). Without DATABASE_URL: 2 passed / 6 skipped. pnpm lint, pnpm -r typecheck, pnpm -r build exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T12:57:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T13:05:41Z
