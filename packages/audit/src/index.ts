@@ -6,7 +6,16 @@ import {
   type RiskTier,
 } from "@oikonomos/db";
 
+import { redactPayload } from "./redact.js";
+
 export type { AuditEvent, DatabaseOptions, NewAuditEvent, RiskTier } from "@oikonomos/db";
+
+// Deliberately NOT re-exported: packages/audit/test/persistence-surface.test.ts
+// pins this package's exact runtime export list (TASK-011's append-only
+// proof — no export a caller could mistake for a mutating operation, and no
+// bypass around AuditWriteError). Redaction is wired into recordAuditEvent
+// below so every caller gets it automatically; tests that need the
+// pattern-matching internals import them directly from "./redact.js".
 
 /**
  * Thrown when a write to `audit_events` fails for any reason. The original
@@ -45,13 +54,24 @@ export class AuditWriteError extends Error {
  * Failures are never swallowed: a caught error from the underlying insert
  * is re-thrown as {@link AuditWriteError} so the caller can distinguish
  * "audited" from "not audited" and fail the action closed (ADR-001 R3).
+ *
+ * Before the write, `event.payload` is passed through {@link redactPayload}
+ * (WBS OIK-026: "Secret patterns stripped pre-write") — this is the sole
+ * write path into `audit_events` (see the module doc above), so every
+ * caller, including {@link recordDecision}, gets redaction for free and
+ * cannot bypass it by calling `insertAuditEvent` directly, since that
+ * function is not re-exported from this package.
  */
 export async function recordAuditEvent(
   options: DatabaseOptions,
   event: NewAuditEvent,
 ): Promise<AuditEvent> {
+  const redactedEvent: NewAuditEvent = {
+    ...event,
+    payload: redactPayload(event.payload),
+  };
   try {
-    return await insertAuditEvent(options, event);
+    return await insertAuditEvent(options, redactedEvent);
   } catch (cause) {
     throw new AuditWriteError(event.actor, event.eventType, cause);
   }
