@@ -393,6 +393,34 @@ except Exception:
             }
             $AtlasSection = ""
             $AtlasOk = $false
+            # REFRESH BEFORE PACK (fix 2026-08-15). This path called `pack` only,
+            # and NOTHING anywhere called `scan` -- so the index was only ever
+            # rebuilt when a human ran it by hand. Measured consequence: the last
+            # manual scan was 09:14Z, and by 15:09Z the map was 8 merged tasks and
+            # 30 files out of date (213 indexed vs 243 real). Every builder
+            # dispatched in that window received a PROJECT MAP of a repo that no
+            # longer existed -- `atlas query consumeApproval` and `redactPayload`
+            # both returned nothing for code that was already merged, and `impact`
+            # returned empty for a file that genuinely had importers. `pack` opens
+            # the db and updates its mtime, which made the index look fresh on
+            # inspection while its contents aged silently; that is why this went
+            # unnoticed for six hours.
+            #
+            # A fresh scan restored all three (impact resolved, symbols resolved),
+            # so the features were starving, not broken. Scan is incremental and
+            # costs ~10s cold, far less when little changed -- negligible against a
+            # builder session, and cheap insurance against handing a builder a map
+            # of the wrong repo. Failure is non-fatal: pack still runs against
+            # whatever index exists, and pack's own freshness footer reports the
+            # scan timestamp, so a degraded map is visible rather than silent.
+            try {
+                & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "[dispatch] atlas scan failed - packing against the existing (possibly stale) index."
+                }
+            } catch {
+                Write-Warning "[dispatch] atlas scan errored - packing against the existing (possibly stale) index."
+            }
             try {
                 $AtlasSection = (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
                 $AtlasOk = ($LASTEXITCODE -eq 0)
