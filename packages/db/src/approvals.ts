@@ -135,8 +135,7 @@ async function withPool<T>(
 }
 
 /**
- * Persist a pending approval. Status is always the table default (`pending`);
- * mutation (including consume) is owned by TASK-014.
+ * Persist a pending approval. Status is always the table default (`pending`).
  */
 export async function insertApproval(
   options: DatabaseOptions,
@@ -202,5 +201,47 @@ export async function getApprovalByNonce(
       [normalizedNonce],
     );
     return result.rows[0] === undefined ? null : toApproval(result.rows[0]);
+  });
+}
+
+/**
+ * Handover §4.3 / Synthesis §5.2 / N8 — consumption is this statement.
+ * RETURNING is appended at the call site so the row can be handed back;
+ * it does not change which rows match or that the write is one statement.
+ */
+export const CONSUME_APPROVAL_SQL = `UPDATE approvals SET status='consumed', consumed_at=now()
+WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL`;
+
+export interface ConsumeApprovalResult {
+  readonly rowCount: 0 | 1;
+  readonly approval: Approval | null;
+}
+
+/**
+ * Atomically consume a granted, unexpired, unused approval.
+ * The action may run only when `rowCount === 1`. Replay, expiry, a
+ * non-granted status, or an unknown nonce all yield `rowCount === 0`.
+ */
+export async function consumeApproval(
+  options: DatabaseOptions,
+  nonce: string,
+): Promise<ConsumeApprovalResult> {
+  const normalizedNonce = requireUuid(nonce, "nonce");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ApprovalRow>(
+      `${CONSUME_APPROVAL_SQL} RETURNING ${approvalColumns}`,
+      [normalizedNonce],
+    );
+    const rowCount = result.rowCount ?? 0;
+    if (rowCount === 1 && result.rows[0] !== undefined) {
+      return { rowCount: 1, approval: toApproval(result.rows[0]) };
+    }
+    if (rowCount > 1) {
+      throw new Error(
+        `consumeApproval matched ${rowCount} rows for one nonce; expected 0 or 1.`,
+      );
+    }
+    return { rowCount: 0, approval: null };
   });
 }
