@@ -415,7 +415,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-015
 **Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-023, OIK-024; docs/decisions/ADR-001-broker-enforcement-point.md CAN-07
@@ -429,15 +429,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] An invalidated approval cannot subsequently be consumed, even with a valid nonce
 - [ ] Expired `pending` approvals transition to `expired`; the sweeper is idempotent across repeated and concurrent runs (WBS OIK-024)
 - [ ] TASK-013 and TASK-014 tests still pass unchanged
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-015-gb
+**Started_At:** 2026-08-15T15:09:29Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T15:09:29Z
 
 ### TASK-016
 **Title:** OIK-027 — packages/broker: PreToolUse endpoint handler ⚑ protected
