@@ -39,4 +39,12 @@ describe("N8 — consume is one pinned atomic statement", () => {
       expect(body, name).not.toMatch(/UPDATE approvals SET status='consumed'/);
     }
   });
+
+  it("loads consumeApproval from @oikonomos/db rather than a sibling filesystem path", () => {
+    const store = readFileSync(join(srcDir, "store.ts"), "utf8");
+    expect(store).toMatch(/consumeApproval/);
+    expect(store).toMatch(/from ["']@oikonomos\/db["']/);
+    expect(store).not.toMatch(/db\/dist\/approvals/);
+    expect(store).not.toMatch(/loadConsumeApproval/);
+  });
 });
