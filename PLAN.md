@@ -185,7 +185,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-007
 **Title:** OIK-019 — packages/policy: risk-tier resolution, pure functions, 100% branch coverage ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-019; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.2
@@ -197,15 +197,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Unregistered capability resolves to deny with audit-ready reason value (WBS OIK-019; N3)
 - [ ] 100% branch coverage reported by Vitest coverage (WBS OIK-019)
 - [ ] Zero I/O imports — lint green under the OIK-006 rule (CLAUDE.md)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-007-cx
+**Started_At:** 2026-08-15T06:04:50Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-14T14:08:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T06:04:50Z
 
 ### TASK-008
 **Title:** OIK-004/007 fast-follow — CI scanners must honor .gitignore (walk.mjs) ⚑ protected
