@@ -1,14 +1,11 @@
-export const workspaceName = "approvals";
-
-export function ping(): string {
-  return workspaceName;
-}
-
-if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
-  describe("@oikonomos/approvals", () => {
-    it("ping returns the workspace name", () => {
-      expect(ping()).toBe("approvals");
-    });
-  });
-}
+export { actionDigestToBytes, bindActionDigest } from "./bind.js";
+export type { ActionDigestInput, JsonValue } from "./bind.js";
+export {
+  DEFAULT_APPROVAL_TTL_MS,
+  issueApproval,
+  type ApprovalWaitSignal,
+  type IssueApprovalDependencies,
+  type IssueApprovalRequest,
+} from "./issue.js";
+export { generateNonce } from "./nonce.js";
+export { createDatabaseStore, type ApprovalStore } from "./store.js";
