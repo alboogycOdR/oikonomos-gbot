@@ -15,6 +15,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": ["dist"],
+  "dependencies": {
+    "@oikonomos/db": "workspace:*",
+    "@oikonomos/shared": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
