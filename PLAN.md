@@ -185,7 +185,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-007
 **Title:** OIK-019 — packages/policy: risk-tier resolution, pure functions, 100% branch coverage ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1, §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-019; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.2
@@ -199,13 +199,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Zero I/O imports — lint green under the OIK-006 rule (CLAUDE.md)
 **Branch:** task/TASK-007-cx
 **Started_At:** 2026-08-15T06:04:50Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-15T06:14:34Z] [SV:CX] Implemented pure risk-tier resolution with fail-closed unregistered-capability denial and a 100% branch-coverage gate.
+**Artifacts:** packages/policy/src/index.ts, packages/policy/test/risk-tier.test.ts, packages/policy/package.json, packages/policy/vitest.config.ts, pnpm-lock.yaml, dossiers/TASK-007.md
+**Test_Evidence:** pnpm --filter @oikonomos/policy test -- --coverage: 9/9 passed, 100% statements/branches/functions/lines; pnpm lint, pnpm typecheck, pnpm build, pnpm test, and pnpm install --frozen-lockfile all exited 0; git diff --check master...HEAD exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T06:04:50Z
+**Updated_At:** 2026-08-15T06:14:34Z
 
 ### TASK-008
 **Title:** OIK-004/007 fast-follow — CI scanners must honor .gitignore (walk.mjs) ⚑ protected
