@@ -15,7 +15,9 @@ AI teammate control plane for Basileia Technologies. TypeScript, Node 22, pnpm w
 
 ## Protected paths (adversarial review required before merge)
 
-`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, all settings and subagent configs.
+`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, `hooks/**`, `.claude/**`, `.codex/**`.
+
+`hooks/**` and `.claude/**` were added 2026-08-15 (ORCH), replacing the vaguer "all settings and subagent configs". Reason: both are control-plane surface where an edit silently weakens an enforcement mechanism rather than breaking a test. `hooks/` now holds `territory-precommit.js`, the mechanical territory control ADR-002 Amendment B installed; `.claude/commands/**` defines the review procedure itself, so a narrow settings-only reading would let the review standard be edited without review. The old phrasing covered `.claude/settings*.json` and `.claude/agents/**` but not `commands/`, `skills/`, or `hooks/` — a gap found while reviewing TASK-018.
 
 **Adversarial review ("Fable") must be run by a different model than the author** — use Codex CLI or Grok Build via AgentProvider. Solo-developer conflict of interest is not acceptable on these paths.
 
