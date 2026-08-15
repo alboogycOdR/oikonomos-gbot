@@ -122,7 +122,14 @@
     "budget_tokens": 3000,
     "cards_auto_refresh": false,
     "max_cards_per_night": 30,
-    "exclude": [],
+    "exclude": [
+      "*node_modules*",
+      "*/dist/*",
+      "*/coverage/*",
+      "*.tsbuildinfo",
+      "*.map"
+    ],
+    "_exclude_note": "Glob form is deliberate. atlas_core.is_ignored() treats a trailing-slash .gitignore entry as a PREFIX match (rel == p or rel.startswith(p + '/')), so .gitignore's 'node_modules/' excludes ONLY the repo-root node_modules. In a pnpm monorepo every workspace has its own nested node_modules, so a full scan indexed 4386 node_modules files out of 4588 total against 238 tracked files - a 466 MB db, multi-minute scans, and `atlas.py impact` returning nothing useful because the index was 95% dependency noise. fnmatch's * spans '/', so these patterns match at any depth. Fix the upstream prefix-matching in the pack when convenient; these excludes are the project-level workaround.",
     "_comment": "Ships DISABLED per the ATLAS spec's ask-don't-auto-flip rule (same as control.mode and the builder roster). Enable per project only AFTER running `python scripts/atlas.py scan --full` there -- an empty/absent db makes dispatch skip the section silently, so a true here without a scan is a no-op that merely looks configured. See docs/ATLAS.md."
   }
 }
