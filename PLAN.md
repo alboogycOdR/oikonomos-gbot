@@ -297,7 +297,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-011
 **Title:** OIK-025 — packages/audit: append-only writer
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §5; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-025; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (audit_events); docs/decisions/ADR-001-broker-enforcement-point.md R3
@@ -310,15 +310,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] UPDATE and DELETE against a written event are provable no-ops when exercised through this package (WBS OIK-013 property, verified from the writer side)
 - [ ] Integration tests pass against the compose Postgres and skip cleanly with no `DATABASE_URL` (TASK-006 precedent)
 - [ ] No credential-like values in any fixture; `node infra/ci/secret-scan.mjs` exits 0 (N4)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-011-s5
+**Started_At:** 2026-08-15T11:24:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T11:24:28Z
 
 ### TASK-012
 **Title:** OIK-026 — packages/audit: redaction middleware (N4)
