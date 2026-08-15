@@ -89,10 +89,12 @@ a remote exists.
 work; configuration, database mtimes, and no-op exit codes are not evidence.
 The job fails `run-local.mjs` if any of these checks is inert:
 
-- ATLAS must report a recorded scan timestamp, no commits after that scan, and
-  an indexed-file count within 25% (at least five files) of `git ls-files`.
-  Failures state both counts or the number of commits behind so staleness is
-  judgeable without timestamp arithmetic.
+- ATLAS must report a recorded scan timestamp, no commits after that scan on
+  the integration branch (the merge-base of `HEAD` and `master`, falling back
+  to `main`), and an indexed-file count within 25% (at least five files) of
+  `git ls-files`. This avoids treating a builder's unmerged task commits as
+  index drift. Failures state both counts or the number of commits behind so
+  staleness is judgeable without timestamp arithmetic.
 - `install_git_hooks.ps1 -Verify` must emit its installed-hook confirmation;
   this is evidence from the territory hook installer, not merely a hook path
   that happens to exist.

@@ -64,7 +64,7 @@ export function checkAtlasEvidence({ status, trackedFiles, commitsBehind }) {
     return `ATLAS indexed ${atlas.files} files; ${trackedFiles} tracked files (difference ${difference}, tolerance ${allowedDifference})`;
   }
   if (commitsBehind > 0) {
-    return `ATLAS recorded scan is ${commitsBehind} commit(s) behind HEAD`;
+    return `ATLAS recorded scan is ${commitsBehind} commit(s) behind the integration merge-base`;
   }
   return null;
 }
@@ -136,6 +136,16 @@ function result(label, error) {
   return { label, status: error ? 1 : 0, detail: error ?? 'live evidence observed' };
 }
 
+function integrationMergeBase(root) {
+  const integrationRef = ['master', 'main'].find((ref) => (
+    command('git', ['rev-parse', '--verify', '--quiet', ref], root).status === 0
+  ));
+  if (!integrationRef) return null;
+
+  const mergeBase = command('git', ['merge-base', 'HEAD', integrationRef], root);
+  return mergeBase.status === 0 && mergeBase.output.trim() ? mergeBase.output.trim() : null;
+}
+
 export function livenessExitCode(checks) {
   return checks.some((check) => check.status !== 0) ? 1 : 0;
 }
@@ -144,8 +154,11 @@ export function runLivenessChecks(root, supplied = {}) {
   const atlasStatus = supplied.atlasStatus ?? command('python', ['scripts/atlas.py', 'status'], root);
   const tracked = supplied.trackedFiles ?? command('git', ['ls-files'], root);
   const atlas = parseAtlasStatus(atlasStatus.output);
+  const integrationBase = supplied.integrationBase ?? integrationMergeBase(root);
   const commits = supplied.commitsBehind ?? (atlas.lastScan && atlas.lastScan !== 'never'
-    ? command('git', ['rev-list', '--count', `--after=${atlas.lastScan}`, 'HEAD'], root)
+    ? integrationBase
+      ? command('git', ['rev-list', '--count', `--after=${atlas.lastScan}`, integrationBase], root)
+      : { status: 1, output: '' }
     : { status: 1, output: '' });
   const hook = supplied.hook ?? command('powershell', ['-ExecutionPolicy', 'Bypass', '-File', 'scripts/install_git_hooks.ps1', '-Verify'], root);
   const coverage = supplied.coverage ?? command('pnpm', ['--filter', '@oikonomos/policy', 'test'], root);
