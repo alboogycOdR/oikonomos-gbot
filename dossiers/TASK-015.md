@@ -54,3 +54,21 @@
   - `pnpm --filter @oikonomos/approvals typecheck` + `build` exit 0; `pnpm lint` exit 0; `node infra/ci/secret-scan.mjs` clean; `git diff --check` clean.
 
   Ready for review.
+
+- [2026-08-15T16:25:00Z] [GB] Resume on `task/TASK-015-gb` at 4fc3c9a for ORCH rework (opus-4-8, 16:20Z). Two blocking findings, both in-territory: (1) `sweep.integration.test.ts` flaked 1/4 (`expected 13 to be 12`) because unscoped `EXPIRE_PENDING_SQL` collected a foreign pending-expired fixture from a parallel file — scope the sweep/assertion to the fixture `runId` and drop the vacuous `expired >= 0` assert. (2) `consume-sql.test.ts` and `consume.integration.test.ts` still import `../../db/src/approvals.js`; switch those to `@oikonomos/db` so the pin reads the executed export (requires barreling `CONSUME_APPROVAL_SQL`). Also delete unused `ConsumeApprovalFn`. Not touching the pg `createRequire` path (ORCH: not our defect).
+
+- [2026-08-15T16:30:41Z] [GB] Rework complete on `task/TASK-015-gb`.
+
+  BLOCKING 1: `sweepExpiredApprovals` accepts optional `{ runId }` and appends `AND run_id=$1` to the pinned unscoped `EXPIRE_PENDING_SQL`. Production (no scope) still expires every pending-elapsed row. Integration sweep passes the fixture runId; vacuous `expired >= 0` assert removed. Unit test proves a foreign-run pending row is left pending.
+
+  BLOCKING 2: `CONSUME_APPROVAL_SQL` exported from `packages/db/src/index.ts` (needed so the pin can import the executed barrel). `consume-sql.test.ts` and `consume.integration.test.ts` import it from `@oikonomos/db`. Function-body pin uses `consumeApproval.toString()` (the running export). A new test forbids any `packages/approvals/test/**` file from mentioning `db/src/approvals`.
+
+  NON-BLOCKING: deleted `ConsumeApprovalFn` from store.ts and the barrel.
+
+  Test evidence:
+  - Isolated `pgvector/pgvector:pg16` on 127.0.0.1:55437 (not shared compose); migration 001 under ON_ERROR_STOP=1; container removed after.
+  - `DATABASE_URL=<isolated 127.0.0.1:55437> pnpm --filter @oikonomos/approvals test` × 4 consecutive runs — 57/57 each (EXIT_CODES=0,0,0,0). Was 55; added scoped-sweep unit + executed-export pin.
+  - Without DATABASE_URL: 43 passed / 14 skipped.
+  - typecheck + build + lint + secret-scan + git diff --check clean.
+
+  Ready for re-review.

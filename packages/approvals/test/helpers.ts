@@ -111,15 +111,19 @@ export function createMemoryStore(): MemoryStore {
       rows.set(nonce, invalidated);
       return { rowCount: 1, approval: invalidated };
     },
-    async expirePending(): Promise<number> {
+    async expirePending(scope?: { readonly runId: string }): Promise<number> {
       events.push("expire");
       const now = Date.now();
       let expired = 0;
       for (const [nonce, row] of rows) {
-        if (row.status === "pending" && row.expiresAt.getTime() <= now) {
-          rows.set(nonce, { ...row, status: "expired" });
-          expired += 1;
+        if (row.status !== "pending" || row.expiresAt.getTime() > now) {
+          continue;
         }
+        if (scope !== undefined && row.runId !== scope.runId) {
+          continue;
+        }
+        rows.set(nonce, { ...row, status: "expired" });
+        expired += 1;
       }
       return expired;
     },

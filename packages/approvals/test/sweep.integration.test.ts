@@ -112,13 +112,15 @@ integration("expiry sweeper against compose Postgres (OIK-024)", () => {
       { store },
     );
 
+    const scope = { runId };
     const raced = await Promise.all(
-      Array.from({ length: RACERS }, () => sweepExpiredApprovals({ database: options })),
+      Array.from({ length: RACERS }, () =>
+        sweepExpiredApprovals({ database: options }, scope),
+      ),
     );
     expect(raced.reduce((sum, result) => sum + result.expired, 0)).toBe(EXPIRED_ROWS);
-    expect(raced.every((result) => result.expired >= 0)).toBe(true);
 
-    const second = await sweepExpiredApprovals({ store });
+    const second = await sweepExpiredApprovals({ store }, scope);
     expect(second).toEqual({ expired: 0 });
 
     const fetchedExpired = await Promise.all(

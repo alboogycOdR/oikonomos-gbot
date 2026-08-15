@@ -1,6 +1,12 @@
 import type { DatabaseOptions } from "@oikonomos/db";
 
-import { createDatabaseStore, type ApprovalStore } from "./store.js";
+import {
+  createDatabaseStore,
+  type ApprovalStore,
+  type ExpirePendingScope,
+} from "./store.js";
+
+export type { ExpirePendingScope };
 
 export type SweepDependencies =
   | { readonly store: ApprovalStore }
@@ -25,8 +31,9 @@ function resolveStore(deps: SweepDependencies): ApprovalStore {
  */
 export async function sweepExpiredApprovals(
   deps: SweepDependencies,
+  scope?: ExpirePendingScope,
 ): Promise<SweepExpiredResult> {
-  const expired = await resolveStore(deps).expirePending();
+  const expired = await resolveStore(deps).expirePending(scope);
   if (!Number.isInteger(expired) || expired < 0) {
     throw new Error(`expirePending returned invalid count ${String(expired)}.`);
   }

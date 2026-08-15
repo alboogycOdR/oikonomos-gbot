@@ -24,6 +24,6 @@ export {
   EXPIRE_PENDING_SQL,
   INVALIDATE_APPROVAL_SQL,
   type ApprovalStore,
-  type ConsumeApprovalFn,
   type ConsumeApprovalResult,
+  type ExpirePendingScope,
 } from "./store.js";

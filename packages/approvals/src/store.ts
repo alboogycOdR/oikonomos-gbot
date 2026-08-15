@@ -14,10 +14,8 @@ import {
 
 export type { ConsumeApprovalResult };
 
-export type ConsumeApprovalFn = (
-  options: DatabaseOptions,
-  nonce: string,
-) => Promise<ConsumeApprovalResult>;
+/** Optional isolation for expirePending — production sweeper stays unscoped. */
+export type ExpirePendingScope = { readonly runId: string };
 
 /**
  * Persistence port for issuance, consume, invalidation, and expiry.
@@ -28,7 +26,7 @@ export interface ApprovalStore {
   getByNonce(nonce: string): Promise<Approval | null>;
   consume(nonce: string): Promise<ConsumeApprovalResult>;
   invalidate(nonce: string): Promise<ConsumeApprovalResult>;
-  expirePending(): Promise<number>;
+  expirePending(scope?: ExpirePendingScope): Promise<number>;
 }
 
 /** Pinned OIK-023 statement — granted + unused + digest already compared in-process. */
@@ -156,8 +154,15 @@ async function invalidateApproval(
   });
 }
 
-async function expirePendingApprovals(options: DatabaseOptions): Promise<number> {
+async function expirePendingApprovals(
+  options: DatabaseOptions,
+  scope?: ExpirePendingScope,
+): Promise<number> {
   return withPool(options, async (pool) => {
+    if (scope !== undefined) {
+      const result = await pool.query(`${EXPIRE_PENDING_SQL} AND run_id=$1`, [scope.runId]);
+      return result.rowCount ?? 0;
+    }
     const result = await pool.query(EXPIRE_PENDING_SQL);
     return result.rowCount ?? 0;
   });
@@ -170,6 +175,6 @@ export function createDatabaseStore(options: DatabaseOptions): ApprovalStore {
     getByNonce: (nonce) => getApprovalByNonce(options, nonce),
     consume: (nonce) => consumeApproval(options, nonce),
     invalidate: (nonce) => invalidateApproval(options, nonce),
-    expirePending: () => expirePendingApprovals(options),
+    expirePending: (scope) => expirePendingApprovals(options, scope),
   };
 }

@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { issueApproval } from "../src/issue.js";
 import { sweepExpiredApprovals } from "../src/sweep.js";
-import { createMemoryStore, fixtureRequest, grantMemoryRow } from "./helpers.js";
+import {
+  createMemoryStore,
+  FIXTURE_RUN_ID,
+  fixtureRequest,
+  grantMemoryRow,
+} from "./helpers.js";
 
 describe("sweepExpiredApprovals — pending → expired (OIK-024)", () => {
   it("expires pending rows whose expires_at has elapsed", async () => {
@@ -48,6 +53,29 @@ describe("sweepExpiredApprovals — pending → expired (OIK-024)", () => {
     const result = await sweepExpiredApprovals({ store: memory.store });
     expect(result).toEqual({ expired: 0 });
     expect(memory.rows.get(signal.nonce)!.status).toBe("granted");
+  });
+
+  it("scoped sweep does not expire another run's pending rows", async () => {
+    const memory = createMemoryStore();
+    const ours = await issueApproval(
+      fixtureRequest({ expiresAt: new Date(Date.now() - 1_000) }),
+      { store: memory.store },
+    );
+    const foreign = await issueApproval(
+      fixtureRequest({
+        runId: "ffffffff-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        expiresAt: new Date(Date.now() - 1_000),
+      }),
+      { store: memory.store },
+    );
+
+    const first = await sweepExpiredApprovals(
+      { store: memory.store },
+      { runId: FIXTURE_RUN_ID },
+    );
+    expect(first).toEqual({ expired: 1 });
+    expect(memory.rows.get(ours.nonce)!.status).toBe("expired");
+    expect(memory.rows.get(foreign.nonce)!.status).toBe("pending");
   });
 
   it("fails closed if the store returns a nonsense count", async () => {
