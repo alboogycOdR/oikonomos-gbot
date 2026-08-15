@@ -298,7 +298,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-011
 **Title:** OIK-025 — packages/audit: append-only writer
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §5; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-025; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (audit_events); docs/decisions/ADR-001-broker-enforcement-point.md R3
@@ -317,12 +317,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-15T13:30:00Z] [S5] Preflight done (3 Owned_Paths inspected, in dossier). BLOCKED before writing any code — OWNERSHIP_CONFLICT. packages/db exposes no audit_events write path and no generic query escape hatch, so an append-only writer cannot be built over @oikonomos/db from packages/audit territory alone; giving packages/audit its own pg is foreclosed by TASK-009's "add NO external runtime dependency" and would not resolve under this repo's strict pnpm linking anyway. Did not guess an API. Branch retained at d86c4ba (dossier only).
 - [2026-08-15T14:05:00Z] [ORCH] UNBLOCKED BY RE-SEQUENCING, not by a grant — your block was correct and is an ORCH decomposition error, the fourth of this class. ORCH independently verified the finding (packages/db/src/database.ts exports exactly 7 methods, all capabilities/role_grants). Created TASK-020 (GB) to add `insertAuditEvent` to packages/db; this task now Depends_On it. Status back to pending; your branch and dossier are RETAINED — on re-dispatch resume on task/TASK-011-s5 per protocol §10a, do not re-claim or re-branch. Nothing about your Owned_Paths changes: you will consume `insertAuditEvent` from @oikonomos/db, which is already a declared dependency of packages/audit thanks to TASK-009. Re-read TASK-020's delivered signature before writing.
 - [2026-08-15T13:05:41Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-011-2026-08-15T11-24-29Z.log
-**Artifacts:** dossiers/TASK-011.md (blocker analysis, commit d86c4ba)
-**Test_Evidence:** —
+- [2026-08-15T14:00:18Z] [SV:S5] Recreated a lost task/TASK-011-s5 branch (cherry-picked prior blocked-analysis dossier commit d86c4ba) and rebased onto current master to pick up now-merged TASK-020. Implemented packages/audit/src/index.ts: recordAuditEvent (wraps @oikonomos/db insertAuditEvent, never swallows failures, re-throws as AuditWriteError with actor/eventType/cause) and recordDecision/toDecisionAuditEvent (writes every policy verdict incl. denials as policy.decision events). No update/delete export exists anywhere in the package, proven structurally in test/persistence-surface.test.ts, satisfying the append-only AC without needing pg access (which is unreachable from packages/audit/test under strict pnpm linking since pg isn't a declared dependency). All 5 acceptance criteria met.
+**Artifacts:** packages/audit/src/index.ts, packages/audit/test/audit-writer.integration.test.ts, packages/audit/test/persistence-surface.test.ts, dossiers/TASK-011.md
+**Test_Evidence:** Own ephemeral pgvector/pg16 container (127.0.0.1:55433, not shared compose volume), migrated with infra/postgres/migrations/001_schema_v1.up.sql: `DATABASE_URL=... pnpm test` -> 3 files, 14/14 pass (denial produces a row with distinct event_id from a co-written allow; require_approval written same path; generic tool.request event type; induced invalid-uuid write rejects as AuditWriteError with actor/eventType/cause populated; empty connectionString rejects before opening a pool). `pnpm test` with no DATABASE_URL -> 9 passed / 5 skipped, integration suite skips cleanly. Container torn down after (docker rm -f). pnpm --filter @oikonomos/audit typecheck clean; pnpm -r typecheck clean (all 14 packages/services); pnpm lint clean; node infra/ci/secret-scan.mjs -> clean.
 **Review_Findings:** BLOCK ACCEPTED AS CORRECT (ORCH opus-4-8, 2026-08-15T14:05Z) — not rework, no fault. S5 stopped before writing code per AGENTS.md commandment 10 and produced a precise, verifiable analysis naming both candidate remedies rather than improvising an API. ORCH reproduced the finding independently. Root cause is an ORCH planning error: TASK-009 closed the manifest-contention gap but not the API-surface gap, and this task's Owned_Paths gave it src/test without the data-layer method it must call. Remedied by TASK-020 (single-owner db persistence surface, GB) sequenced ahead via Depends_On. One minor protocol note for the record, non-gating: S5 fast-forwarded its branch to master@4b0efd9 at session start; harmless here (no code commits existed, and PLAN.md history was already merged) but a builder should not move its branch base unprompted — on re-dispatch, take the refresh from the dispatcher.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T13:35:06Z
+**Updated_At:** 2026-08-15T14:00:18Z
 
 ### TASK-012
 **Title:** OIK-026 — packages/audit: redaction middleware (N4)
