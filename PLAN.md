@@ -352,7 +352,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-013
 **Title:** OIK-021 — packages/approvals: issue + bind ⚑ protected
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-021; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (approvals)
 **Owned_Paths:** packages/approvals/src/**, packages/approvals/test/**, packages/approvals/vitest.config.ts
@@ -364,9 +364,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `action_digest` is produced by `@oikonomos/shared`, with zero local reimplementation of canonical JSON or sha256 (N10, Handover §4.3)
 - [ ] Nonces are unguessable (CSPRNG, not Math.random or a counter) and unique under concurrent issuance
 - [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
-**Branch:** task/TASK-013-cx
-**Started_At:** 2026-08-15T11:24:28Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
+- [2026-08-15T14:05:00Z] [ORCH] REASSIGNED CX -> GB at the wave-4 dispatch gate. Not a reflection on CX's work here: CX's block was correct and is what produced TASK-020. The reason is scheduling. CX is the assignee of BOTH this task and TASK-018 (in rework), a unit may only hold one active task, and GB had nothing eligible because its own TASK-014 is gated behind THIS task — so leaving it with CX would have idled GB for a full wave while the critical path (013 -> 014 -> OIK-039/G-GOV) sat still. GB's record also argues for it: 6 reviews / 6 first-pass / 0 rework. CONSEQUENCE I AM ACCEPTING KNOWINGLY: at the 13:40Z scan I assigned TASK-014 to GB partly so that a DIFFERENT unit from TASK-013's author would write the atomic-consume statement — fresh eyes on the invariant. That rationale no longer holds, because GB now writes both. I am not flipping TASK-014 to CX to rescue it, because the evidence that put it with GB (most security-critical function in the platform, GB 6/6 vs CX 5/10 first-pass) outweighs a fresh-eyes preference. The actual controls on TASK-014 remain intact and are stronger than that preference: adversarial review by ORCH-opus (a different MODEL, which is what directive section 3 requires), the mandatory genuinely-concurrent DB-level test, and the fact that Handover section 4.3 pins the exact SQL statement verbatim so there is little room for an authoring blind spot to matter. Branch task/TASK-013-cx (single commit 65c0c24, an 11-line blocker dossier) was DELETED: the blocker it recorded is resolved by TASK-020, and its analysis is preserved verbatim in this task's Progress_Notes and Review_Findings above — nothing was lost. GB starts clean on task/TASK-013-gb.
 - [2026-08-15T13:35:00Z] [CX] Preflight done (3 Owned_Paths inspected, in dossier). BLOCKED before implementation: Database holds its pg pool privately and exposes no approval persistence operation, so issuing an approval from packages/approvals territory would require either raw SQL outside packages/db (violating the OIK-014 data-layer boundary) or a new packages/db API that is outside this task's Owned_Paths. Branch retained at 65c0c24 (dossier only).
 - [2026-08-15T14:05:00Z] [ORCH] UNBLOCKED BY RE-SEQUENCING, not by a grant — your block was correct and names the OIK-014 boundary precisely; this is an ORCH decomposition error, the fourth of this class, and S5 hit the identical wall on TASK-011 independently. Created TASK-020 (GB) delivering `insertApproval` + `getApprovalByNonce` in packages/db; this task now Depends_On it. Status back to pending; branch and dossier RETAINED — resume on task/TASK-013-cx per protocol §10a, do not re-claim or re-branch. NOTE ON YOUR BRANCH BASE: task/TASK-013-cx was branched from task/TASK-009-cx rather than master, so it predates the TASK-010 merge; the dispatcher will refresh it from master on re-dispatch — verify you are on current master before implementing. TASK-020 deliberately does NOT deliver the atomic consume statement; that stays with TASK-014 so the invariant and its concurrency proof land together.
 **Artifacts:** dossiers/TASK-013.md (blocker analysis, commit 65c0c24)
