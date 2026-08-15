@@ -7,17 +7,18 @@
  * proof that a control is live.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/walk.mjs';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-function command(command, args, root) {
+function command(command, args, root, env = process.env) {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: 'utf8',
     shell: process.platform === 'win32',
+    env,
   });
   return {
     status: result.status ?? 1,
@@ -36,16 +37,38 @@ function walkFiles(directory) {
   return files;
 }
 
+export function collectHookRejectionEvidence(root) {
+  const hookPathResult = command('git', ['rev-parse', '--git-path', 'hooks/pre-commit'], root);
+  if (hookPathResult.status !== 0 || !hookPathResult.output.trim()) {
+    return { status: 1, output: `${hookPathResult.output}\nUnable to locate installed pre-commit hook.` };
+  }
+
+  const hookPath = hookPathResult.output.trim();
+  const temp = mkdtempSync(join(tmpdir(), 'oikonomos-controls-live-'));
+  const indexPath = join(temp, 'index');
+  const env = { ...process.env, GIT_INDEX_FILE: indexPath };
+  try {
+    const readTree = command('git', ['read-tree', 'HEAD'], root, env);
+    if (readTree.status !== 0) return readTree;
+    const stageOutOfTerritoryPath = command('git', ['update-index', '--force-remove', '--', 'AGENTS.md'], root, env);
+    if (stageOutOfTerritoryPath.status !== 0) return stageOutOfTerritoryPath;
+    return command('git', ['hook', 'run', 'pre-commit'], root, env);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 export function checkHookEvidence(result) {
-  if (result.status !== 0) return 'territory pre-commit hook verifier rejected the installed hook';
-  if (!/\[install-hooks\] installed:/i.test(result.output)) {
-    return 'territory pre-commit hook verifier emitted no installed-hook evidence';
+  if (result.status === 0) return 'installed territory pre-commit hook allowed an out-of-territory staged commit';
+  if (!/\[territory-precommit\] COMMIT REJECTED/i.test(result.output)) {
+    return 'installed pre-commit hook did not emit territory rejection evidence';
   }
   return null;
 }
 
-export function checkControlQueue(files) {
-  return files.length === 0 ? null : `${files.length} undrained devteam control block(s): ${files.join(', ')}`;
+export function checkControlQueue(queue) {
+  if (!queue.exists) return 'devteam control queue directory is missing; drain state is unobservable';
+  return queue.files.length === 0 ? null : `${queue.files.length} undrained devteam control block(s): ${queue.files.join(', ')}`;
 }
 
 export function checkBuilderModels(config) {
@@ -58,7 +81,8 @@ export function checkBuilderModels(config) {
 
 export function checkCoverageEvidence(result) {
   if (result.status !== 0) return 'packages/policy ordinary test run failed before emitting coverage';
-  if (!/% Coverage report from v8[\s\S]*All files/i.test(result.output)) {
+  const uncoloured = result.output.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '');
+  if (!/% Coverage report from v8[\s\S]*All files/i.test(uncoloured)) {
     return 'packages/policy ordinary test run emitted no coverage report';
   }
   return null;
@@ -82,7 +106,7 @@ export function checkDistFreshness(packages) {
 }
 
 function workspacePackages(root) {
-  const roots = ['packages', 'services'];
+  const roots = ['packages', 'services', 'apps'];
   return roots.flatMap((workspaceRoot) => {
     const directory = join(root, workspaceRoot);
     if (!existsSync(directory)) return [];
@@ -108,12 +132,13 @@ export function livenessExitCode(checks) {
 }
 
 export function runLivenessChecks(root, supplied = {}) {
-  const hook = supplied.hook ?? command('powershell', ['-ExecutionPolicy', 'Bypass', '-File', 'scripts/install_git_hooks.ps1', '-Verify'], root);
+  const hook = supplied.hook ?? collectHookRejectionEvidence(root);
   const coverage = supplied.coverage ?? command('pnpm', ['--filter', '@oikonomos/policy', 'test'], root);
   const controlDirectory = join(root, '.devteam', 'control');
-  const queued = supplied.queued ?? (existsSync(controlDirectory)
-    ? readdirSync(controlDirectory).filter((name) => name.endsWith('.json'))
-    : []);
+  const queued = supplied.queued ?? {
+    exists: existsSync(controlDirectory),
+    files: existsSync(controlDirectory) ? readdirSync(controlDirectory).filter((name) => name.endsWith('.json')) : [],
+  };
   const config = supplied.config ?? JSON.parse(readFileSync(join(root, 'autopilot.json'), 'utf8'));
   const packages = supplied.packages ?? workspacePackages(root);
   return [
