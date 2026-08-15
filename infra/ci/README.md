@@ -1,6 +1,6 @@
 # infra/ci — CI jobs that also run locally
 
-OIK-002 / OIK-004 / OIK-007. Protected path. There is no remote yet, so every
+OIK-002 / OIK-003 / OIK-004 / OIK-007. Protected path. There is no remote yet, so every
 job is runnable from this directory. Root `package.json` scripts are **not**
 owned here (ORCH 15:15Z): call `pnpm typecheck`, `pnpm build`, `pnpm test`,
 and `pnpm lint` (the last arrives with TASK-005). Grep and secret-scan are
@@ -14,6 +14,8 @@ node infra/ci/banned-modes.mjs
 node infra/ci/secret-scan.mjs
 node infra/ci/test-banned-modes.mjs
 node infra/ci/test-secret-scan.mjs
+node infra/ci/test-protected-path-review.mjs
+node infra/ci/protected-path-review.mjs --base <base-ref>
 sh infra/ci/hooks/pre-commit          # same scan as CI, against the staged index
 ```
 
@@ -59,3 +61,22 @@ ADR-002 Amendment A exempts exactly one named file, `hooks/run-tests.js`
 `.github/workflows/ci.yml` defines `lint`, `typecheck`, `test`, and `build`
 (each fails the run when red) plus `banned-modes` and `secret-scan`. Triggers:
 `pull_request` and `push`.
+
+## Protected-path review (OIK-003)
+
+`.github/CODEOWNERS` assigns Fable review ownership for the protected paths in
+`CLAUDE.md`: broker, policy, approvals, harness factory, CI, ADRs, and all
+settings/subagent configurations (including `.codex/**`). It also protects the
+CODEOWNERS file and CI workflow themselves so the enforcement cannot be
+weakened without review.
+
+CODEOWNERS is inert until this repository has a GitHub remote and its branch
+protection requires Code Owner review. Replace `@basileia/fable-reviewers`
+with the provisioned GitHub review team when that remote is configured.
+
+Until then, `protected-path-review.mjs` is the operative local control. It
+compares `--base <git-ref>` with `HEAD`; a protected diff fails unless an
+independent Fable reviewer supplies `--approval-marker fable-reviewed`. A
+clean, unprotected diff passes without a marker. The marker demonstrates the
+local gate only; it does not substitute for GitHub's authenticated required
+Code Owner review once a remote exists.

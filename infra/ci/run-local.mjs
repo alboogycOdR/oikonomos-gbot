@@ -53,6 +53,7 @@ jobs.push(run('banned-modes self-test', 'node', [join(here, 'test-banned-modes.m
 jobs.push(run('banned-modes', 'node', [join(here, 'banned-modes.mjs')]));
 jobs.push(run('secret-scan self-test', 'node', [join(here, 'test-secret-scan.mjs')]));
 jobs.push(run('secret-scan', 'node', [join(here, 'secret-scan.mjs')]));
+jobs.push(run('protected-path-review self-test', 'node', [join(here, 'test-protected-path-review.mjs')]));
 
 const failed = jobs.filter((j) => j.status !== 0);
 process.stdout.write('\n==> local CI summary\n');

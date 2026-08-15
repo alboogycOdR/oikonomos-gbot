@@ -1,0 +1,16 @@
+# Protected-path ownership for OIKONOMOS.
+# Replace this team with the provisioned GitHub team before enabling branch
+# protection on the repository remote. The local CI control is documented in
+# infra/ci/README.md.
+
+/packages/broker/** @basileia/fable-reviewers
+/packages/policy/** @basileia/fable-reviewers
+/packages/approvals/** @basileia/fable-reviewers
+/packages/harness-factory/** @basileia/fable-reviewers
+/infra/ci/** @basileia/fable-reviewers
+/docs/decisions/** @basileia/fable-reviewers
+/.claude/settings*.json @basileia/fable-reviewers
+/.claude/agents/** @basileia/fable-reviewers
+/.codex/** @basileia/fable-reviewers
+/.github/CODEOWNERS @basileia/fable-reviewers
+/.github/workflows/** @basileia/fable-reviewers
