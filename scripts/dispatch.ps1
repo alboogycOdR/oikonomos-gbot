@@ -84,7 +84,20 @@ switch ($Cli) {
         # -p switches to single-turn non-interactive mode. -p must be LAST:
         # $Prompt is appended right after this array at the call site.
         $Cmd = "grok"
-        $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions", "-p")
+        $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions")
+        # Registry model pin (fix 2026-08-15). The codex and claude branches both
+        # honour $Model; this one did not, so autopilot.json's `model` field for GB
+        # was a DEAD KNOB -- settable, resolved into $Model by builder_registry.py,
+        # and then silently ignored. A config field that looks authoritative and is
+        # not is worse than an absent one: GB's model was in fact coming from the
+        # user-level ~/.grok/config.toml ([models] default), outside the repo, out of
+        # version control, and invisible to anyone reading the registry. Left null,
+        # behaviour is unchanged (the guard below is skipped) and GB still floats on
+        # the CLI default -- but the pin now works when set.
+        if ($Model) { $CmdArgs += @("--model", $Model) }
+        # -p must stay LAST: $Prompt is appended immediately after this array at the
+        # call site, and -p/--single takes it as its value.
+        $CmdArgs += "-p"
     }
     "codex" {
         # Routed through cmd /c: npm's codex.ps1 shim spuriously pipes $input
