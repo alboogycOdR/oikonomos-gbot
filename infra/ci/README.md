@@ -82,3 +82,31 @@ its self-test. A protected diff fails unless an independent Fable reviewer suppl
 diff passes without a marker. The marker demonstrates the local gate only; it
 does not substitute for GitHub's authenticated required Code Owner review once
 a remote exists.
+
+## Control liveness (ADR-005)
+
+`controls-live.mjs` verifies that controls emitted evidence of doing their
+work; configuration, database mtimes, and no-op exit codes are not evidence.
+The job fails `run-local.mjs` if any of these checks is inert:
+
+- ATLAS must report a recorded scan timestamp, no commits after that scan, and
+  an indexed-file count within 25% (at least five files) of `git ls-files`.
+  Failures state both counts or the number of commits behind so staleness is
+  judgeable without timestamp arithmetic.
+- `install_git_hooks.ps1 -Verify` must emit its installed-hook confirmation;
+  this is evidence from the territory hook installer, not merely a hook path
+  that happens to exist.
+- `.devteam/control/*.json` must contain no queued control blocks, which is
+  the observable result of draining the control queue.
+- Every active builder must have a concrete `model` pin in the dispatcher
+  registry. This is an explicit registry invariant required by ADR-005.
+- An ordinary `packages/policy` test invocation must print Vitest's v8 coverage
+  report, proving coverage was collected rather than only configured.
+- Every workspace package with `src/` must have a `dist/` newer than its source;
+  failures name the package and seconds behind (or missing output). This keeps
+  tests from silently executing old exported build output.
+
+Liveness checks are controls too: their self-test deliberately induces an
+inert state for every assertion and requires a non-zero result. They can rot
+just like the controls they watch, so keep both the check and its induced-
+failure proof in the local CI run.
