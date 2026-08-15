@@ -413,13 +413,29 @@ except Exception:
             # of the wrong repo. Failure is non-fatal: pack still runs against
             # whatever index exists, and pack's own freshness footer reports the
             # scan timestamp, so a degraded map is visible rather than silent.
-            try {
-                & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "[dispatch] atlas scan failed - packing against the existing (possibly stale) index."
-                }
-            } catch {
-                Write-Warning "[dispatch] atlas scan errored - packing against the existing (possibly stale) index."
+            # Retry once. Concurrent dispatch is the NORMAL mode for this pack --
+            # wave 7 launched two builders 4s apart -- and both scans write the same
+            # sqlite .devteam/atlas.db, so a cold scan (one with changes to write,
+            # i.e. a long write transaction) can lose the lock and error. Observed
+            # live on the first concurrent wave after this scan step was added; a
+            # `changed: 0` scan does not reproduce it because the write window is
+            # too short to contend. One retry after a short pause clears it, since
+            # by then the other dispatch's scan has usually committed and this one
+            # finds `changed: 0`. Still non-fatal on a second failure: packing
+            # against a stale index is the pre-fix behaviour, and the warning makes
+            # it visible rather than silent -- which is the property that matters,
+            # since a silently stale index is exactly what went unnoticed for six
+            # hours before this step existed.
+            $AtlasScanOk = $false
+            foreach ($attempt in 1, 2) {
+                try {
+                    & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
+                    if ($LASTEXITCODE -eq 0) { $AtlasScanOk = $true; break }
+                } catch { }
+                if ($attempt -eq 1) { Start-Sleep -Seconds 3 }
+            }
+            if (-not $AtlasScanOk) {
+                Write-Warning "[dispatch] atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) - packing against the existing, possibly stale index."
             }
             try {
                 $AtlasSection = (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
