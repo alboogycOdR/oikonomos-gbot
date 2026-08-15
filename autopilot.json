@@ -19,7 +19,8 @@
     "defined": {
       "GB": {
         "cli": "grok",
-        "model": null,
+        "model": "grok-4.6",
+        "_model_note": "Pinned 2026-08-15 (ORCH). Was null, so GB silently inherited the user-level ~/.grok/config.toml [models] default (grok-4.6, reasoning effort xhigh) - outside the repo, out of version control, invisible to anyone reading this registry. Two facts made that worse: the dispatch.ps1 grok branch ignored this field entirely until f1f8704, so it was a dead knob; and grok CLI 1.0.4 installed at ~14:26Z on 2026-08-15, AFTER wave 4 completed, so REVIEW.md tallies up to TASK-013 may span more than one configuration. Pinned so the model is reviewable, appears in the dispatch log, and any change requires a commit. Reasoning effort is still inherited from config.toml and is NOT pinned - open item against the R30,000/month ceiling.",
         "auth": {
           "mode": "default"
         },
