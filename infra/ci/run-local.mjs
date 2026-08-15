@@ -114,6 +114,8 @@ jobs.push(run('banned-modes', 'node', [join(here, 'banned-modes.mjs')]));
 jobs.push(run('secret-scan self-test', 'node', [join(here, 'test-secret-scan.mjs')]));
 jobs.push(run('secret-scan', 'node', [join(here, 'secret-scan.mjs')]));
 jobs.push(run('protected-path-review self-test', 'node', [join(here, 'test-protected-path-review.mjs')]));
+jobs.push(run('controls-live self-test', 'node', [join(here, 'test-controls-live.mjs')]));
+jobs.push(run('controls-live', 'node', [join(here, 'controls-live.mjs')]));
 try {
   const { base, integrationRef } = integrationMergeBase();
   process.stdout.write(`protected-path-review: comparing HEAD with merge-base against ${integrationRef}\n`);

@@ -13,6 +13,7 @@ node infra/ci/run-local.mjs [--approval-marker fable-reviewed]
 node infra/ci/banned-modes.mjs
 node infra/ci/secret-scan.mjs
 node infra/ci/test-banned-modes.mjs
+node infra/ci/test-controls-live.mjs
 node infra/ci/test-secret-scan.mjs
 node infra/ci/test-protected-path-review.mjs
 node infra/ci/protected-path-review.mjs --base <base-ref>
@@ -82,3 +83,39 @@ its self-test. A protected diff fails unless an independent Fable reviewer suppl
 diff passes without a marker. The marker demonstrates the local gate only; it
 does not substitute for GitHub's authenticated required Code Owner review once
 a remote exists.
+
+## Control liveness (ADR-005)
+
+`controls-live.mjs` verifies that controls emitted evidence of doing their
+work; configuration, database mtimes, and no-op exit codes are not evidence.
+The job fails `run-local.mjs` if any of these checks is inert:
+
+- The installed territory pre-commit hook is run through Git against an
+  alternate staged index containing `AGENTS.md`, which is outside CX's
+  `infra/ci/**` territory. The check requires the hook to reject that attempted
+  commit; a hook file or installer confirmation alone is not liveness evidence.
+- The main checkout's `.devteam/control/` must exist and contain no queued JSON
+  control blocks, which is the observable result of creating and draining the
+  control queue. The job resolves that checkout from Git's common directory,
+  rather than reading this worktree's independent gitignored `.devteam/`.
+  A missing main-checkout directory fails because it makes the drain state
+  unobservable.
+- Every active builder must have a concrete `model` pin in the dispatcher
+  registry. This is an explicit registry invariant required by ADR-005.
+- An ordinary `packages/policy` test invocation must print Vitest's v8 coverage
+  report, proving coverage was collected rather than only configured. ANSI
+  terminal colour is stripped before reading the emitted report.
+- Every workspace package with `src/` must have a `dist/` newer than its source;
+  failures name the package and seconds behind (or missing output). This keeps
+  tests from silently executing old exported build output.
+
+ATLAS liveness is deliberately deferred to TASK-024. `.devteam/atlas.db` is
+gitignored and therefore per-worktree, while dispatch refreshes only the main
+checkout's index; no process maintains the builder worktree copy. Checking it
+here would make the CI job fail for a state this job cannot truthfully observe
+or repair.
+
+Liveness checks are controls too: their self-test deliberately induces an
+inert state for every assertion and requires a non-zero result. They can rot
+just like the controls they watch, so keep both the check and its induced-
+failure proof in the local CI run.
