@@ -244,7 +244,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-009
 **Title:** Workspace dependency integration — E3 manifests + lockfile (single-owner, cross-cutting)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3 (package boundaries); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3
@@ -256,15 +256,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm install --frozen-lockfile` passes on the committed lockfile
 - [ ] `pnpm -r typecheck`, `pnpm -r build`, `pnpm -r test` and `pnpm lint` all still exit 0 — this task changes wiring, not behaviour
 - [ ] `git diff --stat master...HEAD` shows ONLY the three manifests, the lockfile, and this task's dossier — zero files under any `src/` or `test/`
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-009-cx
+**Started_At:** 2026-08-15T09:20:57Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T09:20:57Z
 
 ### TASK-010
 **Title:** OIK-020 — packages/policy: role constraints (rate limits, domains) ⚑ protected
