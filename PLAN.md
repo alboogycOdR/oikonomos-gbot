@@ -474,7 +474,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-018
 **Title:** OIK-003 — CODEOWNERS + protected-path CI enforcement ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3 (protected paths); CLAUDE.md
@@ -487,15 +487,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Self-test proves both directions — the catch and the clean pass — as separate assertions
 - [ ] README states plainly that CODEOWNERS is inert until a GitHub remote exists and the local script is the operative control until then
 - [ ] Existing infra/ci self-tests (banned-modes, secret-scan) stay green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-018-cx
+**Started_At:** 2026-08-15T12:45:46Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T12:45:46Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
