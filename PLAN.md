@@ -491,6 +491,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-15T12:45:46Z
 **Progress_Notes:**
 - [2026-08-15T13:05:41Z] [SV:CX] Added CODEOWNERS, local/PR protected-path review enforcement, self-tests, and README documentation of the no-remote limitation.
+- [2026-08-15T13:05:41Z] [SV:CX] Added CODEOWNERS, local/PR protected-path review enforcement, self-tests, and README documentation of the no-remote limitation.
 **Artifacts:** .github/CODEOWNERS, .github/workflows/ci.yml, infra/ci/protected-path-review.mjs, infra/ci/test-protected-path-review.mjs, infra/ci/run-local.mjs, infra/ci/README.md, dossiers/TASK-018.md
 **Test_Evidence:** node infra/ci/run-local.mjs passed all jobs (typecheck, build, tests, lint, banned-mode, secret-scan, protected-path self-test); node infra/ci/protected-path-review.mjs against HEAD~1 failed without marker (exit 1) and passed with fable-reviewed marker; git diff --check passed.
 **Review_Findings:** —
