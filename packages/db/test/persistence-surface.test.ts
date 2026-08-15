@@ -3,17 +3,33 @@ import { describe, expect, it } from "vitest";
 import * as approvalsApi from "../src/approvals.js";
 import { getApprovalByNonce, insertApproval, insertAuditEvent } from "../src/index.js";
 
+const approvalRuntimeExports = [
+  "CONSUME_APPROVAL_SQL",
+  "approvalStatuses",
+  "consumeApproval",
+  "getApprovalByNonce",
+  "insertApproval",
+];
+
+function assertApprovalExportSurface(api: object): void {
+  expect(Object.keys(api).sort()).toEqual(approvalRuntimeExports);
+}
+
 describe("packages/db persistence surface", () => {
-  it("does not export consumeApproval or any status-mutating approval helper", () => {
-    expect(approvalsApi).not.toHaveProperty("consumeApproval");
-    expect(approvalsApi).not.toHaveProperty("updateApproval");
-    expect(approvalsApi).not.toHaveProperty("updateApprovalStatus");
-    expect(approvalsApi).not.toHaveProperty("deleteApproval");
-    expect(Object.keys(approvalsApi).sort()).toEqual([
-      "approvalStatuses",
-      "getApprovalByNonce",
-      "insertApproval",
-    ]);
+  it("pins the intended approvals export surface", () => {
+    // This intentionally targets approvals.ts rather than the package barrel.
+    // TASK-015 may independently add consumeApproval to index.ts; either barrel
+    // state leaves this module's exact, N8-approved surface unchanged.
+    assertApprovalExportSurface(approvalsApi);
+  });
+
+  it("rejects a newly exported status-mutating approval helper", () => {
+    expect(() =>
+      assertApprovalExportSurface({
+        ...Object.fromEntries(approvalRuntimeExports.map((key) => [key, null])),
+        updateApprovalStatus: () => undefined,
+      }),
+    ).toThrow();
   });
 
   it("rejects an empty connection string before opening a pool", async () => {
