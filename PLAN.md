@@ -268,7 +268,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-010
 **Title:** OIK-020 — packages/policy: role constraints (rate limits, domains) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-020; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.4 (role_grants.constraints shape); docs/decisions/ADR-003-tier-resolution-direction.md
@@ -281,15 +281,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Denial reasons are distinguishable per constraint, so audit can record which constraint denied (Directive §4 evidence requirement)
 - [ ] Zero I/O: `pnpm lint` green under the OIK-006 policy-purity rule (CLAUDE.md)
 - [ ] 100% branch coverage still reported by the existing gate on an ordinary `pnpm --filter @oikonomos/policy test` run (TASK-007 AC, must not regress)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-010-gb
+**Started_At:** 2026-08-15T09:21:09Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T09:21:09Z
 
 ### TASK-011
 **Title:** OIK-025 — packages/audit: append-only writer
