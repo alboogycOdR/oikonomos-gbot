@@ -524,7 +524,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-020
 **Title:** packages/db persistence surface for audit_events + approvals (single-owner integration)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (audit_events, approvals column definitions); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-014, §5 E3 OIK-021, OIK-025; infra/postgres/migrations/001_schema_v1.up.sql (the authoritative live schema)
@@ -538,12 +538,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `getApprovalByNonce` returns null for an unknown nonce rather than throwing
 - [ ] NO `consumeApproval` (or any status-mutating approval function) exists in this task's diff — reserved for TASK-014 (N8)
 - [ ] All SQL is parameterised; `pnpm lint`, `pnpm -r typecheck`, `pnpm -r build` exit 0; integration tests pass against the compose Postgres and skip cleanly without `DATABASE_URL` (TASK-006 precedent)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-020-gb
+**Started_At:** 2026-08-15T12:45:39Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T14:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T12:45:39Z
