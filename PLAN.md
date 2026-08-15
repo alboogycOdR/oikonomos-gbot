@@ -241,3 +241,275 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-15T00:00:00Z
+
+### TASK-009
+**Title:** Workspace dependency integration — E3 manifests + lockfile (single-owner, cross-cutting)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §1; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3 (package boundaries); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3
+**Owned_Paths:** packages/approvals/package.json, packages/audit/package.json, packages/broker/package.json, pnpm-lock.yaml
+**Depends_On:** —
+**Description:** Protocol §4 single-owner integration task for the one file every other E3 task would otherwise contend for. `pnpm-lock.yaml` is a single shared file: three concurrent packages each adding a dependency would all need it, and intersecting Owned_Paths is illegal. Rather than serialising the whole epic behind that, this task adds every workspace dependency the E3 wave needs in ONE pass, and the implementation tasks then own only `src/**` and `test/**`. Declare with the `workspace:*` protocol: approvals → @oikonomos/shared + @oikonomos/db; audit → @oikonomos/shared + @oikonomos/db; broker → @oikonomos/shared + @oikonomos/policy + @oikonomos/approvals + @oikonomos/audit. Add NO external runtime dependency — nothing in this wave needs one (pg already lives in packages/db, and the broker ships as a library handler here, not an HTTP server; the Fastify surface is OIK-084/E9). **Write zero implementation code.** This task exists because TASK-005, TASK-006 and TASK-007 each lost time to a missing manifest grant; it converts that recurring block into one deliberate task.
+**Acceptance_Criteria:**
+- [ ] Each of the three manifests declares its workspace dependencies using the `workspace:*` protocol, matching the package boundaries in Build Handover §3
+- [ ] `pnpm install --frozen-lockfile` passes on the committed lockfile
+- [ ] `pnpm -r typecheck`, `pnpm -r build`, `pnpm -r test` and `pnpm lint` all still exit 0 — this task changes wiring, not behaviour
+- [ ] `git diff --stat master...HEAD` shows ONLY the three manifests, the lockfile, and this task's dossier — zero files under any `src/` or `test/`
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-010
+**Title:** OIK-020 — packages/policy: role constraints (rate limits, domains) ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-020; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.4 (role_grants.constraints shape); docs/decisions/ADR-003-tier-resolution-direction.md
+**Owned_Paths:** packages/policy/src/**, packages/policy/test/**
+**Depends_On:** —
+**Description:** Extend the TASK-007 resolver with role constraint evaluation: `rate_per_hour` and `domains` from `role_grants.constraints` (shape per Handover §4.4 — the inbox-triage seed TASK-006 wrote uses `{rate_per_hour: 40, domains: ["*"]}`). Still **pure functions, zero I/O** — the caller supplies current usage counts and the target domain as plain data; TASK-005's lint rule enforces this mechanically and will fail the build if you import fs/net/pg or read process.env. Each constraint must be independently enforceable and independently tested (WBS acceptance says "each independently enforced and tested" — a single combined check does not satisfy it). **Read ADR-003 before you start:** it records that `role_grants.max_tier` is a CEILING while the resolver's override parameter is a FLOOR, and that passing one as the other type-checks, runs, and fails OPEN. Do not repeat that shape with constraints — if a constraint's semantics are ambiguous in the spec, block with SPEC_AMBIGUITY rather than guessing. The 100%-branch coverage gate TASK-007 wired is live and will fail this package's build if you add an uncovered branch.
+**Acceptance_Criteria:**
+- [ ] Rate-limit constraint enforced and tested independently of the domain constraint (WBS OIK-020 "Rate limit and domain constraint each independently enforced and tested")
+- [ ] Domain constraint enforced and tested independently, including the `["*"]` wildcard the inbox-triage seed uses and at least one non-matching domain that denies
+- [ ] Denial reasons are distinguishable per constraint, so audit can record which constraint denied (Directive §4 evidence requirement)
+- [ ] Zero I/O: `pnpm lint` green under the OIK-006 policy-purity rule (CLAUDE.md)
+- [ ] 100% branch coverage still reported by the existing gate on an ordinary `pnpm --filter @oikonomos/policy test` run (TASK-007 AC, must not regress)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-011
+**Title:** OIK-025 — packages/audit: append-only writer
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4, §5; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-025; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (audit_events); docs/decisions/ADR-001-broker-enforcement-point.md R3
+**Owned_Paths:** packages/audit/src/**, packages/audit/test/**, packages/audit/vitest.config.ts
+**Depends_On:** TASK-009
+**Description:** The append-only audit writer over the `audit_events` table TASK-002 created. Not a protected path, which is why it is assignable to S5. Two properties carry the weight: **every decision is written, including denials** — a denial that is not audited is indistinguishable from an action that never happened — and **a write failure fails the action closed** (ADR-001 R3), so the caller must be able to tell "audited" from "not audited" and refuse to proceed on the latter. Never swallow a write error. TASK-002 already enforces append-only in the database via `DO INSTEAD NOTHING` rules; your job is the writer side, and your tests should prove the property holds end-to-end from this package rather than re-testing the SQL in isolation. Integration tests run against the local compose Postgres (`infra/compose/docker-compose.local.yml`, apply `infra/postgres/migrations/001_schema_v1.up.sql`); follow TASK-006's pattern of skipping cleanly when `DATABASE_URL` is unset so the suite stays green on a machine with no database. **N4 is absolute here:** no credentials in fixtures, and audit payloads are exactly the place a careless test fixture leaks one.
+**Acceptance_Criteria:**
+- [ ] Every decision is written including denials — test asserts a denial produces a row, not just an allow (WBS OIK-025 "Every decision written incl. denials")
+- [ ] A write failure fails the action closed: the writer surfaces the failure to its caller rather than returning success or swallowing it (WBS OIK-025 "write failure fails the action closed"; ADR-001 R3)
+- [ ] UPDATE and DELETE against a written event are provable no-ops when exercised through this package (WBS OIK-013 property, verified from the writer side)
+- [ ] Integration tests pass against the compose Postgres and skip cleanly with no `DATABASE_URL` (TASK-006 precedent)
+- [ ] No credential-like values in any fixture; `node infra/ci/secret-scan.mjs` exits 0 (N4)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-012
+**Title:** OIK-026 — packages/audit: redaction middleware (N4)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-026; docs/architecture/OIKONOMOS_Gap_Closure_Plan_v0.2.md §2
+**Owned_Paths:** packages/audit/src/**, packages/audit/test/**, packages/audit/vitest.config.ts
+**Depends_On:** TASK-011
+**Description:** Backlog. Redaction middleware that strips secret patterns from audit payloads **before** they are written (WBS: "Secret patterns stripped pre-write"). Deliberately shares TASK-011's territory and is sequenced behind it by `Depends_On` — the two are never concurrent, which is the protocol §4 remedy for same-territory work rather than a violation of it. Build the fixture corpus from the pattern families `hooks/secret-scan.js` already detects (API keys, private key blocks, AWS access key IDs) so the two layers agree on what a secret looks like, but write your own fixtures with obvious placeholder markers — do not copy the pack's realistic-looking ones, which exist precisely because that file is exempted from the scanner.
+**Acceptance_Criteria:**
+- [ ] Secret patterns are stripped pre-write, verified by asserting on the row actually persisted, not on the middleware's return value (WBS OIK-026)
+- [ ] Unit-tested against a fixture corpus covering at least API key, private key block, and AWS access key ID families (WBS OIK-026 "unit-tested against fixture corpus")
+- [ ] Redaction is not bypassable by nesting — a secret inside a nested object or array in the payload is still stripped
+- [ ] Every fixture uses obvious placeholder text; `node infra/ci/secret-scan.mjs` exits 0 on the branch (N4)
+- [ ] TASK-011's writer tests still pass unchanged
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-013
+**Title:** OIK-021 — packages/approvals: issue + bind ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-021; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (approvals)
+**Owned_Paths:** packages/approvals/src/**, packages/approvals/test/**, packages/approvals/vitest.config.ts
+**Depends_On:** TASK-009
+**Description:** Backlog (**GB or CX only, never S5** — protected path, directive §3). Approval issuance and binding per Handover §4.3: an approval row carries the action digest, the human-readable render, the destination, a nonce, and an expiry, and it is **persisted before the agent is told to wait** (WBS OIK-021) — otherwise a crash between "tell the agent to wait" and "write the row" strands a run against an approval that does not exist. The digest comes from `packages/shared`'s canonical JSON + sha256 (TASK-003) — N10 means you import that implementation, never reimplement it, and a second implementation is an automatic rework.
+**Acceptance_Criteria:**
+- [ ] An issued approval row carries digest, render, destination, nonce, and expiry (WBS OIK-021)
+- [ ] The row is persisted before the caller is told to wait — test proves ordering, e.g. by asserting the row exists at the moment the wait signal is returned (WBS OIK-021 "persisted before the agent is told to wait")
+- [ ] `action_digest` is produced by `@oikonomos/shared`, with zero local reimplementation of canonical JSON or sha256 (N10, Handover §4.3)
+- [ ] Nonces are unguessable (CSPRNG, not Math.random or a counter) and unique under concurrent issuance
+- [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-014
+**Title:** OIK-022 — packages/approvals: verify + atomic consume (N8) ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4, §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-022; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/decisions/ADR-001-broker-enforcement-point.md CAN-06
+**Owned_Paths:** packages/approvals/src/**, packages/approvals/test/**, packages/approvals/vitest.config.ts
+**Depends_On:** TASK-013
+**Description:** Backlog (**GB or CX only, never S5**). The single most security-critical function in the platform so far. Consumption is **one atomic SQL statement** — the exact form is pinned in Handover §4.3 (`UPDATE approvals SET status='consumed', consumed_at=now() WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL`) — and the action runs **only if the row count is 1**. Any read-then-write shape, any transaction that checks and then updates, any application-level lock is a defect regardless of whether the test suite catches it: the invariant is that two concurrent consumers of the same nonce produce exactly one success at the *database* level. The concurrency test must be genuinely concurrent (parallel connections racing the same nonce), not sequential calls that merely look like a race. Sequenced behind TASK-013 in the same territory.
+**Acceptance_Criteria:**
+- [ ] Concurrent consume attempts on one nonce yield exactly one success — proven by a DB-level test with genuinely parallel connections (WBS OIK-022 "Concurrent consume attempts ⇒ exactly one success (DB-level test)")
+- [ ] Consumption is one atomic statement whose row count gates the action; row count 1 or the action does not run (N8, Handover §4.3)
+- [ ] Expiry is honoured — an expired but still `granted` approval cannot be consumed (WBS OIK-022 "expiry honoured")
+- [ ] Replay of a consumed nonce is denied and leaves `status='consumed'` unchanged (ADR-001 CAN-06)
+- [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-015
+**Title:** OIK-023 + OIK-024 — approvals: invalidation on payload mutation, expiry sweeper ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-023, OIK-024; docs/decisions/ADR-001-broker-enforcement-point.md CAN-07
+**Owned_Paths:** packages/approvals/src/**, packages/approvals/test/**, packages/approvals/vitest.config.ts
+**Depends_On:** TASK-014
+**Description:** Backlog (**GB or CX only, never S5**). Two closely-related finishers, kept in one task because they share the same territory and neither is a full session alone. (1) OIK-023: if the action payload changes after approval was granted, the recomputed digest no longer matches, the approval transitions to `invalidated`, and a new approval is required (ADR-001 CAN-07 — this is the defence against "approve a harmless action, then swap the payload"). (2) OIK-024: an idempotent sweeper moving expired `pending` approvals to `expired`. Idempotent means running it twice changes nothing the second time, and running it concurrently with itself does not double-transition.
+**Acceptance_Criteria:**
+- [ ] Digest mismatch after grant ⇒ status becomes `invalidated` and a new approval is required (WBS OIK-023; ADR-001 CAN-07)
+- [ ] An invalidated approval cannot subsequently be consumed, even with a valid nonce
+- [ ] Expired `pending` approvals transition to `expired`; the sweeper is idempotent across repeated and concurrent runs (WBS OIK-024)
+- [ ] TASK-013 and TASK-014 tests still pass unchanged
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-016
+**Title:** OIK-027 — packages/broker: PreToolUse endpoint handler ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-027; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1, §4.2; docs/decisions/ADR-001-broker-enforcement-point.md; docs/decisions/ADR-003-tier-resolution-direction.md
+**Owned_Paths:** packages/broker/src/**, packages/broker/test/**, packages/broker/vitest.config.ts
+**Depends_On:** TASK-009, TASK-011, TASK-014
+**Description:** Backlog (**GB or CX only, never S5**). The decision handler behind `POST /v1/broker/pretooluse`, implemented as a library function here — the HTTP surface is OIK-084 in E9, so do not add a web framework. The request and the three response shapes are pinned verbatim in Handover §4.1 and the contract must match exactly, field for field. Composition: resolve the tier via `@oikonomos/policy`, verify/consume via `@oikonomos/approvals`, write the decision via `@oikonomos/audit` — every request audited, **allow or deny**. **ADR-003 is mandatory reading and is the known trap:** `role_grants.max_tier` is a ceiling, the resolver's override parameter is a floor, and wiring the column straight through fails OPEN — a role capped at T1 against a T3 capability would resolve to T3. Convert explicitly at the boundary and carry a negative test where the ceiling sits *below* the capability default. An unregistered `toolName` denies and audits as `capability.unregistered` (Handover §4.2).
+**Acceptance_Criteria:**
+- [ ] All three response shapes implemented exactly per Handover §4.1 (allow; deny; deny with `reason: "approval_pending"` + approvalId), field names and types matching the contract verbatim
+- [ ] Every request produces an audit event, denials included (ADR-001 L1)
+- [ ] Unregistered `toolName` ⇒ deny, audited as `capability.unregistered` (Handover §4.2, fail closed)
+- [ ] ADR-003 negative test present: a role grant whose ceiling is BELOW the capability default still denies — proving `max_tier` was not fed through as a floor (ADR-003 §3)
+- [ ] Approval nonce path delegates to `@oikonomos/approvals`; no local reimplementation of consume (N8, N10)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-017
+**Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-028, OIK-029, OIK-030; docs/decisions/ADR-001-broker-enforcement-point.md R2, R3, CAN-04, CAN-08
+**Owned_Paths:** packages/broker/src/**, packages/broker/test/**, packages/broker/vitest.config.ts
+**Depends_On:** TASK-016
+**Description:** Backlog (**GB or CX only, never S5**). The three properties that make the broker trustworthy under failure, sequenced behind TASK-016 in the same territory. (1) OIK-028 idempotency per `toolUseId`: L1 and L3 hitting the broker for the same call produce **one** audit event and one decision (ADR-001 R2, CAN-08) — the decision must be replayed, not recomputed, or a policy change mid-call could yield two different answers for one tool use. (2) OIK-029 fail-closed: timeout >10s, HTTP 500, and a malformed body each deny **and** audit (ADR-001 R3, CAN-04) — an unreachable broker that fails open is the whole threat model realised. (3) OIK-030 kill switch: `capabilities.enabled=false` denies immediately with no restart required, so the switch must be read per request rather than cached at startup.
+**Acceptance_Criteria:**
+- [ ] Same `toolUseId` via both L1 and L3 ⇒ exactly one audit event and one decision, with the second call replaying the first (WBS OIK-028; ADR-001 R2, CAN-08)
+- [ ] Timeout >10s, 500, and malformed body each ⇒ deny plus an audit event, tested independently (WBS OIK-029; ADR-001 R3, CAN-04)
+- [ ] `capabilities.enabled=false` denies immediately, verified without restarting the process (WBS OIK-030 "no restart required")
+- [ ] TASK-016's contract tests still pass unchanged
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-018
+**Title:** OIK-003 — CODEOWNERS + protected-path CI enforcement ⚑ protected
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §3 (protected paths); CLAUDE.md
+**Owned_Paths:** .github/CODEOWNERS, .github/workflows/**, infra/ci/**
+**Depends_On:** —
+**Description:** Backlog (**GB or CX only, never S5** — infra/ci is protected). The protected-path rule is currently enforced by convention and review only; this makes it mechanical. Add `.github/CODEOWNERS` covering the protected paths from CLAUDE.md and Handover §3 (`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, all settings and subagent configs), plus a CI check that fails a PR touching a protected path without the required review. The repo has no remote yet, so acceptance is demonstrated locally the same way TASK-004 handled it: the check must be runnable as a script and prove both the catch and the pass. Note the honest limit — CODEOWNERS itself only takes effect on a GitHub remote, so the local script is what actually enforces this until the remote exists; say so in the README rather than implying coverage you do not have.
+**Acceptance_Criteria:**
+- [ ] `.github/CODEOWNERS` covers every protected path listed in CLAUDE.md and Handover §3, with no path omitted
+- [ ] A local check script fails when a diff touches a protected path without the required approval marker, and passes when it does not (WBS OIK-003 "Protected-path PR without review is blocked by CI", adapted to no-remote per TASK-004 precedent)
+- [ ] Self-test proves both directions — the catch and the clean pass — as separate assertions
+- [ ] README states plainly that CODEOWNERS is inert until a GitHub remote exists and the local script is the operative control until then
+- [ ] Existing infra/ci self-tests (banned-modes, secret-scan) stay green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
+
+### TASK-019
+**Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md §2 (OIK-042), §5 (R14, R16), §6; specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §2a
+**Owned_Paths:** infra/sandbox/**
+**Depends_On:** —
+**Description:** **HELD — DO NOT DISPATCH.** Alister instructed that no E5-dependent work is dispatched until he confirms the Addendum B reconciliation; this task is planned so the sequencing is visible, not so it is picked up. Lift the hold by changing this sentence and assigning a unit. When it does run: deploy `opensandbox-server` (Docker backend) on clawsrv, reachable only over Tailscale, with the `osb` CLI functional against it. **R14 applies — pin a specific release**, do not track latest; the project is young and its API surface moves. **R16 applies — Docker backend only**; the Kubernetes path is explicitly out of scope until a real multi-tenant or high-concurrency trigger exists. This is the only Addendum B ticket that is dependency-eligible today: OIK-043/044/045 need OIK-033 (harness-factory, E4), OIK-045a needs OIK-120 (secrets), OIK-045b needs OIK-020 (TASK-010). Deployment notes belong in `infra/sandbox/README.md`, NOT in `docs/runbooks/` — `docs/**` is blocked for builders by the territory firewall, so a runbook there would be rejected mid-session.
+**Acceptance_Criteria:**
+- [ ] `opensandbox-server` runs on clawsrv with the Docker backend (Addendum B §2 OIK-042)
+- [ ] Reachable only over Tailscale — verified by a refused connection from a non-Tailscale interface (Addendum B §2 OIK-042; Handover §8)
+- [ ] `osb` CLI is functional against the deployed server
+- [ ] A specific release is pinned in config, with the version recorded and the SDK-drift watch (OIK-010) noted as needing extension to OpenSandbox release notes (R14)
+- [ ] `infra/sandbox/README.md` documents the deployment and states explicitly that the Kubernetes backend is out of scope until a real trigger exists (R16)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T09:45:00Z
