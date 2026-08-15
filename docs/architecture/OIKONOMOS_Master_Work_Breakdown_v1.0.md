@@ -158,7 +158,9 @@ E1 ──┬── E2 ──┬── E3 ──┬── E4 ──┬── E6 �
 | OIK-040 | Subagent policy enforcement (CAN-05) | M | OIK-039 | Subagent Tier-3 attempt denied; audit attributes the subagent |
 | OIK-041 | Fable adversarial review — harness-factory + hooks | M | OIK-039 | Findings closed; reviewer model ≠ author model |
 
-### E5 — Agent isolation
+### E5 — Agent isolation ⛔ SUPERSEDED IN FULL by `docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md` §2 (OpenSandbox, 2026-08-15)
+
+> **Do not schedule from this table.** Every row below is void: isolation is now ADOPT-OpenSandbox, not build-your-own-Docker. OIK-046 is **retired**, not deferred. The replacement tickets (OIK-042…045 rewritten, plus new OIK-045a/b/c) live in Addendum B §2. The rows are retained only so the superseded definitions remain auditable.
 
 | ID | Title | Size | Depends on | Acceptance |
 |---|---|---|---|---|
@@ -322,6 +324,16 @@ Adversarial ("Fable") review by a **different model than the author** — Codex 
 | R6 | Solo-developer self-review blind spot | Different-model adversarial review mandated on protected paths | OIK-031, OIK-041, OIK-104, OIK-126 |
 | R7 | AGPL components constrain future commercial distribution | License scan + flagged inventory; decision deferred, not ignored | OIK-008 |
 | R8 | pg-boss outgrows workflow complexity | Temporal adoption gate reviewed at OIK-113 | OIK-105 |
+| R9 | JIT capability grants compound into effective privilege escalation | Ceiling cannot be exceeded by accumulation; negative test | OIK-133 |
+| R10 | Agent initiative consumes budget unattended | Initiative draws on the same ceilings; platform-wide kill switch | OIK-140, OIK-141 |
+| R11 | Agent-to-agent messaging amplifies prompt injection | Messages request, never authorize; containment test | OIK-149, OIK-154 |
+| R12 | Observation mode captures credentials or personal data | Auto-pause on credential fields; redaction; shorter retention | OIK-144, OIK-148 |
+| R13 | Orchestrator accrues union of subordinate privileges | Orchestrator ceiling is independent, not derived | OIK-151 |
+| R14 | OpenSandbox is a young, fast-moving project — API or config surface may shift | Pin a specific release; extend the monthly SDK-drift watch (OIK-010) to cover OpenSandbox release notes, not just the Agent SDK | OIK-042 |
+| R15 | Sandbox-layer egress/credential controls create a false sense of complete coverage if the application-layer checks are dropped | OIK-045b and OIK-077 are **both** required — defence in depth is explicit in acceptance criteria, not optional | OIK-045b, OIK-077 |
+| R16 | Kubernetes backend (fleet-scale path) is materially more operational surface than Docker | Do not adopt the Kubernetes backend until a real multi-tenant or high-concurrency trigger exists — the Docker backend is sufficient at current scale | OIK-042 |
+
+> **Changelog:** v1.0+ (2026-08-15, ORCH) — R9–R13 folded in from Addendum A §4, R14–R16 from Addendum B §5, so this table is the single tracked register rather than three tables in three documents. Ticket definitions themselves are unchanged here; E5's rows in §5 above are **superseded in full by Addendum B §2** (and OIK-046 is retired) — read that document, not §5 E5, when scheduling isolation work.
 
 ---
 
