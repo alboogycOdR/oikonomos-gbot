@@ -11,6 +11,7 @@ import { actionDigest } from "@oikonomos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { issueApproval } from "../src/issue.js";
+import { actionRender } from "../src/render.js";
 import { createDatabaseStore } from "../src/store.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -85,7 +86,6 @@ integration("issueApproval against compose Postgres", () => {
       toolName: "mcp__gmail__create_draft",
       input: { to: "review@example.test", subject: "placeholder subject" },
       destination: "review@example.test",
-      actionRender: "create draft to review@example.test",
     };
 
     const signal = await issueApproval(request, { store });
@@ -94,7 +94,13 @@ integration("issueApproval against compose Postgres", () => {
     const row = await getApprovalByNonce(options, signal.nonce);
     expect(row).not.toBeNull();
     expect(row!.approvalId).toBe(signal.approvalId);
-    expect(row!.actionRender).toBe(request.actionRender);
+    expect(row!.actionRender).toBe(
+      actionRender({
+        toolName: request.toolName,
+        input: request.input,
+        destination: request.destination,
+      }),
+    );
     expect(row!.destination).toBe(request.destination);
     expect(row!.nonce).toBe(signal.nonce);
     expect(row!.expiresAt).toEqual(signal.expiresAt);
@@ -117,7 +123,6 @@ integration("issueApproval against compose Postgres", () => {
         toolName: "mcp__gmail__create_draft",
         input: { to: "ops@example.test" },
         destination: "ops@example.test",
-        actionRender: "create draft to ops@example.test",
       },
       { database: options },
     );
@@ -138,7 +143,6 @@ integration("issueApproval against compose Postgres", () => {
             toolName: "mcp__gmail__create_draft",
             input: { to: `n${index}@example.test` },
             destination: `n${index}@example.test`,
-            actionRender: `create draft to n${index}@example.test`,
           },
           { store },
         ),

@@ -8,7 +8,7 @@ import {
   type ApprovalWaitSignal,
 } from "../src/issue.js";
 import type { ApprovalStore } from "../src/store.js";
-import { createMemoryStore, fixtureRequest } from "./helpers.js";
+import { createMemoryStore, expectedRender, fixtureRequest } from "./helpers.js";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const UUID_RE =
@@ -26,14 +26,14 @@ describe("issueApproval — binding + row contents", () => {
     expect(signal.status).toBe("pending");
     expect(signal.approvalId).toMatch(UUID_RE);
     expect(signal.nonce).toMatch(UUID_RE);
-    expect(signal.actionRender).toBe(request.actionRender);
+    expect(signal.actionRender).toBe(expectedRender(request));
     expect(signal.destination).toBe(request.destination);
     expect(signal.expiresAt).toEqual(expiresAt);
     expect(signal.actionDigest).toMatch(SHA256_HEX);
 
     const row = await memory.store.getByNonce(signal.nonce);
     expect(row).not.toBeNull();
-    expect(row!.actionRender).toBe(request.actionRender);
+    expect(row!.actionRender).toBe(expectedRender(request));
     expect(row!.destination).toBe(request.destination);
     expect(row!.nonce).toBe(signal.nonce);
     expect(row!.expiresAt).toEqual(expiresAt);
@@ -92,6 +92,8 @@ describe("issueApproval — persist before wait", () => {
       },
       getByNonce: (nonce) => backing.store.getByNonce(nonce),
       consume: (nonce) => backing.store.consume(nonce),
+      invalidate: (nonce) => backing.store.invalidate(nonce),
+      expirePending: () => backing.store.expirePending(),
     };
 
     const pending = issueApproval(fixtureRequest(), { store }).then((signal) => {
@@ -135,6 +137,8 @@ describe("issueApproval — persist before wait", () => {
       },
       getByNonce: async () => null,
       consume: async () => ({ rowCount: 0, approval: null }),
+      invalidate: async () => ({ rowCount: 0, approval: null }),
+      expirePending: async () => 0,
     };
 
     await expect(issueApproval(fixtureRequest(), { store })).rejects.toThrow("write failed");
@@ -151,9 +155,6 @@ describe("issueApproval — fail closed on invalid input", () => {
     );
     await expect(issueApproval(fixtureRequest({ destination: "" }), deps)).rejects.toThrow(
       /destination/,
-    );
-    await expect(issueApproval(fixtureRequest({ actionRender: "" }), deps)).rejects.toThrow(
-      /actionRender/,
     );
     await expect(issueApproval(fixtureRequest({ capabilityId: "" }), deps)).rejects.toThrow(
       /capabilityId/,

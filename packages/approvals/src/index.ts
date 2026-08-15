@@ -13,9 +13,17 @@ export {
   type IssueApprovalRequest,
 } from "./issue.js";
 export { generateNonce } from "./nonce.js";
+export { actionRender } from "./render.js";
+export {
+  sweepExpiredApprovals,
+  type SweepDependencies,
+  type SweepExpiredResult,
+} from "./sweep.js";
 export {
   createDatabaseStore,
+  EXPIRE_PENDING_SQL,
+  INVALIDATE_APPROVAL_SQL,
   type ApprovalStore,
-  type ConsumeApprovalFn,
   type ConsumeApprovalResult,
+  type ExpirePendingScope,
 } from "./store.js";

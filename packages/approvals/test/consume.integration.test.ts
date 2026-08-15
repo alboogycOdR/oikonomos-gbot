@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import {
+  CONSUME_APPROVAL_SQL,
+  consumeApproval,
   Database,
   getApprovalByNonce,
   insertApproval,
@@ -12,10 +14,6 @@ import {
 } from "@oikonomos/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  CONSUME_APPROVAL_SQL,
-  consumeApproval,
-} from "../../db/src/approvals.js";
 import { verifyAndConsume } from "../src/consume.js";
 import { createDatabaseStore } from "../src/store.js";
 

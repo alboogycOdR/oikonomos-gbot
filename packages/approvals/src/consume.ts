@@ -1,5 +1,7 @@
 import type { Approval, DatabaseOptions } from "@oikonomos/db";
+import type { ActionDigestInput } from "@oikonomos/shared";
 
+import { bindActionDigest } from "./bind.js";
 import { createDatabaseStore, type ApprovalStore, type ConsumeApprovalResult } from "./store.js";
 
 const UUID_RE =
@@ -42,14 +44,33 @@ function resolveStore(deps: ConsumeDependencies): ApprovalStore {
 
 /**
  * Verify a nonce by consuming it in one atomic statement (N8).
- * `consumed: true` is the only signal that the action may run.
+ * When `action` is supplied, the digest is recomputed first (OIK-023 /
+ * ADR-001 CAN-07); a mismatch invalidates a granted row and the action
+ * must not run. `consumed: true` is the only signal that the action may run.
+ *
+ * `action` is optional so TASK-014 call sites keep working; the execute
+ * path must pass the payload being run.
  */
 export async function verifyAndConsume(
   nonce: string,
   deps: ConsumeDependencies,
+  action?: ActionDigestInput,
 ): Promise<VerifyAndConsumeResult> {
   const normalizedNonce = requireUuid(nonce, "nonce");
-  const result: ConsumeApprovalResult = await resolveStore(deps).consume(normalizedNonce);
+  const store = resolveStore(deps);
+
+  if (action !== undefined) {
+    const expectedHex = bindActionDigest(action);
+    const existing = await store.getByNonce(normalizedNonce);
+    if (existing !== null && existing.actionDigest.toString("hex") !== expectedHex) {
+      if (existing.status === "granted") {
+        await store.invalidate(normalizedNonce);
+      }
+      return { consumed: false, rowCount: 0 };
+    }
+  }
+
+  const result: ConsumeApprovalResult = await store.consume(normalizedNonce);
 
   if (result.rowCount === 1 && result.approval !== null) {
     if (result.approval.status !== "consumed") {
