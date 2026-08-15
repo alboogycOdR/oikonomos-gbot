@@ -5,6 +5,7 @@ export default defineConfig({
     includeSource: ["src/**/*.ts"],
     passWithNoTests: false,
     coverage: {
+      enabled: true,
       provider: "v8",
       reporter: ["text"],
       thresholds: {
