@@ -535,7 +535,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -552,13 +552,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing `run-local.mjs` jobs and the infra/ci self-tests stay green; the protected-path gate still fails this branch without a marker
 **Branch:** task/TASK-021-cx
 **Started_At:** 2026-08-15T16:23:28Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-15T16:39:18Z] [SV:CX] Implemented and committed ADR-005 controls-live gate; all six liveness checks pass after a real ATLAS scan.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OTHER: baseline master exports consumeApproval while persistence-surface.test.ts asserts it is absent; repairing packages/db is outside TASK-021 ownership.
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T16:23:28Z
+**Updated_At:** 2026-08-15T16:39:18Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
