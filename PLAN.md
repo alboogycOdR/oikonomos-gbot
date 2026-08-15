@@ -347,8 +347,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-013
 **Title:** OIK-021 — packages/approvals: issue + bind ⚑ protected
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-021; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (approvals)
 **Owned_Paths:** packages/approvals/src/**, packages/approvals/test/**, packages/approvals/vitest.config.ts
@@ -360,15 +360,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `action_digest` is produced by `@oikonomos/shared`, with zero local reimplementation of canonical JSON or sha256 (N10, Handover §4.3)
 - [ ] Nonces are unguessable (CSPRNG, not Math.random or a counter) and unique under concurrent issuance
 - [ ] Integration tests pass against the compose Postgres; skip cleanly without `DATABASE_URL`
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-013-cx
+**Started_At:** 2026-08-15T11:24:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T11:24:28Z
 
 ### TASK-014
 **Title:** OIK-022 — packages/approvals: verify + atomic consume (N8) ⚑ protected
