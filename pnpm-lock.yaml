@@ -37,6 +37,13 @@ importers:
         version: 3.2.7(@types/node@22.20.1)
 
   packages/approvals:
+    dependencies:
+      '@oikonomos/db':
+        specifier: workspace:*
+        version: link:../db
+      '@oikonomos/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.17.0
@@ -49,6 +56,13 @@ importers:
         version: 3.2.7(@types/node@22.20.1)
 
   packages/audit:
+    dependencies:
+      '@oikonomos/db':
+        specifier: workspace:*
+        version: link:../db
+      '@oikonomos/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.17.0
@@ -61,6 +75,19 @@ importers:
         version: 3.2.7(@types/node@22.20.1)
 
   packages/broker:
+    dependencies:
+      '@oikonomos/approvals':
+        specifier: workspace:*
+        version: link:../approvals
+      '@oikonomos/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@oikonomos/policy':
+        specifier: workspace:*
+        version: link:../policy
+      '@oikonomos/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.17.0
