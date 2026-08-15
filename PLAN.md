@@ -534,7 +534,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-021
 **Title:** OIK-003 follow-on — control liveness gate (ADR-005) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-003
@@ -549,15 +549,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] **ADDED 2026-08-15T16:20Z (ORCH) - sixth check, found during TASK-015 review and a textbook instance of the class this task exists for.** Assert that no workspace package's compiled `dist/` is STALE relative to its `src/`. Why: `@oikonomos/db`'s `exports` map resolves to `./dist/index.js` and `dist/` is gitignored, so cross-package tests execute build output rather than source. Demonstrated consequence - a mutation to `packages/db/src/approvals.ts` went entirely UNDETECTED by the approvals suite until a rebuild, and moving `packages/db/dist` aside makes 10 of 13 approvals test files fail to load. A suite that appears to guard `src` while executing `dist` is exactly the configured-but-inert shape of ADR-005. Key the assertion on evidence, per ADR-005 section 2: compare newest source mtime against build-output mtime per package, or verify the build is current, and FAIL when a package's dist is older than its src. Report it in judgeable terms (which package, how far behind), not a bare timestamp.
 - [ ] `infra/ci/README.md` documents the job, and states plainly that liveness checks are themselves controls that can rot
 - [ ] Existing `run-local.mjs` jobs and the infra/ci self-tests stay green; the protected-path gate still fails this branch without a marker
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-021-cx
+**Started_At:** 2026-08-15T16:23:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T15:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T16:23:28Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
