@@ -328,7 +328,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-012
 **Title:** OIK-026 — packages/audit: redaction middleware (N4)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-026; docs/architecture/OIKONOMOS_Gap_Closure_Plan_v0.2.md §2
@@ -342,15 +342,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Redaction is not bypassable by nesting — a secret inside a nested object or array in the payload is still stripped
 - [ ] Every fixture uses obvious placeholder text; `node infra/ci/secret-scan.mjs` exits 0 on the branch (N4)
 - [ ] TASK-011's writer tests still pass unchanged
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-012-s5
+**Started_At:** 2026-08-15T14:31:33Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-15T14:31:33Z
 
 ### TASK-013
 **Title:** OIK-021 — packages/approvals: issue + bind ⚑ protected
