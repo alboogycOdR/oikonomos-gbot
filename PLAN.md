@@ -564,7 +564,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-022
 **Title:** Repair the obsolete packages/db persistence-surface guard (master is RED)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1 (approvals); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.3; docs/decisions/ADR-005-control-liveness.md
@@ -579,13 +579,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No change outside `packages/db/test/**` — in particular do not "fix" this by editing `packages/db/src/**`
 **Branch:** task/TASK-022-cx
 **Started_At:** 2026-08-15T16:46:38Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-15T17:03:25Z] [SV:CX] Repaired the obsolete approvals persistence-surface guard and pinned the intended N8 export surface.
+**Artifacts:** packages/db/test/persistence-surface.test.ts, dossiers/TASK-022.md
+**Test_Evidence:** pnpm --filter @oikonomos/db test -- persistence-surface.test.ts: 3/3 passed; pnpm --filter @oikonomos/db typecheck: passed; pnpm lint -- packages/db/test/persistence-surface.test.ts: passed; pnpm -r test: exited 0 across all workspace packages.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-15T16:46:38Z
+**Updated_At:** 2026-08-15T17:03:25Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
