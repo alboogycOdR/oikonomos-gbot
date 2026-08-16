@@ -1,9 +1,8 @@
 import {
   issueApproval,
   verifyAndConsume,
-  type ApprovalWaitSignal,
-  type IssueApprovalRequest,
-  type VerifyAndConsumeResult,
+  type ConsumeDependencies,
+  type IssueApprovalDependencies,
 } from "@oikonomos/approvals";
 import { type DecisionAuditEvent } from "@oikonomos/audit";
 import {
@@ -51,11 +50,11 @@ export interface BrokerDependencies {
   getCapability(toolName: string): Promise<RegisteredCapability | null>;
   getRoleGrant(roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null>;
   destinationFor(request: PreToolUseRequest): string;
-  issueApproval(request: IssueApprovalRequest): Promise<ApprovalWaitSignal>;
-  verifyAndConsume(
-    nonce: string,
-    action: { toolName: string; input: JsonValue; destination: string },
-  ): Promise<VerifyAndConsumeResult>;
+  /** Real @oikonomos/approvals ports; do not substitute a locally-shaped API. */
+  issueApproval: typeof issueApproval;
+  verifyAndConsume: typeof verifyAndConsume;
+  issueApprovalDependencies: IssueApprovalDependencies;
+  consumeDependencies: ConsumeDependencies;
   recordDecision(event: DecisionAuditEvent): Promise<{ eventId: string }>;
 }
 
@@ -133,8 +132,17 @@ export async function handlePreToolUse(
   }
 
   const roleGrant = await dependencies.getRoleGrant(request.roleId, capability.capabilityId);
+  if (roleGrant === null) {
+    return deny(
+      dependencies,
+      request,
+      "role.grant_missing",
+      capability.capabilityId,
+      capability.defaultTier,
+    );
+  }
   // ADR-003: max_tier is a ceiling, not policy's floor-shaped override.
-  if (roleGrant !== null && exceedsCeiling(capability.defaultTier, roleGrant.maxTier)) {
+  if (exceedsCeiling(capability.defaultTier, roleGrant.maxTier)) {
     return deny(
       dependencies,
       request,
@@ -153,6 +161,9 @@ export async function handlePreToolUse(
   }
 
   const { tier } = resolution;
+  if (tier === "T4_irreversible") {
+    return deny(dependencies, request, "tier.irreversible", capability.capabilityId, tier);
+  }
   if (tierRank(tier) < tierRank(APPROVAL_TIER)) {
     return {
       decision: "allow",
@@ -168,7 +179,11 @@ export async function handlePreToolUse(
   const destination = dependencies.destinationFor(request);
   const action = actionFor(request, destination);
   if (request.approvalNonce !== undefined) {
-    const consumed = await dependencies.verifyAndConsume(request.approvalNonce, action);
+    const consumed = await dependencies.verifyAndConsume(
+      request.approvalNonce,
+      dependencies.consumeDependencies,
+      action,
+    );
     if (consumed.consumed) {
       return {
         decision: "allow",
@@ -184,14 +199,17 @@ export async function handlePreToolUse(
   }
 
   // ADR-004: only canonical payload fields are supplied; approvals derives render itself.
-  const pending = await dependencies.issueApproval({
-    runId: request.runId,
-    capabilityId: capability.capabilityId,
-    toolName: action.toolName,
-    input: action.input,
-    destination: action.destination,
-    tenantId: request.tenantId,
-  });
+  const pending = await dependencies.issueApproval(
+    {
+      runId: request.runId,
+      capabilityId: capability.capabilityId,
+      toolName: action.toolName,
+      input: action.input,
+      destination: action.destination,
+      tenantId: request.tenantId,
+    },
+    dependencies.issueApprovalDependencies,
+  );
   return {
     decision: "deny",
     reason: "approval_pending",

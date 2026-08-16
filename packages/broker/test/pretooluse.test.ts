@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  approvalOperations,
   handlePreToolUse,
   type BrokerDependencies,
   type PreToolUseRequest,
   type RegisteredCapability,
 } from "../src/index.js";
+import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
 
 const request: PreToolUseRequest = {
   toolUseId: "tool-use-1",
@@ -33,6 +35,8 @@ function dependencies(overrides: Partial<BrokerDependencies> = {}): BrokerDepend
     getCapability: vi.fn(async () => capability()),
     getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external" })),
     destinationFor: vi.fn(() => "review@example.test"),
+    issueApprovalDependencies: {} as BrokerDependencies["issueApprovalDependencies"],
+    consumeDependencies: {} as BrokerDependencies["consumeDependencies"],
     issueApproval: vi.fn(async () => ({
       reason: "approval_pending",
       approvalId: randomUUID(),
@@ -92,15 +96,23 @@ describe("handlePreToolUse — Handover §4.1", () => {
 
     const response = await handlePreToolUse(tierThreeRequest, deps);
 
-    expect(response).toMatchObject({ decision: "deny", reason: "approval_pending", auditEventId: "42" });
-    expect(deps.issueApproval).toHaveBeenCalledWith({
-      runId: request.runId,
-      capabilityId: "email.send",
-      toolName: "mcp__gmail__send_message",
-      input: request.input,
-      destination: "review@example.test",
-      tenantId: "basileia",
+    expect(response).toMatchObject({
+      decision: "deny",
+      reason: "approval_pending",
+      approvalId: expect.any(String),
+      auditEventId: "42",
     });
+    expect(deps.issueApproval).toHaveBeenCalledWith(
+      {
+        runId: request.runId,
+        capabilityId: "email.send",
+        toolName: "mcp__gmail__send_message",
+        input: request.input,
+        destination: "review@example.test",
+        tenantId: "basileia",
+      },
+      deps.issueApprovalDependencies,
+    );
     expect(deps.issueApproval).not.toHaveBeenCalledWith(expect.objectContaining({ actionRender: expect.anything() }));
     expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "require_approval" }));
   });
@@ -121,6 +133,11 @@ describe("handlePreToolUse — Handover §4.1", () => {
       auditEventId: "42",
     });
     expect(deps.verifyAndConsume).toHaveBeenCalledOnce();
+    expect(deps.verifyAndConsume).toHaveBeenCalledWith(
+      expect.any(String),
+      deps.consumeDependencies,
+      expect.objectContaining({ toolName: request.toolName }),
+    );
   });
 
   it("denies and audits a rejected approval nonce", async () => {
@@ -146,5 +163,36 @@ describe("handlePreToolUse — Handover §4.1", () => {
       auditEventId: "42",
     });
     expect(deps.issueApproval).not.toHaveBeenCalled();
+  });
+
+  it("denies and audits a capability with no matching role grant", async () => {
+    const deps = dependencies({ getRoleGrant: vi.fn(async () => null) });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "role.grant_missing",
+      auditEventId: "42",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "deny" }));
+  });
+
+  it("denies and audits irreversible T4 actions even with a granted nonce", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => capability({ defaultTier: "T4_irreversible" })),
+      getRoleGrant: vi.fn(async () => ({ maxTier: "T4_irreversible" })),
+      verifyAndConsume: vi.fn(async () => ({ consumed: true, rowCount: 1, approval: {} as never })),
+    });
+
+    await expect(handlePreToolUse({ ...request, approvalNonce: randomUUID() }, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "tier.irreversible",
+      auditEventId: "42",
+    });
+    expect(deps.verifyAndConsume).not.toHaveBeenCalled();
+  });
+
+  it("binds the concrete approval ports to the genuine exports", () => {
+    expect(approvalOperations.issueApproval).toBe(issueApproval);
+    expect(approvalOperations.verifyAndConsume).toBe(verifyAndConsume);
   });
 });
