@@ -489,7 +489,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-017
 **Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-028, OIK-029, OIK-030; docs/decisions/ADR-001-broker-enforcement-point.md R2, R3, CAN-04, CAN-08
@@ -503,15 +503,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] **ADDED 2026-08-16T11:20Z (ORCH), carried from the TASK-016 re-review — an internal dependency throw is the same failure class as OIK-029's transport failures, one layer in.** An exception raised by `getCapability`, `getRoleGrant`, `verifyAndConsume` or `recordDecision` must produce a DENY and an audit event, not an unhandled rejection. Today the handler simply propagates and NO audit event is written, so a database blip is currently the one failure mode that leaves no trace — test each dependency throwing independently. Note the ordering problem you will hit and must solve deliberately: if `recordDecision` itself is what failed, the deny cannot be audited by the same path, so state and test what happens then (ADR-001 R3 fail-closed still governs — deny regardless).
 - [ ] **ADDED 2026-08-16T11:20Z (ORCH), carried from the TASK-016 re-review — N10 currently has no behavioural proof.** TASK-016 correctly delegates consume and its ports now alias the real signatures, but every runtime assertion is against a `vi.fn()`; the only contact with the genuine `verifyAndConsume` is an identity check. Add a test that drives a PAYLOAD-MUTATED approval through the REAL consume and asserts it is rejected — i.e. issue an approval, alter the action payload so the canonical digest no longer matches, and prove `consumed:false`. This is the assertion that actually demonstrates digest binding works end to end rather than that the wiring type-checks. If it genuinely requires DATABASE_URL, gate it the way `packages/approvals` already gates its integration tests rather than dropping it.
 - [ ] TASK-016's contract tests still pass unchanged — all nine, including the ADR-003 ceiling test and the T4-with-valid-nonce deny
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-017-cx
+**Started_At:** 2026-08-16T10:44:39Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T10:44:39Z
 
 ### TASK-018
 **Title:** OIK-003 — CODEOWNERS + protected-path CI enforcement ⚑ protected
