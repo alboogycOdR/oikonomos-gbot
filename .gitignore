@@ -20,3 +20,4 @@ dist/
 coverage/
 *.tsbuildinfo
 .env
+STOP
