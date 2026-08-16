@@ -126,7 +126,19 @@ Minimum valid create body (the API rejects each omission in turn — image must 
 
 ## 7. Known gaps — read before relying on this
 
-1. **Sandbox ports publish on `0.0.0.0`, not the Tailscale address.** The *server* is Tailscale-bound; individual sandbox port publishes are not. From an external network path port 30359 **timed out** (packets dropped upstream) rather than connecting, so it is not currently reachable — but that protection comes from a firewall this deployment does not own and **could not be inspected** (`clawusr` has no passwordless sudo, so `ufw`/`iptables` state is unverified). If that upstream filtering is ever relaxed, sandbox ports become publicly exposed. Treat as an open item: confirm the host firewall posture, and investigate whether OpenSandbox can bind sandbox publishes to a specific interface.
+1. **Sandbox ports publish on `0.0.0.0`, and ufw does not protect them.** The *server* is Tailscale-bound; individual sandbox port publishes are not, and **OpenSandbox provides no option to change this** — `config.py:831`'s `host_ip` is used only for URL rewriting, and there is no bind-address setting for sandbox publishes. Config cannot fix it.
+
+   The host firewall looks reassuring and is misleading here. `ufw` reports `Status: active`, `Default: deny (incoming)`, `-P INPUT DROP`, with only 22/80/443 open publicly and everything else confined to `tailscale0`. **None of that filters Docker published ports.** A packet to a published port is DNAT'd in `nat/PREROUTING` and traverses the **FORWARD** chain through Docker's own rules — it never reaches `INPUT`, so the ufw ruleset is bypassed entirely. This is the well-known Docker/ufw interaction, and it means "ufw is default-deny" is *not* evidence that ports 30000–30999 are closed.
+
+   Empirically they are closed: port 30359 **timed out** from an external path rather than connecting. But that protection is therefore coming from somewhere other than ufw — most likely an upstream provider firewall (the host's addresses are Hetzner). That layer is outside this host, invisible to `ufw status`, and changeable from a web console by someone who will not know it is load-bearing for sandbox isolation.
+
+   **Recommended fix — filter in `DOCKER-USER`, the one chain Docker traffic does traverse:**
+   ```bash
+   PUBIF=$(ip route show default | awk '{print $5; exit}')
+   sudo iptables -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
+   sudo ip6tables -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
+   ```
+   This is defence in depth, not a fix for a currently-open hole. **It does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit) — and ufw will not manage it, because ufw does not own this chain.
 2. **`Secure runtime is not configured`** appears at startup — no gVisor/Kata/Firecracker. Sandboxes use the default runc isolation. That is acceptable for OIK-042 but is exactly what OIK-045c (isolation strength per capability tier) exists to fix; Tier-3/4 execution must not rely on this deployment as-is.
 3. **No liveness assertion yet.** Per CLAUDE.md every mechanical control ships a check that fails when the control is *inert*. There is currently nothing that fails if this server stops, loses its Tailscale-only binding, or silently reverts to `network_mode = "host"`. The third is the dangerous one — it would still serve traffic and pass any naive health check while isolation was gone. Uptime-kuma is already on this host and is the obvious place to start, but a health check alone does not satisfy the rule.
 4. **The API key is single, static and host-local.** No rotation procedure exists. Rotation = regenerate per §3 step 4, then `docker restart opensandbox-server`; every client must be updated in the same window.
