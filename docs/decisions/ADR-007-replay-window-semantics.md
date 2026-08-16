@@ -30,6 +30,19 @@ Nothing bounds the second by the first. L1 can answer in 50 ms and L3 can fire l
 3. **A recompute is not a safety hole, and that is why this narrowing is acceptable.** The recomputed decision re-runs *every* check — kill switch, role grant, ceiling, tier, T4, nonce. It cannot yield an authorisation the first decision would have denied on current policy. The exposure of a recompute is a **duplicate audit entry and a possibly-different verdict**, never a bypass. Indeed, where policy changed in the interval, the *newer* verdict is the more correct one.
 4. **The window is a stated constant with a derivation, not a tuned number.** It is expressed in terms of the L1→L3 interval it bounds. Changing it is an amendment to this ADR, not an edit to a constant.
 
+### 2.4a Derivation of the window (added 2026-08-16)
+
+The first implementation set 10 s citing the broker response deadline (rejected, §1), then 60 s citing nothing. Renaming a constant is not deriving it, so the derivation is fixed here rather than left to implementation — it is an architectural question, and `docs/` is outside builder territory, so a builder could not settle it even having spotted the gap.
+
+**The window is 60 seconds.** The basis, stated so it can be argued with:
+
+- **What it must cover.** L1 and L3 gate the *same* tool invocation, both before execution. The interval between them is harness-internal — the time for the PreToolUse hook's verdict to be processed and `canUseTool` to fire. Observed behaviour puts this well under a second; it is not a model-turn or a tool-execution window.
+- **Why not tighter.** A window near the observed interval would make correctness depend on harness scheduling jitter, and every overshoot silently converts a replay into a recompute — the R2 narrowing in §2.2. 60 s is roughly two orders of magnitude of headroom over the observed handoff, so ordinary jitter, GC pauses and a loaded host cannot cross it.
+- **Why not looser.** The window is also the interval during which a *stale* decision is served after policy has changed. A revoked role grant or a flipped kill switch takes effect for an already-seen `toolUseId` only once the entry expires. 60 s is short enough that "deny immediately, no restart required" (OIK-030) remains substantially true, and it bounds the memory held by in-flight and recently-settled entries.
+- **It is an assumption, and it is falsifiable.** No instrumented measurement of the real L1→L3 distribution exists yet, because nothing emits it. **When OIK-084 lands the HTTP adapter, it must record the observed L1→L3 interval**, and this constant is to be re-derived from that distribution — at which point this clause is replaced by measurement rather than reasoning. Recording that obligation here is the difference between a stated assumption and a number nobody can defend.
+
+Implementations cite **this section**. They must not cite non-negotiable #3.
+
 **Why not the alternative.** The tempting fix — keep the key and return a deterministic `deny` after expiry, so one `toolUseId` never yields two different allows — is **not implementable within a bounded cache**: once an entry is evicted there is no way to distinguish "expired" from "never seen", so the deny would have to apply to every unseen `toolUseId`, i.e. deny everything. Retaining keys to tell them apart re-creates the unbounded growth the bound exists to prevent. Rejected as unimplementable, not as undesirable.
 
 ## 3. Scope of the replay key
