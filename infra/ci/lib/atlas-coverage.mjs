@@ -39,11 +39,13 @@ export const ATLAS_TEXT_EXTENSIONS = new Set([
  *
  * The window is therefore 4: the largest lag ever observed. A workspace
  * package is 4–25 indexable files (`packages/agent-providers` is 4;
- * `packages/policy` is 6). Tolerance 4 absorbs every recorded scan lag
- * and still fails a 5+-file package disappearing from the index — the
- * self-test deletes `packages/policy` (6 files) from a fixture and
- * requires a non-zero result. An empty, missing, or unreadable index
- * still fails closed regardless of this number.
+ * `packages/policy` is 6). Tolerance 4 absorbs every recorded scan lag.
+ * It cannot also catch a 4-file package disappearing: at a zero baseline
+ * that dropout sits on the pass side of `missing <= 4`. Do not tighten
+ * this number — TASK-026 adds a separate structural assertion that no
+ * complete workspace package is absent from the index, independent of
+ * the count. An empty, missing, or unreadable index still fails closed
+ * regardless of this number.
  */
 export const ATLAS_COVERAGE_TOLERANCE = 4;
 
@@ -171,6 +173,80 @@ export function loadIgnorePatterns(mainRoot) {
   return patterns;
 }
 
+/**
+ * Workspace package globs come from pnpm-workspace.yaml, not a hardcoded
+ * list. A new `packages/*` or `services/*` directory is covered as soon
+ * as it has indexable tracked files.
+ */
+export function parsePnpmWorkspacePackageGlobs(text) {
+  const globs = [];
+  let inPackages = false;
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '');
+    if (/^\s*$/.test(line)) continue;
+    if (/^packages\s*:/.test(line)) {
+      inPackages = true;
+      continue;
+    }
+    if (inPackages) {
+      if (/^\S/.test(line)) {
+        inPackages = false;
+        continue;
+      }
+      const match = line.match(/^\s*-\s+["']?([^"']+?)["']?\s*$/);
+      if (match) globs.push(slash(match[1]));
+    }
+  }
+  return globs;
+}
+
+export function loadWorkspacePackageGlobs(mainRoot) {
+  const workspace = join(mainRoot, 'pnpm-workspace.yaml');
+  if (!existsSync(workspace)) return [];
+  return parsePnpmWorkspacePackageGlobs(readFileSync(workspace, 'utf8'));
+}
+
+/**
+ * Map a tracked path onto its workspace package directory, or null if
+ * the path is outside every workspace glob (docs/, infra/, …).
+ */
+export function workspacePackageOf(rel, globs) {
+  const path = slash(rel);
+  for (const raw of globs ?? []) {
+    const glob = slash(raw).replace(/\/+$/, '');
+    if (!glob) continue;
+    if (glob.endsWith('/*')) {
+      const prefix = `${glob.slice(0, -1)}`;
+      if (!path.startsWith(prefix)) continue;
+      const name = path.slice(prefix.length).split('/')[0];
+      if (name) return `${prefix}${name}`;
+    } else if (path === glob || path.startsWith(`${glob}/`)) {
+      return glob;
+    }
+  }
+  return null;
+}
+
+export function droppedWorkspacePackages(indexable, missing, globs) {
+  if (!Array.isArray(globs) || globs.length === 0) return [];
+  const missingSet = new Set((missing ?? []).map(slash));
+  const byPackage = new Map();
+  for (const file of indexable ?? []) {
+    const name = workspacePackageOf(file, globs);
+    if (!name) continue;
+    const files = byPackage.get(name) ?? [];
+    files.push(slash(file));
+    byPackage.set(name, files);
+  }
+  const dropped = [];
+  for (const [name, files] of byPackage) {
+    if (files.length > 0 && files.every((file) => missingSet.has(file))) {
+      dropped.push({ name, files });
+    }
+  }
+  return dropped;
+}
+
 export function indexableTrackedFiles(tracked, patterns) {
   const files = [];
   for (const rel of tracked) {
@@ -232,6 +308,8 @@ function fail(error, extras = {}) {
     indexable: extras.indexable ?? [],
     missing: extras.missing ?? [],
     tolerance: extras.tolerance ?? ATLAS_COVERAGE_TOLERANCE,
+    workspaceGlobs: extras.workspaceGlobs ?? [],
+    droppedPackages: extras.droppedPackages ?? [],
   };
 }
 
@@ -274,6 +352,8 @@ export function collectAtlasCoverageEvidence(root, options = {}) {
   const indexable = indexableTrackedFiles(tracked, patterns);
   const present = new Set(indexed.map(slash));
   const missing = indexable.filter((path) => !present.has(path));
+  const workspaceGlobs = options.workspaceGlobs ?? loadWorkspacePackageGlobs(mainRoot);
+  const droppedPackages = droppedWorkspacePackages(indexable, missing, workspaceGlobs);
 
   return {
     error: null,
@@ -283,7 +363,19 @@ export function collectAtlasCoverageEvidence(root, options = {}) {
     indexable,
     missing,
     tolerance,
+    workspaceGlobs,
+    droppedPackages,
   };
+}
+
+function lagMessage(evidence, missing, tolerance) {
+  const indexedCount = Array.isArray(evidence.indexed) ? evidence.indexed.length : 0;
+  const expectedCount = Array.isArray(evidence.indexable) ? evidence.indexable.length : missing.length;
+  return (
+    `ATLAS index missing ${missing.length} tracked indexable file(s) ` +
+    `(${indexedCount} indexed / ${expectedCount} expected, tolerance ${tolerance}): ` +
+    `${missing.join(', ')}`
+  );
 }
 
 export function checkAtlasCoverage(evidence) {
@@ -293,12 +385,25 @@ export function checkAtlasCoverage(evidence) {
   if (evidence.error) return evidence.error;
   const missing = evidence.missing ?? [];
   const tolerance = Number.isInteger(evidence.tolerance) ? evidence.tolerance : ATLAS_COVERAGE_TOLERANCE;
+  const globs = evidence.workspaceGlobs ?? [];
+  const dropped = Array.isArray(evidence.droppedPackages)
+    ? evidence.droppedPackages
+    : droppedWorkspacePackages(evidence.indexable, missing, globs);
+
+  if (dropped.length > 0) {
+    const named = dropped.map((pkg) => (
+      `whole workspace package ${pkg.name} (${pkg.files.length} file(s): ${pkg.files.join(', ')})`
+    )).join('; ');
+    const dropout = (
+      `ATLAS index missing ${named}. ` +
+      `This is a package dropout, not scan lag.`
+    );
+    if (missing.length > tolerance) {
+      return `${dropout} Also ${lagMessage(evidence, missing, tolerance)}`;
+    }
+    return dropout;
+  }
+
   if (missing.length <= tolerance) return null;
-  const indexedCount = Array.isArray(evidence.indexed) ? evidence.indexed.length : 0;
-  const expectedCount = Array.isArray(evidence.indexable) ? evidence.indexable.length : missing.length;
-  return (
-    `ATLAS index missing ${missing.length} tracked indexable file(s) ` +
-    `(${indexedCount} indexed / ${expectedCount} expected, tolerance ${tolerance}): ` +
-    `${missing.join(', ')}`
-  );
+  return lagMessage(evidence, missing, tolerance);
 }

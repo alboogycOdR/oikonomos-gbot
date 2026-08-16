@@ -20,6 +20,8 @@ import {
   PYTHON_CANDIDATES,
   checkAtlasCoverage,
   collectAtlasCoverageEvidence,
+  loadWorkspacePackageGlobs,
+  parsePnpmWorkspacePackageGlobs,
   resolvePythonInterpreter,
 } from './lib/atlas-coverage.mjs';
 
@@ -213,6 +215,13 @@ const POLICY_PACKAGE_FILES = [
   'packages/policy/vitest.config.ts',
 ];
 
+const AGENT_PROVIDERS_PACKAGE_FILES = [
+  'packages/agent-providers/package.json',
+  'packages/agent-providers/src/index.ts',
+  'packages/agent-providers/tsconfig.json',
+  'packages/agent-providers/vitest.config.ts',
+];
+
 function writeFixtureAtlas(dbPath, paths) {
   const python = resolvePythonInterpreter();
   assert.ok(python, `fixture setup needs one of ${PYTHON_CANDIDATES.join(', ')}`);
@@ -248,13 +257,15 @@ test('ATLAS coverage absorbs a miss inside the stated lag-window tolerance', () 
     tolerance: ATLAS_COVERAGE_TOLERANCE,
   }), null, 'spec-time diagnosis of 4 missing files must still pass');
   const fiveMissing = [...fourMissing, 'packages/shared/test/lag-4.ts'];
-  assert.match(checkAtlasCoverage({
+  const fiveError = checkAtlasCoverage({
     error: null,
     indexed: ['docs/a.md'],
     indexable: ['docs/a.md', ...fiveMissing],
     missing: fiveMissing,
     tolerance: ATLAS_COVERAGE_TOLERANCE,
-  }), /missing 5 tracked indexable file/);
+  });
+  assert.match(fiveError, /missing 5 tracked indexable file/);
+  assert.doesNotMatch(fiveError, /whole workspace package|package dropout/);
 });
 
 test('ATLAS coverage collector reads the main checkout index, not this worktree', () => {
@@ -262,6 +273,10 @@ test('ATLAS coverage collector reads the main checkout index, not this worktree'
   const expected = join(mainCheckoutRoot(), '.devteam', 'atlas.db');
   assert.equal(evidence.dbPath, expected);
   assert.equal(evidence.mainRoot, mainCheckoutRoot());
+  assert.deepEqual(evidence.workspaceGlobs, loadWorkspacePackageGlobs(mainCheckoutRoot()));
+  assert.ok(evidence.workspaceGlobs.includes('packages/*'), 'workspace globs come from pnpm-workspace.yaml');
+  assert.ok(evidence.workspaceGlobs.includes('services/*'), 'workspace globs come from pnpm-workspace.yaml');
+  assert.deepEqual(evidence.droppedPackages, []);
   assert.equal(checkAtlasCoverage(evidence), null, JSON.stringify(evidence.missing));
 });
 
@@ -283,14 +298,125 @@ test('ATLAS coverage fails when a whole workspace package drops out of the index
       dbPath,
       trackedFiles: [...kept, ...POLICY_PACKAGE_FILES],
       ignorePatterns: ['.git/', '.devteam/'],
+      workspaceGlobs: ['packages/*'],
     });
     const error = checkAtlasCoverage(evidence);
     assert.ok(error, 'dropping packages/policy from the index must fail coverage');
+    assert.match(error, /whole workspace package packages\/policy/);
+    assert.match(error, /package dropout, not scan lag/);
     assert.match(error, new RegExp(`missing ${POLICY_PACKAGE_FILES.length} tracked indexable file`));
     for (const path of POLICY_PACKAGE_FILES) {
       assert.match(error, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
     assert.equal(livenessExitCode(runLivenessChecks(root, { ...baseline(), atlas: evidence })), 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ATLAS coverage fails a 4-file package dropout at zero baseline inside the lag window', () => {
+  assert.equal(
+    AGENT_PROVIDERS_PACKAGE_FILES.length,
+    ATLAS_COVERAGE_TOLERANCE,
+    'this is the residual: package size equals the lag window',
+  );
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-zero-baseline-drop-'));
+  try {
+    const kept = [
+      'docs/decisions/ADR-005-control-liveness.md',
+      'packages/shared/src/index.ts',
+    ];
+    const dbPath = join(root, 'atlas.db');
+    writeFixtureAtlas(dbPath, kept);
+    const evidence = collectAtlasCoverageEvidence(root, {
+      mainRoot: root,
+      dbPath,
+      trackedFiles: [...kept, ...AGENT_PROVIDERS_PACKAGE_FILES],
+      ignorePatterns: ['.git/', '.devteam/'],
+      workspaceGlobs: ['packages/*'],
+    });
+    assert.equal(evidence.missing.length, AGENT_PROVIDERS_PACKAGE_FILES.length);
+    assert.equal(evidence.missing.length, evidence.tolerance);
+    assert.equal(
+      checkAtlasCoverage({ ...evidence, droppedPackages: [], workspaceGlobs: [] }),
+      null,
+      'numeric lag check alone still passes when missing equals the tolerance',
+    );
+    const error = checkAtlasCoverage(evidence);
+    assert.ok(error, 'packages/agent-providers must fail structurally at zero baseline');
+    assert.match(error, /whole workspace package packages\/agent-providers/);
+    assert.match(error, /package dropout, not scan lag/);
+    assert.doesNotMatch(error, /missing 4 tracked indexable file/);
+    for (const path of AGENT_PROVIDERS_PACKAGE_FILES) {
+      assert.match(error, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    assert.equal(livenessExitCode(runLivenessChecks(root, { ...baseline(), atlas: evidence })), 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ATLAS coverage discovers packages from the workspace file, not a hardcoded list', () => {
+  const parsed = parsePnpmWorkspacePackageGlobs('packages:\n  - "packages/*"\n  - "services/*"\nonlyBuiltDependencies:\n  - esbuild\n');
+  assert.deepEqual(parsed, ['packages/*', 'services/*']);
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-new-pkg-'));
+  try {
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n  - "services/*"\n');
+    const kept = ['docs/a.md', 'packages/shared/src/index.ts'];
+    const newbie = [
+      'packages/brand-new/package.json',
+      'packages/brand-new/src/index.ts',
+      'packages/brand-new/tsconfig.json',
+    ];
+    const dbPath = join(root, 'atlas.db');
+    writeFixtureAtlas(dbPath, kept);
+    const evidence = collectAtlasCoverageEvidence(root, {
+      mainRoot: root,
+      dbPath,
+      trackedFiles: [...kept, ...newbie],
+      ignorePatterns: ['.git/', '.devteam/'],
+    });
+    assert.deepEqual(evidence.workspaceGlobs, ['packages/*', 'services/*']);
+    assert.equal(evidence.missing.length, newbie.length);
+    assert.ok(evidence.missing.length <= ATLAS_COVERAGE_TOLERANCE);
+    const error = checkAtlasCoverage(evidence);
+    assert.ok(error, 'a new workspace package must be covered without a hardcoded name');
+    assert.match(error, /whole workspace package packages\/brand-new/);
+    assert.match(error, /package dropout, not scan lag/);
+    for (const path of newbie) {
+      assert.match(error, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ATLAS coverage still treats four misses inside a larger package as lag', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-lag-not-drop-'));
+  try {
+    const shared = [
+      'packages/shared/package.json',
+      'packages/shared/src/index.ts',
+      'packages/shared/src/canonicalJson.ts',
+      'packages/shared/src/actionDigest.ts',
+      'packages/shared/test/prng.ts',
+      'packages/shared/tsconfig.json',
+      'packages/shared/vitest.config.ts',
+    ];
+    const lag = shared.slice(0, 4);
+    const indexed = ['docs/a.md', ...shared.slice(4)];
+    const dbPath = join(root, 'atlas.db');
+    writeFixtureAtlas(dbPath, indexed);
+    const evidence = collectAtlasCoverageEvidence(root, {
+      mainRoot: root,
+      dbPath,
+      trackedFiles: ['docs/a.md', ...shared],
+      ignorePatterns: ['.git/', '.devteam/'],
+      workspaceGlobs: ['packages/*'],
+    });
+    assert.deepEqual(evidence.missing, lag);
+    assert.deepEqual(evidence.droppedPackages, []);
+    assert.equal(checkAtlasCoverage(evidence), null);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
