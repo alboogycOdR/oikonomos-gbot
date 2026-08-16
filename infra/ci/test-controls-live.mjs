@@ -95,25 +95,37 @@ test('hook collector observes a real territory rejection through Git', () => {
   assert.equal(checkHookEvidence(result), null);
 });
 
-test('hook collector detects an installed inert exit-zero hook', () => {
+test('hook collector detects an inert exit-zero hook through an isolated hooks path', () => {
   const hookPath = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-path', 'hooks/pre-commit'], {
     cwd: process.cwd(),
     encoding: 'utf8',
     shell: process.platform === 'win32',
   });
   assert.equal(hookPath.status, 0);
-  const path = hookPath.stdout.trim();
-  const original = readFileSync(path);
+  const hooksPath = mkdtempSync(join(tmpdir(), 'oikonomos-controls-live-hooks-'));
+  const fixtureHook = join(hooksPath, 'pre-commit');
   try {
-    writeFileSync(path, '#!/bin/sh\nexit 0\n');
-    chmodSync(path, 0o755);
-    const result = collectHookRejectionEvidence(mainCheckoutRoot());
+    writeFileSync(fixtureHook, readFileSync(hookPath.stdout.trim()));
+    chmodSync(fixtureHook, 0o755);
+    const live = collectHookRejectionEvidence(mainCheckoutRoot(), { hooksPath });
+    assert.match(live.output, /\[territory-precommit\] COMMIT REJECTED/i);
+    writeFileSync(fixtureHook, '#!/bin/sh\nexit 0\n');
+    chmodSync(fixtureHook, 0o755);
+    const result = collectHookRejectionEvidence(mainCheckoutRoot(), { hooksPath });
     assert.equal(result.status, 0, 'exact inert hook must allow the staged fixture');
     assert.match(checkHookEvidence(result), /allowed an out-of-territory staged commit/);
   } finally {
-    writeFileSync(path, original);
-    chmodSync(path, 0o755);
+    rmSync(hooksPath, { recursive: true, force: true });
   }
+});
+
+test('hook collector reports an unavailable builder worktree without blaming the hook', () => {
+  const result = collectHookRejectionEvidence(mainCheckoutRoot(), {
+    registry: { builders: { defined: { CX: { worktree_suffix: 'not-present' } } } },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.output, /UNOBSERVABLE territory pre-commit hook from .*no registered builder worktree/i);
+  assert.equal(checkHookEvidence(result), result.output.trim());
 });
 
 test('dist freshness catches output older than an existing source file', () => {

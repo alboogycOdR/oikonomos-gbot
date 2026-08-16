@@ -44,12 +44,14 @@ function mainCheckoutRoot(root) {
   return dirname(resolve(root, commonDir));
 }
 
-function registeredBuilderWorktrees(root, mainRoot) {
-  let registry;
-  try {
-    registry = JSON.parse(readFileSync(join(mainRoot, 'autopilot.json'), 'utf8'));
-  } catch (error) {
-    return { roots: [], error: `cannot read builder registry: ${error.message}` };
+function registeredBuilderWorktrees(root, mainRoot, suppliedRegistry) {
+  let registry = suppliedRegistry;
+  if (!registry) {
+    try {
+      registry = JSON.parse(readFileSync(join(mainRoot, 'autopilot.json'), 'utf8'));
+    } catch (error) {
+      return { roots: [], error: `cannot read builder registry: ${error.message}` };
+    }
   }
 
   const defined = registry?.builders?.defined;
@@ -79,13 +81,13 @@ function registeredBuilderWorktrees(root, mainRoot) {
  * A main-checkout commit is deliberately unrestricted (ORCH). Probe a registered
  * builder worktree instead, where ADR-002's hook must reject the staged fixture.
  */
-export function collectHookRejectionEvidence(root) {
+export function collectHookRejectionEvidence(root, options = {}) {
   const mainRoot = mainCheckoutRoot(root);
   if (!mainRoot) {
     return { status: 1, output: '[controls-live] UNOBSERVABLE territory pre-commit hook: cannot resolve the main checkout from this location.' };
   }
 
-  const builders = registeredBuilderWorktrees(root, mainRoot);
+  const builders = registeredBuilderWorktrees(root, mainRoot, options.registry);
   if (builders.roots.length === 0) {
     const reason = builders.error ?? 'no registered builder worktree is currently available';
     return {
@@ -95,12 +97,13 @@ export function collectHookRejectionEvidence(root) {
   }
 
   const probeRoot = builders.roots.includes(resolve(root)) ? resolve(root) : builders.roots[0];
-  const hookPathResult = command('git', ['rev-parse', '--git-path', 'hooks/pre-commit'], probeRoot);
-  if (hookPathResult.status !== 0 || !hookPathResult.output.trim()) {
-    return { status: 1, output: `${hookPathResult.output}\nUnable to locate installed pre-commit hook.` };
+  const hookPath = options.hooksPath ?? (() => {
+    const result = command('git', ['rev-parse', '--git-path', 'hooks/pre-commit'], probeRoot);
+    return result.status === 0 ? result.output.trim() : null;
+  })();
+  if (!hookPath || !existsSync(hookPath)) {
+    return { status: 1, output: 'Unable to locate installed pre-commit hook.' };
   }
-
-  const hookPath = hookPathResult.output.trim();
   const temp = mkdtempSync(join(tmpdir(), 'oikonomos-controls-live-'));
   const indexPath = join(temp, 'index');
   const env = { ...process.env, GIT_INDEX_FILE: indexPath };
@@ -109,14 +112,17 @@ export function collectHookRejectionEvidence(root) {
     if (readTree.status !== 0) return readTree;
     const stageOutOfTerritoryPath = command('git', ['update-index', '--force-remove', '--', 'AGENTS.md'], probeRoot, env);
     if (stageOutOfTerritoryPath.status !== 0) return stageOutOfTerritoryPath;
-    return command('git', ['hook', 'run', 'pre-commit'], probeRoot, env);
+    const gitArgs = options.hooksPath
+      ? ['-c', `core.hooksPath=${options.hooksPath}`, 'hook', 'run', 'pre-commit']
+      : ['hook', 'run', 'pre-commit'];
+    return command('git', gitArgs, probeRoot, env);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
 }
 
 export function checkHookEvidence(result) {
-  if (/\[controls-live\] UNOBSERVABLE territory pre-commit hook:/i.test(result.output)) {
+  if (/\[controls-live\] UNOBSERVABLE territory pre-commit hook\b/i.test(result.output)) {
     return result.output.trim();
   }
   if (result.status === 0) return 'installed territory pre-commit hook allowed an out-of-territory staged commit';
