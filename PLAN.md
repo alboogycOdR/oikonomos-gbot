@@ -450,7 +450,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-016
 **Title:** OIK-027 — packages/broker: PreToolUse endpoint handler ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-027; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1, §4.2; docs/decisions/ADR-001-broker-enforcement-point.md; docs/decisions/ADR-003-tier-resolution-direction.md
@@ -464,15 +464,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Unregistered `toolName` ⇒ deny, audited as `capability.unregistered` (Handover §4.2, fail closed)
 - [ ] ADR-003 negative test present: a role grant whose ceiling is BELOW the capability default still denies — proving `max_tier` was not fed through as a floor (ADR-003 §3)
 - [ ] Approval nonce path delegates to `@oikonomos/approvals`; no local reimplementation of consume (N8, N10)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-016-cx
+**Started_At:** 2026-08-16T09:36:49Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T09:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T09:36:49Z
 
 ### TASK-017
 **Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
