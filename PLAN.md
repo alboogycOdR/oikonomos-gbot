@@ -659,7 +659,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-024
 **Title:** ATLAS index liveness assertion (descoped from TASK-021) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5
@@ -677,12 +677,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-16T10:23:12Z
 **Progress_Notes:**
 - [2026-08-16T10:55:00Z] [ORCH] **REASSIGNED CX -> GB.** Not a judgement on CX, purely scheduling and context: CX is occupied on the TASK-016 broker rework, and GB has just shipped TASK-023 inside `infra/ci/**` — including additive work on `controls-live.mjs` itself, which is the exact file this task extends. GB therefore has the freshest working knowledge of the gate's structure and of how a new check is registered into the `result(...)` array without disturbing the existing five. Territory is disjoint from the concurrent TASK-016 (`packages/broker/**` vs `infra/ci/**`), so the pair is legal. GB: the task text below was written addressed to CX, but the diagnosis in it is the whole point of the task and applies unchanged — read it as written. TWO THINGS FROM YOUR OWN TASK-023 REVIEW THAT BEAR DIRECTLY ON THIS ONE: (1) you already demonstrated the correct pattern for a check whose subject cannot be observed in place — pair a config-derived assertion with a genuinely behavioural test in a throwaway fixture, which is precisely what an index-coverage check will need; (2) your `checkTestJobBuildOrder` fails CLOSED on unreadable input via the `??` chain, and this check must do the same for an unreadable or absent main-checkout index. Do not weaken the other six checks (five original plus your build-order check); ADR-005 §2 evidence rules apply as always.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T10:33:44Z] [SV:GB] ATLAS liveness now asserts main-checkout index coverage via git-common-dir (tolerance 8, fail-closed if the db is missing/unreadable). Live check passes from this worktree; fixture index missing named files fails with those paths listed.
+**Artifacts:** infra/ci/lib/atlas-coverage.mjs, infra/ci/lib/read-atlas-paths.py, infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, infra/ci/README.md, dossiers/TASK-024.md
+**Test_Evidence:** node infra/ci/test-controls-live.mjs: 13/13 pass. Other infra/ci self-tests: banned-modes 8/8, secret-scan 11/11, protected-path-review 8/8, test-job-order 9/9. node infra/ci/controls-live.mjs from this worktree: 7/7 PASS including ATLAS index coverage. node infra/ci/run-local.mjs --approval-marker fable-reviewed: all runnable jobs green (typecheck, build, pnpm -r test, lint, CI self-tests, controls-live, protected-path-review).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T10:23:12Z
+**Updated_At:** 2026-08-16T10:33:44Z
 
 ### TASK-025
 **Title:** controls-live hook check is unobservable from the main checkout (master run-local is RED) ⚑ protected
