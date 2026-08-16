@@ -652,8 +652,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-024
 **Title:** ATLAS index liveness assertion (descoped from TASK-021) ⚑ protected
-**Status:** pending
-**Assigned_To:** CX
+**Status:** claimed
+**Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5
 **Owned_Paths:** infra/ci/**
@@ -666,15 +666,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] It is proven able to FAIL (ADR-005 §2): induce the inert state — point it at an index missing tracked files — and show a non-zero result
 - [ ] Failure output names what is missing in judgeable terms (which files, how many), not a bare count or timestamp (ADR-005 §5)
 - [ ] The other five controls-live checks and all infra/ci self-tests stay green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-024-gb
+**Started_At:** 2026-08-16T10:23:12Z
+**Progress_Notes:**
+- [2026-08-16T10:55:00Z] [ORCH] **REASSIGNED CX -> GB.** Not a judgement on CX, purely scheduling and context: CX is occupied on the TASK-016 broker rework, and GB has just shipped TASK-023 inside `infra/ci/**` — including additive work on `controls-live.mjs` itself, which is the exact file this task extends. GB therefore has the freshest working knowledge of the gate's structure and of how a new check is registered into the `result(...)` array without disturbing the existing five. Territory is disjoint from the concurrent TASK-016 (`packages/broker/**` vs `infra/ci/**`), so the pair is legal. GB: the task text below was written addressed to CX, but the diagnosis in it is the whole point of the task and applies unchanged — read it as written. TWO THINGS FROM YOUR OWN TASK-023 REVIEW THAT BEAR DIRECTLY ON THIS ONE: (1) you already demonstrated the correct pattern for a check whose subject cannot be observed in place — pair a config-derived assertion with a genuinely behavioural test in a throwaway fixture, which is precisely what an index-coverage check will need; (2) your `checkTestJobBuildOrder` fails CLOSED on unreadable input via the `??` chain, and this check must do the same for an unreadable or absent main-checkout index. Do not weaken the other six checks (five original plus your build-order check); ADR-005 §2 evidence rules apply as always.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T19:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T10:23:12Z
 
 ### TASK-025
 **Title:** controls-live hook check is unobservable from the main checkout (master run-local is RED) ⚑ protected
