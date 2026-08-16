@@ -62,7 +62,9 @@ export interface BrokerDependencies {
 
 const APPROVAL_TIER: RiskTier = "T3_external";
 const AUDIT_UNAVAILABLE_EVENT_ID = "unavailable";
-const REPLAY_CACHE_TTL_MS = 10_000;
+// ADR-007: this bounds the L1 PreToolUse-to-L3 canUseTool handoff, not the
+// independent 10-second broker response deadline from ADR-001 R3.
+const L1_TO_L3_REPLAY_WINDOW_MS = 60_000;
 const REPLAY_CACHE_MAX_ENTRIES = 1_024;
 
 /**
@@ -87,14 +89,15 @@ class AuditUnavailableError extends Error {
 }
 
 interface ReplayEntry {
-  readonly response: Promise<PreToolUseResponse>;
+  response: Promise<PreToolUseResponse>;
   readonly expiresAt: number;
+  settled: boolean;
 }
 
 /**
  * One replay cache per dependency composition; WeakMap avoids retaining a
- * service on teardown. Entries are tenant- and role-scoped, expire with the
- * hook timeout window, and use LRU eviction to bound long-lived processes.
+ * service on teardown. Entries are tenant- and role-scoped, expire after the
+ * ADR-007 L1-to-L3 replay window, and use safe LRU eviction.
  */
 const replayCaches = new WeakMap<BrokerDependencies, Map<string, ReplayEntry>>();
 
@@ -216,7 +219,9 @@ export async function handlePreToolUse(
   const key = replayKey(request);
   const replay = cache.get(key);
   if (replay !== undefined) {
-    if (replay.expiresAt > Date.now()) {
+    // An in-flight decision is always replayed, even if the nominal handoff
+    // window passes: evicting it would split one tool use into two decisions.
+    if (!replay.settled || replay.expiresAt > Date.now()) {
       // Refresh insertion order so the Map acts as an LRU cache.
       cache.delete(key);
       cache.set(key, replay);
@@ -226,13 +231,24 @@ export async function handlePreToolUse(
   }
 
   const decision = decidePreToolUse(request, dependencies);
-  while (cache.size >= REPLAY_CACHE_MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey === undefined) break;
-    cache.delete(oldestKey);
+  const entry: ReplayEntry = {
+    response: decision,
+    expiresAt: Date.now() + L1_TO_L3_REPLAY_WINDOW_MS,
+    settled: false,
+  };
+  entry.response = decision.finally(() => {
+    entry.settled = true;
+  });
+
+  // Never evict an in-flight request: that would make a repeated toolUseId
+  // recompute concurrently. A burst of >1,024 simultaneous requests may
+  // temporarily exceed the settled-entry cap, then contracts safely.
+  for (const [oldestKey, oldestEntry] of cache) {
+    if (cache.size < REPLAY_CACHE_MAX_ENTRIES) break;
+    if (oldestEntry.settled) cache.delete(oldestKey);
   }
-  cache.set(key, { response: decision, expiresAt: Date.now() + REPLAY_CACHE_TTL_MS });
-  return decision;
+  cache.set(key, entry);
+  return entry.response;
 }
 
 async function decidePreToolUse(

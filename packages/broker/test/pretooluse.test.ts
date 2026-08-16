@@ -69,7 +69,7 @@ describe("handlePreToolUse — Handover §4.1", () => {
     expect(deps.recordDecision).toHaveBeenCalledOnce();
   });
 
-  it("does not replay an allowed decision across roles or tenants", async () => {
+  it("does not replay an allowed decision across roles", async () => {
     const deps = dependencies({
       getRoleGrant: vi.fn(async (roleId) => roleId === request.roleId ? { maxTier: "T3_external" } : null),
     });
@@ -78,7 +78,6 @@ describe("handlePreToolUse — Handover §4.1", () => {
     await expect(handlePreToolUse({
       ...request,
       roleId: "attacker-role",
-      tenantId: "other-tenant",
     }, deps)).resolves.toEqual({
       decision: "deny",
       reason: "role.grant_missing",
@@ -89,7 +88,17 @@ describe("handlePreToolUse — Handover §4.1", () => {
     expect(deps.recordDecision).toHaveBeenCalledTimes(2);
   });
 
-  it("stops replaying a decision after the hook timeout window", async () => {
+  it("does not replay an allowed decision across tenants", async () => {
+    const deps = dependencies();
+
+    await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+    await expect(handlePreToolUse({ ...request, tenantId: "other-tenant" }, deps)).resolves.toMatchObject({ decision: "allow" });
+
+    expect(deps.getRoleGrant).toHaveBeenCalledTimes(2);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+  });
+
+  it("recomputes after the ADR-007 L1-to-L3 replay window expires", async () => {
     vi.useFakeTimers();
     try {
       const enabled = vi.fn(() => true);
@@ -97,7 +106,7 @@ describe("handlePreToolUse — Handover §4.1", () => {
 
       await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
       enabled.mockReturnValue(false);
-      vi.advanceTimersByTime(10_001);
+      vi.advanceTimersByTime(60_001);
 
       await expect(handlePreToolUse(request, deps)).resolves.toEqual({
         decision: "deny",
@@ -108,6 +117,44 @@ describe("handlePreToolUse — Handover §4.1", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("evicts the least-recently-used settled decision when the replay cache reaches its cap", async () => {
+    const deps = dependencies();
+
+    for (let index = 0; index < 1_025; index += 1) {
+      await handlePreToolUse({ ...request, toolUseId: `replay-${index}` }, deps);
+    }
+    await handlePreToolUse({ ...request, toolUseId: "replay-0" }, deps);
+
+    expect(deps.getCapability).toHaveBeenCalledTimes(1_026);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(1_026);
+  });
+
+  it("does not evict an in-flight decision while making room for settled entries", async () => {
+    let resolveVictim: ((value: RegisteredCapability) => void) | undefined;
+    const victimCapability = new Promise<RegisteredCapability>((resolve) => {
+      resolveVictim = resolve;
+    });
+    const getCapability = vi.fn(async (toolName: string) => (
+      toolName === "in-flight-victim" ? victimCapability : capability({ toolName })
+    ));
+    const deps = dependencies({ getCapability });
+    const victim = { ...request, toolUseId: "in-flight-victim", toolName: "in-flight-victim" };
+
+    const first = handlePreToolUse(victim, deps);
+    await Promise.resolve();
+    expect(getCapability).toHaveBeenCalledOnce();
+    for (let index = 0; index < 1_024; index += 1) {
+      await handlePreToolUse({ ...request, toolUseId: `settled-${index}`, toolName: `settled-tool-${index}` }, deps);
+    }
+    const second = handlePreToolUse(victim, deps);
+
+    expect(getCapability).toHaveBeenCalledTimes(1_025);
+    resolveVictim?.(capability());
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+    expect(secondResponse).toEqual(firstResponse);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(1_025);
   });
 
   it("reads the capability kill switch for every new tool use without a restart", async () => {
