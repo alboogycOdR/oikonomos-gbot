@@ -62,8 +62,8 @@ export interface BrokerDependencies {
 
 const APPROVAL_TIER: RiskTier = "T3_external";
 const AUDIT_UNAVAILABLE_EVENT_ID = "unavailable";
-// ADR-007: this bounds the L1 PreToolUse-to-L3 canUseTool handoff, not the
-// independent 10-second broker response deadline from ADR-001 R3.
+// ADR-007 §2.4a: this bounds the L1 PreToolUse-to-L3 canUseTool handoff, not
+// the independent 10-second broker response deadline from ADR-001 R3.
 const L1_TO_L3_REPLAY_WINDOW_MS = 60_000;
 const REPLAY_CACHE_MAX_ENTRIES = 1_024;
 

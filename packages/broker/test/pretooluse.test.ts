@@ -131,30 +131,36 @@ describe("handlePreToolUse — Handover §4.1", () => {
     expect(deps.recordDecision).toHaveBeenCalledTimes(1_026);
   });
 
-  it("does not evict an in-flight decision while making room for settled entries", async () => {
-    let resolveVictim: ((value: RegisteredCapability) => void) | undefined;
-    const victimCapability = new Promise<RegisteredCapability>((resolve) => {
-      resolveVictim = resolve;
-    });
-    const getCapability = vi.fn(async (toolName: string) => (
-      toolName === "in-flight-victim" ? victimCapability : capability({ toolName })
-    ));
-    const deps = dependencies({ getCapability });
-    const victim = { ...request, toolUseId: "in-flight-victim", toolName: "in-flight-victim" };
+  it("replays an in-flight decision even after the nominal replay window expires", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveVictim: ((value: RegisteredCapability) => void) | undefined;
+      const victimCapability = new Promise<RegisteredCapability>((resolve) => {
+        resolveVictim = resolve;
+      });
+      const getCapability = vi.fn(async (toolName: string) => (
+        toolName === "in-flight-victim" ? victimCapability : capability({ toolName })
+      ));
+      const deps = dependencies({ getCapability });
+      const victim = { ...request, toolUseId: "in-flight-victim", toolName: "in-flight-victim" };
 
-    const first = handlePreToolUse(victim, deps);
-    await Promise.resolve();
-    expect(getCapability).toHaveBeenCalledOnce();
-    for (let index = 0; index < 1_024; index += 1) {
-      await handlePreToolUse({ ...request, toolUseId: `settled-${index}`, toolName: `settled-tool-${index}` }, deps);
+      const first = handlePreToolUse(victim, deps);
+      await Promise.resolve();
+      expect(getCapability).toHaveBeenCalledOnce();
+      for (let index = 0; index < 1_024; index += 1) {
+        await handlePreToolUse({ ...request, toolUseId: `settled-${index}`, toolName: `settled-tool-${index}` }, deps);
+      }
+      vi.advanceTimersByTime(60_001);
+      const second = handlePreToolUse(victim, deps);
+
+      expect(getCapability).toHaveBeenCalledTimes(1_025);
+      resolveVictim?.(capability());
+      const [firstResponse, secondResponse] = await Promise.all([first, second]);
+      expect(secondResponse).toEqual(firstResponse);
+      expect(deps.recordDecision).toHaveBeenCalledTimes(1_025);
+    } finally {
+      vi.useRealTimers();
     }
-    const second = handlePreToolUse(victim, deps);
-
-    expect(getCapability).toHaveBeenCalledTimes(1_025);
-    resolveVictim?.(capability());
-    const [firstResponse, secondResponse] = await Promise.all([first, second]);
-    expect(secondResponse).toEqual(firstResponse);
-    expect(deps.recordDecision).toHaveBeenCalledTimes(1_025);
   });
 
   it("reads the capability kill switch for every new tool use without a restart", async () => {
