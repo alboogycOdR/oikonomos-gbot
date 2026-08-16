@@ -489,7 +489,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-017
 **Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-028, OIK-029, OIK-030; docs/decisions/ADR-001-broker-enforcement-point.md R2, R3, CAN-04, CAN-08
@@ -505,13 +505,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] TASK-016's contract tests still pass unchanged — all nine, including the ADR-003 ceiling test and the T4-with-valid-nonce deny
 **Branch:** task/TASK-017-cx
 **Started_At:** 2026-08-16T10:44:39Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-16T10:49:06Z] [SV:CX] Implemented broker decision replay, per-request kill switch, fail-closed dependency handling, and expanded contract coverage.
+**Artifacts:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts, dossiers/TASK-017.md
+**Test_Evidence:** pnpm lint; pnpm typecheck; pnpm build; pnpm test â€” all exit 0 (broker: 19/19 tests passing).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T10:44:39Z
+**Updated_At:** 2026-08-16T10:49:06Z
 
 ### TASK-018
 **Title:** OIK-003 — CODEOWNERS + protected-path CI enforcement ⚑ protected
