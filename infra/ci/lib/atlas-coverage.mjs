@@ -177,6 +177,11 @@ export function loadIgnorePatterns(mainRoot) {
  * Workspace package globs come from pnpm-workspace.yaml, not a hardcoded
  * list. A new `packages/*` or `services/*` directory is covered as soon
  * as it has indexable tracked files.
+ *
+ * Accepts both legal pnpm forms: block (`packages:\n  - "packages/*"`)
+ * and flow (`packages: ["packages/*", "services/*"]`). Anything else
+ * that yields no globs is unobservable — callers must fail closed,
+ * never treat an empty list as "no packages dropped".
  */
 export function parsePnpmWorkspacePackageGlobs(text) {
   const globs = [];
@@ -184,8 +189,17 @@ export function parsePnpmWorkspacePackageGlobs(text) {
   for (const raw of String(text).split(/\r?\n/)) {
     const line = raw.replace(/#.*$/, '');
     if (/^\s*$/.test(line)) continue;
-    if (/^packages\s*:/.test(line)) {
+    const header = line.match(/^packages\s*:\s*(.*)$/);
+    if (header) {
       inPackages = true;
+      const rest = header[1].trim();
+      if (rest) {
+        const flow = parseFlowStyleStringList(rest);
+        if (flow) {
+          for (const item of flow) globs.push(slash(item));
+        }
+        inPackages = false;
+      }
       continue;
     }
     if (inPackages) {
@@ -200,10 +214,94 @@ export function parsePnpmWorkspacePackageGlobs(text) {
   return globs;
 }
 
+function parseFlowStyleStringList(rest) {
+  const flow = String(rest).match(/^\[(.*)\]\s*$/);
+  if (!flow) return null;
+  const inner = flow[1].trim();
+  if (!inner) return [];
+  const items = [];
+  for (const part of inner.split(',')) {
+    const value = part.trim().replace(/^["']|["']$/g, '').trim();
+    if (value) items.push(value);
+  }
+  return items;
+}
+
+/**
+ * Read workspace globs from disk. Never throws: missing, empty, unparsed,
+ * or unreadable yaml is an explicit error so the structural assertion
+ * cannot silently no-op (ADR-005 §2).
+ */
 export function loadWorkspacePackageGlobs(mainRoot) {
   const workspace = join(mainRoot, 'pnpm-workspace.yaml');
-  if (!existsSync(workspace)) return [];
-  return parsePnpmWorkspacePackageGlobs(readFileSync(workspace, 'utf8'));
+  if (!existsSync(workspace)) {
+    return {
+      globs: [],
+      error:
+        `pnpm-workspace.yaml missing at ${workspace}; ` +
+        `workspace package discovery is unobservable`,
+    };
+  }
+  try {
+    const globs = parsePnpmWorkspacePackageGlobs(readFileSync(workspace, 'utf8'));
+    if (globs.length === 0) {
+      return {
+        globs: [],
+        error:
+          `pnpm-workspace.yaml at ${workspace} declared no package globs ` +
+          `(empty list or unparsed); workspace package discovery is unobservable`,
+      };
+    }
+    return { globs, error: null };
+  } catch (err) {
+    const detail = err && typeof err.message === 'string' ? err.message : String(err);
+    return {
+      globs: [],
+      error: `pnpm-workspace.yaml unreadable at ${workspace}: ${detail}`,
+    };
+  }
+}
+
+function mappedWorkspacePackageNames(indexable, globs) {
+  const names = new Set();
+  for (const file of indexable ?? []) {
+    const name = workspacePackageOf(file, globs);
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+function workspaceTreePresent(indexable, mainRoot) {
+  for (const file of indexable ?? []) {
+    const path = slash(file);
+    if (path.startsWith('packages/') || path.startsWith('services/')) return true;
+  }
+  return Boolean(mainRoot && existsSync(join(mainRoot, 'packages')));
+}
+
+/**
+ * Empty or inert discovery is UNOBSERVABLE, not "nothing dropped".
+ * A repo with a packages/ tree and zero mapped packages is the same
+ * class of failure as a missing workspace file.
+ */
+export function workspaceDiscoveryError(evidence = {}) {
+  const globs = evidence.workspaceGlobs;
+  if (!Array.isArray(globs) || globs.length === 0) {
+    return (
+      'ATLAS workspace package discovery is unobservable: no package globs loaded ' +
+      '(missing, empty, or unparsed pnpm-workspace.yaml). ' +
+      'Structural package-dropout assertion cannot run.'
+    );
+  }
+  if (workspaceTreePresent(evidence.indexable, evidence.mainRoot)
+      && mappedWorkspacePackageNames(evidence.indexable, globs).size === 0) {
+    return (
+      `ATLAS workspace package discovery is unobservable: packages/ (or services/) is present ` +
+      `but no workspace package was mapped from globs [${globs.join(', ')}]. ` +
+      `Structural package-dropout assertion cannot run.`
+    );
+  }
+  return null;
 }
 
 /**
@@ -352,7 +450,27 @@ export function collectAtlasCoverageEvidence(root, options = {}) {
   const indexable = indexableTrackedFiles(tracked, patterns);
   const present = new Set(indexed.map(slash));
   const missing = indexable.filter((path) => !present.has(path));
-  const workspaceGlobs = options.workspaceGlobs ?? loadWorkspacePackageGlobs(mainRoot);
+
+  let workspaceGlobs;
+  if (Object.prototype.hasOwnProperty.call(options, 'workspaceGlobs')) {
+    workspaceGlobs = options.workspaceGlobs ?? [];
+  } else {
+    const loaded = loadWorkspacePackageGlobs(mainRoot);
+    if (loaded.error) {
+      return fail(loaded.error, {
+        mainRoot, dbPath, indexed, indexable, missing, tolerance, workspaceGlobs: loaded.globs,
+      });
+    }
+    workspaceGlobs = loaded.globs;
+  }
+
+  const discovery = workspaceDiscoveryError({ workspaceGlobs, indexable, mainRoot });
+  if (discovery) {
+    return fail(discovery, {
+      mainRoot, dbPath, indexed, indexable, missing, tolerance, workspaceGlobs,
+    });
+  }
+
   const droppedPackages = droppedWorkspacePackages(indexable, missing, workspaceGlobs);
 
   return {
@@ -386,6 +504,12 @@ export function checkAtlasCoverage(evidence) {
   const missing = evidence.missing ?? [];
   const tolerance = Number.isInteger(evidence.tolerance) ? evidence.tolerance : ATLAS_COVERAGE_TOLERANCE;
   const globs = evidence.workspaceGlobs ?? [];
+  const discovery = workspaceDiscoveryError({
+    workspaceGlobs: globs,
+    indexable: evidence.indexable,
+    mainRoot: evidence.mainRoot,
+  });
+  if (discovery) return discovery;
   const dropped = Array.isArray(evidence.droppedPackages)
     ? evidence.droppedPackages
     : droppedWorkspacePackages(evidence.indexable, missing, globs);
