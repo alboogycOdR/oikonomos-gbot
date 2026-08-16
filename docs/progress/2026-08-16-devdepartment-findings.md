@@ -56,6 +56,20 @@ A `.gitignore` entry like `node_modules/` was matched only against the top-level
 
 ---
 
+## Found in a live resync, this session
+
+### 11. Pack-repo-only test scaffolding gets vendored into downstream projects and fails there by design
+A resync landed with `tests/test_sync_from_pack.py::TestPackTemplateShipsSafeDefaults` (`test_atlas_ships_disabled`, `test_control_mode_ships_legacy`) — both read `REPO_ROOT / "autopilot.json"`, i.e. **the consuming project's own live config**, and assert it equals the pack's generic safe-default template (`atlas.enabled: false`, `control.mode: legacy`). That assertion is correct for the pack's own template file, guarding against a live project's onboarding answers accidentally leaking into what ships to the next adopter. It is **wrong once vendored into a project that has already onboarded**, since the entire point of the pack's own "ask, don't auto-flip" onboarding step (`onboard.md` STEP 4, documented in the pack itself) is to deliberately diverge `autopilot.json` from those defaults. On OIKONOMOS — which correctly onboarded with `atlas.enabled: true` and `control.mode: strict`, both explicit human decisions — this test now fails permanently, on every future sync, for a config that is exactly right.
+
+**Recommend:** either don't ship `TestPackTemplateShipsSafeDefaults` into a consuming project's `tests/` directory at all (it belongs in the pack's own repo, run against the pack's own template), or have `sync_from_pack.py` skip/parameterize it once onboarding has run.
+
+### 12. A test still checks a field its own fix already made non-primary
+`TestManifestMarkersMatchRealFiles::test_every_marker_section_marker_exists_in_the_real_pack_file` checks only `sync-manifest.json`'s singular `merge_special.CLAUDE.md.marker` field against the literal string in the target file. But `sync_from_pack.py:465` already reads `spec.get("markers") or [spec["marker"]]` — the **plural** array is preferred, and `sync-manifest.json` already carries both the H1 (no-existing-file) and H2 (append-under-heading) marker forms, with a comment explaining exactly why both are needed (`docs/SYNC.md` "Verifying merge_special markers"). The actual merge mechanism is correct and was verified sound by reading the source. The test just never got updated to check the array it's nominally protecting, so its own failure message — **"This is exactly the bug that shipped once already."** — is a false alarm baked into test code that predates its own fix. Confusing and alarming for anyone hitting it without reading the merge code first, which is exactly what happened this session before the false alarm was traced.
+
+**Recommend:** update the test to iterate `spec.get("markers") or [spec["marker"]]`, matching the code it's meant to guard.
+
+---
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
@@ -83,4 +97,4 @@ These are project-level customizations we made to `CLAUDE.md` in response to rea
 
 ## Summary for forwarding
 
-Eight source-confirmed pack-code defects (items 1–8), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
+Eight source-confirmed pack-code defects (items 1–8), two test-scaffolding defects found live in a resync (items 11–12, both traced to source before reporting so neither is a false positive), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
