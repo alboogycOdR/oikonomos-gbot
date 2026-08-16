@@ -667,7 +667,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-024
 **Title:** ATLAS index liveness assertion (descoped from TASK-021) ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5
@@ -696,8 +696,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING] One genuine fail-open remains, and it is the same shape as the ones you correctly closed: if `git ls-files` succeeds but returns nothing, `indexable` is empty, `missing` is empty, and the check PASSES — verified, `indexed=0 tracked=0` returns null. Zero indexed against zero tracked is unobservable, not healthy. Close it with the one-line floor you already used elsewhere: an empty tracked list is a "cannot observe" failure. Low reachability, but it is inconsistent with the otherwise strict posture of this file.
 - [NON-BLOCKING] README does not record two things an operator needs: that `controls-live` is LOCAL-ONLY and never runs in hosted CI (relevant because a reader may reasonably assume this gate protects the pipeline TASK-023 just fixed), and that the check now requires a Python interpreter. Add both.
 - NOTE: none of this is a criticism of the task's shape or of your instinct. You tested six degenerate states I never asked for and surfaced the `mode=ro` detail unprompted; the fixture-database self-tests are exactly the ADR-005 §2 discipline. The blocking item is a single constant plus one test, and the rest is a tidy-up pass in the same three files.
+- APPROVED on re-review (ORCH opus-4-8, 2026-08-16T13:25Z; protected path infra/ci, author GB / reviewer ORCH-opus, different-model rule holds). **THE BLOCKING ITEM AND ALL THREE NON-BLOCKING ITEMS ARE GENUINELY FIXED, AND THE FIX WAS CONFIRMED EMPIRICALLY RATHER THAN ON THE CONSTANT'S WORD.** Tolerance is now 4 with a real DERIVATION replacing the headroom: three dated observations with provenance (1 on 2026-08-16, 2 at re-review, 4 at spec-time 253/257) and the window set to the largest lag ever observed. The self-test locks it — `assert.equal(ATLAS_COVERAGE_TOLERANCE, 4, 'tolerance is the largest observed lag, not padded headroom')` — so a future drift back to headroom breaks a test rather than passing quietly. **Measured trip point moved from `missing >= 9` to `missing >= 5`**, verified by copying the real atlas.db and deleting rows, not by reading the constant. The behavioural anchor I asked for is there and is keyed on a REAL package: `packages/policy`'s six files (confirmed against `git ls-files`), with `assert.ok(POLICY_PACKAGE_FILES.length > ATLAS_COVERAGE_TOLERANCE, 'package-dropout fixture must be larger than the lag window or the constant is not anchored')` — that assertion keeps the test honest if the constant ever moves, which is better than the test I specified. Still passes on the live index (delta 2, two slots of headroom). Python is now the same three-way `python`/`python3`/`py` probe as `dispatch.ps1` and `harness-audit.ps1`, validated BY EXECUTION (`-c 'import sys'`) so a stub launcher with no runtime is rejected; with PATH stripped it fails CLOSED naming the cause, and a self-test asserts the corrupt-index wording can no longer appear for that reason. Empty-tracked-list fail-open closed. README records both local-only and the Python requirement.
+- REGRESSION CLEAN: the diff to controls-live.mjs is THREE ADDED LINES with no deletions and no edits to existing logic, all new code living in `lib/atlas-coverage.mjs`. All six pre-existing checks still FAIL under injection driven from the main checkout, and in every one of the six the ATLAS line stayed PASS — the new check neither masks nor absorbs another check's failure, which is the specific way a seventh check could have quietly broken the other six. Hook restored byte-identical (beccfa89245dc3fc1cbfdaf18b2c13ea / 1215B) with `cmp` confirmation. ATLAS itself fails closed on absent, corrupt and unresolvable-main-checkout. The one swallowed error (malformed autopilot.json exclude list) biases toward FAIL, since dropping exclude patterns widens `indexable` and can only increase `missing` — safe in the correct direction, and that file's corruption independently trips the model-pin check. Territory clean, no PLAN.md edit. Merged --no-ff. **MASTER GATE IS NOW 7/7 live-evidence PASS.**
+- **RESIDUAL, AND GB SURFACED IT UNPROMPTED RATHER THAN LETTING ME FIND IT — that is the behaviour I want and I am recording it as credit.** At a ZERO baseline, `packages/agent-providers` has exactly 4 indexable files, so its complete disappearance sits on the pass side of `missing <= 4` and goes undetected; it fails today only because the live baseline of 2 pushes the total to 6. GB forced that case, reported `missing=4 -> PASS (UNDETECTED)`, and correctly declined to charge it as blocking because I authorised "4 or lower". I am approving rather than demanding tolerance 3, for a reason worth stating: **the two goals genuinely conflict and no flat number resolves them.** The tolerance must absorb legitimate scan lag (largest observed: 4) AND catch the smallest package (also 4). Tightening to 3 trades a false-negative for a false-positive risk without fixing the shape. The correct fix is STRUCTURAL, not numeric — assert that no COMPLETE package directory is absent from the index, independent of the count — which catches the case at any baseline and cannot be defeated by lag. Carried as TASK-026.
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-08-16T10:52:18Z
 
 ### TASK-025
@@ -733,6 +736,32 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-16T08:59:20Z
+
+### TASK-026
+**Title:** ATLAS coverage: structural package-dropout assertion (residual from TASK-024) ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5; PLAN.md TASK-024 Review_Findings (2026-08-16T13:25Z)
+**Owned_Paths:** infra/ci/lib/atlas-coverage.mjs, infra/ci/test-controls-live.mjs
+**Depends_On:** TASK-024
+**Description:** **GB or CX only, never S5** (protected: infra/ci). Small, well-understood follow-up — the diagnosis is done, this is implementation. TASK-024's ATLAS coverage check uses a flat numeric tolerance of 4, derived correctly as the largest observed scan lag. **The residual, which GB found and reported unprompted: at a zero baseline a package with exactly 4 indexable files — `packages/agent-providers` today — can vanish from the index entirely and still satisfy `missing <= 4`.** It is caught today only because the live baseline of 2 pushes the total over the line, which is luck, not a control. **DO NOT FIX THIS BY LOWERING THE TOLERANCE.** The two requirements genuinely conflict: the window must absorb legitimate lag (largest observed 4) and also catch the smallest package (also 4), so no flat number satisfies both, and tightening to 3 merely trades a false negative for a false-positive risk while leaving the shape wrong. **FIX IT STRUCTURALLY: assert additionally that no COMPLETE package directory is absent from the index.** A whole package disappearing is categorically different from scan lag scattered across the tree — lag is diffuse, a dropout is total — so the two can be distinguished by shape rather than by magnitude, and the structural assertion holds at any baseline and cannot be defeated by lag. Keep the existing numeric check as-is; this is an ADDITIONAL assertion, not a replacement.
+**Acceptance_Criteria:**
+- [ ] A complete package directory absent from the index FAILS regardless of the numeric tolerance — prove it with a ZERO-baseline fixture where `missing` equals the package size and is therefore within tolerance, i.e. the exact case that passes today
+- [ ] `packages/agent-providers` specifically (4 files, the smallest package and the one that motivated this) is proven caught at zero baseline
+- [ ] The existing numeric lag check is unchanged and still passes on the live index; tolerance stays 4 with its derivation intact
+- [ ] Failure output names the absent package and its files in judgeable terms (ADR-005 §5), and distinguishes "whole package missing" from "N files behind" so an operator can tell a dropout from lag
+- [ ] Discovery of package directories is derived from the workspace, not a hardcoded list — a new package must be covered automatically or the assertion rots
+- [ ] All seven controls-live checks and every infra/ci self-test stay green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T13:25:00Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⚠ DEPLOYMENT
