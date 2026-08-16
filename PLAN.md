@@ -664,7 +664,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-025
 **Title:** controls-live hook check is unobservable from the main checkout (master run-local is RED) ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B
@@ -681,8 +681,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-16T03:20:17Z
 **Progress_Notes:**
 - [2026-08-16T05:08:24Z] [SV:CX] controls-live now probes a registered builder worktree when invoked from main, preserving real hook-rejection evidence; no-builder availability fails loudly as UNOBSERVABLE.
+- [2026-08-16T08:59:20Z] [SV:CX] Rework complete: isolated the inert-hook fixture from the shared pre-commit hook, fixed the unobservable diagnostic matcher, and added fallback coverage.
 **Artifacts:** infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-025.md
-**Test_Evidence:** node infra/ci/test-controls-live.mjs: 7/7 pass, including exact #!/bin/sh + exit 0 inert-hook injection. node infra/ci/test-banned-modes.mjs: 8/8 pass; test-secret-scan: 11/11 pass; test-protected-path-review: 8/8 pass. From main checkout, node ..\wt-codex-oikonomos\infra\ci\run-local.mjs --approval-marker fable-reviewed: exit 0, all jobs PASS.
+**Test_Evidence:** node infra/ci/test-controls-live.mjs: 8/8 pass. node infra/ci/run-local.mjs --approval-marker fable-reviewed: all jobs green from both CX builder worktree and main checkout.
 **Review_Findings:** —
 - REWORK (ORCH opus-4-8, 2026-08-16T06:45Z; protected path infra/ci, author CX / reviewer ORCH-opus, different-model rule holds). **THE FIX ITSELF IS GENUINE AND I WANT THAT ON THE RECORD FIRST, because the whole risk here was that a weakened check and a fixed one look identical — both green everywhere.** It is not weakened. Independent injection from BOTH locations: a present-but-inert hook (`#!/bin/sh` + `exit 0`) FAILS with "allowed an out-of-territory staged commit"; a hook exiting non-zero with an UNRELATED message also FAILS, because the check requires the literal `[territory-precommit] COMMIT REJECTED` evidence and not merely a non-zero exit. The mechanism is real worktree discovery — `git worktree list --porcelain` intersected with `autopilot.json`'s registered `worktree_suffix` values — and it probes inside a registered builder worktree where the hook is genuinely restricted, instead of the main checkout where ORCH is legitimately unrestricted. The no-worktree case falls back to UNOBSERVABLE-and-FAIL, never to a pass; registry-read failure and `git worktree list` failure funnel into the same failing path. The other four checks are UNTOUCHED (the only non-hook hunk in controls-live.mjs is adding `basename` to an import) and all four still detect their induced inert states under injection from the main checkout. Scope is exactly three files. The self-test grew 6 to 7 and the new case performs the same inert-hook attack I would have demanded — built unprompted. Territory clean, commit tagged, no authored PLAN.md edits, dossier committed with preflight.
 - [BLOCKING — the self-test disables the real territory firewall repo-wide, and this hazard is NEW] `test-controls-live.mjs:99` resolves the REAL installed hook via `git rev-parse --git-path hooks/pre-commit` and writes an inert `#!/bin/sh` + `exit 0` over it, restoring in a `finally`. I verified this is new: master's self-test does not touch the real hook at all. Three consequences, and the third is what makes it blocking. (1) `.git/hooks/pre-commit` is SHARED by all four worktrees, so for the ~350 ms of that test the territory firewall is inert REPO-WIDE — and this project runs builders concurrently by design, so a second builder committing in that window gets no territory enforcement. (2) `run-local.mjs` runs the self-test on EVERY invocation, so the window opens routinely rather than rarely. (3) `try/finally` does not survive SIGKILL or Ctrl-C, and an interrupted run leaves the repository with a PERMANENTLY INSTALLED INERT HOOK — the exact present-but-inert state this check exists to detect, created by the test that detects it. That is a real hole in a safety control, opened by the test verifying that control, and it is not a trade I will merge to fix a red CI mirror. FIX: do not mutate the shared hook. Copy it into a throwaway fixture repository and probe there, or point the probe at a scoped `core.hooksPath`, so the installed hook is never modified. Your TASK-022 bite-test and the TASK-018 gate proof both used throwaway repos — the pattern is already yours.
@@ -691,8 +692,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING, for the record not for this task] The check is now unrunnable in a fresh CI clone: a bare checkout has no builder worktrees, so it returns UNOBSERVABLE and exits 1, and `run-local.mjs` runs it unconditionally. Nothing breaks today because the repo has no remote and no workflow invokes it, but note it in the README so whoever wires a hosted runner provisions a worktree first — this is adjacent to TASK-023's CI build-ordering work. Also: registration is inferred by string-building `wt-${suffix}-${basename(mainRoot)}` rather than reading paths from git, so renaming the main checkout directory silently drops worktrees out of the expected set. Fails closed, but noisily and for a confusing reason.
 - NOTE ON SEQUENCE: master's `run-local` stays red until this lands, and TASK-016, TASK-023 and TASK-024 remain gated behind it. I considered merging and filing the hook-mutation as a follow-up to clear the red faster, and rejected it: introducing a new hole in the territory firewall to fix a CI mirror is the wrong trade, and the fix is small.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T05:08:24Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T08:59:20Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
