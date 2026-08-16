@@ -664,7 +664,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-025
 **Title:** controls-live hook check is unobservable from the main checkout (master run-local is RED) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B
@@ -679,13 +679,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing controls-live self-tests and all infra/ci self-tests stay green; the other four checks are untouched
 **Branch:** task/TASK-025-cx
 **Started_At:** 2026-08-16T03:20:17Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-16T05:08:24Z] [SV:CX] controls-live now probes a registered builder worktree when invoked from main, preserving real hook-rejection evidence; no-builder availability fails loudly as UNOBSERVABLE.
+**Artifacts:** infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-025.md
+**Test_Evidence:** node infra/ci/test-controls-live.mjs: 7/7 pass, including exact #!/bin/sh + exit 0 inert-hook injection. node infra/ci/test-banned-modes.mjs: 8/8 pass; test-secret-scan: 11/11 pass; test-protected-path-review: 8/8 pass. From main checkout, node ..\wt-codex-oikonomos\infra\ci\run-local.mjs --approval-marker fable-reviewed: exit 0, all jobs PASS.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T03:20:17Z
+**Updated_At:** 2026-08-16T05:08:24Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
