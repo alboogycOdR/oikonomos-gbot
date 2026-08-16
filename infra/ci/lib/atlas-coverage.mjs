@@ -30,13 +30,25 @@ export const ATLAS_TEXT_EXTENSIONS = new Set([
 ]);
 
 /**
- * Files the main-checkout scan may lag behind master, or that the scanner
- * legitimately skips (NUL bytes / undecodable bodies with a text suffix).
- * Measured 2026-08-16 from this worktree: 1 of 256 tracked indexable files
- * absent (`packages/shared/test/prng.ts`) against the TASK-024 diagnosis of
- * 4 of 257. An empty, missing, or largely dropped index still fails closed.
+ * Lag-window tolerance, derived from observed scan lag — not padded headroom.
+ *
+ * Recorded missing-file deltas against the live main-checkout index:
+ *   1 (2026-08-16 worktree measurement, `packages/shared/test/prng.ts`),
+ *   2 (ORCH re-review measurement),
+ *   4 (TASK-024 spec-time diagnosis, 253/257).
+ *
+ * The window is therefore 4: the largest lag ever observed. A workspace
+ * package is 4–25 indexable files (`packages/agent-providers` is 4;
+ * `packages/policy` is 6). Tolerance 4 absorbs every recorded scan lag
+ * and still fails a 5+-file package disappearing from the index — the
+ * self-test deletes `packages/policy` (6 files) from a fixture and
+ * requires a non-zero result. An empty, missing, or unreadable index
+ * still fails closed regardless of this number.
  */
-export const ATLAS_COVERAGE_TOLERANCE = 8;
+export const ATLAS_COVERAGE_TOLERANCE = 4;
+
+/** Same three-way probe as scripts/dispatch.ps1 / harness-audit.ps1. */
+export const PYTHON_CANDIDATES = Object.freeze(['python', 'python3', 'py']);
 
 function slash(value) {
   return String(value).replace(/\\/g, '/');
@@ -61,7 +73,23 @@ function command(bin, args, cwd, env) {
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
     output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+    error: result.error ?? null,
   };
+}
+
+/**
+ * Resolve a usable Python interpreter. Bare `python` is missing on many
+ * POSIX / WSL boxes that only ship `python3`; hosted CI never runs this
+ * check, so a single-name spawn would go spuriously red against a healthy
+ * index. Returns null when none of the candidates can execute.
+ */
+export function resolvePythonInterpreter(env) {
+  const probeEnv = env ?? gitEnv();
+  for (const bin of PYTHON_CANDIDATES) {
+    const result = command(bin, ['-c', 'import sys'], undefined, probeEnv);
+    if (result.status === 0) return bin;
+  }
+  return null;
 }
 
 export function resolveMainCheckoutRoot(root, env) {
@@ -154,13 +182,25 @@ export function indexableTrackedFiles(tracked, patterns) {
   return files;
 }
 
-export function readIndexedPaths(dbPath) {
+export function readIndexedPaths(dbPath, env) {
   if (!existsSync(dbPath)) {
     return { paths: [], error: `ATLAS index missing at ${dbPath}; coverage is unobservable` };
   }
-  const result = command('python', [READ_PATHS, dbPath], dirname(dbPath));
+  const python = resolvePythonInterpreter(env);
+  if (!python) {
+    return {
+      paths: [],
+      error:
+        `Python interpreter missing (tried ${PYTHON_CANDIDATES.join(', ')}); ` +
+        `cannot read the ATLAS index at ${dbPath}`,
+    };
+  }
+  const result = command(python, [READ_PATHS, dbPath], dirname(dbPath), env);
   if (result.status !== 0) {
-    const detail = result.output.trim() || 'python could not read the ATLAS index';
+    const spawnDetail = result.error?.code === 'ENOENT'
+      ? `${python} disappeared from PATH while reading the index`
+      : result.error?.message;
+    const detail = result.output.trim() || spawnDetail || `${python} could not read the ATLAS index`;
     return { paths: [], error: `ATLAS index unreadable at ${dbPath}: ${detail}` };
   }
   return {
@@ -212,7 +252,7 @@ export function collectAtlasCoverageEvidence(root, options = {}) {
   const dbPath = options.dbPath ?? join(mainRoot, '.devteam', 'atlas.db');
   let indexed = options.indexedPaths;
   if (!indexed) {
-    const read = readIndexedPaths(dbPath);
+    const read = readIndexedPaths(dbPath, env);
     if (read.error) return fail(read.error, { mainRoot, dbPath, tolerance });
     indexed = read.paths;
   }
@@ -222,6 +262,12 @@ export function collectAtlasCoverageEvidence(root, options = {}) {
     const listed = listTrackedFiles(mainRoot, env);
     if (listed.error) return fail(listed.error, { mainRoot, dbPath, indexed, tolerance });
     tracked = listed.files;
+  }
+  if (tracked.length === 0) {
+    return fail(
+      `ATLAS coverage is unobservable: git ls-files returned no tracked files in the main checkout (${mainRoot})`,
+      { mainRoot, dbPath, indexed, tolerance },
+    );
   }
 
   const patterns = options.ignorePatterns ?? loadIgnorePatterns(mainRoot);

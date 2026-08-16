@@ -92,6 +92,15 @@ a remote exists.
 
 ## Control liveness (ADR-005)
 
+`controls-live.mjs` is **local-only**. It is invoked by `run-local.mjs` and
+is not a job in `.github/workflows/ci.yml`. Hosted CI does not run this
+gate (there is no remote yet; the operative surrogate is this directory).
+The ATLAS coverage check reads the main-checkout index through a Python
+interpreter (`python`, `python3`, or `py` — the same three-way probe as
+`scripts/dispatch.ps1`). A machine with none of those on `PATH` fails
+closed with an interpreter-missing diagnostic; it does not imply the
+index is corrupt.
+
 `controls-live.mjs` verifies that controls emitted evidence of doing their
 work; configuration, database mtimes, and no-op exit codes are not evidence.
 The job fails `run-local.mjs` if any of these checks is inert:
@@ -116,11 +125,14 @@ The job fails `run-local.mjs` if any of these checks is inert:
   tests from silently executing old exported build output.
 - The MAIN checkout's ATLAS index (resolved via `git rev-parse --git-common-dir`,
   never this worktree's `.devteam/atlas.db`) must contain every tracked
-  indexable source file, within a stated lag-window tolerance of 8. Dispatch
-  refreshes only the main checkout; a worktree copy is never maintained.
-  Failures name the missing files and the counts. Commit-count and timestamp
-  staleness are not used — they drift with every orchestration commit. An
-  absent or unreadable main-checkout index fails closed.
+  indexable source file, within a stated lag-window tolerance of 4 (the
+  largest missing-file delta observed on this repo: 1, 2, and the spec-time
+  4 — not padded headroom). Dispatch refreshes only the main checkout; a
+  worktree copy is never maintained. Failures name the missing files and
+  the counts. An empty `git ls-files` result is unobservable, not healthy.
+  Commit-count and timestamp staleness are not used — they drift with every
+  orchestration commit. An absent or unreadable main-checkout index fails
+  closed.
 
 Liveness checks are controls too: their self-test deliberately induces an
 inert state for every assertion and requires a non-zero result. They can rot
