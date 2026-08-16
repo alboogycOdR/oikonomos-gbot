@@ -740,7 +740,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-026
 **Title:** ATLAS coverage: structural package-dropout assertion (residual from TASK-024) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5; PLAN.md TASK-024 Review_Findings (2026-08-16T13:25Z)
@@ -756,13 +756,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] All seven controls-live checks and every infra/ci self-test stay green
 **Branch:** task/TASK-026-gb
 **Started_At:** 2026-08-16T11:05:45Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-16T11:12:41Z] [SV:GB] Structural ATLAS package-dropout assertion added; tolerance stays 4. Zero-baseline agent-providers (4 files) now fails as whole-package missing; live numeric check still passes.
+**Artifacts:** infra/ci/lib/atlas-coverage.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-026.md
+**Test_Evidence:** node infra/ci/test-controls-live.mjs: 19/19 (zero-baseline agent-providers dropout FAIL; brand-new workspace package auto-covered; 4 shared misses still lag). banned-modes 8/8, secret-scan 11/11, protected-path-review 8/8, test-job-order 9/9. Live ATLAS PASS from worktree; node infra/ci/controls-live.mjs from main checkout 7/7 PASS. pnpm -r test exit 0. Commit b4c1e44 on task/TASK-026-gb.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T11:05:45Z
+**Updated_At:** 2026-08-16T11:12:41Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⚠ DEPLOYMENT
