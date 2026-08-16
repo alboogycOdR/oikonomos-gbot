@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -20,6 +20,16 @@ const hook = { status: 1, output: '[territory-precommit] COMMIT REJECTED\n' };
 const coverage = { status: 0, output: '% Coverage report from v8\nAll files | 100 | 100\n' };
 const config = { builders: { active: ['CX'], defined: { CX: { model: 'test-model' } } } };
 const packages = [{ name: 'packages/example', sourceFiles: [], distFiles: [] }];
+
+function mainCheckoutRoot() {
+  const commonDir = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  assert.equal(commonDir.status, 0);
+  return dirname(resolve(process.cwd(), commonDir.stdout.trim()));
+}
 
 function baseline() {
   return {
@@ -80,9 +90,30 @@ test('coverage evidence accepts real ANSI-coloured Vitest output', () => {
 });
 
 test('hook collector observes a real territory rejection through Git', () => {
-  const result = collectHookRejectionEvidence(process.cwd());
+  const result = collectHookRejectionEvidence(mainCheckoutRoot());
   assert.match(result.output, /\[territory-precommit\] COMMIT REJECTED/i);
   assert.equal(checkHookEvidence(result), null);
+});
+
+test('hook collector detects an installed inert exit-zero hook', () => {
+  const hookPath = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-path', 'hooks/pre-commit'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  assert.equal(hookPath.status, 0);
+  const path = hookPath.stdout.trim();
+  const original = readFileSync(path);
+  try {
+    writeFileSync(path, '#!/bin/sh\nexit 0\n');
+    chmodSync(path, 0o755);
+    const result = collectHookRejectionEvidence(mainCheckoutRoot());
+    assert.equal(result.status, 0, 'exact inert hook must allow the staged fixture');
+    assert.match(checkHookEvidence(result), /allowed an out-of-territory staged commit/);
+  } finally {
+    writeFileSync(path, original);
+    chmodSync(path, 0o755);
+  }
 });
 
 test('dist freshness catches output older than an existing source file', () => {
