@@ -728,20 +728,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_At:** 2026-08-16T08:59:20Z
 
 ### TASK-019
-**Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
+**Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⚠ DEPLOYMENT
 **Status:** pending
 **Assigned_To:** TBD
 **Priority:** high
-**Spec_References:** docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md §2 (OIK-042), §5 (R14, R16), §6; specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §2a
+**Spec_References:** docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md; docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md §2 (OIK-042), §5 (R14, R16), §6; specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §2a
 **Owned_Paths:** infra/sandbox/**
 **Depends_On:** —
-**Description:** **HELD — DO NOT DISPATCH.** Alister instructed that no E5-dependent work is dispatched until he confirms the Addendum B reconciliation; this task is planned so the sequencing is visible, not so it is picked up. Lift the hold by changing this sentence and assigning a unit. When it does run: deploy `opensandbox-server` (Docker backend) on clawsrv, reachable only over Tailscale, with the `osb` CLI functional against it. **R14 applies — pin a specific release**, do not track latest; the project is young and its API surface moves. **R16 applies — Docker backend only**; the Kubernetes path is explicitly out of scope until a real multi-tenant or high-concurrency trigger exists. This is the only Addendum B ticket that is dependency-eligible today: OIK-043/044/045 need OIK-033 (harness-factory, E4), OIK-045a needs OIK-120 (secrets), OIK-045b needs OIK-020 (TASK-010). Deployment notes belong in `infra/sandbox/README.md`, NOT in `docs/runbooks/` — `docs/**` is blocked for builders by the territory firewall, so a runbook there would be rejected mid-session.
+**Description:** **HOLD LIFTED 2026-08-16 — Alister confirmed Addendum B; recorded as ADR-006.** The Addendum B supersession of Master WBS §5 E5 is now formally accepted and sits at the top of document precedence. **BUT THIS TASK IS NOT AUTO-DISPATCHED, AND THAT IS DELIBERATE — see ADR-006 §4.** Every task in this project so far has produced code that CI can verify; this one **deploys a running service to a real host (clawsrv)**. Its acceptance is satisfied by the state of a machine, not by a test suite, and ORCH's standing review method — territory diff, spec check, re-run the tests, mutate the control — does not transfer to it. Confirming Addendum B authorised the ARCHITECTURE; it did not authorise a headless agent to deploy infrastructure autonomously. Alister decides at dispatch time whether a builder runs this or he runs it himself. **Do not dispatch without that explicit instruction.** When it does run: deploy `opensandbox-server` (Docker backend) on clawsrv, reachable only over Tailscale, with the `osb` CLI functional against it. **R14 applies — pin a specific release**, do not track latest; the project is young and its API surface moves. **R16 applies — Docker backend only**; the Kubernetes path is explicitly out of scope until a real multi-tenant or high-concurrency trigger exists. This is the only Addendum B ticket that is dependency-eligible today: OIK-043/044/045 need OIK-033 (harness-factory, E4), OIK-045a needs OIK-120 (secrets), OIK-045b needs OIK-020 (TASK-010). Deployment notes belong in `infra/sandbox/README.md`, NOT in `docs/runbooks/` — `docs/**` is blocked for builders by the territory firewall, so a runbook there would be rejected mid-session.
 **Acceptance_Criteria:**
 - [ ] `opensandbox-server` runs on clawsrv with the Docker backend (Addendum B §2 OIK-042)
 - [ ] Reachable only over Tailscale — verified by a refused connection from a non-Tailscale interface (Addendum B §2 OIK-042; Handover §8)
 - [ ] `osb` CLI is functional against the deployed server
 - [ ] A specific release is pinned in config, with the version recorded and the SDK-drift watch (OIK-010) noted as needing extension to OpenSandbox release notes (R14)
 - [ ] `infra/sandbox/README.md` documents the deployment and states explicitly that the Kubernetes backend is out of scope until a real trigger exists (R16)
+- [ ] **ADDED 2026-08-16 (ORCH), per ADR-006 §4 — evidence, not configuration.** The Tailscale-only property is proven by an OBSERVED REFUSED CONNECTION from a non-Tailscale interface, captured verbatim. A firewall rule that is present but not in force is precisely the configured-but-inert class this project has found seven times (ADR-005 §2); a config review does not satisfy this criterion.
+- [ ] **ADDED 2026-08-16 (ORCH), per ADR-006 §4 — reproducibility.** The deployment is rebuildable from `infra/sandbox/README.md` ALONE. If the only record of how the server came to run is a builder session transcript, the control plane depends on state no document can reconstruct. Someone following the README on a fresh host must reach the same running service.
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:** —
