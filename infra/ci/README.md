@@ -16,6 +16,7 @@ node infra/ci/test-banned-modes.mjs
 node infra/ci/test-controls-live.mjs
 node infra/ci/test-secret-scan.mjs
 node infra/ci/test-protected-path-review.mjs
+node infra/ci/test-test-job-order.mjs
 node infra/ci/protected-path-review.mjs --base <base-ref>
 sh infra/ci/hooks/pre-commit          # same scan as CI, against the staged index
 ```
@@ -61,7 +62,12 @@ ADR-002 Amendment A exempts exactly one named file, `hooks/run-tests.js`
 
 `.github/workflows/ci.yml` defines `lint`, `typecheck`, `test`, and `build`
 (each fails the run when red) plus `banned-modes` and `secret-scan`. Triggers:
-`pull_request` and `push`.
+`pull_request` and `push`. The `test` job runs `pnpm build` before `pnpm test`
+because every workspace package `exports` map points at gitignored `dist/`;
+a clean checkout has no `dist/` and `@oikonomos/*` imports cannot resolve
+otherwise (TASK-023). A parallel `build` job does not populate the `test`
+job's workspace. `run-local.mjs` uses the same build-then-test order.
+`controls-live` fails if either file regresses to test-without-build.
 
 ## Protected-path review (OIK-003)
 

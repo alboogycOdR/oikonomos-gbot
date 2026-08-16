@@ -43,6 +43,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Workspace package exports point at gitignored dist/. A clean checkout
+      # has no dist/, so the test job must build before it tests (TASK-023).
+      - run: pnpm build
       - run: pnpm test
 
   build:
