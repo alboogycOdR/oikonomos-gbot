@@ -7,3 +7,17 @@
 **Intended approach:** Idempotency must REPLAY the stored decision, not recompute it — recomputing means a policy change mid-call could return two different answers for one tool use. Fail-closed cases (>10s timeout, 500, malformed body) each get their own test. The kill switch must be read per request, never cached at startup, since the acceptance says no restart is required.
 
 ## Work Log
+
+- [2026-08-16T10:48:00Z] [CX] Preflight territory check (verbatim):
+  ```text
+  [preflight] TASK-017 Owned_Paths inspected in C:/CLAUDECODE_TOOLSETS/wt-codex-oikonomos
+  [preflight] 3 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    GLOB   packages/broker/src/**  -> 1 file(s):
+             packages/broker/src/index.ts
+    GLOB   packages/broker/test/**  -> 1 file(s):
+             packages/broker/test/pretooluse.test.ts
+    FILE   packages/broker/vitest.config.ts  -> exists, 8 line(s), 166 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+- [2026-08-16T10:49:00Z] [CX] Implemented toolUseId replay caching, a per-request capability kill switch, audited fail-closed handling for typed transport faults, malformed capability data, and internal dependency exceptions. Audit-writer failure returns an explicit deny with `auditEventId: "unavailable"`; it cannot audit that denial through the failed writer.
+- [2026-08-16T10:49:00Z] [CX] Added independent tests for timeout, HTTP 500, malformed body, each required dependency failure, L1/L3 replay, no-restart kill-switch change, and a real issue/consume payload-mutation rejection. Verification passed: `pnpm lint`; `pnpm typecheck`; `pnpm build`; `pnpm test` (all exit 0; broker 19/19 tests).
