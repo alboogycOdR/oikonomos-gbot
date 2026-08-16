@@ -230,6 +230,18 @@ describe("handlePreToolUse — Handover §4.1", () => {
     expect(deps.recordDecision).toHaveBeenCalledOnce();
   });
 
+  it("fails closed when both a dependency and the resulting denial audit fail", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => { throw new Error("database unavailable"); }),
+      recordDecision: vi.fn(async () => { throw new Error("audit database unavailable"); }),
+    });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny", reason: "broker.dependency_failure", auditEventId: "unavailable",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledOnce();
+  });
+
   it("returns the allow shape and audits a low-tier request", async () => {
     const deps = dependencies();
 
