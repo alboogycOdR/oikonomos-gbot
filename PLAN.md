@@ -614,7 +614,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-023
 **Title:** CI test job never builds — workspace imports cannot resolve on a clean checkout ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002
@@ -629,13 +629,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing infra/ci self-tests and the protected-path gate stay green
 **Branch:** task/TASK-023-gb
 **Started_At:** 2026-08-16T09:36:54Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-16T10:05:07Z] [SV:GB] CI test job and run-local now build before test; ADR-005 check fails if that order regresses. Clean-tree wipe of all dist/ then pnpm build && pnpm test exited 0.
+**Artifacts:** .github/workflows/ci.yml, infra/ci/run-local.mjs, infra/ci/controls-live.mjs, infra/ci/lib/test-job-order.mjs, infra/ci/test-test-job-order.mjs, infra/ci/test-controls-live.mjs, infra/ci/README.md, dossiers/TASK-023.md
+**Test_Evidence:** node infra/ci/test-test-job-order.mjs: 9/9 pass (live order; no-build/reversed/parallel-build-job fail the check; fixture workspace test fails without dist, passes after build). node infra/ci/test-controls-live.mjs: 8/8 pass including induced inert 'CI test job builds before test'. test-banned-modes 8/8, test-secret-scan 11/11, test-protected-path-review 8/8; banned-modes and secret-scan clean. Clean tree: removed 14 dist/ dirs; pnpm --filter @oikonomos/approvals test failed 11/13 (unresolved @oikonomos/db and @oikonomos/shared); then pnpm build && pnpm test (pnpm -r test) exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T09:36:54Z
+**Updated_At:** 2026-08-16T10:05:07Z
 
 ### TASK-024
 **Title:** ATLAS index liveness assertion (descoped from TASK-021) ⚑ protected
