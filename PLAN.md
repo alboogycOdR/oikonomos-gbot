@@ -664,7 +664,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-025
 **Title:** controls-live hook check is unobservable from the main checkout (master run-local is RED) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B
@@ -677,15 +677,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The present-but-inert hook (`#!/bin/sh` + `exit 0`) is STILL detected as a failure wherever the check is capable of observing — prove it with that exact injection, since this is the property the whole check exists for
 - [ ] If you choose the unobservable-and-fail route for some location, the message names the location and the reason, and a self-test asserts that path (ADR-005 §2, §5)
 - [ ] Existing controls-live self-tests and all infra/ci self-tests stay green; the other four checks are untouched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-025-cx
+**Started_At:** 2026-08-16T03:20:17Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T22:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T03:20:17Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⛔ HELD
