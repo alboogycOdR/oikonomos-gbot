@@ -450,7 +450,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-016
 **Title:** OIK-027 — packages/broker: PreToolUse endpoint handler ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3, §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-027; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1, §4.2; docs/decisions/ADR-001-broker-enforcement-point.md; docs/decisions/ADR-003-tier-resolution-direction.md
@@ -468,8 +468,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-16T09:36:49Z
 **Progress_Notes:**
 - [2026-08-16T10:05:07Z] [SV:CX] Implemented and committed the broker PreToolUse library handler with audited decisions, ADR-003 ceiling enforcement, approval delegation, and contract tests.
+- [2026-08-16T10:26:29Z] [SV:CX] Resolved all ORCH review blockers: missing grants fail closed and audit, T4 stays denied even with a nonce, and approval ports match the genuine approvals signatures so digest binding receives the action. Committed 8600ba5.
 **Artifacts:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts, dossiers/TASK-016.md
-**Test_Evidence:** pnpm --filter @oikonomos/broker test: 6/6 pass; pnpm --filter @oikonomos/broker typecheck/build: pass; pnpm lint, pnpm -r typecheck, pnpm -r build, pnpm -r test: all exit 0 (DB integration suites cleanly skipped without DATABASE_URL).
+**Test_Evidence:** pnpm --filter @oikonomos/broker test: 9/9 pass; pnpm --filter @oikonomos/broker typecheck/build: pass; pnpm lint, pnpm -r typecheck, pnpm -r build, and pnpm -r test: all exit 0 (DB integrations skip cleanly without DATABASE_URL).
 **Review_Findings:** —
 - REWORK (ORCH opus-4-8, 2026-08-16T10:40Z; protected path packages/broker, author CX / reviewer ORCH-opus, different-model rule holds). **READ THE POSITIVES FIRST — ALL SIX STATED ACCEPTANCE CRITERIA ARE MET, and your ADR-003 handling is the best single piece of work on this project so far.** You did not merely avoid the trap, you made it structurally hard to fall into: `RoleGrantCeiling` is a DISTINCT TYPE, deliberately not named `roleGrantOverride`, carrying a comment that names the floor/ceiling inversion. `roleGrantOverride` is never passed; the ceiling is gated explicitly at the boundary. That is type-level prevention instead of a comment saying be careful, and it is the right answer to a trap that type-checks, runs and fails open. I verified the §4.1 contract MYSELF, character for character — all eight request fields including the nested agentRef shape, and all three response variants with identical names, types and optionality. And the negative test GENUINELY BITES, proven by two mutations: (M1) the trap as ADR-003 describes it killed 2 of 6 tests with the fail-open visible in the diff (`role.tier_ceiling` became `approval_pending` — the T1-capped role resolving to max(T3,T1)=T3); (M2) the subtler variant, keeping the gate but ALSO passing the ceiling as override, killed 1. Every request audits including all deny reasons, with no early return skipping the write; `capability.unregistered` matches §4.2 verbatim; and a grep for local `UPDATE approvals`/consume/canonical JSON/sha256 returns NO MATCHES — delegation is real.
 - **[BLOCKING 1 — A MISSING ROLE GRANT FAILS OPEN. This is the same defect class ADR-003 exists to prevent, one branch over.]** `packages/broker/src/index.ts:137` reads `if (roleGrant !== null && exceedsCeiling(...))`. I verified the consequence directly rather than taking it second-hand: when `getRoleGrant` returns null — the role has NO GRANT AT ALL for this capability — every role check is skipped and the request proceeds to allow (T0–T2) or to the approval path (T3). Synthesis §5.1:199 defines the table in its own comment as "which role may request which capability"; absence of a row means the role MAY NOT. So a role with an INSUFFICIENT grant is correctly denied while a role with NO grant sails through — the permission check is defeated by having fewer permissions. **Nothing in your test fixture covers it: `test:34` always returns a grant.** This is not in the stated ACs and THAT GAP IS MY SPEC FAILURE, NOT YOURS — but CLAUDE.md non-negotiable #3, "Fail closed", is a standing platform rule that binds every task without needing restatement in an AC, and this is the broker, which Synthesis:146 calls the load-bearing wall. FIX: absent grant ⇒ deny, audited, with a test.
@@ -479,8 +480,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING] The approval-pending test asserts `toMatchObject({decision, reason, auditEventId})` and never asserts `approvalId` at all — the field a human needs to action the approval is guaranteed only by the type. Assert it non-empty. Also `updatedInput` is never emitted on any path (contract-compliant, since optional, but currently decorative), and the resolver-deny branch at `:151-153` is unreachable because the capability is fetched BY NAME and then handed to the resolver as a single-element array.
 - NOTE ON FAIRNESS AND SEQUENCE: I want it on record that you met everything I asked for, and that the two fail-open findings sit in the space between my ACs and the platform's standing rules. I am still sending it back rather than filing follow-ups, for one reason: this is the broker, the single point every tool call passes through, and the next work on this path is the OIK-039 canaries and the G-GOV gate. A fail-open composition point must not reach a governance gate carried as a ticket — it would be exactly the thing a gate is meant to catch, arriving pre-approved. The fixes are small and on the same branch. Resume on task/TASK-016-cx (tip b709980, retained).
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T10:05:07Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T10:26:29Z
 
 ### TASK-017
 **Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
