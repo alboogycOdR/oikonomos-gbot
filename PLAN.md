@@ -739,7 +739,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-026
 **Title:** ATLAS coverage: structural package-dropout assertion (residual from TASK-024) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md §2, §5; PLAN.md TASK-024 Review_Findings (2026-08-16T13:25Z)
@@ -753,15 +753,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Failure output names the absent package and its files in judgeable terms (ADR-005 §5), and distinguishes "whole package missing" from "N files behind" so an operator can tell a dropout from lag
 - [ ] Discovery of package directories is derived from the workspace, not a hardcoded list — a new package must be covered automatically or the assertion rots
 - [ ] All seven controls-live checks and every infra/ci self-test stay green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-026-gb
+**Started_At:** 2026-08-16T11:05:45Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T13:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T11:05:45Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ⚠ DEPLOYMENT
