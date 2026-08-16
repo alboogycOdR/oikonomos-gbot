@@ -47,6 +47,8 @@ export interface RoleGrantCeiling {
 }
 
 export interface BrokerDependencies {
+  /** Read for every request: a runtime kill switch must never be cached. */
+  isCapabilitiesEnabled(): boolean | Promise<boolean>;
   getCapability(toolName: string): Promise<RegisteredCapability | null>;
   getRoleGrant(roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null>;
   destinationFor(request: PreToolUseRequest): string;
@@ -59,6 +61,45 @@ export interface BrokerDependencies {
 }
 
 const APPROVAL_TIER: RiskTier = "T3_external";
+const AUDIT_UNAVAILABLE_EVENT_ID = "unavailable";
+// ADR-007 §2.4a: this bounds the L1 PreToolUse-to-L3 canUseTool handoff, not
+// the independent 10-second broker response deadline from ADR-001 R3.
+const L1_TO_L3_REPLAY_WINDOW_MS = 60_000;
+const REPLAY_CACHE_MAX_ENTRIES = 1_024;
+
+/**
+ * The HTTP adapter (OIK-084) maps timeout, non-2xx, and invalid JSON failures
+ * to this error before they reach the broker. Keeping it typed prevents a
+ * transport failure from accidentally becoming an unhandled rejection.
+ */
+export class BrokerFailure extends Error {
+  public constructor(
+    public readonly reason: "broker.timeout" | "broker.http_500" | "broker.malformed_response",
+  ) {
+    super(reason);
+    this.name = "BrokerFailure";
+  }
+}
+
+class AuditUnavailableError extends Error {
+  public constructor() {
+    super("audit.write_failed");
+    this.name = "AuditUnavailableError";
+  }
+}
+
+interface ReplayEntry {
+  response: Promise<PreToolUseResponse>;
+  readonly expiresAt: number;
+  settled: boolean;
+}
+
+/**
+ * One replay cache per dependency composition; WeakMap avoids retaining a
+ * service on teardown. Entries are tenant- and role-scoped, expire after the
+ * ADR-007 L1-to-L3 replay window, and use safe LRU eviction.
+ */
+const replayCaches = new WeakMap<BrokerDependencies, Map<string, ReplayEntry>>();
 
 function tierRank(tier: RiskTier): number {
   return riskTiers.indexOf(tier);
@@ -83,20 +124,26 @@ async function audit(
   request: PreToolUseRequest,
   event: Omit<DecisionAuditEvent, "actor" | "runId" | "tenantId">,
 ): Promise<string> {
-  const persisted = await dependencies.recordDecision({
-    ...event,
-    actor: `agent:${request.agentRef.provider}`,
-    runId: request.runId,
-    tenantId: request.tenantId,
-    payload: {
-      ...event.payload,
-      toolUseId: request.toolUseId,
-      toolName: request.toolName,
-      sessionRef: request.agentRef.sessionRef,
-      isSubagent: request.agentRef.isSubagent,
-    },
-  });
-  return persisted.eventId;
+  try {
+    const persisted = await dependencies.recordDecision({
+      ...event,
+      actor: `agent:${request.agentRef.provider}`,
+      runId: request.runId,
+      tenantId: request.tenantId,
+      payload: {
+        ...event.payload,
+        toolUseId: request.toolUseId,
+        toolName: request.toolName,
+        sessionRef: request.agentRef.sessionRef,
+        isSubagent: request.agentRef.isSubagent,
+      },
+    });
+    return persisted.eventId;
+  } catch {
+    // This failure cannot be audited through the same broken writer. The
+    // caller must still deny, with an explicit non-event ID for observability.
+    throw new AuditUnavailableError();
+  }
 }
 
 async function deny(
@@ -118,6 +165,44 @@ async function deny(
   };
 }
 
+function isCapability(value: unknown): value is RegisteredCapability {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<RegisteredCapability>;
+  return typeof candidate.capabilityId === "string"
+    && typeof candidate.toolName === "string"
+    && typeof candidate.defaultTier === "string"
+    && riskTiers.includes(candidate.defaultTier as RiskTier);
+}
+
+function isRoleGrant(value: unknown): value is RoleGrantCeiling {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as Partial<RoleGrantCeiling>).maxTier === "string"
+    && riskTiers.includes((value as RoleGrantCeiling).maxTier);
+}
+
+function failureReason(error: unknown): string {
+  if (error instanceof BrokerFailure) return error.reason;
+  return "broker.dependency_failure";
+}
+
+function replayKey(request: PreToolUseRequest): string {
+  return `${request.tenantId}\0${request.roleId}\0${request.toolUseId}`;
+}
+
+async function failClosed(
+  dependencies: BrokerDependencies,
+  request: PreToolUseRequest,
+  reason: string,
+): Promise<PreToolUseResponse> {
+  try {
+    return await deny(dependencies, request, reason);
+  } catch (error) {
+    if (!(error instanceof AuditUnavailableError)) throw error;
+    return { decision: "deny", reason, auditEventId: AUDIT_UNAVAILABLE_EVENT_ID };
+  }
+}
+
 /**
  * L1 broker decision handler. HTTP adaptation belongs to OIK-084; this
  * function composes policy, approvals, and audit without adding a framework.
@@ -126,9 +211,61 @@ export async function handlePreToolUse(
   request: PreToolUseRequest,
   dependencies: BrokerDependencies,
 ): Promise<PreToolUseResponse> {
+  let cache = replayCaches.get(dependencies);
+  if (cache === undefined) {
+    cache = new Map();
+    replayCaches.set(dependencies, cache);
+  }
+  const key = replayKey(request);
+  const replay = cache.get(key);
+  if (replay !== undefined) {
+    // An in-flight decision is always replayed, even if the nominal handoff
+    // window passes: evicting it would split one tool use into two decisions.
+    if (!replay.settled || replay.expiresAt > Date.now()) {
+      // Refresh insertion order so the Map acts as an LRU cache.
+      cache.delete(key);
+      cache.set(key, replay);
+      return replay.response;
+    }
+    cache.delete(key);
+  }
+
+  const decision = decidePreToolUse(request, dependencies);
+  const entry: ReplayEntry = {
+    response: decision,
+    expiresAt: Date.now() + L1_TO_L3_REPLAY_WINDOW_MS,
+    settled: false,
+  };
+  entry.response = decision.finally(() => {
+    entry.settled = true;
+  });
+
+  // Never evict an in-flight request: that would make a repeated toolUseId
+  // recompute concurrently. A burst of >1,024 simultaneous requests may
+  // temporarily exceed the settled-entry cap, then contracts safely.
+  for (const [oldestKey, oldestEntry] of cache) {
+    if (cache.size < REPLAY_CACHE_MAX_ENTRIES) break;
+    if (oldestEntry.settled) cache.delete(oldestKey);
+  }
+  cache.set(key, entry);
+  return entry.response;
+}
+
+async function decidePreToolUse(
+  request: PreToolUseRequest,
+  dependencies: BrokerDependencies,
+): Promise<PreToolUseResponse> {
+  try {
+    if (!await dependencies.isCapabilitiesEnabled()) {
+      return deny(dependencies, request, "capability.disabled");
+    }
+
   const capability = await dependencies.getCapability(request.toolName);
   if (capability === null) {
     return deny(dependencies, request, "capability.unregistered");
+  }
+  if (!isCapability(capability)) {
+    return deny(dependencies, request, "broker.malformed_response");
   }
 
   const roleGrant = await dependencies.getRoleGrant(request.roleId, capability.capabilityId);
@@ -140,6 +277,9 @@ export async function handlePreToolUse(
       capability.capabilityId,
       capability.defaultTier,
     );
+  }
+  if (!isRoleGrant(roleGrant)) {
+    return deny(dependencies, request, "broker.malformed_response", capability.capabilityId, capability.defaultTier);
   }
   // ADR-003: max_tier is a ceiling, not policy's floor-shaped override.
   if (exceedsCeiling(capability.defaultTier, roleGrant.maxTier)) {
@@ -220,6 +360,16 @@ export async function handlePreToolUse(
       tier,
     }),
   };
+  } catch (error) {
+    if (error instanceof AuditUnavailableError) {
+      return {
+        decision: "deny",
+        reason: "audit.write_failed",
+        auditEventId: AUDIT_UNAVAILABLE_EVENT_ID,
+      };
+    }
+    return failClosed(dependencies, request, failureReason(error));
+  }
 }
 
 /** Concrete adapters for callers that already compose the package dependencies. */

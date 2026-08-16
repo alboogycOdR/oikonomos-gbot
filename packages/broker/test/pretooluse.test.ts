@@ -4,12 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   approvalOperations,
+  BrokerFailure,
   handlePreToolUse,
   type BrokerDependencies,
   type PreToolUseRequest,
   type RegisteredCapability,
 } from "../src/index.js";
-import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
+import { issueApproval, verifyAndConsume, type IssueApprovalDependencies } from "@oikonomos/approvals";
 
 const request: PreToolUseRequest = {
   toolUseId: "tool-use-1",
@@ -32,6 +33,7 @@ function capability(overrides: Partial<RegisteredCapability> = {}): RegisteredCa
 
 function dependencies(overrides: Partial<BrokerDependencies> = {}): BrokerDependencies {
   return {
+    isCapabilitiesEnabled: vi.fn(() => true),
     getCapability: vi.fn(async () => capability()),
     getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external" })),
     destinationFor: vi.fn(() => "review@example.test"),
@@ -54,6 +56,192 @@ function dependencies(overrides: Partial<BrokerDependencies> = {}): BrokerDepend
 }
 
 describe("handlePreToolUse — Handover §4.1", () => {
+  it("replays one decision and one audit event when L1 and L3 share a toolUseId", async () => {
+    const deps = dependencies();
+    const first = handlePreToolUse(request, deps);
+    const second = handlePreToolUse({ ...request, agentRef: { ...request.agentRef, isSubagent: true } }, deps);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { decision: "allow", tier: "T1_draft", auditEventId: "42" },
+      { decision: "allow", tier: "T1_draft", auditEventId: "42" },
+    ]);
+    expect(deps.getCapability).toHaveBeenCalledOnce();
+    expect(deps.recordDecision).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay an allowed decision across roles", async () => {
+    const deps = dependencies({
+      getRoleGrant: vi.fn(async (roleId) => roleId === request.roleId ? { maxTier: "T3_external" } : null),
+    });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+    await expect(handlePreToolUse({
+      ...request,
+      roleId: "attacker-role",
+    }, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "role.grant_missing",
+      auditEventId: "42",
+    });
+
+    expect(deps.getRoleGrant).toHaveBeenCalledTimes(2);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not replay an allowed decision across tenants", async () => {
+    const deps = dependencies();
+
+    await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+    await expect(handlePreToolUse({ ...request, tenantId: "other-tenant" }, deps)).resolves.toMatchObject({ decision: "allow" });
+
+    expect(deps.getRoleGrant).toHaveBeenCalledTimes(2);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+  });
+
+  it("recomputes after the ADR-007 L1-to-L3 replay window expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const enabled = vi.fn(() => true);
+      const deps = dependencies({ isCapabilitiesEnabled: enabled });
+
+      await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+      enabled.mockReturnValue(false);
+      vi.advanceTimersByTime(60_001);
+
+      await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+        decision: "deny",
+        reason: "capability.disabled",
+        auditEventId: "42",
+      });
+      expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("evicts the least-recently-used settled decision when the replay cache reaches its cap", async () => {
+    const deps = dependencies();
+
+    for (let index = 0; index < 1_025; index += 1) {
+      await handlePreToolUse({ ...request, toolUseId: `replay-${index}` }, deps);
+    }
+    await handlePreToolUse({ ...request, toolUseId: "replay-0" }, deps);
+
+    expect(deps.getCapability).toHaveBeenCalledTimes(1_026);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(1_026);
+  });
+
+  it("replays an in-flight decision even after the nominal replay window expires", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveVictim: ((value: RegisteredCapability) => void) | undefined;
+      const victimCapability = new Promise<RegisteredCapability>((resolve) => {
+        resolveVictim = resolve;
+      });
+      const getCapability = vi.fn(async (toolName: string) => (
+        toolName === "in-flight-victim" ? victimCapability : capability({ toolName })
+      ));
+      const deps = dependencies({ getCapability });
+      const victim = { ...request, toolUseId: "in-flight-victim", toolName: "in-flight-victim" };
+
+      const first = handlePreToolUse(victim, deps);
+      await Promise.resolve();
+      expect(getCapability).toHaveBeenCalledOnce();
+      for (let index = 0; index < 1_024; index += 1) {
+        await handlePreToolUse({ ...request, toolUseId: `settled-${index}`, toolName: `settled-tool-${index}` }, deps);
+      }
+      vi.advanceTimersByTime(60_001);
+      const second = handlePreToolUse(victim, deps);
+
+      expect(getCapability).toHaveBeenCalledTimes(1_025);
+      resolveVictim?.(capability());
+      const [firstResponse, secondResponse] = await Promise.all([first, second]);
+      expect(secondResponse).toEqual(firstResponse);
+      expect(deps.recordDecision).toHaveBeenCalledTimes(1_025);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads the capability kill switch for every new tool use without a restart", async () => {
+    const enabled = vi.fn(() => true);
+    const deps = dependencies({ isCapabilitiesEnabled: enabled });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+    enabled.mockReturnValue(false);
+    await expect(handlePreToolUse({ ...request, toolUseId: "tool-use-2" }, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "capability.disabled",
+      auditEventId: "42",
+    });
+    expect(enabled).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["typed timeout signal", new BrokerFailure("broker.timeout"), "broker.timeout"],
+    ["HTTP 500", new BrokerFailure("broker.http_500"), "broker.http_500"],
+  ])("fails closed and audits a %s", async (_case, error, reason) => {
+    const deps = dependencies({ getCapability: vi.fn(async () => { throw error; }) });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({ decision: "deny", reason, auditEventId: "42" });
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "deny", reason }));
+  });
+
+  it("fails closed and audits a malformed broker body", async () => {
+    const deps = dependencies({ getCapability: vi.fn(async () => ({}) as never) });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "broker.malformed_response",
+      auditEventId: "42",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "deny" }));
+  });
+
+  it.each(["getCapability", "getRoleGrant"] as const)("fails closed and audits a %s dependency throw", async (dependency) => {
+    const deps = dependencies({ [dependency]: vi.fn(async () => { throw new Error("database unavailable"); }) });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "broker.dependency_failure",
+      auditEventId: "42",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "deny" }));
+  });
+
+  it("fails closed and audits a verifyAndConsume dependency throw", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => capability({ defaultTier: "T3_external" })),
+      verifyAndConsume: vi.fn(async () => { throw new Error("database unavailable"); }),
+    });
+
+    await expect(handlePreToolUse({ ...request, approvalNonce: randomUUID() }, deps)).resolves.toEqual({
+      decision: "deny", reason: "broker.dependency_failure", auditEventId: "42",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({ verdict: "deny" }));
+  });
+
+  it("denies without rejecting when recordDecision fails; no same-path audit is possible", async () => {
+    const deps = dependencies({ recordDecision: vi.fn(async () => { throw new Error("audit database unavailable"); }) });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny", reason: "audit.write_failed", auditEventId: "unavailable",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when both a dependency and the resulting denial audit fail", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => { throw new Error("database unavailable"); }),
+      recordDecision: vi.fn(async () => { throw new Error("audit database unavailable"); }),
+    });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "deny", reason: "broker.dependency_failure", auditEventId: "unavailable",
+    });
+    expect(deps.recordDecision).toHaveBeenCalledOnce();
+  });
+
   it("returns the allow shape and audits a low-tier request", async () => {
     const deps = dependencies();
 
@@ -194,5 +382,60 @@ describe("handlePreToolUse — Handover §4.1", () => {
   it("binds the concrete approval ports to the genuine exports", () => {
     expect(approvalOperations.issueApproval).toBe(issueApproval);
     expect(approvalOperations.verifyAndConsume).toBe(verifyAndConsume);
+  });
+
+  it("rejects a payload-mutated approval through the real issue and consume ports", async () => {
+    let row: Awaited<ReturnType<typeof issueApproval>> extends infer _Signal ? {
+      approvalId: string; tenantId: string; runId: string; capabilityId: string; actionDigest: Buffer;
+      actionRender: string; destination: string; nonce: string; status: "pending" | "granted" | "rejected" | "expired" | "invalidated" | "consumed";
+      requestedAt: Date; expiresAt: Date; decidedBy: string | null; decidedAt: Date | null; consumedAt: Date | null;
+    } | null : never = null;
+    const store: Extract<IssueApprovalDependencies, { store: unknown }>['store'] = {
+      insert: async (newApproval) => {
+        row = {
+          approvalId: randomUUID(), tenantId: newApproval.tenantId ?? "basileia", runId: newApproval.runId,
+          capabilityId: newApproval.capabilityId, actionDigest: Buffer.from(newApproval.actionDigest),
+          actionRender: newApproval.actionRender, destination: newApproval.destination, nonce: newApproval.nonce ?? randomUUID(),
+          status: "pending", requestedAt: new Date(), expiresAt: newApproval.expiresAt,
+          decidedBy: null, decidedAt: null, consumedAt: null,
+        };
+        return row;
+      },
+      getByNonce: async (nonce) => row?.nonce === nonce ? row : null,
+      consume: async (nonce) => {
+        if (row?.nonce !== nonce || row.status !== "granted") return { rowCount: 0, approval: null };
+        row.status = "consumed";
+        return { rowCount: 1, approval: row };
+      },
+      invalidate: async (nonce) => {
+        if (row?.nonce === nonce && row.status === "granted") row.status = "invalidated";
+        return { rowCount: 0, approval: null };
+      },
+      expirePending: async () => 0,
+    };
+    const issue = () => issueApproval({
+      runId: request.runId, capabilityId: "email.send", toolName: request.toolName,
+      input: request.input as never, destination: "review@example.test", tenantId: request.tenantId,
+    }, { store });
+    const issued = await issue();
+    if (row === null) throw new Error("approval was not persisted");
+    row.status = "granted";
+
+    await expect(verifyAndConsume(issued.nonce, { store }, {
+      toolName: request.toolName,
+      input: request.input as never,
+      destination: "review@example.test",
+    })).resolves.toMatchObject({ consumed: true, rowCount: 1 });
+
+    const mutatedIssued = await issue();
+    if (row === null) throw new Error("approval was not persisted");
+    row.status = "granted";
+
+    await expect(verifyAndConsume(mutatedIssued.nonce, { store }, {
+      toolName: request.toolName,
+      input: { ...request.input, subject: "Mutated after approval" } as never,
+      destination: "review@example.test",
+    })).resolves.toEqual({ consumed: false, rowCount: 0 });
+    expect(row.status).toBe("invalidated");
   });
 });
