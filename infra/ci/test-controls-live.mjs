@@ -15,6 +15,11 @@ import {
   livenessExitCode,
   runLivenessChecks,
 } from './controls-live.mjs';
+import {
+  ATLAS_COVERAGE_TOLERANCE,
+  checkAtlasCoverage,
+  collectAtlasCoverageEvidence,
+} from './lib/atlas-coverage.mjs';
 
 const hook = { status: 1, output: '[territory-precommit] COMMIT REJECTED\n' };
 const coverage = { status: 0, output: '% Coverage report from v8\nAll files | 100 | 100\n' };
@@ -53,6 +58,13 @@ function baseline() {
     packages: structuredClone(packages),
     workflow: liveWorkflow,
     runLocal: liveRunLocal,
+    atlas: {
+      error: null,
+      indexed: ['docs/a.md'],
+      indexable: ['docs/a.md'],
+      missing: [],
+      tolerance: ATLAS_COVERAGE_TOLERANCE,
+    },
   };
 }
 
@@ -81,6 +93,29 @@ test('each liveness assertion rejects its induced inert state', () => {
       - run: pnpm test
 `;
   });
+  assertInducedFailure('ATLAS index coverage', (evidence) => {
+    evidence.atlas = {
+      error: null,
+      indexed: ['docs/kept.md'],
+      indexable: ['docs/kept.md', 'packages/policy/src/index.ts', 'packages/broker/src/index.ts'],
+      missing: ['packages/policy/src/index.ts', 'packages/broker/src/index.ts'],
+      tolerance: 0,
+    };
+  });
+  const named = runLivenessChecks('/fixture', (() => {
+    const evidence = baseline();
+    evidence.atlas = {
+      error: null,
+      indexed: ['docs/kept.md'],
+      indexable: ['docs/kept.md', 'packages/policy/src/index.ts', 'packages/broker/src/index.ts'],
+      missing: ['packages/policy/src/index.ts', 'packages/broker/src/index.ts'],
+      tolerance: 0,
+    };
+    return evidence;
+  })()).find((item) => item.label === 'ATLAS index coverage');
+  assert.match(named.detail, /packages\/policy\/src\/index\.ts/);
+  assert.match(named.detail, /packages\/broker\/src\/index\.ts/);
+  assert.match(named.detail, /missing 2 tracked indexable file/);
 });
 
 test('control queue distinguishes a missing directory from an empty drained queue', () => {
@@ -162,6 +197,105 @@ test('dist freshness catches output older than an existing source file', () => {
     utimesSync(dist, now - 10, now - 10);
     utimesSync(source, now, now);
     assert.match(checkDistFreshness([{ name: 'packages/example', sourceFiles: [source], distFiles: [dist] }]), /10s behind src/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function writeFixtureAtlas(dbPath, paths) {
+  const script = [
+    'import sqlite3, sys',
+    'con = sqlite3.connect(sys.argv[1])',
+    'con.execute("CREATE TABLE files (path TEXT PRIMARY KEY)")',
+    'con.executemany("INSERT INTO files(path) VALUES (?)", [(p,) for p in sys.argv[2:]])',
+    'con.commit()',
+  ].join('\n');
+  const result = spawnSync('python', ['-c', script, dbPath, ...paths], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+test('ATLAS coverage absorbs a miss inside the stated lag-window tolerance', () => {
+  assert.equal(checkAtlasCoverage({
+    error: null,
+    indexed: ['docs/a.md'],
+    indexable: ['docs/a.md', 'packages/shared/test/prng.ts'],
+    missing: ['packages/shared/test/prng.ts'],
+    tolerance: ATLAS_COVERAGE_TOLERANCE,
+  }), null);
+});
+
+test('ATLAS coverage collector reads the main checkout index, not this worktree', () => {
+  const evidence = collectAtlasCoverageEvidence(process.cwd());
+  const expected = join(mainCheckoutRoot(), '.devteam', 'atlas.db');
+  assert.equal(evidence.dbPath, expected);
+  assert.equal(evidence.mainRoot, mainCheckoutRoot());
+  assert.equal(checkAtlasCoverage(evidence), null, JSON.stringify(evidence.missing));
+});
+
+test('ATLAS coverage fails when pointed at an index missing tracked files', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-coverage-'));
+  try {
+    const dbPath = join(root, 'atlas.db');
+    writeFixtureAtlas(dbPath, ['docs/kept.md']);
+    const evidence = collectAtlasCoverageEvidence(root, {
+      mainRoot: root,
+      dbPath,
+      trackedFiles: [
+        'docs/kept.md',
+        'packages/policy/src/index.ts',
+        'packages/broker/src/index.ts',
+      ],
+      ignorePatterns: ['.git/', '.devteam/'],
+      tolerance: 0,
+    });
+    const error = checkAtlasCoverage(evidence);
+    assert.ok(error, 'missing tracked files must fail the coverage check');
+    assert.match(error, /packages\/policy\/src\/index\.ts/);
+    assert.match(error, /packages\/broker\/src\/index\.ts/);
+    assert.match(error, /missing 2 tracked indexable file/);
+    assert.equal(livenessExitCode(runLivenessChecks(root, { ...baseline(), atlas: evidence })), 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ATLAS coverage fails closed on an absent or unreadable main-checkout index', () => {
+  const missing = collectAtlasCoverageEvidence('/fixture', {
+    mainRoot: '/fixture',
+    dbPath: join(tmpdir(), 'oikonomos-no-such-atlas.db'),
+    trackedFiles: ['packages/policy/src/index.ts'],
+  });
+  assert.match(checkAtlasCoverage(missing), /ATLAS index missing|unobservable/i);
+
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-garbage-'));
+  try {
+    const dbPath = join(root, 'atlas.db');
+    writeFileSync(dbPath, 'not a sqlite database');
+    const garbage = collectAtlasCoverageEvidence(root, {
+      mainRoot: root,
+      dbPath,
+      trackedFiles: ['packages/policy/src/index.ts'],
+    });
+    assert.match(checkAtlasCoverage(garbage), /unreadable/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ATLAS coverage fails closed when the main checkout cannot be resolved', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oikonomos-atlas-nogit-'));
+  try {
+    const evidence = collectAtlasCoverageEvidence(root, {
+      env: {
+        ...process.env,
+        GIT_DIR: join(root, 'missing.git'),
+        GIT_WORK_TREE: root,
+      },
+    });
+    assert.match(checkAtlasCoverage(evidence), /cannot resolve the main checkout/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

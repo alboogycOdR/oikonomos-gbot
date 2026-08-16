@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/walk.mjs';
+import { checkAtlasCoverage, collectAtlasCoverageEvidence } from './lib/atlas-coverage.mjs';
 import { checkTestJobBuildOrder } from './lib/test-job-order.mjs';
 
 function command(command, args, root, env = process.env) {
@@ -234,6 +235,7 @@ export function runLivenessChecks(root, supplied = {}) {
   const runLocalPath = join(root, 'infra', 'ci', 'run-local.mjs');
   const workflow = supplied.workflow ?? (existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : '');
   const runLocal = supplied.runLocal ?? (existsSync(runLocalPath) ? readFileSync(runLocalPath, 'utf8') : '');
+  const atlas = supplied.atlas ?? collectAtlasCoverageEvidence(root);
   return [
     result('territory pre-commit hook', checkHookEvidence(hook)),
     result('devteam control queue', checkControlQueue(queued)),
@@ -241,6 +243,7 @@ export function runLivenessChecks(root, supplied = {}) {
     result('policy coverage collection', checkCoverageEvidence(coverage)),
     result('workspace dist freshness', checkDistFreshness(packages)),
     result('CI test job builds before test', checkTestJobBuildOrder({ workflow, runLocal })),
+    result('ATLAS index coverage', checkAtlasCoverage(atlas)),
   ];
 }
 
