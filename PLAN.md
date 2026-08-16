@@ -889,7 +889,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-MAINT-2026-08-16
 **Title:** Nightly self-audit failure (2026-08-16)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -898,12 +898,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** harness_audit: harness-audit FAILED (exit 1): === 1/3 AgentShield harness scan === AgentShield Security Report 2026-08-16T16:47:51.113Z Target: C:\CLAUDECODE_TOOLSETS\oikonomos\.claude Grade: A (95/100) Score Breakdown Secrets ████████████████████ 100 Permissions ███████████████████░ 93 Hooks ████████████████████ 100 MCP Servers ████████████████████ 100 Agents ████████████████░░░░ 80 Skill Health Skills discovered: 5 Instrumented: 0 Versioned: 0 Rollback-ready: 0 With history: 0 devteam-autopilot — unobserved (unobserved) File: commands\devteam-autopilot.md devteam-decompose — unobserved (unobserved) File: commands\devteam-decompose.md de…[truncated] | pytest: pytest FAILED: ........................................................................ [ 10%] ....................................…[truncated]
 **Acceptance_Criteria:**
 - [ ] All nightly audit steps pass: harness_audit, pytest
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-MAINT-2026-08-16-gb
+**Started_At:** 2026-08-16T16:50:48Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T16:47:45Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T16:50:48Z
