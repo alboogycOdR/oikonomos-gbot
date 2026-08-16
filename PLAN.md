@@ -489,7 +489,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-017
 **Title:** OIK-028/029/030 — broker: idempotency, fail-closed, capability kill switch ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §4; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E3 OIK-028, OIK-029, OIK-030; docs/decisions/ADR-001-broker-enforcement-point.md R2, R3, CAN-04, CAN-08
@@ -507,8 +507,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-16T10:44:39Z
 **Progress_Notes:**
 - [2026-08-16T10:49:06Z] [SV:CX] Implemented broker decision replay, per-request kill switch, fail-closed dependency handling, and expanded contract coverage.
+- [2026-08-16T11:08:58Z] [SV:CX] Scoped replay decisions by tenant, role, and tool-use ID; added 10-second TTL plus LRU capacity bound and regressions for isolation, expiry, and real approval consume control.
 **Artifacts:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts, dossiers/TASK-017.md
-**Test_Evidence:** pnpm lint; pnpm typecheck; pnpm build; pnpm test â€” all exit 0 (broker: 19/19 tests passing).
+**Test_Evidence:** pnpm --filter @oikonomos/broker test â€” 21/21 passed; pnpm lint, pnpm typecheck, pnpm build, and pnpm test â€” all exit 0 (database integration suites skipped without DATABASE_URL).
 **Review_Findings:** —
 - REWORK (ORCH opus-4-8, 2026-08-16T13:05Z; protected path packages/broker, author CX / reviewer ORCH-opus, different-model rule holds). **THE FAIL-CLOSED WORK IS GENUINELY GOOD AND ELEVEN OF ELEVEN MUTATIONS BEHAVED AS EXPECTED — this suite has real teeth.** AC3 kill switch is read per request with the interface documented against caching, and the no-restart property is tested the hard way, flipping enabled between two calls in the SAME process with a distinct toolUseId (reusing it would have replayed — you saw that trap and avoided it). AC4 internal-dependency-throw is handled for all four dependencies, and **you solved the ordering trap I flagged, correctly and explicitly**: when `recordDecision` is itself what threw, `audit()` converts it to a typed `AuditUnavailableError` rather than a fake success, the outer catch returns a DENY with an explicit `auditEventId: "unavailable"` sentinel, and `failClosed` carries the same guard so the deny-path audit cannot re-enter the loop. It denies, the behaviour is named in code AND in the test title, and it is observable downstream instead of silently allowing. That is the right answer. AC5 now touches the REAL `issueApproval`/`verifyAndConsume` with only the store port faked — the correct seam — and it RAN rather than skipping (19 tests, zero skipped). AC6 regression is clean: the entire removed-line set across the branch is ONE import line, all nine TASK-016 tests are byte-identical, and both the ADR-003 and T4 mutations still kill tests. 14 of 14 return sites audit.
 - **[BLOCKING — THE REPLAY CACHE IS A LIVE CROSS-TENANT AUTHORISATION BYPASS. This is the most serious defect found on this project.]** `packages/broker/src/index.ts:201,205` key the cache on `request.toolUseId` ALONE. I verified the key myself rather than take it second-hand: nothing in it identifies the requester — no `tenantId`, no `roleId`. The probe result is unambiguous: role A gets an allow; then `roleId: "attacker-role"` in `tenantId: "other-tenant"`, **with no role grant at all** — a request that recomputes to a deny — reuses the same `toolUseId` and **RECEIVES ROLE A'S ALLOW, with NO audit event written for it.** Two of this platform's non-negotiables fail at once: the request is authorised without a grant, and it passes through unaudited. `toolUseId` originates in the harness/agent payload — the UNTRUSTED side of the boundary — so this is attacker-selectable, not an accident of collision. The `WeakMap` gives no isolation whatsoever here: it is keyed on the `BrokerDependencies` composition, which in a real service is ONE object shared by every tenant; it only frees memory on teardown. **Note what has happened structurally, because it is the lesson rather than the bug: the idempotency layer you added in AC1 re-opens precisely the door that the role-grant check and the kill switch exist to close.** It is the same shape as non-negotiable #7 (ACL before similarity, never after) — authorisation defeated by a caching layer sitting in front of it. FIX: key on `${tenantId}\0${roleId}\0${toolUseId}`. The fix is drop-in — applied as a probe, the full suite stayed green at 19/19 — and **that is itself the gap: the suite cannot currently tell the two apart, so the test is the part that must ship.** Required: a test asserting a second role does NOT inherit the first's decision AND that its request is independently audited.
@@ -518,8 +519,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING, cosmetic but safety-relevant] The body of `decidePreToolUse` (`:218-317`) is not indented inside its own `try`, which makes the fail-closed scope hard to see when reading. Lint accepts it; it is still the single most safety-relevant brace in the package and it should be obvious.
 - NOTE ON THE VERDICT: the CI red observed during review was `controls-live` reporting an undrained TASK-024 control block — ORCH orchestration state in the main checkout, NOT your defect, and I have drained it. Nothing in this rework is a criticism of the task's shape; three of the four ACs are met outright and the fourth is met in substance. The blocking items are both in the ONE mechanism this task added that had no prior art in the file, which is exactly where a new door gets left open. Resume on task/TASK-017-cx (tip b8b95f7, retained).
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T10:49:06Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T11:08:58Z
 
 ### TASK-018
 **Title:** OIK-003 — CODEOWNERS + protected-path CI enforcement ⚑ protected
