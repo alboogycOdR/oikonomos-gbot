@@ -62,6 +62,8 @@ export interface BrokerDependencies {
 
 const APPROVAL_TIER: RiskTier = "T3_external";
 const AUDIT_UNAVAILABLE_EVENT_ID = "unavailable";
+const REPLAY_CACHE_TTL_MS = 10_000;
+const REPLAY_CACHE_MAX_ENTRIES = 1_024;
 
 /**
  * The HTTP adapter (OIK-084) maps timeout, non-2xx, and invalid JSON failures
@@ -84,8 +86,17 @@ class AuditUnavailableError extends Error {
   }
 }
 
-/** One replay cache per dependency composition; WeakMap avoids retaining a service on teardown. */
-const replayCaches = new WeakMap<BrokerDependencies, Map<string, Promise<PreToolUseResponse>>>();
+interface ReplayEntry {
+  readonly response: Promise<PreToolUseResponse>;
+  readonly expiresAt: number;
+}
+
+/**
+ * One replay cache per dependency composition; WeakMap avoids retaining a
+ * service on teardown. Entries are tenant- and role-scoped, expire with the
+ * hook timeout window, and use LRU eviction to bound long-lived processes.
+ */
+const replayCaches = new WeakMap<BrokerDependencies, Map<string, ReplayEntry>>();
 
 function tierRank(tier: RiskTier): number {
   return riskTiers.indexOf(tier);
@@ -172,6 +183,10 @@ function failureReason(error: unknown): string {
   return "broker.dependency_failure";
 }
 
+function replayKey(request: PreToolUseRequest): string {
+  return `${request.tenantId}\0${request.roleId}\0${request.toolUseId}`;
+}
+
 async function failClosed(
   dependencies: BrokerDependencies,
   request: PreToolUseRequest,
@@ -198,11 +213,25 @@ export async function handlePreToolUse(
     cache = new Map();
     replayCaches.set(dependencies, cache);
   }
-  const replay = cache.get(request.toolUseId);
-  if (replay !== undefined) return replay;
+  const key = replayKey(request);
+  const replay = cache.get(key);
+  if (replay !== undefined) {
+    if (replay.expiresAt > Date.now()) {
+      // Refresh insertion order so the Map acts as an LRU cache.
+      cache.delete(key);
+      cache.set(key, replay);
+      return replay.response;
+    }
+    cache.delete(key);
+  }
 
   const decision = decidePreToolUse(request, dependencies);
-  cache.set(request.toolUseId, decision);
+  while (cache.size >= REPLAY_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+  cache.set(key, { response: decision, expiresAt: Date.now() + REPLAY_CACHE_TTL_MS });
   return decision;
 }
 

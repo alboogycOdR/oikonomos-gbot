@@ -69,6 +69,47 @@ describe("handlePreToolUse — Handover §4.1", () => {
     expect(deps.recordDecision).toHaveBeenCalledOnce();
   });
 
+  it("does not replay an allowed decision across roles or tenants", async () => {
+    const deps = dependencies({
+      getRoleGrant: vi.fn(async (roleId) => roleId === request.roleId ? { maxTier: "T3_external" } : null),
+    });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+    await expect(handlePreToolUse({
+      ...request,
+      roleId: "attacker-role",
+      tenantId: "other-tenant",
+    }, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "role.grant_missing",
+      auditEventId: "42",
+    });
+
+    expect(deps.getRoleGrant).toHaveBeenCalledTimes(2);
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops replaying a decision after the hook timeout window", async () => {
+    vi.useFakeTimers();
+    try {
+      const enabled = vi.fn(() => true);
+      const deps = dependencies({ isCapabilitiesEnabled: enabled });
+
+      await expect(handlePreToolUse(request, deps)).resolves.toMatchObject({ decision: "allow" });
+      enabled.mockReturnValue(false);
+      vi.advanceTimersByTime(10_001);
+
+      await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+        decision: "deny",
+        reason: "capability.disabled",
+        auditEventId: "42",
+      });
+      expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reads the capability kill switch for every new tool use without a restart", async () => {
     const enabled = vi.fn(() => true);
     const deps = dependencies({ isCapabilitiesEnabled: enabled });
@@ -84,7 +125,7 @@ describe("handlePreToolUse — Handover §4.1", () => {
   });
 
   it.each([
-    ["timeout over 10 seconds", new BrokerFailure("broker.timeout"), "broker.timeout"],
+    ["typed timeout signal", new BrokerFailure("broker.timeout"), "broker.timeout"],
     ["HTTP 500", new BrokerFailure("broker.http_500"), "broker.http_500"],
   ])("fails closed and audits a %s", async (_case, error, reason) => {
     const deps = dependencies({ getCapability: vi.fn(async () => { throw error; }) });
@@ -296,21 +337,36 @@ describe("handlePreToolUse — Handover §4.1", () => {
         return row;
       },
       getByNonce: async (nonce) => row?.nonce === nonce ? row : null,
-      consume: async () => ({ rowCount: 0, approval: null }),
+      consume: async (nonce) => {
+        if (row?.nonce !== nonce || row.status !== "granted") return { rowCount: 0, approval: null };
+        row.status = "consumed";
+        return { rowCount: 1, approval: row };
+      },
       invalidate: async (nonce) => {
         if (row?.nonce === nonce && row.status === "granted") row.status = "invalidated";
         return { rowCount: 0, approval: null };
       },
       expirePending: async () => 0,
     };
-    const issued = await issueApproval({
+    const issue = () => issueApproval({
       runId: request.runId, capabilityId: "email.send", toolName: request.toolName,
       input: request.input as never, destination: "review@example.test", tenantId: request.tenantId,
     }, { store });
+    const issued = await issue();
     if (row === null) throw new Error("approval was not persisted");
     row.status = "granted";
 
     await expect(verifyAndConsume(issued.nonce, { store }, {
+      toolName: request.toolName,
+      input: request.input as never,
+      destination: "review@example.test",
+    })).resolves.toMatchObject({ consumed: true, rowCount: 1 });
+
+    const mutatedIssued = await issue();
+    if (row === null) throw new Error("approval was not persisted");
+    row.status = "granted";
+
+    await expect(verifyAndConsume(mutatedIssued.nonce, { store }, {
       toolName: request.toolName,
       input: { ...request.input, subject: "Mutated after approval" } as never,
       destination: "review@example.test",
