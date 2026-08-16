@@ -791,6 +791,32 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-16T11:27:52Z
 
+### TASK-027
+**Title:** Close the sandbox port band at the host (DOCKER-USER) ⛔ DEFERRED — do not dispatch
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** infra/sandbox/README.md §7 item 1; docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md §4; docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md §2 (OIK-045b)
+**Owned_Paths:** infra/sandbox/**
+**Depends_On:** TASK-019
+**Description:** **DEFERRED BY ALISTER 2026-08-16 — DO NOT DISPATCH until the trigger below fires.** This is a deliberate deferral with a stated expiry, not a backlog item that drifted. It exists as a task so it surfaces in every `/devteam-status` scan rather than living only in a README paragraph. **THE SITUATION:** OpenSandbox publishes each sandbox's ports on `0.0.0.0`, and it offers no bind-address option — `config.py:831`'s `host_ip` is URL-rewriting only, so this cannot be fixed in configuration. clawsrv's `ufw` is default-deny and looks like it covers this; **it does not.** Docker published ports are DNAT'd in `nat/PREROUTING` and traverse FORWARD, never INPUT, so the entire ufw ruleset is bypassed for them — `ufw status` reporting a tidy default-deny is not evidence these ports are closed. Measured externally they TIME OUT rather than connecting, so something is dropping them; that something is almost certainly the Hetzner cloud firewall, which lives outside this host, is invisible to every command run on it, and can be changed from a web console by someone who will not know it is load-bearing for sandbox isolation. **WHY DEFERRAL IS DEFENSIBLE TODAY:** nothing runs in a sandbox. The runtime is deployed but unwired — OIK-043 is gated on OIK-033 and has not landed — so no agent workload occupies this band. The exposure is structural, not live, and hand-applying iptables rules to the production host carrying the live fleet in order to protect ports nothing listens on is the worse trade right now. **THE TRIGGER — THIS IS THE POINT OF THE TASK:** revisit BEFORE the first real workload runs in a sandbox, i.e. as part of OIK-043, not after an unscheduled "once we have tested live". Two conditions each force it earlier and independently: (a) any change to the Hetzner cloud firewall, since it is currently the only thing closing these ports; (b) any move of this deployment to a host lacking that upstream filtering. The remedy is already written and ready in `infra/sandbox/README.md` §7.
+**Acceptance_Criteria:**
+- [ ] The `DOCKER-USER` rules from README §7 are applied for both IPv4 and IPv6, and are PERSISTED across reboot (`netfilter-persistent` or a systemd unit) — an unpersisted rule is a control that disappears at the next restart, which is the inert-control failure class ADR-005 exists for
+- [ ] Verified by OBSERVED REFUSAL from an external non-Tailscale path against a live sandbox port in the 30000-30999 band, captured verbatim — NOT by re-reading `ufw status`, which will keep reporting a tidy default-deny whether or not this rule exists
+- [ ] Verified that a sandbox port REMAINS reachable over Tailscale, i.e. the rule did not close the band entirely
+- [ ] The rule is discoverable: `ufw` does not own or display it, so its existence and location are documented where an operator reading `ufw status` would otherwise conclude ufw is doing this work
+- [ ] A liveness assertion, or an explicit written statement of why one is impractical here — per CLAUDE.md every mechanical control ships a check that fails when the control is inert, and a firewall rule silently flushed on reboot is exactly that failure
+- [ ] README §7 item 1 updated from "deferred" to the applied state, with the evidence
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T16:05:00Z
+
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
 **Status:** done

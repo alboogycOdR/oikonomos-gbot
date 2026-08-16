@@ -132,13 +132,19 @@ Minimum valid create body (the API rejects each omission in turn — image must 
 
    Empirically they are closed: port 30359 **timed out** from an external path rather than connecting. But that protection is therefore coming from somewhere other than ufw — most likely an upstream provider firewall (the host's addresses are Hetzner). That layer is outside this host, invisible to `ufw status`, and changeable from a web console by someone who will not know it is load-bearing for sandbox isolation.
 
-   **Recommended fix — filter in `DOCKER-USER`, the one chain Docker traffic does traverse:**
+   **DECISION 2026-08-16 (Alister): DEFERRED, deliberately — not an oversight.** The remedy below is written and ready; it is not applied yet. Recorded here with its rationale and its trigger so the deferral is a decision with an expiry rather than an intention that evaporates.
+
+   **Why deferring is defensible right now:** nothing runs inside a sandbox yet. The runtime is deployed but unwired — OIK-043 (sandbox lifecycle into `harness-factory`) is gated on OIK-033 and has not landed, so no agent workload, no untrusted code and no browser session currently occupies these ports. The exposure is structural, not live. Applying iptables rules by hand to a production host carrying the live fleet, in order to protect ports nothing is listening on, is the worse trade today.
+
+   **The trigger — this is the part that matters.** Revisit **before the first real workload runs in a sandbox**, i.e. as part of OIK-043, not after a vague "once we've tested live". The moment `harness-factory` creates sandboxes per run, agent-controlled processes occupy this port band and the exposure stops being theoretical. Two further conditions each independently force it earlier: (a) any change to the Hetzner cloud firewall, since that is currently the *only* thing closing these ports and it lives outside this host; (b) any move of this deployment to a host without that upstream filtering.
+
+   **The remedy, ready to apply — filter in `DOCKER-USER`, the one chain Docker traffic does traverse:**
    ```bash
    PUBIF=$(ip route show default | awk '{print $5; exit}')
-   sudo iptables -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
+   sudo iptables  -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
    sudo ip6tables -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
    ```
-   This is defence in depth, not a fix for a currently-open hole. **It does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit) — and ufw will not manage it, because ufw does not own this chain.
+   Two properties to carry into that work: **it does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit), and **ufw will not manage it and will not show it** — `ufw status` will keep reporting a tidy default-deny while this rule is the thing actually doing the work. Verify by observed refusal from an external path, never by re-reading `ufw status`.
 2. **`Secure runtime is not configured`** appears at startup — no gVisor/Kata/Firecracker. Sandboxes use the default runc isolation. That is acceptable for OIK-042 but is exactly what OIK-045c (isolation strength per capability tier) exists to fix; Tier-3/4 execution must not rely on this deployment as-is.
 3. **No liveness assertion yet.** Per CLAUDE.md every mechanical control ships a check that fails when the control is *inert*. There is currently nothing that fails if this server stops, loses its Tailscale-only binding, or silently reverts to `network_mode = "host"`. The third is the dangerous one — it would still serve traffic and pass any naive health check while isolation was gone. Uptime-kuma is already on this host and is the obvious place to start, but a health check alone does not satisfy the rule.
 4. **The API key is single, static and host-local.** No rotation procedure exists. Rotation = regenerate per §3 step 4, then `docker restart opensandbox-server`; every client must be updated in the same window.
