@@ -38,6 +38,13 @@ ADRs > Build Handover Package v1.0 > Gap Closure Plan v0.2 > Synthesis Spec v0.1
 
 Hard ceiling R30,000/month (inference + hosting). Per-routine budgets enforced by the broker from week 5. Route Tier-0 observation work to cheap models via FreeLLMAPI.
 
+## DEVDEPARTMENT amendments (OIKONOMOS)
+
+Project-specific amendments to the DEVDEPARTMENT orchestration section below. They live **here**, in oikonomos's own part of this file, because that section is machine-managed: `scripts/sync_from_pack.py` refreshes it from the pack, so edits made *inside* it are either discarded by a sync or permanently block one. (Both happened before 2026-08-15.) Amendments in this section survive every sync.
+
+- **Review standard, item 3 — always run the FULL recursive suite (`pnpm -r test`), never only the task's own package.** A filtered run cannot see a cross-package regression: on 2026-08-15 master went red at the TASK-014 merge and stayed red through two further reviews, because each review agent was scoped to its task's package plus lint/typecheck/build. The failing assertion was in `packages/db` while the tasks under review were `packages/approvals` and `packages/audit`.
+- **Two different "Protected paths" lists exist in this file and both bind.** The one near the top of this document (`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, `hooks/**`, `.claude/**`, `.codex/**`) additionally requires adversarial review by a *different model than the author*. The one inside the DEVDEPARTMENT section is the builder **territory firewall** — the paths builders may never modify. Neither list replaces the other.
+
 ---
 
 ## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)
@@ -99,7 +106,7 @@ When a command would pull a wall of output into the session — a full test suit
 For every `needs_review` task:
 1. `git diff main...task/TASK-NNN-xx --stat` — **any file outside `Owned_Paths` = automatic rework**, no exceptions.
 2. Check every acceptance criterion against the referenced spec text itself, not the builder's summary.
-3. Re-run the tests yourself in the worktree — via a subagent, taking back only pass/fail counts and failure detail. Test_Evidence is a claim; you verify claims. Delegating *where the output lands* does not delegate the verification: the run must actually happen and you must see its result. **Always include the FULL recursive suite (`pnpm -r test`), not only the task's own package.** A filtered run cannot see a cross-package regression: on 2026-08-15 master went red at the TASK-014 merge and stayed red through two further reviews, because each review agent was scoped to its task's package plus lint/typecheck/build. The failing assertion was in `packages/db` while the tasks under review were `packages/approvals` and `packages/audit`.
+3. Re-run the tests yourself in the worktree — via a subagent, taking back only pass/fail counts and failure detail. Test_Evidence is a claim; you verify claims. Delegating *where the output lands* does not delegate the verification: the run must actually happen and you must see its result.
 4. Read the diff for: error handling, input validation, logging, dead code, protocol-violating PLAN.md edits (`git log -p -- PLAN.md`).
 5. Record verdict in REVIEW.md: `TASK-NNN | <unit> | approved/rework | findings | first-pass? yes/no`.
 6. Approved → merge, `Status: done`, delete branch, check whether any `Depends_On` unlocks (flip dependents' readiness note). Rework → findings into `Review_Findings`, `Status: in_progress`, notify via orchestrator_notes.
@@ -111,7 +118,7 @@ For every `needs_review` task:
 - Assignment heuristics: protocol §8; refine from REVIEW.md evidence.
 - Keep a small `TBD` backlog of ready-next tasks so builders are never idle waiting on you.
 
-### Protected paths (DEVDEPARTMENT territory firewall)
+### Protected paths
 
 Builders must never modify: `specs/**`, `AGENTS.md`, `CLAUDE.md`, `docs/**`, `REVIEW.md`, `.claude/**`, `.codex/**`, `scripts/**`, `hooks/**`, `briefings/**`, `autopilot.json`, `AUTOPILOT_LOG.md`, `onboard.md`, PLAN.md frontmatter or other units' task blocks. The territory firewall hook blocks these mechanically in hook-capable harnesses; enforce during review via `git log -p` regardless.
 
