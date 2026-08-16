@@ -613,7 +613,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-023
 **Title:** CI test job never builds — workspace imports cannot resolve on a clean checkout ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E1 OIK-002
@@ -626,15 +626,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The local mirror (`run-local.mjs`) reflects the same ordering, so a green local run implies a green CI run rather than diverging from it
 - [ ] A check fails if the ordering regresses (e.g. test invoked with no prior build in a tree lacking dist) — per ADR-005, keyed on evidence, and proven able to FAIL
 - [ ] Existing infra/ci self-tests and the protected-path gate stay green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-023-gb
+**Started_At:** 2026-08-16T09:36:54Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T17:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-16T09:36:54Z
 
 ### TASK-024
 **Title:** ATLAS index liveness assertion (descoped from TASK-021) ⚑ protected
