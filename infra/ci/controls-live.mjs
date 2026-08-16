@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/walk.mjs';
+import { checkTestJobBuildOrder } from './lib/test-job-order.mjs';
 
 function command(command, args, root, env = process.env) {
   const result = spawnSync(command, args, {
@@ -229,12 +230,17 @@ export function runLivenessChecks(root, supplied = {}) {
   const queued = supplied.queued ?? collectControlQueueEvidence(root);
   const config = supplied.config ?? JSON.parse(readFileSync(join(root, 'autopilot.json'), 'utf8'));
   const packages = supplied.packages ?? workspacePackages(root);
+  const workflowPath = join(root, '.github', 'workflows', 'ci.yml');
+  const runLocalPath = join(root, 'infra', 'ci', 'run-local.mjs');
+  const workflow = supplied.workflow ?? (existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : '');
+  const runLocal = supplied.runLocal ?? (existsSync(runLocalPath) ? readFileSync(runLocalPath, 'utf8') : '');
   return [
     result('territory pre-commit hook', checkHookEvidence(hook)),
     result('devteam control queue', checkControlQueue(queued)),
     result('active builder model pins', checkBuilderModels(config)),
     result('policy coverage collection', checkCoverageEvidence(coverage)),
     result('workspace dist freshness', checkDistFreshness(packages)),
+    result('CI test job builds before test', checkTestJobBuildOrder({ workflow, runLocal })),
   ];
 }
 

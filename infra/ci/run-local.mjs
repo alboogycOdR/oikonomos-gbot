@@ -106,6 +106,8 @@ if (options.help) {
 
 const jobs = [];
 jobs.push(run('typecheck', 'pnpm', ['typecheck']));
+// Same order as .github/workflows/ci.yml `test` job: build then test.
+// A parallel `build` job on GitHub does not populate the test job's workspace.
 jobs.push(run('build', 'pnpm', ['build']));
 jobs.push(run('test', 'pnpm', ['test']));
 jobs.push(lintJob());
@@ -114,6 +116,7 @@ jobs.push(run('banned-modes', 'node', [join(here, 'banned-modes.mjs')]));
 jobs.push(run('secret-scan self-test', 'node', [join(here, 'test-secret-scan.mjs')]));
 jobs.push(run('secret-scan', 'node', [join(here, 'secret-scan.mjs')]));
 jobs.push(run('protected-path-review self-test', 'node', [join(here, 'test-protected-path-review.mjs')]));
+jobs.push(run('test-job-order self-test', 'node', [join(here, 'test-test-job-order.mjs')]));
 jobs.push(run('controls-live self-test', 'node', [join(here, 'test-controls-live.mjs')]));
 jobs.push(run('controls-live', 'node', [join(here, 'controls-live.mjs')]));
 try {

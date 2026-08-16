@@ -31,6 +31,19 @@ function mainCheckoutRoot() {
   return dirname(resolve(process.cwd(), commonDir.stdout.trim()));
 }
 
+const liveWorkflow = `jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+`;
+const liveRunLocal = `
+jobs.push(run('build', 'pnpm', ['build']));
+jobs.push(run('test', 'pnpm', ['test']));
+`;
+
 function baseline() {
   return {
     hook,
@@ -38,6 +51,8 @@ function baseline() {
     queued: { exists: true, files: [] },
     config: structuredClone(config),
     packages: structuredClone(packages),
+    workflow: liveWorkflow,
+    runLocal: liveRunLocal,
   };
 }
 
@@ -57,6 +72,14 @@ test('each liveness assertion rejects its induced inert state', () => {
   assertInducedFailure('policy coverage collection', (evidence) => { evidence.coverage = { status: 0, output: 'tests passed\n' }; });
   assertInducedFailure('workspace dist freshness', (evidence) => {
     evidence.packages = [{ name: 'packages/example', sourceFiles: ['/missing/source.ts'], distFiles: [] }];
+  });
+  assertInducedFailure('CI test job builds before test', (evidence) => {
+    evidence.workflow = `jobs:
+  test:
+    steps:
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+`;
   });
 });
 
