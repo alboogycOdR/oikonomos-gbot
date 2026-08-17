@@ -1027,7 +1027,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-031
 **Title:** OIK-035 — L3 canUseTool secondary adapter → broker ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-035; docs/decisions/ADR-001-broker-enforcement-point.md (L3, R2, F5); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1042,13 +1042,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
 **Branch:** task/TASK-031-cx
 **Started_At:** 2026-08-17T19:39:56Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T19:44:56Z] [SV:CX] Implemented the L3 canUseTool broker adapter with broker-owned toolUseId idempotency, F5 routing, fail-closed behavior, and proof that L1 remains authoritative.
+**Artifacts:** packages/harness-factory/src/l3/canusetool.ts, packages/harness-factory/test/l3/canusetool.test.ts, dossiers/TASK-031.md
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 30/30 passed; typecheck, build, pnpm lint: passed; pnpm -r test: 277 passed / 31 skipped.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:39:56Z
+**Updated_At:** 2026-08-17T19:44:56Z
 
 ### TASK-032
 **Title:** OIK-036 — L2 dontAsk mode + scoped allowedTools validator (R1) ⚑ protected
