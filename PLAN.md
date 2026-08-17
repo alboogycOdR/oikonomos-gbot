@@ -1080,7 +1080,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-037; docs/decisions/ADR-001-broker-enforcement-point.md (R4)
@@ -1097,12 +1097,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-08-17T20:15:00Z] [ORCH] RE-CARVED after CX's OWNERSHIP_CONFLICT block, which was CORRECT that 033 could not be done in two files - but the ROOT CAUSE is MY over-specification, now corrected. THE DESIGN, decided: R4 / OIK-037 requires writing COMPLETION EVIDENCE (result digest + artifact URIs) to the audit trail, correlated by `toolUseId` - NOT by preserving L1's exact `auditEventId`. My original description said 'correlated to ... auditEventId', which is what led CX to (correctly, under that reading) conclude it needed pretooluse.ts + ports.ts to thread the auditEventId through. Dropping that: toolUseId is the correlation key (both the L1 decision event and this completion event carry it; correlate at query time). So: (1) DO NOT modify pretooluse.ts or ports.ts - the existing PostToolUsePortRequest already carries toolName/toolUseId/input/toolResponse, which is sufficient. (2) The ONE real cross-territory need is the @oikonomos/shared dependency for the canonical-JSON/sha256 result digest (single implementation, NO reimplementation) - hence package.json + pnpm-lock.yaml are now in territory. (3) Write the evidence via an INJECTED audit-sink dependency on the concrete adapter's own constructor (the DI pattern the other adapters use); composition (OIK-039/TASK-035) wires the real sink. If after this you STILL believe the exact L1 auditEventId must be preserved, block SPEC_AMBIGUITY and I will author an ADR - do not silently thread it through L1.
 - [2026-08-17T19:51:57Z] [SV:CX] Verified the R4 hook cannot preserve L1 auditEventId or import the mandated shared digest within the two allocated files; documented evidence and baseline validation in dossier.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-17T20:00:10Z] [SV:CX] Implemented and committed the R4 PostToolUse completion-evidence adapter with injected audit sink, toolUseId correlation, shared digest, and artifact URI coverage.
+**Artifacts:** packages/harness-factory/src/hooks/posttooluse.ts, packages/harness-factory/test/hooks/posttooluse.test.ts, packages/harness-factory/package.json, pnpm-lock.yaml
+**Test_Evidence:** PASS: pnpm --filter @oikonomos/harness-factory test (46 tests); pnpm --filter @oikonomos/harness-factory typecheck; pnpm lint. pnpm -r test reached harness-factory successfully but exits 1 due to unrelated @oikonomos/worker missing DB exports (documented in dossier).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:56:17Z
+**Updated_At:** 2026-08-17T20:00:10Z
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
