@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GrokProvider, buildGrokArgs } from "../src/providers/grok.js";
+import type { GateSpawn } from "../src/providers/codex.js";
 import type { ProviderEvent } from "../src/types.js";
 
 describe("buildGrokArgs", () => {
@@ -118,12 +119,13 @@ describe("GrokProvider (subprocess integration via a fake grok binary)", () => {
     }
   });
 
-  function makeProvider(bin: string, overrides: Partial<{ sandbox: "workspace" | "read-only"; alwaysApprove: boolean }> = {}) {
+  function makeProvider(bin: string, overrides: Partial<{ sandbox: "workspace" | "read-only"; alwaysApprove: boolean; gateSpawn: GateSpawn }> = {}) {
     return new GrokProvider({
       bin,
       defaultModel: "grok-4.5",
       sandbox: overrides.sandbox ?? "workspace",
       alwaysApprove: overrides.alwaysApprove ?? true,
+      gateSpawn: overrides.gateSpawn ?? (async () => ({ allow: true })),
     });
   }
 
@@ -208,5 +210,35 @@ describe("GrokProvider (subprocess integration via a fake grok binary)", () => {
       permissionPrompts: false,
       interruptible: true,
     });
+  });
+
+  it("fails closed without a gate and never spawns the CLI", async () => {
+    const marker = path.join(mkdtempSync(path.join(tmpdir(), "grok-gate-marker-")), "spawned.txt");
+    tmpDirs.push(path.dirname(marker));
+    const previous = process.env.SPAWN_SENTINEL;
+    process.env.SPAWN_SENTINEL = marker;
+    const bin = makeFakeGrokBin("require('node:fs').writeFileSync(process.env.SPAWN_SENTINEL, 'spawned');");
+    const provider = new GrokProvider({ bin, defaultModel: "grok-4.5", sandbox: "workspace", alwaysApprove: true });
+    const events = await collect(provider);
+    expect(events).toEqual([{ type: "error", fatal: true, message: "Grok spawn denied: broker gate is not configured." }]);
+    expect(existsSync(marker)).toBe(false);
+    if (previous === undefined) delete process.env.SPAWN_SENTINEL;
+    else process.env.SPAWN_SENTINEL = previous;
+  });
+
+  it("does not spawn the CLI when the broker denies or throws", async () => {
+    const marker = path.join(mkdtempSync(path.join(tmpdir(), "grok-gate-marker-")), "spawned.txt");
+    tmpDirs.push(path.dirname(marker));
+    const previous = process.env.SPAWN_SENTINEL;
+    process.env.SPAWN_SENTINEL = marker;
+    const bin = makeFakeGrokBin("require('node:fs').writeFileSync(process.env.SPAWN_SENTINEL, 'spawned');");
+    const denied = await collect(makeProvider(bin, { gateSpawn: async () => ({ allow: false, message: "approval required" }) }));
+    expect(denied[0]).toMatchObject({ type: "error", fatal: true, message: "Grok spawn denied: approval required" });
+    expect(existsSync(marker)).toBe(false);
+    const threw = await collect(makeProvider(bin, { gateSpawn: async () => { throw new Error("broker unavailable"); } }));
+    expect(threw[0]).toMatchObject({ type: "error", fatal: true, message: "Grok spawn denied: broker gate failed closed: broker unavailable" });
+    expect(existsSync(marker)).toBe(false);
+    if (previous === undefined) delete process.env.SPAWN_SENTINEL;
+    else process.env.SPAWN_SENTINEL = previous;
   });
 });

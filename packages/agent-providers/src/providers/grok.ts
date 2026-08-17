@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { AgentProvider, ProviderCapabilities, ProviderEvent, SendPromptOptions } from "../types.js";
+import type { GateSpawn, SubprocessSpawnRequest } from "./codex.js";
 
 export type GrokSandboxProfile = "workspace" | "read-only" | "strict" | "devbox" | "off";
 
@@ -18,6 +19,8 @@ export interface GrokProviderOptions {
    */
   alwaysApprove: boolean;
   apiKey?: string;
+  /** Broker-backed gate. Every CLI spawn must receive an allow decision. */
+  gateSpawn?: GateSpawn;
 }
 
 const AVAILABLE_MODELS = ["grok-4.5", "grok-build-0.1"] as const;
@@ -89,6 +92,7 @@ export class GrokProvider implements AgentProvider {
   private readonly sandbox: GrokSandboxProfile;
   private readonly alwaysApprove: boolean;
   private readonly apiKey: string | undefined;
+  private readonly gateSpawn: GateSpawn | undefined;
   private activeChild: ChildProcessWithoutNullStreams | null = null;
 
   constructor(options: GrokProviderOptions) {
@@ -97,6 +101,7 @@ export class GrokProvider implements AgentProvider {
     this.sandbox = options.sandbox;
     this.alwaysApprove = options.alwaysApprove;
     this.apiKey = options.apiKey;
+    this.gateSpawn = options.gateSpawn;
   }
 
   async interrupt(): Promise<void> {
@@ -117,6 +122,24 @@ export class GrokProvider implements AgentProvider {
 
     const env = { ...process.env };
     if (this.apiKey) env.XAI_API_KEY = this.apiKey;
+
+    const request: SubprocessSpawnRequest = { provider: this.id, command: this.bin, args, cwd: opts.cwd, env };
+    let gateResult: { allow: boolean; message?: string } | undefined;
+    if (!this.gateSpawn) {
+      yield { type: "error", fatal: true, message: "Grok spawn denied: broker gate is not configured." };
+      return;
+    }
+    try {
+      gateResult = await this.gateSpawn(request);
+    } catch (err) {
+      const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
+      yield { type: "error", fatal: true, message: `Grok spawn denied: broker gate failed closed${detail}` };
+      return;
+    }
+    if (gateResult?.allow !== true) {
+      yield { type: "error", fatal: true, message: `Grok spawn denied: ${gateResult?.message ?? "broker denied request"}` };
+      return;
+    }
 
     const isWin = process.platform === "win32";
     const child = spawn(this.bin, args, {
