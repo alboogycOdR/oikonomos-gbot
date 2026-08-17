@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -843,12 +843,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-08-17T20:30:00Z] [ORCH] RESET to pending - work LOST to an ORCH error, not a CX fault. I pointed the TASK-033 adversarial review at wt-codex AND dispatched CX->039 into the SAME wt-codex worktree at the same time; the review agent's checkouts reset the worktree out from under CX's 039 session, destroying its in-progress edits. CX correctly detected the reset and blocked SYNC_MISMATCH. ROOT CAUSE + FIX FOR NEXT DISPATCH: never point a review at a worktree while a builder is dispatched into it, and never reset a worktree a builder session may be using. 039 (route Codex/Grok spawns through gateSubprocess + liveness + widen scanRoots) is unchanged in scope and eligible; re-dispatch CX on a clean worktree with no concurrent review in it. Note CX's pre-reset evidence looked healthy (agent-providers 47/47, harness-factory 42/42, lint/banned-modes clean), so the implementation was likely close - but it is gone; start fresh.
 - [2026-08-17T20:10:41Z] [SV:CX] Worktree was externally reset to detached c87dc15; TASK-039 branch and all implementation edits disappeared after task-local checks.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-17T21:18:50Z] [SV:CX] Codex and Grok subprocesses now require an injected broker gate and fail closed; guard scan coverage includes apps/ and evals/. Commit b83e2db.
+**Artifacts:** packages/agent-providers/src/providers/codex.ts, packages/agent-providers/src/providers/grok.ts, packages/agent-providers/test/providers.codex.test.ts, packages/agent-providers/test/providers.grok.test.ts, packages/harness-factory/test/sole-constructor.test.ts, dossiers/TASK-039.md
+**Test_Evidence:** Focused: agent-providers 45/45 passed; harness-factory 47/47 passed; both typechecks passed. pnpm lint and node infra/ci/banned-modes.mjs clean. pnpm -r test exposed two unrelated worker failures: getRun/startRun are not functions.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T21:13:40Z
+**Updated_At:** 2026-08-17T21:18:50Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
