@@ -382,13 +382,28 @@ def apply_rework(plan_text: str, task_id: str, reason: str, ts: str) -> ApplyRes
 
 # ------------------------------------------------------------- git plumbing -
 def git_pull(repo: Path) -> bool:
-    """Best-effort `git pull --rebase --autostash`. False (not raised) on any failure
+    """Best-effort fetch + fast-forward-only. False (not raised) on any failure
     or if repo isn't a git working tree — the caller proceeds on the working copy
     either way; a stale pull just means a slightly higher chance of a push conflict,
-    never a crash."""
+    never a crash.
+
+    LOCAL PATCH (oikonomos 2026-08-17, finding #15 — pending upstream): was
+    `git pull --rebase --autostash`. That REBASES local commits onto the upstream,
+    and once a remote is configured the supervisor commits far faster than anything
+    pushes, so local DIVERGES from origin almost immediately. The rebase then hit
+    divergent history, CONFLICTED, and left the main checkout detached mid-rebase
+    with an unresolved working tree — corrupting a LIVE loop (the docstring's
+    "never a crash" assumption is false under divergence). fetch + `merge --ff-only`
+    takes upstream changes only when we can fast-forward and does NOTHING on
+    divergence (returns False, caller proceeds on the local copy) — which is exactly
+    what this function already declares acceptable. It can never rebase-conflict.
+    tg_commands.py is framework_owned; this is reverted on the next pack sync, so the
+    real fix must ship upstream (docs/progress findings #15)."""
     try:
-        r = subprocess.run(["git", "pull", "--rebase", "--autostash"],
-                            cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        subprocess.run(["git", "fetch"],
+                       cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        r = subprocess.run(["git", "merge", "--ff-only", "@{u}"],
+                           cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         return r.returncode == 0
     except Exception:
         return False

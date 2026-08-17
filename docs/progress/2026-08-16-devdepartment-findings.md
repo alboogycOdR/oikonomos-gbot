@@ -105,6 +105,8 @@ The dispatch/builder prompt tells builders: *"blocked_reason must start with SPE
 2. If a pull is kept, make it `--ff-only` and skip (log, don't rebase) when the branch has diverged.
 3. Operationally until fixed: run the loop with **no remote configured** (its historical, working state), or keep local and origin converged by pushing every commit — but option 1 is the real fix.
 
+**LOCAL PATCH APPLIED (oikonomos 2026-08-17, pending upstream):** `tg_commands.git_pull` changed from `git pull --rebase --autostash` to `git fetch` + `git merge --ff-only @{u}` (option 1/2 above). Verified in the exact failure state (local 9 commits ahead of a diverged origin): the patched call returned cleanly and left the working tree **on master, not detached, not conflicted** — it can no longer rebase-conflict; on divergence it does nothing and the caller proceeds on the local copy, which the docstring already declares acceptable. `git_pull` is called from four sites in the tick path (`supervisor.py:690`, `control.py:244/311/402`), so this also un-breaks `control.py drain`. `tg_commands.py` is `framework_owned` → reverted on the next pack sync; the real fix must ship upstream.
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
