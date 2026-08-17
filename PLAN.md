@@ -889,7 +889,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-MAINT-2026-08-16
 **Title:** Nightly self-audit failure (2026-08-16)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -900,10 +900,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] All nightly audit steps pass: harness_audit, pytest
 **Branch:** task/TASK-MAINT-2026-08-16-gb
 **Started_At:** 2026-08-16T16:50:48Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T09:22:22Z] [SV:GB] Nightly pytest was red because pack-template assertions ran against this onboarded checkout (CLAUDE.md H2 + atlas/strict flips). tests/test_sync_from_pack.py now uses markers[] and skips pack-default pins unless CLAUDE.md still has the pack H1. harness-audit PASS; pytest 696 passed / 2 skipped.
+**Artifacts:** tests/test_sync_from_pack.py, dossiers/TASK-MAINT-2026-08-16.md
+**Test_Evidence:** python -m pytest tests/ -q — 696 passed, 2 skipped (84.68s). node hooks/run-tests.js — 36 passed, 0 failed. powershell -ExecutionPolicy Bypass -File scripts\harness-audit.ps1 — HARNESS AUDIT: PASS (AgentShield Grade A 95/100, 0 critical; PLAN.md OK; pytest 696+2skip; hooks 36).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-16T16:50:48Z
+**Updated_At:** 2026-08-17T09:22:22Z
