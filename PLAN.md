@@ -823,6 +823,31 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-16T16:05:00Z
 
+### TASK-039
+**Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
+**Owned_Paths:** packages/agent-providers/src/providers/codex.ts, packages/agent-providers/src/providers/grok.ts, packages/agent-providers/test/providers.codex.test.ts, packages/agent-providers/test/providers.grok.test.ts, packages/harness-factory/test/sole-constructor.test.ts
+**Depends_On:** TASK-028, TASK-029
+**Description:** **GB or CX only, NEVER S5** (touches packages/harness-factory/test, a protected path; directive §3 different-model review). **This closes the subprocess broker-bypass that TASK-029's adversarial review found is only MITIGATED-IN-PRINCIPLE, not closed.** TASK-029 shipped `gateSubprocess`/`gateSubprocessThroughL1` in harness-factory - a correct fail-closed gate (deny/throw/unknown-provider => no spawn) - but NOTHING calls it: `codex.ts:170` and `grok.ts:122` still `spawn(this.bin, ...)` directly, so a Codex/Grok subprocess reaches the OS without a broker check. Give both providers an INJECTED spawn-gate seam (the same pattern TASK-028 used for Claude's `queryFn`: an optional `gateSpawn?` function on the provider options), route every CLI spawn through it, and FAIL CLOSED when the gate denies/throws AND when the seam is absent-but-required (a provider asked to run without a gate must refuse, not spawn ungated). The real gate is wired at composition (OIK-039/TASK-035) - hence TASK-035 now depends on this. SECONDARY (small, in the same pass): widen the sole-constructor guard's `scanRoots` in `packages/harness-factory/test/sole-constructor.test.ts` to include `apps/` and `evals/` (both declared CLAUDE.md source roots the guard currently skips - empty today, so defense-in-depth, but an SDK import placed there would evade the guard).
+**Acceptance_Criteria:**
+- [ ] `codex.ts` and `grok.ts` route every subprocess spawn through an injected gate seam; a gate DENY or THROW prevents the spawn (proven by test: assert the process is never spawned on deny) (ADR-001 P1/L1; TASK-029 M4)
+- [ ] A provider required to spawn with NO gate injected FAILS CLOSED (refuses/errors), never spawns ungated - the absent-seam case is the dangerous one (fail-closed, N-rules)
+- [ ] An ADR-005 liveness assertion proves a provider spawn is IMPOSSIBLE without a broker allow - keyed on the control's behaviour (a blocked spawn), not on config presence (ADR-005 §2)
+- [ ] The sole-constructor guard scans `apps/` and `evals/` in addition to `packages/` and `services/`; an SDK import placed under `apps/` now fails the guard (TASK-029 M1 blind spot)
+- [ ] The 41 existing agent-providers tests stay green; `pnpm -r test`, `pnpm lint`, `node infra/ci/banned-modes.mjs` all clean
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-17T14:20:00Z
+
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
 **Status:** done
@@ -966,6 +991,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** packages/harness-factory/src/index.ts, packages/harness-factory/src/ports.ts, packages/harness-factory/src/config.ts, packages/harness-factory/test/factory.test.ts, packages/harness-factory/test/sole-constructor.test.ts, packages/harness-factory/package.json, pnpm-lock.yaml
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test 12/12; typecheck 0; build 0; pnpm lint 0; banned-modes clean; pnpm -r test 258 passed / 31 skipped
 **Review_Findings:** —
+
+- ORCH ADVERSARIAL RE-REVIEW (opus-4-8, 2026-08-17T14:20Z; protected foundation, beyond the loop's single-pass which already merged it). **FOUNDATION SOUND, fan-out cleared - verified by MUTATION, not reading.** M1: the N9 guard bites on static/dynamic/require/aliased SDK imports and a second createHarness (blind spots: string-concat module name [exotic], and apps//evals/ not scanned [both EMPTY today, no live violation] - folded into TASK-039). M2: layers genuinely LOCKED - enforced fields spread last, a caller passing bypassPermissions/widened allowedTools/evil hooks/canUseTool is ignored; order-flip mutation fails a test. M3: FAILS CLOSED - missing/undefined/null/non-function L1 all throw MISSING_L1, no construction path skips L1; 10s hook timeout literally wired. M4: gateSubprocess is a correct fail-closed mechanism (deny/throw/unknown-provider all => no spawn, tested). M5: ports cleanly injectable, no adapter hard-imports, no stub dirs, no territory collision - parallel fan-out safe. Territory clean (only harness-factory + lockfile + own dossier). 258/31 deterministic across repeated runs. No `any`, no dead code, banned-modes clean.
+- **CORRECTION TO THE MERGE NOTE: the subprocess bypass is NOT 'closed' - it is 'gate mechanism PROVIDED, wiring PENDING'.** gateSubprocess exists and is correct, but NOTHING CALLS IT: codex.ts:170 and grok.ts:122 still spawn() directly and there are zero callers of the gate. GB could not wire it (agent-providers is outside 029's Owned_Paths). So a Codex/Grok spawn today still reaches the OS without a broker check. Created TASK-039 to actually close it (route both providers through the gate via an injected seam + an ADR-005 liveness assertion that a provider cannot spawn without a broker allow), and made TASK-035 (composition) depend on it. This is the ONE thing the fan-out must not skip.
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T14:00:52Z
@@ -1100,7 +1128,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (Canary tests table); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-039
 **Owned_Paths:** packages/harness-factory/src/compose.ts, evals/harness/**
-**Depends_On:** TASK-030, TASK-031, TASK-032, TASK-033
+**Depends_On:** TASK-030, TASK-031, TASK-032, TASK-033, TASK-039
 **Description:** **GB or CX only, NEVER S5** (protected, directive §3). **This is the gate on G-GOV and directive §6 names CAN-02 the single most important test in the project.** Two jobs: (1) the composition root `compose.ts` — the ONE place that imports the three concrete adapters (OIK-034/035/036) + the PostToolUse hook and wires them into `createHarness()` from OIK-033 (kept out of index.ts precisely so the adapters could be built concurrently); (2) the eight canaries under `evals/harness/`, wired CI-blocking. CAN-01 Tier-3 no-approval→deny+audit; **CAN-02 add a bare-name allowedTools entry for a Tier-3 tool and prove L1 STILL denies — the regression test against the original architecture flaw**; CAN-03 grep repo/settings/subagent configs clean of banned modes per ADR-002 §4 (includes the `--dangerously-skip-permissions` form + dev-tooling allowlist — note the existing infra/ci banned-mode scanner may satisfy this, reuse it rather than duplicate); CAN-04 broker 500/timeout→deny+park; CAN-05 subagent Tier-3→deny (OIK-040 hardens this separately); CAN-06 replay consumed nonce→deny; CAN-07 payload mutation→invalidated; CAN-08 one toolUseId via L1+L3→one decision/one audit. ORCH will wire the `pnpm canaries` script into the CI workflow at merge (the workflow file is cross-cutting, kept off this territory).
 **Acceptance_Criteria:**
 - [ ] `compose.ts` is the sole composition root wiring the three adapters + PostToolUse into `createHarness()`; the sole-constructor guard (OIK-033) still passes (ADR-001 Decision)
