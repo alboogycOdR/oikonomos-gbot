@@ -1000,7 +1000,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-030
 **Title:** OIK-034 — L1 PreToolUse hook adapter → broker ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-034; docs/decisions/ADR-001-broker-enforcement-point.md (L1, R3); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1013,15 +1013,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `updatedInput` from an allow response is applied to the tool input; absent → input unchanged (Handover §4.1)
 - [ ] No local reimplementation of the §4.1 request shape, canonical JSON, or digest — consumed via the injected broker port (CLAUDE.md; §4.3 single-implementation rule)
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-030-gb
+**Started_At:** 2026-08-17T19:21:19Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T19:21:19Z
 
 ### TASK-031
 **Title:** OIK-035 — L3 canUseTool secondary adapter → broker ⚑ protected
