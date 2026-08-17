@@ -1141,7 +1141,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-035
 **Title:** OIK-039 — canary suite CAN-01…CAN-08, CI-blocking + harness composition root ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (Canary tests table); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-039
@@ -1159,13 +1159,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test` and the canary runner both exit 0; ORCH confirms the CI gate blocks on a deliberately-broken canary
 **Branch:** task/TASK-035-gb
 **Started_At:** 2026-08-17T21:25:34Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T22:05:44Z] [SV:GB] compose.ts wires L1/L2/L3+PostToolUse+subprocess gate; evals/harness CAN-01..08 + pnpm canaries green (CAN-06/07 Postgres skipped without DATABASE_URL).
+**Artifacts:** packages/harness-factory/src/compose.ts, packages/harness-factory/test/compose.test.ts, evals/harness/package.json, evals/harness/src/index.ts, evals/harness/test/helpers.ts, evals/harness/test/can-01-tier3-no-approval.test.ts, evals/harness/test/can-02-bare-name-l1-still-denies.test.ts, evals/harness/test/can-03-banned-modes.test.ts, evals/harness/test/can-04-broker-fail-closed.test.ts, evals/harness/test/can-05-subagent-tier3.test.ts, evals/harness/test/can-06-replay-consumed-nonce.test.ts, evals/harness/test/can-07-payload-mutation.test.ts, evals/harness/test/can-08-l1-l3-one-decision.test.ts, evals/harness/test/can-subprocess-gate.test.ts, evals/harness/README.md, pnpm-workspace.yaml, package.json, pnpm-lock.yaml, dossiers/TASK-035.md
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test ΓÇö 8 files, 56/56 pass; pnpm canaries ΓÇö 10 files, 14 passed | 2 skipped (CAN-06/07 Postgres, DATABASE_URL unset); typecheck harness-factory + evals-harness exit 0; pnpm lint exit 0. pnpm -r test fails in services/worker (getRun/startRun not a function; packages/db/dist stale vs src) ΓÇö pre-existing, outside Owned_Paths.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T21:25:34Z
+**Updated_At:** 2026-08-17T22:05:44Z
 
 ### TASK-036
 **Title:** OIK-040 — subagent policy enforcement (CAN-05) ⚑ protected
