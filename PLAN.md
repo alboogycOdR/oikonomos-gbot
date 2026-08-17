@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -838,15 +838,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] An ADR-005 liveness assertion proves a provider spawn is IMPOSSIBLE without a broker allow - keyed on the control's behaviour (a blocked spawn), not on config presence (ADR-005 §2)
 - [ ] The sole-constructor guard scans `apps/` and `evals/` in addition to `packages/` and `services/`; an SDK import placed under `apps/` now fails the guard (TASK-029 M1 blind spot)
 - [ ] The 41 existing agent-providers tests stay green; `pnpm -r test`, `pnpm lint`, `node infra/ci/banned-modes.mjs` all clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-039-cx
+**Started_At:** 2026-08-17T20:00:56Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T14:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T20:00:56Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
