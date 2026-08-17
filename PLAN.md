@@ -1000,7 +1000,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-030
 **Title:** OIK-034 — L1 PreToolUse hook adapter → broker ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-034; docs/decisions/ADR-001-broker-enforcement-point.md (L1, R3); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1015,13 +1015,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
 **Branch:** task/TASK-030-gb
 **Started_At:** 2026-08-17T19:21:19Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T19:33:29Z] [SV:GB] L1 PreToolUse adapter POSTs /v1/broker/pretooluse via injected fetch; allow/deny mapped; fail-closed on transport, 10s timeout, malformed body.
+**Artifacts:** packages/harness-factory/src/hooks/pretooluse.ts, packages/harness-factory/test/hooks/pretooluse.test.ts, dossiers/TASK-030.md
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test 22/22; typecheck 0; pnpm lint 0; banned-modes clean; pnpm -r test 268 passed / 31 skipped
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:21:19Z
+**Updated_At:** 2026-08-17T19:33:29Z
 
 ### TASK-031
 **Title:** OIK-035 — L3 canUseTool secondary adapter → broker ⚑ protected
