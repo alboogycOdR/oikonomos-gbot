@@ -1164,7 +1164,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-038
 **Title:** OIK-015 — Postgres + evidence-volume backup & restore drill
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-015; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -1176,8 +1176,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A restore-from-backup drill succeeds into a CLEAN environment — demonstrated, not asserted (WBS OIK-015 acceptance)
 - [ ] No credentials in the backup scripts, config, or README (CLAUDE.md non-negotiable #4)
 - [ ] `infra/backup/README.md` documents the procedure and the drill result; the Kubernetes/prod-schedule specifics are recorded there, not in docs/**
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-038-cx
+**Started_At:** 2026-08-17T12:59:44Z
 **Progress_Notes:**
 - [2026-08-17T11:25:00Z] [ORCH] Spurious SYNC_MISMATCH block CLEARED. Root cause was NOT a real blocker: CX's worktree was on the stale task/TASK-017-cx branch, so its checked-out PLAN.md predated TASK-038 and preflight could not see the task the dispatcher had just claimed in the MAIN PLAN. CX correctly fail-safed; GB hit the same stale-worktree condition on TASK-028 and worked around it by reading the main checkout. ORCH reset the codex worktree to current master and re-dispatch will create task/TASK-038-cx fresh. Recorded as a DEVDEPARTMENT pack finding (dispatch does not refresh a stale worktree's PLAN in strict mode; validator rejects '<TOKEN>: detail' while the dispatch prompt says blocked_reason 'must start with' a token).
 - [2026-08-17T11:13:39Z] [SV:CX] Stopped before implementation: dispatcher state and authoritative main PLAN.md are inconsistent; dossier records the exact checks.
@@ -1186,5 +1186,5 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T11:13:39Z
+**Updated_At:** 2026-08-17T12:59:44Z
 
