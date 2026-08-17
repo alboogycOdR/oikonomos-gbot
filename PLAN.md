@@ -1165,7 +1165,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-038
 **Title:** OIK-015 — Postgres + evidence-volume backup & restore drill
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-015; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -1186,8 +1186,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T13:15:03Z] [SV:CX] Implemented and committed backup, restore-drill, isolated test drill, and deployment documentation in 00ae7ec.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE
+**Review_Findings:**
+- REWORK (ORCH opus-4-8, 2026-08-17T13:35Z; non-protected). **ORCH ran the drill on clawsrv (Linux+Docker+pg16, the environment CX's Windows worktree lacks) and it FAILED on first real execution - which is exactly what the 'demonstrated restore' acceptance bar exists to catch.** The scripts are otherwise well-built: manifest with FORMAT_VERSION, sha256 on both dump and evidence, data-FINGERPRINT verification (proves restored data matches, not just 'restore didn't error'), BACKUP_ID path-traversal validation, throwaway uniquely-suffixed containers, and a `trap cleanup` that worked - verified zero leaked containers and all 14 production containers untouched after the failed run. Territory clean (infra/backup/** + dossier), no PLAN.md edit.
+- **[BLOCKING] The Postgres readiness check races the official-image init server.** `test-drill.sh` uses `until docker exec CONTAINER pg_isready ...; do sleep 1; done`, but the pgvector/postgres entrypoint starts a TEMPORARY init-only server (unix socket, no TCP) to run init scripts, THEN tears it down and starts the real server. `pg_isready` passes against that temp server, the loop exits, and the very next step - `psql -c 'CREATE TABLE ...'` - hits the gap with `connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory`. Same CLASS of race as the grok flaky test you just fixed: an insufficient readiness gate. FIX: gate readiness on a REAL query succeeding against the FINAL server, not pg_isready - e.g. `until docker exec -e PGPASSWORD=... CONTAINER psql -U ... -d ... -c 'SELECT 1' >/dev/null 2>&1; do sleep 1; done` (a successful authenticated SELECT can only run against the real post-init server). Apply the same gate before restore-drill.sh's pg_restore. Do NOT just add a fixed sleep.
+- **STRUCTURAL NOTE: this task cannot be self-verified in the Windows dispatch environment - it REQUIRES clawsrv (or any Linux+Docker+pg host) to demonstrate.** CX writes/fixes the scripts blind; ORCH is the drill-verification point, the same ORCH-executes-infra pattern as TASK-019 (OpenSandbox). So after your fix lands, do not claim needs_review on the basis of the scripts existing - note in your control block that the drill needs an ORCH clawsrv run, and ORCH will re-run test-drill.sh there and only then move it toward done. That is not a criticism of you; it is the shape of the task.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T13:15:03Z
 
