@@ -1053,7 +1053,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-032
 **Title:** OIK-036 — L2 dontAsk mode + scoped allowedTools validator (R1) ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-036; docs/decisions/ADR-001-broker-enforcement-point.md (L2, R1, F2); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6
@@ -1071,7 +1071,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T19:45:46Z] [SV:GB] L2 validator locks dontAsk and rejects bare-name allowedTools (CAN-02 mcp__gmail__send_message) unless ADR-named; scoped forms accepted.
 **Artifacts:** packages/harness-factory/src/l2/allowed-tools.ts, packages/harness-factory/test/l2/allowed-tools.test.ts
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test 33/33; typecheck 0; pnpm lint 0; banned-modes clean; pnpm -r test 279 passed / 31 skipped
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus-4-8 adversarial autopilot, 2026-08-17T20:05Z; protected, author GB=grok / reviewer ORCH-opus, different-model holds). **The CAN-02 config-layer canary BITES** - inverting the bare-name guard fails 5 tests incl. all 3 CAN-02 assertions. Every bare-name blind spot is rejected: leading/trailing/tab whitespace (trimmed then classified), case variants, empty parens Read() -> INVALID_ENTRY (not treated as scoped), and non-string entries (object/array/number/null) all fail closed. dontAsk locked two ways (validator throws WRONG_PERMISSION_MODE on anything else + frozen hardcoded policy); a caller cannot supply bypassPermissions/acceptEdits/default/plan. The ADR-named exception is a CODE-COMPOSITION seam (options.adrNamedBareTools, production frozen empty), NOT a per-entry marker in the untrusted allowedTools array, so hostile config cannot claim it. Pure validator, no I/O, no broker re-decision. Territory clean, 33/33, master green 279/31. Merged [AUTOPILOT].
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:45:46Z
