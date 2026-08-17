@@ -1099,7 +1099,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-038; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -1114,13 +1114,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/db test`, `pnpm --filter @oikonomos/worker test`, `pnpm lint` exit 0
 **Branch:** task/TASK-034-s5
 **Started_At:** 2026-08-17T19:25:16Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-17T19:34:20Z] [SV:S5] Investigated before coding: (1) runs table + session_ref already exist verbatim per Synthesis ┬º5.1 via TASK-002's 001_schema_v1.up.sql ΓÇö AC3's 'new migration' + packages/db/migrations/003_runs.sql grant conflict with that and with TASK-006's documented single-migrations-root convention (infra/postgres/migrations, outside my Owned_Paths). (2) AC4 requires the worker to import runs.ts through @oikonomos/db, which needs packages/db/src/index.ts re-exported (barrel pattern every other db module uses) and services/worker/package.json + pnpm-lock.yaml to add the workspace dependency ΓÇö none of those three files are in Owned_Paths (direct precedent: TASK-016's origin story, TASK-012's own narrow package.json grant). Ruled out a third suspected gap (pg-boss dependency) by reading the WBS: OIK-105/106 are later tickets, not this one's scope. No production code written; only the dossier committed.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SPEC_AMBIGUITY: AC3 requires a NEW migration to add the runs table, but that table (with session_ref and the full run_status lifecycle) already exists in infra/postgres/migrations/001_schema_v1.up.sql per Synthesis Spec ┬º5.1 -- there is no 002 migration anywhere, and packages/db/migrations/003_runs.sql (my Owned_Paths grant) would fork the single migrations root that TASK-006 explicitly establishes as infra/postgres/migrations. Separately, AC4 (worker uses the typed runs.ts module, no raw SQL outside packages/db) cannot be met without editing packages/db/src/index.ts (barrel export) and services/worker/package.json + pnpm-lock.yaml (new @oikonomos/db workspace dependency), none of which are in Owned_Paths. Need ORCH to either drop/redirect AC3 (table already satisfies it) and widen Owned_Paths to include index.ts + worker package.json + pnpm-lock.yaml, or split into a single-owner integration task per the TASK-016 precedent.
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:25:16Z
+**Updated_At:** 2026-08-17T19:34:20Z
 
 ### TASK-035
 **Title:** OIK-039 — canary suite CAN-01…CAN-08, CI-blocking + harness composition root ⚑ protected
