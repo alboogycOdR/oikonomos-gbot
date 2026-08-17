@@ -35,9 +35,9 @@ docker volume create "$evidence_volume" >/dev/null
 docker run -d --rm --name "$container" -e POSTGRES_USER="$DRILL_POSTGRES_USER" -e POSTGRES_PASSWORD="$DRILL_POSTGRES_PASSWORD" -e POSTGRES_DB="$DRILL_POSTGRES_DB" pgvector/pgvector:pg16 >/dev/null
 until docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" psql -h 127.0.0.1 -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" -c 'SELECT 1' >/dev/null 2>&1; do sleep 1; done
 docker cp "$archive_dir/postgres.dump" "$container:/restore.dump"
-docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" pg_restore -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" --no-owner --no-privileges --exit-on-error /restore.dump
+docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" -e RESTORE_POSTGRES_USER="$DRILL_POSTGRES_USER" -e RESTORE_POSTGRES_DB="$DRILL_POSTGRES_DB" "$container" sh -c 'pg_restore -U "$RESTORE_POSTGRES_USER" -d "$RESTORE_POSTGRES_DB" --no-owner --no-privileges --exit-on-error /restore.dump'
 restored_sha256=$(docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" pg_dump -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" --data-only --inserts --no-owner --no-privileges | sed '/^\\restrict /d; /^\\unrestrict /d' | sha256sum | awk '{print $1}')
 [ "$restored_sha256" = "$POSTGRES_DATA_SHA256" ] || { printf 'Restored Postgres data fingerprint mismatch\n' >&2; exit 67; }
-restored_evidence_count=$(docker run --rm --volume "$evidence_volume:/target" --volume "$archive_dir:/backup:ro" alpine:3.20 sh -c 'tar -C /target -xzf /backup/evidence.tar.gz && find /target -mindepth 1 -print | wc -l' | tr -d '[:space:]')
+restored_evidence_count=$(docker run --rm --volume "$evidence_volume:/target" --mount "type=bind,source=$archive_dir,target=/backup,readonly" alpine:3.20 sh -c 'tar -C /target -xzf /backup/evidence.tar.gz && find /target -mindepth 1 -print | wc -l' | tr -d '[:space:]')
 [ "$restored_evidence_count" = "$EVIDENCE_ENTRY_COUNT" ] || { printf 'Restored evidence entry count mismatch\n' >&2; exit 67; }
 printf 'RESTORE_DRILL_VERIFIED backup=%s database=data-fingerprint evidence=archive-extracted\n' "$BACKUP_ID"

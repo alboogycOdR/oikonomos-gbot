@@ -19,10 +19,17 @@ EVIDENCE_VOLUME=oikonomos-evidence \
 
 `DATABASE_URL` is the production Postgres connection string and
 `EVIDENCE_VOLUME` is the Docker volume that stores evidence. The backup host
-must provide `docker`, PostgreSQL client tools (`pg_dump`), `sha256sum`, and a
-durable, access-restricted `BACKUP_DIR`. Encrypt and replicate that directory
-using the production backup service; this task intentionally does not invent a
-key-management scheme.
+must provide Linux Docker (the backup uses the pinned `pgvector/pgvector:pg16`
+client image with host networking), `sha256sum`, and a durable,
+access-restricted `BACKUP_DIR`. Encrypt and replicate that directory using the
+production backup service; this task intentionally does not invent a
+key-management scheme. Using the pinned client image for both the source and
+restored data fingerprints avoids false drill failures from host/container
+`pg_dump` minor-version header differences.
+
+`POSTGRES_DUMP_DOCKER_NETWORK` defaults to `host`, which lets the pinned client
+reach a database listening on the backup host. Set it only when the database is
+on a Docker network instead; `test-drill.sh` does this for its isolated source.
 
 ## Restore drill
 
