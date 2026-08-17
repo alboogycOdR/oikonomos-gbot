@@ -1027,7 +1027,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-031
 **Title:** OIK-035 — L3 canUseTool secondary adapter → broker ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-035; docs/decisions/ADR-001-broker-enforcement-point.md (L3, R2, F5); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1046,7 +1046,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T19:44:56Z] [SV:CX] Implemented the L3 canUseTool broker adapter with broker-owned toolUseId idempotency, F5 routing, fail-closed behavior, and proof that L1 remains authoritative.
 **Artifacts:** packages/harness-factory/src/l3/canusetool.ts, packages/harness-factory/test/l3/canusetool.test.ts, dossiers/TASK-031.md
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 30/30 passed; typecheck, build, pnpm lint: passed; pnpm -r test: 277 passed / 31 skipped.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus-4-8 adversarial autopilot, 2026-08-17T20:10Z; protected, author CX=codex / reviewer ORCH-opus, different-model holds). L3 canUseTool adapter, all four properties proven by mutation: IDEMPOTENT with L1 (broker-owned toolUseId dedup - the adapter forwards the ORIGINAL toolUseId unchanged, no local cache; mangling it to id-l3 breaks the shared-decision test); FAIL-CLOSED on all three R3 conditions (transport/timeout/malformed -> deny, no flip-to-allow leaves the suite green) with a real 10s AbortController abort; NEVER SOLE ENFORCEMENT (holds no L1 reference; per the ADR-001 pipeline L1/PreToolUse runs before L3/canUseTool so an L1 deny stops the pipeline - structurally cannot convert deny to allow, and a test wires L1-deny+L3-allow to prove it); F5 ROUTED (AskUserQuestion / requiresUserInteraction / ask-configured all delegate to the broker, no early-return-allow). Pure delegation, no local consume/digest/tier logic, no banned modes. Territory clean (only l3/ + own dossier), no PLAN.md edit. NIT (non-blocking): CX's Test_Evidence said 277/31, actual 276/31 - an off-by-one in the claim, not a regression (verified deterministic x3). Merged --no-ff [AUTOPILOT].
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:44:56Z
