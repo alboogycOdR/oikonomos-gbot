@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -838,14 +838,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] An ADR-005 liveness assertion proves a provider spawn is IMPOSSIBLE without a broker allow - keyed on the control's behaviour (a blocked spawn), not on config presence (ADR-005 §2)
 - [ ] The sole-constructor guard scans `apps/` and `evals/` in addition to `packages/` and `services/`; an SDK import placed under `apps/` now fails the guard (TASK-029 M1 blind spot)
 - [ ] The 41 existing agent-providers tests stay green; `pnpm -r test`, `pnpm lint`, `node infra/ci/banned-modes.mjs` all clean
-**Branch:** task/TASK-039-cx
-**Started_At:** 2026-08-17T20:00:56Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
+- [2026-08-17T20:30:00Z] [ORCH] RESET to pending - work LOST to an ORCH error, not a CX fault. I pointed the TASK-033 adversarial review at wt-codex AND dispatched CX->039 into the SAME wt-codex worktree at the same time; the review agent's checkouts reset the worktree out from under CX's 039 session, destroying its in-progress edits. CX correctly detected the reset and blocked SYNC_MISMATCH. ROOT CAUSE + FIX FOR NEXT DISPATCH: never point a review at a worktree while a builder is dispatched into it, and never reset a worktree a builder session may be using. 039 (route Codex/Grok spawns through gateSubprocess + liveness + widen scanRoots) is unchanged in scope and eligible; re-dispatch CX on a clean worktree with no concurrent review in it. Note CX's pre-reset evidence looked healthy (agent-providers 47/47, harness-factory 42/42, lint/banned-modes clean), so the implementation was likely close - but it is gone; start fresh.
 - [2026-08-17T20:10:41Z] [SV:CX] Worktree was externally reset to detached c87dc15; TASK-039 branch and all implementation edits disappeared after task-local checks.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** SYNC_MISMATCH: dispatcher must restore or re-dispatch task/TASK-039-cx; current worktree is detached and lost all task edits.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T20:10:41Z
 
@@ -1081,7 +1082,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-037; docs/decisions/ADR-001-broker-enforcement-point.md (R4)
@@ -1101,7 +1102,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T20:00:10Z] [SV:CX] Implemented and committed the R4 PostToolUse completion-evidence adapter with injected audit sink, toolUseId correlation, shared digest, and artifact URI coverage.
 **Artifacts:** packages/harness-factory/src/hooks/posttooluse.ts, packages/harness-factory/test/hooks/posttooluse.test.ts, packages/harness-factory/package.json, pnpm-lock.yaml
 **Test_Evidence:** PASS: pnpm --filter @oikonomos/harness-factory test (46 tests); pnpm --filter @oikonomos/harness-factory typecheck; pnpm lint. pnpm -r test reached harness-factory successfully but exits 1 due to unrelated @oikonomos/worker missing DB exports (documented in dossier).
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus-4-8 adversarial autopilot, 2026-08-17T20:30Z; protected, author CX=codex / reviewer ORCH-opus). **Correct R4 hook, verified by mutation.** Digest via @oikonomos/shared actionDigest (no reimplementation; package.json adds only the shared workspace dep, lockfile only that edge); INJECTED audit sink (createPostToolUseHook({auditSink}), tested with toHaveBeenCalledWith - comment out the sink call and a test fails); correlation by toolUseId (per re-carve, NOT L1 auditEventId); digest over the tool response (deterministic canonical JSON, mutation-proven); artifact URIs collected/deduped/sorted and folded into the digest; audit-write failure PROPAGATES (test asserts .rejects) - no silent evidence drop. Stayed STRICTLY in re-carved territory (posttooluse.ts + test + package.json + lockfile) - did NOT touch pretooluse.ts/ports.ts/index.ts. Master green on full recursive suite. **PROCESS NOTE (ORCH error, not CX's): the reviewed commit bc04dae was briefly ORPHANED when I deleted task/TASK-033-cx to re-dispatch CX; recovered via git branch task/TASK-033-cx bc04dae and merged. My mistake, caught by the review agent.** Merged --no-ff [AUTOPILOT].
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T20:00:10Z
