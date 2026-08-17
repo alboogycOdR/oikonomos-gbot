@@ -913,7 +913,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-028
 **Title:** OIK-032 — extract packages/agent-providers from cc-multi-agent-telegram-bot
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-032; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §Adopt (lines 57, 77, 343)
@@ -927,13 +927,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/agent-providers test|typecheck|build` and root `pnpm lint` all exit 0
 **Branch:** task/TASK-028-gb
 **Started_At:** 2026-08-17T11:08:40Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T11:22:29Z] [SV:GB] Extracted @oikonomos/agent-providers (AgentProvider + Claude/Codex/Grok) from cc-multi-agent-bot.zip; 88 original Vitest tests green (41 in-package, 47 staged under services/gateway-telegram/test/). Claude query is injected, no SDK/broker/harness wiring.
+**Artifacts:** packages/agent-providers/src/index.ts, packages/agent-providers/src/types.ts, packages/agent-providers/src/config.ts, packages/agent-providers/src/security.ts, packages/agent-providers/src/providers/claudeCode.ts, packages/agent-providers/src/providers/codex.ts, packages/agent-providers/src/providers/grok.ts, packages/agent-providers/src/providers/index.ts, packages/agent-providers/test/config.test.ts, packages/agent-providers/test/security.test.ts, packages/agent-providers/test/providers.codex.test.ts, packages/agent-providers/test/providers.grok.test.ts, packages/agent-providers/README.md, services/gateway-telegram/test/formatting.test.ts, services/gateway-telegram/test/permissions.test.ts, services/gateway-telegram/test/session.store.test.ts, services/gateway-telegram/test/streamRenderer.test.ts, services/gateway-telegram/test/src/bot/formatting.ts, services/gateway-telegram/test/src/bot/permissions.ts, services/gateway-telegram/test/src/bot/streamRenderer.ts, services/gateway-telegram/test/src/session/store.ts, services/gateway-telegram/test/src/types.ts, dossiers/TASK-028.md
+**Test_Evidence:** pnpm --filter @oikonomos/agent-providers test: 41/41 pass (config 11, providers.codex 14, providers.grok 10, security 6). pnpm --filter @oikonomos/gateway-telegram test: 48/48 pass (47 extracted + src/index ping). Combined extracted count 88/88. pnpm --filter @oikonomos/agent-providers typecheck|build exit 0. pnpm lint exit 0. node infra/ci/banned-modes.mjs clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T11:08:40Z
+**Updated_At:** 2026-08-17T11:22:29Z
 
 ### TASK-029
 **Title:** OIK-033 — packages/harness-factory: sole harness constructor + L1/L2/L3 ports (N9) ⚑ protected
