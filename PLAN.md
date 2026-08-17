@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -846,7 +846,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T21:18:50Z] [SV:CX] Codex and Grok subprocesses now require an injected broker gate and fail closed; guard scan coverage includes apps/ and evals/. Commit b83e2db.
 **Artifacts:** packages/agent-providers/src/providers/codex.ts, packages/agent-providers/src/providers/grok.ts, packages/agent-providers/test/providers.codex.test.ts, packages/agent-providers/test/providers.grok.test.ts, packages/harness-factory/test/sole-constructor.test.ts, dossiers/TASK-039.md
 **Test_Evidence:** Focused: agent-providers 45/45 passed; harness-factory 47/47 passed; both typechecks passed. pnpm lint and node infra/ci/banned-modes.mjs clean. pnpm -r test exposed two unrelated worker failures: getRun/startRun are not functions.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus adversarial autopilot, 2026-08-17T21:35Z; protected, author CX=codex / reviewer ORCH-opus, different-model holds). **THE CODEX/GROK BROKER BYPASS IS GENUINELY CLOSED - the security gap tracked since TASK-028 is shut, and proven by EVIDENCE not by error text.** The deny test uses a real fake binary whose only job is to write a SENTINEL FILE; the assertion is existsSync(marker)===false, so it proves the OS never ran the process - a spy could be stubbed out, a sentinel file cannot. Both providers gate BEFORE spawn (codex.ts:203, grok.ts:145) and every failure path returns without reaching it. All mutations bite: neutralizing the gate check fails 2 test files; making the absent-seam fall through to an ungated spawn fails both fail-closed tests on the marker assertion. ABSENT SEAM REFUSES (the dangerous case) - a provider with no gate injected yields a fatal error and does not spawn; a broker THROW also fails closed. ADR-005 LIVENESS is real: the assertion keys on an actually-blocked spawn, not on the gate field being set, and it DIES when the control is made inert - exactly the configured-but-inert case §2 targets. Guard scanRoots widened to apps/ and evals/, both verified live by planting a stray SDK import in each (caught). NO REGRESSION: zero assertions removed or modified across the 41 extracted provider tests (41->45 purely additive, accounted for exactly); harness-factory 47/47 with all OIK-033/034/035/036/037 suites intact. Exhaustive grep confirms exactly TWO spawn sites in agent-providers, both downstream of the gate - no ungated path remains. Territory clean (6 files), no PLAN.md edit. Master green, full recursive suite, exit 0. Merged --no-ff [AUTOPILOT].
+- [NON-BLOCKING follow-ups, recorded not sent back] (1) No test pins the malformed/undefined gate-result case; the predicate is strict `gateResult?.allow !== true` so it cannot drift open without breaking the tested deny case, but a test would pin it. (2) The guard self-test fixture covers apps/ only - evals/ does not exist yet so that scanRoot is a silent no-op today (verified working by manual probe); add a matching evals/ fixture when evals/ is scaffolded, which TASK-035 does. (3) Style: GateSpawn/SubprocessSpawnRequest are exported from codex.ts and imported by grok.ts; a shared types.ts would be cleaner.
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T21:18:50Z
