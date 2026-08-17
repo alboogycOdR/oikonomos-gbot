@@ -1141,7 +1141,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-035
 **Title:** OIK-039 — canary suite CAN-01…CAN-08, CI-blocking + harness composition root ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (Canary tests table); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-039
@@ -1157,15 +1157,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] compose.ts wires TASK-039's subprocess gate into the Codex/Grok providers, so a provider spawn cannot reach the OS without a broker allow - prove it with a canary or test asserting deny => no spawn (closes the bypass carried from TASK-028/029)
 - [ ] `evals/harness` is a real workspace member (`evals/*` added to pnpm-workspace.yaml, own package.json, root `canaries` script) and `pnpm canaries` runs the suite from a clean checkout
 - [ ] `pnpm -r test` and the canary runner both exit 0; ORCH confirms the CI gate blocks on a deliberately-broken canary
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-035-gb
+**Started_At:** 2026-08-17T21:25:34Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T21:25:34Z
 
 ### TASK-036
 **Title:** OIK-040 — subagent policy enforcement (CAN-05) ⚑ protected
