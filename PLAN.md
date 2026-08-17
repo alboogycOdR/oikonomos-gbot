@@ -1000,7 +1000,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-030
 **Title:** OIK-034 — L1 PreToolUse hook adapter → broker ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-034; docs/decisions/ADR-001-broker-enforcement-point.md (L1, R3); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1019,7 +1019,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T19:33:29Z] [SV:GB] L1 PreToolUse adapter POSTs /v1/broker/pretooluse via injected fetch; allow/deny mapped; fail-closed on transport, 10s timeout, malformed body.
 **Artifacts:** packages/harness-factory/src/hooks/pretooluse.ts, packages/harness-factory/test/hooks/pretooluse.test.ts, dossiers/TASK-030.md
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test 22/22; typecheck 0; pnpm lint 0; banned-modes clean; pnpm -r test 268 passed / 31 skipped
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus-4-8 adversarial autopilot, 2026-08-17T19:55Z; protected path, author GB=grok / reviewer ORCH-opus, different-model rule holds). **FAIL-CLOSED ON EVERY PATH, PROVEN BY MUTATION - this is the platform's primary enforcement point (P1) and it holds.** Each ADR-001 R3 failure mode denies with a test that BITES: flipping transport-error, >10s timeout, or malformed-body to allow each turns a test red. The 10s timeout is genuinely wired (AbortController + setTimeout(abort,10_000), signal passed to fetch, real abort at 10s), tested with fake timers asserting unsettled at 9999ms / settled at 10000ms - real timeout behaviour, not a constructed error object. Both deny forms (incl. approval_pending) map to hook-deny so a pending-approval tool cannot execute; unexpected decision values default-deny; no bypass/allowlist short-circuit before the broker call; delegates via the injected fetch seam with zero local policy/tier/digest reimplementation; no banned modes. Territory clean (only src/hooks/pretooluse.ts + test + own dossier), no PLAN.md edits, 22/22 harness-factory tests, master green on the full recursive suite (268/31 deterministic). Merged --no-ff [AUTOPILOT]. Unlocks TASK-033 (PostToolUse, deps 030).
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:33:29Z
