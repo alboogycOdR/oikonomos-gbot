@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -840,13 +840,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The 41 existing agent-providers tests stay green; `pnpm -r test`, `pnpm lint`, `node infra/ci/banned-modes.mjs` all clean
 **Branch:** task/TASK-039-cx
 **Started_At:** 2026-08-17T20:00:56Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-17T20:10:41Z] [SV:CX] Worktree was externally reset to detached c87dc15; TASK-039 branch and all implementation edits disappeared after task-local checks.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SYNC_MISMATCH: dispatcher must restore or re-dispatch task/TASK-039-cx; current worktree is detached and lost all task edits.
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T20:00:56Z
+**Updated_At:** 2026-08-17T20:10:41Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
