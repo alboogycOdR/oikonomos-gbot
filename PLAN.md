@@ -1078,7 +1078,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-037; docs/decisions/ADR-001-broker-enforcement-point.md (R4)
@@ -1090,15 +1090,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The result digest uses the single @oikonomos/shared canonical-JSON/digest implementation — no local reimplementation (Handover §4.3)
 - [ ] An audit-write failure here does not silently drop the evidence — it surfaces (fail-closed posture consistent with the pre-tool path)
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-033-cx
+**Started_At:** 2026-08-17T19:49:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T19:49:11Z
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
