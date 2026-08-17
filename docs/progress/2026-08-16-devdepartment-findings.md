@@ -76,6 +76,18 @@ A resync landed with `tests/test_sync_from_pack.py::TestPackTemplateShipsSafeDef
 
 ---
 
+## Found in the first live L2 supervisor loop, 2026-08-17
+
+### 13. Dispatch does not refresh a stale worktree's PLAN.md in strict mode → builder can false-block on a task it was just assigned
+The first `supervisor.py --loop` run dispatched CX onto a fresh task (TASK-038) while CX's worktree was still checked out on a **previous, merged task branch** (`task/TASK-017-cx`). In strict mode the dispatcher claims the task in the **main** PLAN.md, but it logs `Worktree is on 'task/...' — NOT refreshing (resume path)` and leaves the worktree's own PLAN.md at its stale snapshot. CX's mandatory preflight (`preflight_paths.py TASK-038`) reads the **worktree** copy, does not find the just-claimed task, and correctly fail-safes with a `SYNC_MISMATCH` block. **The failure is non-deterministic:** in the very same tick, GB was dispatched onto TASK-028 from an equally-stale worktree, recognized the staleness, read the main-checkout PLAN instead, and completed the task (88 tests green). So whether a builder proceeds or false-blocks on a correctly-assigned task is a coin flip on builder behaviour, not on task validity.
+
+**Impact:** one false block halted an unattended 4-hour loop on its second tick (see finding #14). **Recommend:** in strict mode, when the dispatcher claims a task for a worktree sitting on a *different, already-merged* task branch, it must reset that worktree to the integration branch (or explicitly refresh its PLAN.md) before launching the builder — the "resume path, don't refresh" shortcut is only safe when the worktree is on *this* task's branch. Alternatively, standardize that preflight always resolves PLAN.md from the main checkout (`git rev-parse --git-common-dir`), the same fix already applied to the ATLAS liveness check (#9).
+
+### 14. `validate_plan.py` rejects `<TOKEN>: detail` Blocked_Reasons that the dispatch prompt explicitly permits
+The dispatch/builder prompt tells builders: *"blocked_reason must start with SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, or OTHER:"*. CX followed that literally and emitted `SYNC_MISMATCH: <explanation>`. But `validate_plan.py` accepts only a **bare** vocabulary token or `OTHER:<text>` — it rejects `SYNC_MISMATCH: <detail>`, marking PLAN.md protocol-illegal. The supervisor then correctly STOP-THE-LINE-halted on the illegal plan. So a builder that does exactly what the prompt says can render the plan illegal and halt the loop. The two contracts disagree: "must start with" (prompt) vs. "must equal, or be OTHER:" (validator).
+
+**Impact:** this is what actually killed the loop — an internal contract mismatch, not a real defect in anyone's work. **Recommend:** make the validator accept `<TOKEN>: <detail>` for any vocabulary token (align it with the prompt's "must start with"), OR change the prompt to say "must be exactly one of … or `OTHER:<text>`" and have builders put detail in `progress_note`. Either way the two must agree. Combined with #13, a single stale worktree took down an unattended run via two independent pack defects stacking.
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
