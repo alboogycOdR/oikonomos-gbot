@@ -913,7 +913,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-028
 **Title:** OIK-032 — extract packages/agent-providers from cc-multi-agent-telegram-bot
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-032; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §Adopt (lines 57, 77, 343)
@@ -929,8 +929,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-17T11:08:40Z
 **Progress_Notes:**
 - [2026-08-17T11:22:29Z] [SV:GB] Extracted @oikonomos/agent-providers (AgentProvider + Claude/Codex/Grok) from cc-multi-agent-bot.zip; 88 original Vitest tests green (41 in-package, 47 staged under services/gateway-telegram/test/). Claude query is injected, no SDK/broker/harness wiring.
-**Artifacts:** packages/agent-providers/src/index.ts, packages/agent-providers/src/types.ts, packages/agent-providers/src/config.ts, packages/agent-providers/src/security.ts, packages/agent-providers/src/providers/claudeCode.ts, packages/agent-providers/src/providers/codex.ts, packages/agent-providers/src/providers/grok.ts, packages/agent-providers/src/providers/index.ts, packages/agent-providers/test/config.test.ts, packages/agent-providers/test/security.test.ts, packages/agent-providers/test/providers.codex.test.ts, packages/agent-providers/test/providers.grok.test.ts, packages/agent-providers/README.md, services/gateway-telegram/test/formatting.test.ts, services/gateway-telegram/test/permissions.test.ts, services/gateway-telegram/test/session.store.test.ts, services/gateway-telegram/test/streamRenderer.test.ts, services/gateway-telegram/test/src/bot/formatting.ts, services/gateway-telegram/test/src/bot/permissions.ts, services/gateway-telegram/test/src/bot/streamRenderer.ts, services/gateway-telegram/test/src/session/store.ts, services/gateway-telegram/test/src/types.ts, dossiers/TASK-028.md
-**Test_Evidence:** pnpm --filter @oikonomos/agent-providers test: 41/41 pass (config 11, providers.codex 14, providers.grok 10, security 6). pnpm --filter @oikonomos/gateway-telegram test: 48/48 pass (47 extracted + src/index ping). Combined extracted count 88/88. pnpm --filter @oikonomos/agent-providers typecheck|build exit 0. pnpm lint exit 0. node infra/ci/banned-modes.mjs clean.
+- [2026-08-17T13:04:42Z] [SV:GB] Rework: grok abort-mid-stream now gates abort on first text_delta (no 100ms race). 88 extracted tests still green; pnpm -r test x3 green.
+**Artifacts:** packages/agent-providers/test/providers.grok.test.ts, dossiers/TASK-028.md
+**Test_Evidence:** vitest providers.grok.test.ts x5: 10/10. pnpm --filter @oikonomos/agent-providers test: 41/41. gateway-telegram test: 48/48 (88/88 extracted). typecheck|build|lint exit 0. banned-modes clean. pnpm -r test x3: all green (abort-mid-stream passed under recursive load each time).
 **Review_Findings:**
 - REWORK, NARROW (ORCH opus-4-8 review, 2026-08-17T11:45Z; non-protected path, single-model review sufficient). **THE EXTRACTION ITSELF IS FAITHFUL AND APPROVED IN SUBSTANCE - this goes back for ONE test-determinism fix, not for the work.** Verified against the original zip: all 88 tests present (41 in-package + 47 gateway), ZERO skip/todo/only, and every assertion diffed byte-for-byte against the original - only prettier formatting differs, no assertion weakened or pulled. The load-bearing architectural constraint holds: the @anthropic-ai/claude-agent-sdk import is GONE, the Claude query is INJECTED (queryFn) and FAILS CLOSED when absent with a message pointing at OIK-033 - exactly the seam the harness factory needs. security.ts byte-equivalent to source; config.ts hand-roll preserves every zod constraint AND was hardened to drop the two banned permission-mode tokens. No credentials, no premature broker/harness wiring, no `any`, territory + PLAN.md clean.
 - **[BLOCKING - the ONLY thing stopping merge] `providers.grok.test.ts` 'aborted mid-stream' is non-deterministic and reddens `pnpm -r test` under load.** It passed 41/41 in TWO isolated runs but failed once in the full recursive suite: the test expects a `text_delta` before the abort fires, and under CPU contention the abort wins the race so no delta is emitted (`expected false to be true`, providers.grok.test.ts:186). This is a test timing-sensitivity, not a logic defect - but a non-deterministic red on master is exactly what corrupts every downstream review's 'is the full suite green' check, and this task is the FOUNDATION five E4 tasks build on. It must be deterministic before merge. FIX (in your territory): make the abort wait for the first `text_delta` to actually arrive before firing (gate the abort on first-delta), or inject/advance a fake clock so the delta is guaranteed to precede the abort - do NOT just add a longer timeout, which only lowers the flake rate. Re-run `pnpm -r test` (full recursive) several times and confirm it is green every time.
@@ -938,7 +939,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NON-BLOCKING, for the future gateway-extraction ticket] The 47 gateway tests + their colocated source under services/gateway-telegram/test/src/ are logic-byte-identical to the original, so relocation to services/gateway-telegram/src/ will be clean - but the staging stripped the original's explanatory comments (MarkdownV2 escaping rationale, cross-chat-spoofing note); re-import them from the zip when relocating.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T11:22:29Z
+**Updated_At:** 2026-08-17T13:04:42Z
 
 ### TASK-029
 **Title:** OIK-033 — packages/harness-factory: sole harness constructor + L1/L2/L3 ports (N9) ⚑ protected
