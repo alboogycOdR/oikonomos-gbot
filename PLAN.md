@@ -1158,7 +1158,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-038
 **Title:** OIK-015 — Postgres + evidence-volume backup & restore drill
-**Status:** pending
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E2 OIK-015; docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §8
@@ -1172,11 +1172,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `infra/backup/README.md` documents the procedure and the drill result; the Kubernetes/prod-schedule specifics are recorded there, not in docs/**
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-17T11:13:39Z] [SV:CX] Stopped before implementation: dispatcher state and authoritative main PLAN.md are inconsistent; dossier records the exact checks.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Blocked_Reason:** SYNC_MISMATCH: Main PLAN.md still records TASK-038 as pending with no branch/start timestamp, this worktree is on task/TASK-017-cx, no task/TASK-038-cx branch exists, and preflight reports TASK-038 absent from this worktree PLAN snapshot. Supervisor must claim/sync TASK-038 before work can proceed.
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T11:13:39Z
 
