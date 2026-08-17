@@ -1053,7 +1053,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-032
 **Title:** OIK-036 — L2 dontAsk mode + scoped allowedTools validator (R1) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-036; docs/decisions/ADR-001-broker-enforcement-point.md (L2, R1, F2); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6
@@ -1067,13 +1067,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
 **Branch:** task/TASK-032-gb
 **Started_At:** 2026-08-17T19:39:42Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-17T19:45:46Z] [SV:GB] L2 validator locks dontAsk and rejects bare-name allowedTools (CAN-02 mcp__gmail__send_message) unless ADR-named; scoped forms accepted.
+**Artifacts:** packages/harness-factory/src/l2/allowed-tools.ts, packages/harness-factory/test/l2/allowed-tools.test.ts
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test 33/33; typecheck 0; pnpm lint 0; banned-modes clean; pnpm -r test 279 passed / 31 skipped
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:39:42Z
+**Updated_At:** 2026-08-17T19:45:46Z
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
