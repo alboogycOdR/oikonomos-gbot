@@ -46,3 +46,18 @@ Strict mode: do not write PLAN.md. 88 Vitest tests must stay green
   - `node infra/ci/banned-modes.mjs` clean
   Ready for review.
 
+- [2026-08-17T12:05:00Z] [GB] Resume: ORCH rework (narrow). Sole blocker is `providers.grok.test.ts` 'aborted mid-stream' racing abort vs first `text_delta` under `pnpm -r test` load. Gating abort on the first observed `text_delta` (no longer a 100ms timeout). Next: re-run package tests + full recursive suite.
+
+- [2026-08-17T15:04:03Z] [GB] Rework complete. Abort now fires only after the first `text_delta` is observed (no 100ms race). Assertions unchanged. Ready for review.
+
+  Test_Evidence:
+  - `vitest run test/providers.grok.test.ts` x5 — 10/10 each run
+  - `pnpm --filter @oikonomos/agent-providers test` — 41/41
+  - `pnpm --filter @oikonomos/gateway-telegram test` — 48/48 (47 extracted + ping)
+  - Combined extracted count: 88/88
+  - `pnpm --filter @oikonomos/agent-providers typecheck` exit 0
+  - `pnpm --filter @oikonomos/agent-providers build` exit 0
+  - `pnpm lint` exit 0
+  - `node infra/ci/banned-modes.mjs` clean
+  - `pnpm -r test` x3 — all green (14/15 workspace projects; abort-mid-stream passed under recursive load every time)
+

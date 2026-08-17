@@ -180,8 +180,21 @@ describe("GrokProvider (subprocess integration via a fake grok binary)", () => {
       setTimeout(() => process.exit(0), 5000);
     `);
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 100);
-    const events = await collect(makeProvider(bin), controller.signal);
+    const events: ProviderEvent[] = [];
+    // Gate abort on the first observed text_delta so the interrupt cannot
+    // win a spawn/I/O race under CPU contention (a fixed timeout did).
+    for await (const event of makeProvider(bin).sendPrompt({
+      prompt: "say hi",
+      cwd: process.cwd(),
+      sessionId: null,
+      model: null,
+      signal: controller.signal,
+    })) {
+      events.push(event);
+      if (event.type === "text_delta" && !controller.signal.aborted) {
+        controller.abort();
+      }
+    }
 
     expect(events.some((e) => e.type === "text_delta")).toBe(true);
     expect(events[events.length - 1]).toEqual({ type: "error", message: "Interrupted by user.", fatal: false });
