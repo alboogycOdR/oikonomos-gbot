@@ -1052,7 +1052,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-032
 **Title:** OIK-036 — L2 dontAsk mode + scoped allowedTools validator (R1) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-036; docs/decisions/ADR-001-broker-enforcement-point.md (L2, R1, F2); specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §6
@@ -1064,15 +1064,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A bare-name allowedTools entry is REJECTED by the config validator unless an ADR amendment names it and justifies it; scoped-form entries are accepted (WBS OIK-036 acceptance; ADR-001 R1/F2; directive §6)
 - [ ] A test demonstrates a bare-name Tier-3 entry is rejected here — the config-layer half of CAN-02 (directive §6)
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-032-gb
+**Started_At:** 2026-08-17T19:39:42Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T19:39:42Z
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
