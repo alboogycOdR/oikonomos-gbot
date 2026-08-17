@@ -1215,6 +1215,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T11:25:00Z] [ORCH] Spurious SYNC_MISMATCH block CLEARED. Root cause was NOT a real blocker: CX's worktree was on the stale task/TASK-017-cx branch, so its checked-out PLAN.md predated TASK-038 and preflight could not see the task the dispatcher had just claimed in the MAIN PLAN. CX correctly fail-safed; GB hit the same stale-worktree condition on TASK-028 and worked around it by reading the main checkout. ORCH reset the codex worktree to current master and re-dispatch will create task/TASK-038-cx fresh. Recorded as a DEVDEPARTMENT pack finding (dispatch does not refresh a stale worktree's PLAN in strict mode; validator rejects '<TOKEN>: detail' while the dispatch prompt says blocked_reason 'must start with' a token).
 - [2026-08-17T11:13:39Z] [SV:CX] Stopped before implementation: dispatcher state and authoritative main PLAN.md are inconsistent; dossier records the exact checks.
 - [2026-08-17T13:15:03Z] [SV:CX] Implemented and committed backup, restore-drill, isolated test drill, and deployment documentation in 00ae7ec.
+- [2026-08-17T15:35:06Z] [SV:CX] Readiness-race fix is committed and static validation is green; live clean-environment drill requires ORCH execution on clawsrv/Linux. NEXT: ORCH runs sh infra/backup/test-drill.sh on clawsrv/Linux with Docker and host pg_dump, then records demonstrated restore evidence.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:**
@@ -1223,5 +1224,5 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - **STRUCTURAL NOTE: this task cannot be self-verified in the Windows dispatch environment - it REQUIRES clawsrv (or any Linux+Docker+pg host) to demonstrate.** CX writes/fixes the scripts blind; ORCH is the drill-verification point, the same ORCH-executes-infra pattern as TASK-019 (OpenSandbox). So after your fix lands, do not claim needs_review on the basis of the scripts existing - note in your control block that the drill needs an ORCH clawsrv run, and ORCH will re-run test-drill.sh there and only then move it toward done. That is not a criticism of you; it is the shape of the task.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T13:15:03Z
+**Updated_At:** 2026-08-17T15:35:06Z
 
