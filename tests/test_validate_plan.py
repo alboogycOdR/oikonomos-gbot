@@ -81,6 +81,21 @@ def test_blocked_reason_vocabulary():
     assert any("not in vocabulary" in e for e in bad.errors)
 
 
+def test_blocked_reason_token_with_detail_is_accepted():
+    # LOCAL PATCH regression guard (finding #14): control.py writes "<TOKEN>: detail"
+    # (test_control.py::test_blocked_sets_status_and_reason), so the validator must
+    # accept it. A "<TOKEN>: detail" reason halted the L2 supervisor twice before this.
+    for reason in ("TOOLING_FAILURE: flutter build crashes",
+                   "SYNC_MISMATCH: worktree PLAN snapshot is stale"):
+        r = validate(FM + task_block(status="blocked", blocked=reason,
+                                     branch="task/TASK-001-gb", started="2026-07-12T09:00:00Z"))
+        assert r.ok, (reason, r.errors)
+    # a colon after a NON-vocabulary head is still rejected
+    junk = validate(FM + task_block(status="blocked", blocked="whatever: nope",
+                                    branch="task/TASK-001-gb", started="2026-07-12T09:00:00Z"))
+    assert any("not in vocabulary" in e for e in junk.errors)
+
+
 def test_needs_review_requires_evidence():
     rep = validate(FM + task_block(status="needs_review", branch="task/TASK-001-gb",
                                    started="2026-07-12T09:00:00Z"))

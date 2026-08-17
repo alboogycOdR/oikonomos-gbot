@@ -255,8 +255,20 @@ def validate(text: str, control_mode: str = "legacy",
             reason = t.get("Blocked_Reason")
             if t.is_empty("Blocked_Reason"):
                 rep.error(f"{ctx}: Status is blocked but Blocked_Reason is empty")
-            elif reason not in BLOCKED_REASONS and not reason.startswith("OTHER:"):
-                rep.error(f"{ctx}: Blocked_Reason '{reason}' not in vocabulary {sorted(BLOCKED_REASONS)} or 'OTHER:<text>'")
+            else:
+                # LOCAL PATCH (oikonomos 2026-08-17, finding #14 — pending upstream):
+                # accept "<TOKEN>: detail" as well as a bare token or "OTHER:<text>".
+                # control.py's apply_control_to_plan already WRITES this shape
+                # (test_control.py::test_blocked_sets_status_and_reason asserts
+                # 'Blocked_Reason: TOOLING_FAILURE: flutter build crashes'), and the
+                # dispatch/builder prompt tells builders blocked_reason "must start
+                # with" a token — but this validator previously required a bare token
+                # or OTHER:, so any real "<TOKEN>: detail" block rendered PLAN.md
+                # protocol-illegal and halted the L2 supervisor (twice on 2026-08-17).
+                # Keep the "not in vocabulary" wording — test_validate_plan.py asserts it.
+                head = reason.split(":", 1)[0].strip()
+                if head not in BLOCKED_REASONS and not reason.startswith("OTHER:"):
+                    rep.error(f"{ctx}: Blocked_Reason '{reason}' not in vocabulary {sorted(BLOCKED_REASONS)} (optionally followed by ': detail') or 'OTHER:<text>'")
 
         if status == "needs_review" and t.is_empty("Test_Evidence"):
             rep.error(f"{ctx}: Status is needs_review but Test_Evidence is empty — untested work is unfinished work")
