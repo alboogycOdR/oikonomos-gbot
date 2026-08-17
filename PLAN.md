@@ -1027,7 +1027,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-031
 **Title:** OIK-035 — L3 canUseTool secondary adapter → broker ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-035; docs/decisions/ADR-001-broker-enforcement-point.md (L3, R2, F5); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §4.1
@@ -1040,15 +1040,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Fails closed on transport error / timeout >10s / malformed body → deny (ADR-001 R3)
 - [ ] L3 is never the sole enforcement — a test asserts a decision here does not preempt or replace L1 (ADR-001 L3 'Never the sole enforcement')
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-031-cx
+**Started_At:** 2026-08-17T19:39:56Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T19:39:56Z
 
 ### TASK-032
 **Title:** OIK-036 — L2 dontAsk mode + scoped allowedTools validator (R1) ⚑ protected
