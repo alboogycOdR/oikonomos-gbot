@@ -368,6 +368,16 @@ class TestManifestMarkersMatchRealFiles:
                 f"{name}: none of the configured markers {markers!r} appears in the pack's own "
                 f"file -- every project's merge would silently fail with 'cannot merge safely' "
                 f"forever. This is exactly the bug that shipped once already.")
+            # The singular `marker` field is still read as a fallback when
+            # `markers` is absent (spec.get("markers") or [spec["marker"]]),
+            # so it must stay a member of the array it degrades to -- a future
+            # edit to `markers` that silently drops `marker` would make the
+            # fallback path diverge from the primary one (GB, TASK-MAINT-2026-08-16).
+            if "marker" in spec:
+                assert spec["marker"] in markers, (
+                    f"{name}: merge_special.marker {spec['marker']!r} is not a member of "
+                    f"markers[] {markers!r} -- the singular-field fallback would diverge "
+                    f"from the primary array")
 
     def test_no_dead_merge_special_entries(self):
         """Every merge_special key must correspond to logic sync_from_pack.py

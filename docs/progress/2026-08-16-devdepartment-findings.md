@@ -1,12 +1,16 @@
 # DEVDEPARTMENT pack — findings from 24h of live use on OIKONOMOS
 
+**UPDATE 2026-08-16T18:55Z:** items #1, #11 and #12 below were independently fixed upstream and landed in this repo via a live pack resync during this same day — confirmed by reading the actual diff before committing it, not taken on trust. Marked **[RESOLVED UPSTREAM]** below with what shipped. The remaining items (2–10) are still open as of this writing.
+
 **Compiled by ORCH, 2026-08-16.** Scope: defects in the DEVDEPARTMENT pack itself (`scripts/dispatch.ps1`, `scripts/control.py`, `scripts/atlas_core.py`, `scripts/atlas_cards.py`, `scripts/tg_commands.py`, `scripts/supervisor.py`) — not defects in OIKONOMOS. Everything below either shipped a fix in this repo (cited by commit) or is reported as an open finding for the pack team to act on. All were found through real multi-builder dispatch/review cycles, not synthetic testing.
 
 ---
 
 ## Confirmed this session, source-verified
 
-### 1. `git_commit_and_push()` collapses commit-failure and push-failure into one ambiguous message
+### 1. [RESOLVED UPSTREAM] `git_commit_and_push()` collapses commit-failure and push-failure into one ambiguous message
+
+**Fixed by the pack team, landed 2026-08-16 as `git_commit_and_push_detailed()` returning `(committed, pushed, note)` instead of one boolean** — verified by reading the diff before committing it in this repo (`8322829`). The fix also closed a second, more serious hazard neither this project nor its own commit message had reported: it now fails closed if the target directory isn't itself a git worktree root — the old code let `git` walk *up* to whatever ancestor repo happened to exist, and the fix's own comment cites an observed incident where a user's `HOME` being a git repo caused stray commits to land there. Genuinely good, went further than what was asked.
 **File:** `scripts/tg_commands.py:397-407`. Six call sites: `control.py` (×3), `maintenance.py`, `supervisor.py`.
 
 ```python
@@ -58,12 +62,14 @@ A `.gitignore` entry like `node_modules/` was matched only against the top-level
 
 ## Found in a live resync, this session
 
-### 11. Pack-repo-only test scaffolding gets vendored into downstream projects and fails there by design
+### 11. [RESOLVED UPSTREAM] Pack-repo-only test scaffolding gets vendored into downstream projects and fails there by design
 A resync landed with `tests/test_sync_from_pack.py::TestPackTemplateShipsSafeDefaults` (`test_atlas_ships_disabled`, `test_control_mode_ships_legacy`) — both read `REPO_ROOT / "autopilot.json"`, i.e. **the consuming project's own live config**, and assert it equals the pack's generic safe-default template (`atlas.enabled: false`, `control.mode: legacy`). That assertion is correct for the pack's own template file, guarding against a live project's onboarding answers accidentally leaking into what ships to the next adopter. It is **wrong once vendored into a project that has already onboarded**, since the entire point of the pack's own "ask, don't auto-flip" onboarding step (`onboard.md` STEP 4, documented in the pack itself) is to deliberately diverge `autopilot.json` from those defaults. On OIKONOMOS — which correctly onboarded with `atlas.enabled: true` and `control.mode: strict`, both explicit human decisions — this test now fails permanently, on every future sync, for a config that is exactly right.
 
 **Recommend:** either don't ship `TestPackTemplateShipsSafeDefaults` into a consuming project's `tests/` directory at all (it belongs in the pack's own repo, run against the pack's own template), or have `sync_from_pack.py` skip/parameterize it once onboarding has run.
 
-### 12. A test still checks a field its own fix already made non-primary
+### 12. [RESOLVED UPSTREAM] A test still checks a field its own fix already made non-primary
+
+**Both 11 and 12 fixed by the pack team in the same 2026-08-16 resync** — the two `TestPackTemplateShipsSafeDefaults` tests are now gated behind `_is_pack_repo()`, which checks for `.devteam/sync_state.json` (present only in a project that has synced from the pack, never in the pack's own repo) rather than parsing `CLAUDE.md`'s header text — cleaner than an interim local workaround this project independently arrived at for the same root cause on the same day. Verified with three independent mutations before merging: the marker test still fails on a genuinely broken marker config; the safe-defaults tests still fire on a checkout that looks like the pack template with flipped values; and a compensating test ensures no checkout escapes both branches (i.e. it isn't a disguised permanent skip). One assertion from the local workaround — that the singular `marker` fallback field stays a member of `markers[]` — wasn't in the upstream fix and was ported forward as a small addition.
 `TestManifestMarkersMatchRealFiles::test_every_marker_section_marker_exists_in_the_real_pack_file` checks only `sync-manifest.json`'s singular `merge_special.CLAUDE.md.marker` field against the literal string in the target file. But `sync_from_pack.py:465` already reads `spec.get("markers") or [spec["marker"]]` — the **plural** array is preferred, and `sync-manifest.json` already carries both the H1 (no-existing-file) and H2 (append-under-heading) marker forms, with a comment explaining exactly why both are needed (`docs/SYNC.md` "Verifying merge_special markers"). The actual merge mechanism is correct and was verified sound by reading the source. The test just never got updated to check the array it's nominally protecting, so its own failure message — **"This is exactly the bug that shipped once already."** — is a false alarm baked into test code that predates its own fix. Confusing and alarming for anyone hitting it without reading the merge code first, which is exactly what happened this session before the false alarm was traced.
 
 **Recommend:** update the test to iterate `spec.get("markers") or [spec["marker"]]`, matching the code it's meant to guard.

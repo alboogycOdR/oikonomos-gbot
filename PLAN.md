@@ -889,7 +889,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-MAINT-2026-08-16
 **Title:** Nightly self-audit failure (2026-08-16)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -905,6 +905,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** tests/test_sync_from_pack.py, dossiers/TASK-MAINT-2026-08-16.md
 **Test_Evidence:** python -m pytest tests/ -q — 696 passed, 2 skipped (84.68s). node hooks/run-tests.js — 36 passed, 0 failed. powershell -ExecutionPolicy Bypass -File scripts\harness-audit.ps1 — HARNESS AUDIT: PASS (AgentShield Grade A 95/100, 0 critical; PLAN.md OK; pytest 696+2skip; hooks 36).
 **Review_Findings:** —
+- APPROVED, with a twist (ORCH opus-4-8, 2026-08-16T18:55Z; author GB, root cause = DEVDEPARTMENT pack defect, not this project's code). **GB's diagnosis and fix were correct, verified by an independent adversarial review with three mutations, all bit as expected** — see REVIEW.md. But mid-review, the DEVDEPARTMENT pack team's own upstream fix for the IDENTICAL root cause landed in the working tree as an independent resync (`8322829`) while GB's fix sat on its own branch. Upstream's mechanism is cleaner (`_is_pack_repo()` keyed on `.devteam/sync_state.json` rather than parsing CLAUDE.md's header text) and additionally fixed a more serious hazard neither GB nor I had reported: `git_commit_and_push` could silently commit into an ancestor repository when `repo` wasn't itself a worktree root. **GB's specific test code was therefore not merged — superseded, not reworked** — but one genuinely non-redundant piece (the assertion that the singular `marker` fallback field stays listed in `markers[]`) was ported forward directly into the now-canonical file. Dossier preserved with an ORCH resolution note explaining exactly what happened. Territory clean throughout (only `tests/**` touched, nothing in `scripts/**`/`hooks/**`), no PLAN.md edit by GB. Branch `task/TASK-MAINT-2026-08-16-gb` deleted (not merged; superseded). Full suite verified green after reconciliation: `pytest` 691 passed/6 skipped, `hooks/run-tests.js` 36/36.
+- **Credit stands in full**: GB correctly identified this as a pack-level defect and fixed it in the right place (test scaffolding, not product code) rather than trying to patch around it — exactly the right call, and it independently converged on the same root cause and a functionally-equivalent solution as the pack team, on the same day. Items #1, #11, #12 in `docs/progress/2026-08-16-devdepartment-findings.md` are now marked resolved-upstream rather than open findings.
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-08-17T09:22:22Z
