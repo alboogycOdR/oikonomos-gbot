@@ -92,6 +92,19 @@ The dispatch/builder prompt tells builders: *"blocked_reason must start with SPE
 
 **LOCAL PATCH APPLIED (oikonomos 2026-08-17, pending upstream):** `validate_plan.py` now accepts `<TOKEN>: <detail>` (split on the first `:`, require the head to be a vocabulary token) in addition to a bare token or `OTHER:<text>`, with a regression test in `test_validate_plan.py`. This aligns the validator with `control.py`'s existing output. `validate_plan.py` is `framework_owned`, so this patch will be reverted by the next pack sync — **the real fix must ship upstream.** Recommend upstream do the same validator change (it is the minimal one and matches what control.py already writes), OR, if the bare-token form is truly intended, change BOTH control.py to write the token bare + detail into progress_note AND the dispatch prompt to stop saying "must start with". Whichever — the writer, the validator, and the prompt must agree; today all three disagree.
 
+### 15. The loop's `git pull --rebase --autostash` corrupts the main checkout when local has diverged from a remote
+
+**Severity: high — it silently detached the main checkout mid-run and (transiently) presented a stale PLAN.md.** After a GitHub remote was added to this repo, the L2 supervisor's git sync (`tg_commands.git_pull` → `git pull --rebase --autostash`, called during control-block application) began trying to rebase local `master` (7 unpushed commits, divergent content) onto `origin/master`. On 2026-08-17 this **conflicted** (`UU dossiers/…`, `AA …grok.test.ts`), which left the main checkout in **detached HEAD at an old commit with unresolved conflicts** while the loop was still live. A `/devteam-status` scan run during that window read a PLAN.md that showed `TASK-029 needs_review` and no `TASK-039` — the *old* commit's tree — even though `master` was correct. Git's own `rebase (abort)` returned HEAD to `master` (so no commits were lost — the refs were always fine), but the working tree was left messy and the loop kept ticking against it.
+
+**Why it only appeared now:** before the remote existed, `git pull` was a no-op (no upstream) and this never fired. Adding a remote made the pull operative, and because the supervisor commits locally far faster than anything pushes, local and origin diverge almost immediately — so the rebase-on-pull hits divergent history and conflicts.
+
+**Recovery performed:** `git checkout master && git reset --hard <local-tip>` cleaned the working tree; the supervisor process was killed (a STOP file was not trusted to halt it before its next git op, given the fragile state).
+
+**Recommend, in order of preference:**
+1. **Don't rebase-pull inside the loop at all.** The supervisor is the authority on its own branch; it should `git fetch` (never `pull --rebase`) and only fast-forward-merge if strictly behind. A rebase that can conflict must never run unattended against a working tree the loop is also writing.
+2. If a pull is kept, make it `--ff-only` and skip (log, don't rebase) when the branch has diverged.
+3. Operationally until fixed: run the loop with **no remote configured** (its historical, working state), or keep local and origin converged by pushing every commit — but option 1 is the real fix.
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
