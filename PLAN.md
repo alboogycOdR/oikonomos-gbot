@@ -1180,13 +1180,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** task/TASK-038-cx
 **Started_At:** 2026-08-17T12:59:44Z
 **Progress_Notes:**
+- [2026-08-17T13:25:00Z] [ORCH] Loop halted a SECOND time on finding #14 (validator rejects '<TOKEN>: detail'): CX correctly blocked with a REAL tooling gap but wrote 'TOOLING_FAILURE: Run sh infra/backup/test-drill.sh on a Linux Docker host with PostgreSQL client tools...' and the validator only accepts a bare token or OTHER:<text>. Rewrote the Blocked_Reason to the bare token and moved the detail here, per the finding's own recommendation. THE BLOCK ITSELF IS LEGITIMATE: the restore-drill acceptance bar needs a Linux Docker host + pg client tools, which the Windows dispatch environment lacks. TRIAGE (ORCH): we HAVE that environment - clawsrv (Linux, Docker, pgvector Postgres already running). ORCH will review CX's implementation (backup/restore/test-drill scripts + docs on task/TASK-038-cx, commit 00ae7ec), then RUN THE DRILL ON CLAWSRV to demonstrate the clean-environment restore - the same ORCH-executes-infra pattern used for TASK-019 (OpenSandbox). If the drill passes, 038 -> needs_review with the drill evidence; if the scripts are wrong, rework to CX.
 - [2026-08-17T11:25:00Z] [ORCH] Spurious SYNC_MISMATCH block CLEARED. Root cause was NOT a real blocker: CX's worktree was on the stale task/TASK-017-cx branch, so its checked-out PLAN.md predated TASK-038 and preflight could not see the task the dispatcher had just claimed in the MAIN PLAN. CX correctly fail-safed; GB hit the same stale-worktree condition on TASK-028 and worked around it by reading the main checkout. ORCH reset the codex worktree to current master and re-dispatch will create task/TASK-038-cx fresh. Recorded as a DEVDEPARTMENT pack finding (dispatch does not refresh a stale worktree's PLAN in strict mode; validator rejects '<TOKEN>: detail' while the dispatch prompt says blocked_reason 'must start with' a token).
 - [2026-08-17T11:13:39Z] [SV:CX] Stopped before implementation: dispatcher state and authoritative main PLAN.md are inconsistent; dossier records the exact checks.
 - [2026-08-17T13:15:03Z] [SV:CX] Implemented and committed backup, restore-drill, isolated test drill, and deployment documentation in 00ae7ec.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE: Run `sh infra/backup/test-drill.sh` on a Linux Docker host with PostgreSQL client tools to demonstrate the required clean-environment restore.
+**Blocked_Reason:** TOOLING_FAILURE
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T13:15:03Z
 
