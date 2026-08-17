@@ -913,7 +913,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-028
 **Title:** OIK-032 — extract packages/agent-providers from cc-multi-agent-telegram-bot
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-032; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §Adopt (lines 57, 77, 343)
@@ -925,15 +925,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] All 88 pre-existing Vitest tests are present and green post-extraction — the count is the acceptance bar, a smaller number means tests were dropped (WBS OIK-032; Synthesis line 343)
 - [ ] No broker or harness wiring is introduced in this package — provider construction only; the sole-constructor rule is enforced later in harness-factory (ADR-001 L1 boundary)
 - [ ] `pnpm --filter @oikonomos/agent-providers test|typecheck|build` and root `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-028-gb
+**Started_At:** 2026-08-17T11:08:40Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T11:08:40Z
 
 ### TASK-029
 **Title:** OIK-033 — packages/harness-factory: sole harness constructor + L1/L2/L3 ports (N9) ⚑ protected
