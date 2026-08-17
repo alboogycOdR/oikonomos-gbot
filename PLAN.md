@@ -1080,32 +1080,33 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-037; docs/decisions/ADR-001-broker-enforcement-point.md (R4)
-**Owned_Paths:** packages/harness-factory/src/hooks/posttooluse.ts, packages/harness-factory/test/hooks/posttooluse.test.ts
+**Owned_Paths:** packages/harness-factory/src/hooks/posttooluse.ts, packages/harness-factory/test/hooks/posttooluse.test.ts, packages/harness-factory/package.json, pnpm-lock.yaml
 **Depends_On:** TASK-030
 **Description:** **GB or CX only, NEVER S5** (protected, directive §3). Implement the PostToolUse hook (ADR-001 R4): after a tool runs, write the completion half of the record to the audit trail — result digest + artifact URIs, keyed to the same `toolUseId`/`auditEventId` the L1 decision produced. Uses the canonical-JSON/digest from @oikonomos/shared (no reimplementation) and the audit writer via its port. Depends on OIK-034 because it pairs with the L1 decision record. Owns only its own hook file + test; disjoint from the pre-tool hooks.
 **Acceptance_Criteria:**
-- [ ] PostToolUse writes result digest + artifact URIs to the audit trail, correlated to the L1 decision's `toolUseId`/`auditEventId` (WBS OIK-037; ADR-001 R4)
+- [ ] PostToolUse writes result digest + artifact URIs to the audit trail, correlated by `toolUseId` (not L1's exact auditEventId - ORCH over-spec corrected 2026-08-17) (WBS OIK-037; ADR-001 R4)
 - [ ] The result digest uses the single @oikonomos/shared canonical-JSON/digest implementation — no local reimplementation (Handover §4.3)
 - [ ] An audit-write failure here does not silently drop the evidence — it surfaces (fail-closed posture consistent with the pre-tool path)
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** task/TASK-033-cx
-**Started_At:** 2026-08-17T19:49:11Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
+- [2026-08-17T20:15:00Z] [ORCH] RE-CARVED after CX's OWNERSHIP_CONFLICT block, which was CORRECT that 033 could not be done in two files - but the ROOT CAUSE is MY over-specification, now corrected. THE DESIGN, decided: R4 / OIK-037 requires writing COMPLETION EVIDENCE (result digest + artifact URIs) to the audit trail, correlated by `toolUseId` - NOT by preserving L1's exact `auditEventId`. My original description said 'correlated to ... auditEventId', which is what led CX to (correctly, under that reading) conclude it needed pretooluse.ts + ports.ts to thread the auditEventId through. Dropping that: toolUseId is the correlation key (both the L1 decision event and this completion event carry it; correlate at query time). So: (1) DO NOT modify pretooluse.ts or ports.ts - the existing PostToolUsePortRequest already carries toolName/toolUseId/input/toolResponse, which is sufficient. (2) The ONE real cross-territory need is the @oikonomos/shared dependency for the canonical-JSON/sha256 result digest (single implementation, NO reimplementation) - hence package.json + pnpm-lock.yaml are now in territory. (3) Write the evidence via an INJECTED audit-sink dependency on the concrete adapter's own constructor (the DI pattern the other adapters use); composition (OIK-039/TASK-035) wires the real sink. If after this you STILL believe the exact L1 auditEventId must be preserved, block SPEC_AMBIGUITY and I will author an ADR - do not silently thread it through L1.
 - [2026-08-17T19:51:57Z] [SV:CX] Verified the R4 hook cannot preserve L1 auditEventId or import the mandated shared digest within the two allocated files; documented evidence and baseline validation in dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: requires packages/harness-factory/src/ports.ts, packages/harness-factory/src/hooks/pretooluse.ts, and packages/harness-factory/package.json (plus lockfile if dependency metadata changes), all outside TASK-033 Owned_Paths.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:51:57Z
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-038; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -1125,7 +1126,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-17T19:48:08Z] [SV:S5] Run lifecycle state machine (start/resume/fail/cancel) built in packages/db/src/runs.ts atop the EXISTING runs table/run_status enum (no new migration, per re-carved AC3). Atomic UPDATE...WHERE status IN (open)...RETURNING guards each transition; RunNotFoundError vs IllegalRunTransitionError distinguished on no-match. resumeRun COALESCEs an optional sessionRef so a worker can re-read the persisted session_ref after a process kill and hand it back, round-tripping to 'resumed' with the same session intact (AC1). services/worker/src/runLifecycle.ts wraps the typed module via the @oikonomos/db barrel only (AC4), workspace dep + pnpm-lock.yaml updated. All work committed on task/TASK-034-s5 (0b42541 code, 597dced dossier). Flagged for ORCH: pnpm -r test has one pre-existing, unrelated failure in packages/broker/test/pretooluse.test.ts (requireNonEmpty('toolName') throws on undefined inside packages/approvals/src/issue.ts) ΓÇö confirmed via git-stash-and-rerun that it reproduces identically on clean origin/master with none of this task's changes present, and packages/broker/packages/approvals are both outside TASK-034's Owned_Paths so not touched.
 **Artifacts:** packages/db/src/runs.ts, packages/db/src/index.ts, packages/db/test/runs.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/index.ts, services/worker/package.json, services/worker/test/runLifecycle.test.ts, pnpm-lock.yaml, dossiers/TASK-034.md
 **Test_Evidence:** pnpm --filter @oikonomos/db typecheck: clean. pnpm --filter @oikonomos/db build: clean. pnpm --filter @oikonomos/worker typecheck: clean. pnpm lint: clean. pnpm --filter @oikonomos/db test (no DATABASE_URL): 7/7 passed, integration suites skip cleanly. Against isolated pgvector/pg16 container (127.0.0.1:55499, migrated with infra/postgres/migrations/001_schema_v1.up.sql, torn down after): pnpm --filter @oikonomos/db test -> 6 files, 27/27 passed incl. all 14 new runs.test.ts cases (start w/ and w/o session_ref, resume-after-kill round trip, resume preserves stored sessionRef when omitted, idempotent repeat resume, fail sets ended_at+failure_note, cancel from started and waiting_approval, illegal resume/fail/cancel from terminal states throw IllegalRunTransitionError with correct fromStatus/action, unknown run_id throws RunNotFoundError on all 3 transitions, getRun null for unknown, live pg_enum proof run_status unchanged). pnpm --filter @oikonomos/worker test -> 3 files, 6/6 passed incl. start->resumeInterruptedRun round trip through the barrel, unknown-run rejection, fail/cancel delegation+persistence. pnpm -r test (full recursive, per CLAUDE.md amendment): 13/14 packages pass; packages/broker's 1 failing test confirmed pre-existing via git-stash-of-all-8-touched-files + rerun against clean origin/master (identical failure, same line, same error) -- not caused by TASK-034. Full detail + exact commands in dossiers/TASK-034.md work log.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus-4-8 autopilot, 2026-08-17T20:15Z; non-protected, reviewed against a LIVE Postgres 16+pgvector). **SOUND after the re-carve.** Atomic single-statement transitions (UPDATE...WHERE status IN(open-states)...RETURNING); illegal transitions rejected, mutation-confirmed - widening resume's WHERE to include 'completed' fails the 'rejects resume on a completed run' test. resume-after-kill re-derives session_ref from the DB and returns the correct state. Barrel append-only (one added re-export, nothing removed). NO new migration, NO enum change - uses the existing runs table + run_status. No raw SQL leak into the worker (imports typed @oikonomos/db; package.json declares workspace:* dep, lockfile adds only that edge). No `any`, no credentials, all four verbs + getRun. Territory clean. Nit: unused OPEN_STATUSES const (dead code, lint-clean). Merged --no-ff [AUTOPILOT]. Credit to S5: its earlier block correctly caught THREE decompose errors of mine.
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:48:08Z
