@@ -1099,27 +1099,27 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-038; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
-**Owned_Paths:** packages/db/src/runs.ts, packages/db/migrations/003_runs.sql, services/worker/src/**, services/worker/test/**
+**Owned_Paths:** packages/db/src/runs.ts, packages/db/src/index.ts, packages/db/test/runs.test.ts, services/worker/src/**, services/worker/test/**, services/worker/package.json, pnpm-lock.yaml
 **Depends_On:** TASK-029
 **Description:** Non-protected — S5 may build; ORCH opus review suffices (no different-model constraint on this ticket). Run lifecycle state machine: start, resume, fail, cancel, with `session_ref` persisted so a resume after a process kill returns to the correct state. New `runs` table via a migration (append the next migration number after the existing schema; do NOT edit existing migration files) and a typed query module `packages/db/src/runs.ts` — no raw SQL outside packages/db (N-rule). The pg-boss / worker consumer drives execution and resume. Depends on OIK-014 (db typed layer, done) and OIK-033 (the harness the worker invokes). Territory is disjoint from all harness-factory adapter tasks — this can run concurrently with OIK-034/035/036/037.
 **Acceptance_Criteria:**
-- [ ] A run persists `session_ref`; resume after a killed process returns to the correct state (WBS OIK-038)
-- [ ] start / resume / fail / cancel transitions are each tested; illegal transitions are rejected (WBS OIK-038)
-- [ ] The `runs` table is added by a NEW migration that is idempotent and reversible; no existing migration file is edited (Synthesis §5.1 migration discipline)
-- [ ] No raw SQL outside packages/db — the worker uses the typed `runs.ts` module (N9-adjacent DB rule)
-- [ ] `pnpm --filter @oikonomos/db test`, `pnpm --filter @oikonomos/worker test`, `pnpm lint` exit 0
-**Branch:** task/TASK-034-s5
-**Started_At:** 2026-08-17T19:25:16Z
+- [ ] A run persists `session_ref`; resume after a killed process returns to the correct state, using the EXISTING `runs` table (WBS OIK-038; Synthesis §5.1)
+- [ ] start / resume / fail / cancel transitions are each tested; illegal transitions are rejected - map to the EXISTING `run_status` enum ('started','waiting_approval','resumed','completed','failed','cancelled'), do NOT add or alter enum values (WBS OIK-038)
+- [ ] **NO new migration** - the `runs` table + `session_ref` + `run_status` already exist in infra/postgres/migrations/001_schema_v1.up.sql and are sufficient; if you believe a schema change is genuinely required, STOP and block SPEC_AMBIGUITY rather than adding a migration (ORCH re-carve 2026-08-17)
+- [ ] No raw SQL outside packages/db - the worker imports the typed `runs.ts` via the `@oikonomos/db` barrel (packages/db/src/index.ts re-export); add the workspace dependency to services/worker/package.json + pnpm-lock.yaml (N9-adjacent DB rule)
+- [ ] `pnpm --filter @oikonomos/db test`, `pnpm --filter @oikonomos/worker test`, `pnpm lint`, and full `pnpm -r test` all exit 0
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
 - [2026-08-17T19:34:20Z] [SV:S5] Investigated before coding: (1) runs table + session_ref already exist verbatim per Synthesis ┬º5.1 via TASK-002's 001_schema_v1.up.sql ΓÇö AC3's 'new migration' + packages/db/migrations/003_runs.sql grant conflict with that and with TASK-006's documented single-migrations-root convention (infra/postgres/migrations, outside my Owned_Paths). (2) AC4 requires the worker to import runs.ts through @oikonomos/db, which needs packages/db/src/index.ts re-exported (barrel pattern every other db module uses) and services/worker/package.json + pnpm-lock.yaml to add the workspace dependency ΓÇö none of those three files are in Owned_Paths (direct precedent: TASK-016's origin story, TASK-012's own narrow package.json grant). Ruled out a third suspected gap (pg-boss dependency) by reading the WBS: OIK-105/106 are later tickets, not this one's scope. No production code written; only the dossier committed.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** SPEC_AMBIGUITY: AC3 requires a NEW migration to add the runs table, but that table (with session_ref and the full run_status lifecycle) already exists in infra/postgres/migrations/001_schema_v1.up.sql per Synthesis Spec ┬º5.1 -- there is no 002 migration anywhere, and packages/db/migrations/003_runs.sql (my Owned_Paths grant) would fork the single migrations root that TASK-006 explicitly establishes as infra/postgres/migrations. Separately, AC4 (worker uses the typed runs.ts module, no raw SQL outside packages/db) cannot be met without editing packages/db/src/index.ts (barrel export) and services/worker/package.json + pnpm-lock.yaml (new @oikonomos/db workspace dependency), none of which are in Owned_Paths. Need ORCH to either drop/redirect AC3 (table already satisfies it) and widen Owned_Paths to include index.ts + worker package.json + pnpm-lock.yaml, or split into a single-owner integration task per the TASK-016 precedent.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-17T19:34:20Z
 
