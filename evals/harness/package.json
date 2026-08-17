@@ -1,0 +1,28 @@
+{
+  "name": "@oikonomos/evals-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@oikonomos/agent-providers": "workspace:*",
+    "@oikonomos/approvals": "workspace:*",
+    "@oikonomos/audit": "workspace:*",
+    "@oikonomos/broker": "workspace:*",
+    "@oikonomos/db": "workspace:*",
+    "@oikonomos/harness-factory": "workspace:*",
+    "@oikonomos/policy": "workspace:*",
+    "@oikonomos/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
