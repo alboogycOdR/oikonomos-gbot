@@ -944,7 +944,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-029
 **Title:** OIK-033 — packages/harness-factory: sole harness constructor + L1/L2/L3 ports (N9) ⚑ protected
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-033; docs/decisions/ADR-001-broker-enforcement-point.md (Decision, Cost); docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md §5 OIK-008
 **Owned_Paths:** packages/harness-factory/src/index.ts, packages/harness-factory/src/ports.ts, packages/harness-factory/src/config.ts, packages/harness-factory/test/factory.test.ts, packages/harness-factory/test/sole-constructor.test.ts, packages/harness-factory/package.json, pnpm-lock.yaml
@@ -959,7 +959,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck|build`, `pnpm lint`, and full `pnpm -r test` all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-17T13:50:00Z] [ORCH] REASSIGNED CX -> GB. Decompose bottleneck: 029 unblocks all of E4 but was on CX, who is occupied by the TASK-038 filler, leaving GB idle and the whole epic stalled behind one busy unit (loop went IDLE tick 1). GB is protected-eligible (GB or CX, never S5) and free, so GB takes the harness-factory critical path now while CX handles 038. Downstream fan-out after 029 lands is unchanged: GB(030,032), CX(031,033), S5(034).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
