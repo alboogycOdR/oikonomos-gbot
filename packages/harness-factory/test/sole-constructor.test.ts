@@ -1,11 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const scanRoots = [join(repoRoot, "packages"), join(repoRoot, "services")];
+const scanRoots = [join(repoRoot, "packages"), join(repoRoot, "services"), join(repoRoot, "apps"), join(repoRoot, "evals")];
 
 const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
 const SOURCE_EXT = /\.(?:[cm]?[jt]s|tsx)$/;
@@ -71,11 +71,8 @@ function strayConstructorHits(body: string): string[] {
 }
 
 describe("N9 — sole harness constructor", () => {
-  it("this package is the only construction path for the Agent SDK query()", () => {
+  function findViolations(): string[] {
     const factorySrc = readFileSync(join(repoRoot, "packages/harness-factory/src/index.ts"), "utf8");
-    expect(factorySrc).toContain("createHarness");
-    expect(factorySrc).toContain(SDK_MODULE);
-
     const violations: string[] = [];
     for (const root of scanRoots) {
       for (const file of walkSources(root)) {
@@ -90,7 +87,28 @@ describe("N9 — sole harness constructor", () => {
         }
       }
     }
+    return violations;
+  }
+
+  it("this package is the only construction path for the Agent SDK query()", () => {
+    const factorySrc = readFileSync(join(repoRoot, "packages/harness-factory/src/index.ts"), "utf8");
+    expect(factorySrc).toContain("createHarness");
+    expect(factorySrc).toContain(SDK_MODULE);
+
+    const violations = findViolations();
 
     expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("detects an Agent SDK import added under apps/", () => {
+    const fixtureDir = join(repoRoot, "apps", "__sole-constructor-fixture__");
+    const fixture = join(fixtureDir, "stray.ts");
+    mkdirSync(fixtureDir, { recursive: true });
+    writeFileSync(fixture, `import { query } from "${SDK_MODULE}";\nvoid query;\n`, "utf8");
+    try {
+      expect(findViolations().some((violation) => violation.startsWith("apps/__sole-constructor-fixture__/stray.ts: Agent SDK import"))).toBe(true);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
   });
 });

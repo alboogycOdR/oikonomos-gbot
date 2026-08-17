@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { mapCodexEvent, isCodexEvent } from "../src/providers/codex.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { CodexProvider, mapCodexEvent, isCodexEvent } from "../src/providers/codex.js";
+import type { ProviderEvent } from "../src/types.js";
 
 describe("isCodexEvent", () => {
   it("accepts objects with a string type field", () => {
@@ -130,5 +134,68 @@ describe("mapCodexEvent", () => {
     expect(mapCodexEvent({ type: "turn.started" }, new Map())).toEqual([]);
     expect(mapCodexEvent({ type: "turn.completed" }, new Map())).toEqual([]);
     expect(mapCodexEvent({ type: "turn.failed", error: { message: "boom" } }, new Map())).toEqual([]);
+  });
+});
+
+describe("CodexProvider subprocess gate", () => {
+  const tmpDirs: string[] = [];
+
+  function makeSentinelBin(): string {
+    const scriptDir = mkdtempSync(path.join(tmpdir(), "codex-gate-script-"));
+    const wrapperDir = mkdtempSync(path.join(tmpdir(), "codex-gate-bin-"));
+    tmpDirs.push(scriptDir, wrapperDir);
+    const scriptPath = path.join(scriptDir, "sentinel.cjs");
+    writeFileSync(scriptPath, "require('node:fs').writeFileSync(process.env.SPAWN_SENTINEL, 'spawned');", "utf8");
+    if (process.platform === "win32") {
+      const wrapperPath = path.join(wrapperDir, "codex.cmd");
+      writeFileSync(wrapperPath, `@echo off\r\n"${process.execPath}" "${scriptPath}"\r\n`, "utf8");
+      return wrapperPath;
+    }
+    const wrapperPath = path.join(wrapperDir, "codex");
+    writeFileSync(wrapperPath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}"\n`, "utf8");
+    chmodSync(wrapperPath, 0o755);
+    return wrapperPath;
+  }
+
+  afterEach(() => {
+    delete process.env.SPAWN_SENTINEL;
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function collect(provider: CodexProvider): Promise<ProviderEvent[]> {
+    const events: ProviderEvent[] = [];
+    for await (const event of provider.sendPrompt({
+      prompt: "hello",
+      cwd: process.cwd(),
+      model: null,
+      sessionId: null,
+      signal: new AbortController().signal,
+    })) events.push(event);
+    return events;
+  }
+
+  function makeProvider(bin: string, gateSpawn?: ConstructorParameters<typeof CodexProvider>[0]["gateSpawn"]): CodexProvider {
+    return new CodexProvider({ bin, defaultModel: "gpt-5.4", sandbox: "workspace-write", gateSpawn });
+  }
+
+  it("fails closed without a gate, proving a provider spawn is impossible without broker allow", async () => {
+    const marker = path.join(mkdtempSync(path.join(tmpdir(), "codex-gate-marker-")), "spawned.txt");
+    tmpDirs.push(path.dirname(marker));
+    process.env.SPAWN_SENTINEL = marker;
+    const events = await collect(makeProvider(makeSentinelBin()));
+    expect(events).toEqual([{ type: "error", fatal: true, message: "Codex spawn denied: broker gate is not configured." }]);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("does not spawn when the broker denies or throws", async () => {
+    const marker = path.join(mkdtempSync(path.join(tmpdir(), "codex-gate-marker-")), "spawned.txt");
+    tmpDirs.push(path.dirname(marker));
+    process.env.SPAWN_SENTINEL = marker;
+    const denied = await collect(makeProvider(makeSentinelBin(), async () => ({ allow: false, message: "approval required" })));
+    expect(denied[0]).toMatchObject({ type: "error", fatal: true, message: "Codex spawn denied: approval required" });
+    expect(existsSync(marker)).toBe(false);
+    const threw = await collect(makeProvider(makeSentinelBin(), async () => { throw new Error("broker unavailable"); }));
+    expect(threw[0]).toMatchObject({ type: "error", fatal: true, message: "Codex spawn denied: broker gate failed closed: broker unavailable" });
+    expect(existsSync(marker)).toBe(false);
   });
 });

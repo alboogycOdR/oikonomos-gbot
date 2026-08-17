@@ -2,11 +2,24 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { AgentProvider, ProviderCapabilities, ProviderEvent, SendPromptOptions } from "../types.js";
 
+/** Structural seam compatible with harness-factory's GateSubprocess port. */
+export interface SubprocessSpawnRequest {
+  provider: "codex" | "grok";
+  command: string;
+  args: readonly string[];
+  cwd: string;
+  env?: Readonly<Record<string, string | undefined>>;
+}
+
+export type GateSpawn = (request: SubprocessSpawnRequest) => Promise<{ allow: boolean; message?: string }>;
+
 export interface CodexProviderOptions {
   bin: string;
   defaultModel: string;
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   apiKey?: string;
+  /** Broker-backed gate. Every CLI spawn must receive an allow decision. */
+  gateSpawn?: GateSpawn;
 }
 
 const AVAILABLE_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5-codex"] as const;
@@ -149,6 +162,7 @@ export class CodexProvider implements AgentProvider {
   private readonly bin: string;
   private readonly sandbox: CodexProviderOptions["sandbox"];
   private readonly apiKey: string | undefined;
+  private readonly gateSpawn: GateSpawn | undefined;
   private activeChild: ChildProcessWithoutNullStreams | null = null;
 
   constructor(options: CodexProviderOptions) {
@@ -156,6 +170,7 @@ export class CodexProvider implements AgentProvider {
     this.defaultModel = options.defaultModel;
     this.sandbox = options.sandbox;
     this.apiKey = options.apiKey;
+    this.gateSpawn = options.gateSpawn;
   }
 
   async interrupt(): Promise<void> {
@@ -166,6 +181,24 @@ export class CodexProvider implements AgentProvider {
     const args = this.buildArgs(opts);
     const env = { ...process.env };
     if (this.apiKey) env.CODEX_API_KEY = this.apiKey;
+
+    const request: SubprocessSpawnRequest = { provider: this.id, command: this.bin, args, cwd: opts.cwd, env };
+    let gateResult: { allow: boolean; message?: string } | undefined;
+    if (!this.gateSpawn) {
+      yield { type: "error", fatal: true, message: "Codex spawn denied: broker gate is not configured." };
+      return;
+    }
+    try {
+      gateResult = await this.gateSpawn(request);
+    } catch (err) {
+      const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
+      yield { type: "error", fatal: true, message: `Codex spawn denied: broker gate failed closed${detail}` };
+      return;
+    }
+    if (gateResult?.allow !== true) {
+      yield { type: "error", fatal: true, message: `Codex spawn denied: ${gateResult?.message ?? "broker denied request"}` };
+      return;
+    }
 
     const child = spawn(this.bin, args, { cwd: opts.cwd, env, windowsHide: true });
     this.activeChild = child;
