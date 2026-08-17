@@ -1102,7 +1102,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-038; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -1119,12 +1119,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-17T19:36:41Z
 **Progress_Notes:**
 - [2026-08-17T19:34:20Z] [SV:S5] Investigated before coding: (1) runs table + session_ref already exist verbatim per Synthesis ┬º5.1 via TASK-002's 001_schema_v1.up.sql ΓÇö AC3's 'new migration' + packages/db/migrations/003_runs.sql grant conflict with that and with TASK-006's documented single-migrations-root convention (infra/postgres/migrations, outside my Owned_Paths). (2) AC4 requires the worker to import runs.ts through @oikonomos/db, which needs packages/db/src/index.ts re-exported (barrel pattern every other db module uses) and services/worker/package.json + pnpm-lock.yaml to add the workspace dependency ΓÇö none of those three files are in Owned_Paths (direct precedent: TASK-016's origin story, TASK-012's own narrow package.json grant). Ruled out a third suspected gap (pg-boss dependency) by reading the WBS: OIK-105/106 are later tickets, not this one's scope. No production code written; only the dossier committed.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-17T19:48:08Z] [SV:S5] Run lifecycle state machine (start/resume/fail/cancel) built in packages/db/src/runs.ts atop the EXISTING runs table/run_status enum (no new migration, per re-carved AC3). Atomic UPDATE...WHERE status IN (open)...RETURNING guards each transition; RunNotFoundError vs IllegalRunTransitionError distinguished on no-match. resumeRun COALESCEs an optional sessionRef so a worker can re-read the persisted session_ref after a process kill and hand it back, round-tripping to 'resumed' with the same session intact (AC1). services/worker/src/runLifecycle.ts wraps the typed module via the @oikonomos/db barrel only (AC4), workspace dep + pnpm-lock.yaml updated. All work committed on task/TASK-034-s5 (0b42541 code, 597dced dossier). Flagged for ORCH: pnpm -r test has one pre-existing, unrelated failure in packages/broker/test/pretooluse.test.ts (requireNonEmpty('toolName') throws on undefined inside packages/approvals/src/issue.ts) ΓÇö confirmed via git-stash-and-rerun that it reproduces identically on clean origin/master with none of this task's changes present, and packages/broker/packages/approvals are both outside TASK-034's Owned_Paths so not touched.
+**Artifacts:** packages/db/src/runs.ts, packages/db/src/index.ts, packages/db/test/runs.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/index.ts, services/worker/package.json, services/worker/test/runLifecycle.test.ts, pnpm-lock.yaml, dossiers/TASK-034.md
+**Test_Evidence:** pnpm --filter @oikonomos/db typecheck: clean. pnpm --filter @oikonomos/db build: clean. pnpm --filter @oikonomos/worker typecheck: clean. pnpm lint: clean. pnpm --filter @oikonomos/db test (no DATABASE_URL): 7/7 passed, integration suites skip cleanly. Against isolated pgvector/pg16 container (127.0.0.1:55499, migrated with infra/postgres/migrations/001_schema_v1.up.sql, torn down after): pnpm --filter @oikonomos/db test -> 6 files, 27/27 passed incl. all 14 new runs.test.ts cases (start w/ and w/o session_ref, resume-after-kill round trip, resume preserves stored sessionRef when omitted, idempotent repeat resume, fail sets ended_at+failure_note, cancel from started and waiting_approval, illegal resume/fail/cancel from terminal states throw IllegalRunTransitionError with correct fromStatus/action, unknown run_id throws RunNotFoundError on all 3 transitions, getRun null for unknown, live pg_enum proof run_status unchanged). pnpm --filter @oikonomos/worker test -> 3 files, 6/6 passed incl. start->resumeInterruptedRun round trip through the barrel, unknown-run rejection, fail/cancel delegation+persistence. pnpm -r test (full recursive, per CLAUDE.md amendment): 13/14 packages pass; packages/broker's 1 failing test confirmed pre-existing via git-stash-of-all-8-touched-files + rerun against clean origin/master (identical failure, same line, same error) -- not caused by TASK-034. Full detail + exact commands in dossiers/TASK-034.md work log.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:36:41Z
+**Updated_At:** 2026-08-17T19:48:08Z
 
 ### TASK-035
 **Title:** OIK-039 — canary suite CAN-01…CAN-08, CI-blocking + harness composition root ⚑ protected
