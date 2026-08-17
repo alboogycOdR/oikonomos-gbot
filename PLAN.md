@@ -1098,7 +1098,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-038; docs/architecture/OIKONOMOS_Platform_Synthesis_Spec_v0.1.md §5.1
@@ -1111,15 +1111,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The `runs` table is added by a NEW migration that is idempotent and reversible; no existing migration file is edited (Synthesis §5.1 migration discipline)
 - [ ] No raw SQL outside packages/db — the worker uses the typed `runs.ts` module (N9-adjacent DB rule)
 - [ ] `pnpm --filter @oikonomos/db test`, `pnpm --filter @oikonomos/worker test`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-034-s5
+**Started_At:** 2026-08-17T19:25:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-17T19:25:16Z
 
 ### TASK-035
 **Title:** OIK-039 — canary suite CAN-01…CAN-08, CI-blocking + harness composition root ⚑ protected
