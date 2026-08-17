@@ -25,3 +25,16 @@ export {
   type ConsumeApprovalResult,
   type NewApproval,
 } from "./approvals.js";
+export {
+  cancelRun,
+  failRun,
+  getRun,
+  IllegalRunTransitionError,
+  resumeRun,
+  runStatuses,
+  RunNotFoundError,
+  startRun,
+  type NewRun,
+  type Run,
+  type RunStatus,
+} from "./runs.js";
