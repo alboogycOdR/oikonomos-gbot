@@ -1080,7 +1080,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-033
 **Title:** OIK-037 — PostToolUse hook: completion evidence (R4) ⚑ protected
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-037; docs/decisions/ADR-001-broker-enforcement-point.md (R4)
@@ -1094,13 +1094,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
 **Branch:** task/TASK-033-cx
 **Started_At:** 2026-08-17T19:49:11Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-17T19:51:57Z] [SV:CX] Verified the R4 hook cannot preserve L1 auditEventId or import the mandated shared digest within the two allocated files; documented evidence and baseline validation in dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: requires packages/harness-factory/src/ports.ts, packages/harness-factory/src/hooks/pretooluse.ts, and packages/harness-factory/package.json (plus lockfile if dependency metadata changes), all outside TASK-033 Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T19:49:11Z
+**Updated_At:** 2026-08-17T19:51:57Z
 
 ### TASK-034
 **Title:** OIK-038 — run lifecycle: start, resume, fail, cancel
