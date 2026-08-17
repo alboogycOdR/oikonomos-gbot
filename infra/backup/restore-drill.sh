@@ -33,7 +33,7 @@ cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; docker volume rm 
 trap cleanup EXIT HUP INT TERM
 docker volume create "$evidence_volume" >/dev/null
 docker run -d --rm --name "$container" -e POSTGRES_USER="$DRILL_POSTGRES_USER" -e POSTGRES_PASSWORD="$DRILL_POSTGRES_PASSWORD" -e POSTGRES_DB="$DRILL_POSTGRES_DB" pgvector/pgvector:pg16 >/dev/null
-until docker exec "$container" pg_isready -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" >/dev/null 2>&1; do sleep 1; done
+until docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" psql -h 127.0.0.1 -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" -c 'SELECT 1' >/dev/null 2>&1; do sleep 1; done
 docker cp "$archive_dir/postgres.dump" "$container:/restore.dump"
 docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" pg_restore -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" --no-owner --no-privileges --exit-on-error /restore.dump
 restored_sha256=$(docker exec -e PGPASSWORD="$DRILL_POSTGRES_PASSWORD" "$container" pg_dump -U "$DRILL_POSTGRES_USER" -d "$DRILL_POSTGRES_DB" --data-only --inserts --no-owner --no-privileges | sed '/^\\restrict /d; /^\\unrestrict /d' | sha256sum | awk '{print $1}')
