@@ -825,7 +825,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-001-broker-enforcement-point.md (P1, L1); docs/decisions/ADR-005-control-liveness.md §2; PLAN.md TASK-029 Review_Findings (2026-08-17); PLAN.md TASK-028 Review_Findings (subprocess-bypass note)
@@ -838,8 +838,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] An ADR-005 liveness assertion proves a provider spawn is IMPOSSIBLE without a broker allow - keyed on the control's behaviour (a blocked spawn), not on config presence (ADR-005 §2)
 - [ ] The sole-constructor guard scans `apps/` and `evals/` in addition to `packages/` and `services/`; an SDK import placed under `apps/` now fails the guard (TASK-029 M1 blind spot)
 - [ ] The 41 existing agent-providers tests stay green; `pnpm -r test`, `pnpm lint`, `node infra/ci/banned-modes.mjs` all clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-039-cx
+**Started_At:** 2026-08-17T21:13:40Z
 **Progress_Notes:**
 - [2026-08-17T20:30:00Z] [ORCH] RESET to pending - work LOST to an ORCH error, not a CX fault. I pointed the TASK-033 adversarial review at wt-codex AND dispatched CX->039 into the SAME wt-codex worktree at the same time; the review agent's checkouts reset the worktree out from under CX's 039 session, destroying its in-progress edits. CX correctly detected the reset and blocked SYNC_MISMATCH. ROOT CAUSE + FIX FOR NEXT DISPATCH: never point a review at a worktree while a builder is dispatched into it, and never reset a worktree a builder session may be using. 039 (route Codex/Grok spawns through gateSubprocess + liveness + widen scanRoots) is unchanged in scope and eligible; re-dispatch CX on a clean worktree with no concurrent review in it. Note CX's pre-reset evidence looked healthy (agent-providers 47/47, harness-factory 42/42, lint/banned-modes clean), so the implementation was likely close - but it is gone; start fresh.
 - [2026-08-17T20:10:41Z] [SV:CX] Worktree was externally reset to detached c87dc15; TASK-039 branch and all implementation edits disappeared after task-local checks.
@@ -848,7 +848,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-17T20:10:41Z
+**Updated_At:** 2026-08-17T21:13:40Z
 
 ### TASK-019
 **Title:** OIK-042 — OpenSandbox server deployment (Docker backend), Tailscale-bound ✓ DEPLOYED
