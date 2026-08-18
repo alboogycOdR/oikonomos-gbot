@@ -1377,7 +1377,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4, §4.2; docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 (N9 lint: raw SQL only in packages/db)
@@ -1392,15 +1392,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No raw SQL outside packages/db; no migration/enum change on the branch
 - [ ] MUTATION-PROVEN: dropping the validator call from the registration path turns a test red
 - [ ] `pnpm -r test` (with DATABASE_URL set for the db legs), `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-044-cx
+**Started_At:** 2026-08-18T15:28:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T15:28:30Z
 
 ### TASK-045
 **Title:** OIK-049 — Tool enumeration + capability auto-mapping; unmapped ⇒ deny proven
