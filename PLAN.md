@@ -1485,7 +1485,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-048
 **Title:** OIK-052 — Wave 1: Gmail connector (readonly + compose; send present but disabled)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** WBS OIK-052; Build Handover §4.4 (gmail example is the normative manifest); Gap Closure §G1; WBS §4 G-CONN
@@ -1497,15 +1497,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Registration run recorded: capabilities + role_grants rows land, idempotent re-run clean (OIK-048 pipeline exercised)
 - [ ] Golden suite >=90% via the OIK-051 runner; report artifact attached (OIK-052 "evals ≥90%")
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-048-s5
+**Started_At:** 2026-08-18T17:20:43Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T17:20:43Z
 
 ### TASK-049
 **Title:** OIK-053 — Wave 1: Google Calendar connector
