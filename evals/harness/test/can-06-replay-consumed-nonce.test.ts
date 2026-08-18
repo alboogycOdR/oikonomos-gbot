@@ -7,7 +7,7 @@ import {
   verifyAndConsume,
 } from "@oikonomos/approvals";
 import { handlePreToolUse } from "@oikonomos/broker";
-import { Database, getApprovalByNonce, seedInboxTriage, type DatabaseOptions } from "@oikonomos/db";
+import { Database, getApprovalByNonce, type DatabaseOptions } from "@oikonomos/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +16,7 @@ import {
   grantRow,
   invokeL1,
   permissionDecision,
+  seedCanaryApprovalParents,
   sendInput,
   TIER3_CAPABILITY_ID,
   TIER3_TOOL,
@@ -106,27 +107,11 @@ integration("CAN-06 — replay consumed nonce (Postgres atomicity)", () => {
     const { Pool } = requireFromDb("pg") as PgModule;
     database = new Database(options);
     pool = new Pool({ connectionString: connectionString! });
-    await seedInboxTriage(database);
-
-    const task = await pool.query<{ task_id: string }>(
-      `INSERT INTO tasks (role_id, title, goal, requested_by)
-       VALUES ($1, $2, $3, $4)
-       RETURNING task_id`,
-      ["inbox-triage", "CAN-06 replay consumed nonce", "atomic consume then replay", "canary:035"],
-    );
-    const taskId = task.rows[0]?.task_id;
-    if (taskId === undefined) {
-      throw new Error("CAN-06 failed to insert fixture task");
-    }
-    const run = await pool.query<{ run_id: string }>(
-      `INSERT INTO runs (task_id, provider) VALUES ($1, $2) RETURNING run_id`,
-      [taskId, "test"],
-    );
-    const inserted = run.rows[0]?.run_id;
-    if (inserted === undefined) {
-      throw new Error("CAN-06 failed to insert fixture run");
-    }
-    runId = inserted;
+    const parents = await seedCanaryApprovalParents(database, pool, {
+      title: "CAN-06 replay consumed nonce",
+      goal: "atomic consume then replay",
+    });
+    runId = parents.runId;
   });
 
   afterAll(async () => {

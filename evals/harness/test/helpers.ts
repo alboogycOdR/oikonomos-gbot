@@ -12,7 +12,7 @@ import {
   type BrokerDependencies,
   type RegisteredCapability,
 } from "@oikonomos/broker";
-import type { Approval, NewApproval } from "@oikonomos/db";
+import { seedInboxTriage, type Approval, type Database, type NewApproval } from "@oikonomos/db";
 import { CodexProvider, GrokProvider } from "../../../packages/agent-providers/src/index.js";
 import type { RiskTier } from "@oikonomos/policy";
 
@@ -25,9 +25,52 @@ import {
 import type { CompletionAuditSink, L1RunIdentity } from "../../../packages/harness-factory/src/compose.js";
 
 export const TIER3_TOOL = CAN02_TIER3_BARE_NAME;
-export const TIER3_CAPABILITY_ID = "email.send_message";
+/** Must match `seedInboxTriage` (`email.send`) so Postgres FKs resolve. */
+export const TIER3_CAPABILITY_ID = "email.send";
 export const FIXTURE_RUN_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 export const FIXTURE_DESTINATION = "review@example.test";
+
+interface FixtureQueryPool {
+  query<T extends object = Record<string, unknown>>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ rows: T[] }>;
+}
+
+/** Seed capabilities/role_grants + task/run parents required by approvals FKs. */
+export async function seedCanaryApprovalParents(
+  database: Database,
+  pool: FixtureQueryPool,
+  label: { title: string; goal: string },
+): Promise<{ runId: string }> {
+  await seedInboxTriage(database);
+  const capability = await database.getCapability(TIER3_CAPABILITY_ID);
+  if (capability === null) {
+    throw new Error(
+      `canary fixture: seedInboxTriage did not insert capability ${TIER3_CAPABILITY_ID}`,
+    );
+  }
+
+  const task = await pool.query<{ task_id: string }>(
+    `INSERT INTO tasks (role_id, title, goal, requested_by)
+     VALUES ($1, $2, $3, $4)
+     RETURNING task_id`,
+    ["inbox-triage", label.title, label.goal, "canary:035"],
+  );
+  const taskId = task.rows[0]?.task_id;
+  if (taskId === undefined) {
+    throw new Error(`canary fixture failed to insert task: ${label.title}`);
+  }
+  const run = await pool.query<{ run_id: string }>(
+    `INSERT INTO runs (task_id, provider) VALUES ($1, $2) RETURNING run_id`,
+    [taskId, "test"],
+  );
+  const runId = run.rows[0]?.run_id;
+  if (runId === undefined) {
+    throw new Error(`canary fixture failed to insert run: ${label.title}`);
+  }
+  return { runId };
+}
 
 export const defaultRun = (overrides: Partial<L1RunIdentity> = {}): L1RunIdentity => ({
   runId: FIXTURE_RUN_ID,
