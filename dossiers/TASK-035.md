@@ -37,3 +37,36 @@ compose.ts is the sole composition root (kept out of index.ts so adapters could 
   - `pnpm -r test` — harness-factory + evals green; services/worker fails 2 tests (`getRun`/`startRun` is not a function). Pre-existing: `packages/db/src` exports those symbols but `packages/db/dist/index.js` does not (stale dist). Out of this task's Owned_Paths.
 
   Ready for review.
+
+- [2026-08-18T07:10:00Z] [GB] Resume (rework). control.mode=strict; branch `task/TASK-035-gb` at 47973e9 with uncommitted fixture-alignment edits. Preflight:
+
+```
+[preflight] TASK-035 Owned_Paths inspected in C:/CLAUDECODE_TOOLSETS/wt-grok-oikonomos
+[preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  FILE   packages/harness-factory/src/compose.ts  -> exists, 296 line(s), 9338 bytes
+  FILE   packages/harness-factory/test/compose.test.ts  -> exists, 254 line(s), 8092 bytes
+  GLOB   evals/**  -> 7707 file(s):
+           evals/harness/README.md
+           ... (workspace + node_modules)
+  FILE   pnpm-workspace.yaml  -> exists, 7 line(s), 101 bytes
+  FILE   package.json  -> exists, 29 line(s), 642 bytes
+  FILE   pnpm-lock.yaml  -> exists, 3282 line(s), 102666 bytes
+[preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+```
+
+  ORCH blocker: CAN-06/07 Postgres variants failed on `approvals_capability_id_fkey` because `TIER3_CAPABILITY_ID` was `email.send_message` while `seedInboxTriage` inserts `email.send`. Aligning the constant, extracting `seedCanaryApprovalParents` (seed + verify capability + task/run insert), updating CAN-01 assertion. Next: run `pnpm canaries` with isolated DATABASE_URL.
+
+- [2026-08-18T07:32:00Z] [GB] Rework complete. Root cause confirmed: fixture used `email.send_message` (not a capabilities row); `seedInboxTriage` + task/run inserts were already present. Fix: `TIER3_CAPABILITY_ID = "email.send"`, `seedCanaryApprovalParents` asserts the capability exists before insert.
+
+  Isolated DB: existing `oikonomos-canary-035-pg` (pgvector/pg16, 127.0.0.1:55438). Schema 001 already applied. No DROP/TRUNCATE; fixture only upserts seed + inserts task/run/approvals.
+
+  Test_Evidence:
+  - `python scripts/preflight_paths.py TASK-035` — 6 entries, all FILE/GLOB exist
+  - `pnpm --filter @oikonomos/harness-factory test` — 8 files, 56/56 pass
+  - `pnpm canaries` (DATABASE_URL unset) — 10 files, 14 passed | 2 skipped (CAN-06/07 Postgres visibility)
+  - `DATABASE_URL=postgresql://oikonomos:local_test_only@127.0.0.1:55438/oikonomos pnpm canaries` — 10 files, **16/16 passed, 0 skipped** (CAN-06 + CAN-07 Postgres atomicity executed green)
+  - `pnpm --filter @oikonomos/harness-factory typecheck` and `pnpm --filter @oikonomos/evals-harness typecheck` — exit 0
+  - `pnpm lint` — exit 0
+  - `pnpm -r test` — worker still fails 2 tests (`getRun`/`startRun` is not a function via stale `packages/db/dist`). Pre-existing, outside Owned_Paths.
+
+  Ready for re-review.
