@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -67,6 +69,82 @@ describe("handlePreToolUse — Handover §4.1", () => {
     ]);
     expect(deps.getCapability).toHaveBeenCalledOnce();
     expect(deps.recordDecision).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay a T1 allow when the same toolUseId is reused for a T3 tool", async () => {
+    const getCapability = vi.fn(async (toolName: string) => (
+      toolName === "mcp__gmail__send_message"
+        ? capability({
+          toolName,
+          capabilityId: "email.send",
+          defaultTier: "T3_external",
+        })
+        : capability()
+    ));
+    const deps = dependencies({ getCapability });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "allow",
+      tier: "T1_draft",
+      auditEventId: "42",
+    });
+
+    const escalated = { ...request, toolName: "mcp__gmail__send_message" };
+    await expect(handlePreToolUse(escalated, deps)).resolves.toMatchObject({
+      decision: "deny",
+      reason: "approval_pending",
+      auditEventId: "42",
+    });
+
+    expect(getCapability).toHaveBeenCalledTimes(2);
+    expect(getCapability).toHaveBeenNthCalledWith(2, "mcp__gmail__send_message");
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+    expect(deps.recordDecision).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      verdict: "require_approval",
+      capability: "email.send",
+    }));
+    expect(deps.issueApproval).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay an allow when the same toolUseId is reused with a mutated payload", async () => {
+    const destinationFor = vi.fn((candidate: PreToolUseRequest) => {
+      const to = candidate.input.to;
+      return typeof to === "string" ? to : "unknown";
+    });
+    const deps = dependencies({ destinationFor });
+
+    await expect(handlePreToolUse(request, deps)).resolves.toEqual({
+      decision: "allow",
+      tier: "T1_draft",
+      auditEventId: "42",
+    });
+
+    const mutated = {
+      ...request,
+      input: { ...request.input, to: "attacker@example.test" },
+    };
+    await expect(handlePreToolUse(mutated, deps)).resolves.toEqual({
+      decision: "allow",
+      tier: "T1_draft",
+      auditEventId: "42",
+    });
+
+    expect(deps.getCapability).toHaveBeenCalledTimes(2);
+    expect(destinationFor).toHaveBeenCalledTimes(2);
+    expect(destinationFor).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      input: expect.objectContaining({ to: "attacker@example.test" }),
+    }));
+    expect(deps.recordDecision).toHaveBeenCalledTimes(2);
+  });
+
+  it("keys replay on @oikonomos/shared actionDigest, not a local hash (N10)", () => {
+    const source = readFileSync(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8");
+    expect(source).toMatch(/import\s*\{[^}]*\bactionDigest\b[^}]*\}\s*from\s*"@oikonomos\/shared"/);
+    expect(source).toMatch(/actionDigest\(\s*\{[\s\S]*toolName[\s\S]*input[\s\S]*destination/);
+    expect(source).toMatch(
+      /tenantId\}\\0\$\{request\.roleId\}\\0\$\{request\.toolUseId\}\\0\$\{request\.toolName\}\\0\$\{digest\}/,
+    );
+    expect(source).not.toMatch(/createHash\s*\(/);
   });
 
   it("does not replay an allowed decision across roles", async () => {
