@@ -1176,7 +1176,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-036
 **Title:** OIK-040 — subagent policy enforcement (CAN-05) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-040; docs/decisions/ADR-001-broker-enforcement-point.md (F4, CAN-05)
@@ -1188,15 +1188,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The audit event attributes the subagent (`agentRef.isSubagent` true, session distinguishable) (ADR-001 CAN-05; Handover §4.1 agentRef)
 - [ ] No subagent path can carry `bypassPermissions`/`acceptEdits` (ADR-001 F4/L4)
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-036-cx
+**Started_At:** 2026-08-18T08:27:44Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-17T11:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T08:27:44Z
 
 ### TASK-037
 **Title:** OIK-041 — Fable adversarial review: harness-factory + hooks ⚑ protected
