@@ -1176,7 +1176,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-036
 **Title:** OIK-040 — subagent policy enforcement (CAN-05) ⚑ protected
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-040; docs/decisions/ADR-001-broker-enforcement-point.md (F4, CAN-05)
@@ -1192,8 +1192,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-18T08:27:44Z
 **Progress_Notes:**
 - [2026-08-18T08:31:51Z] [SV:CX] Added subagent L1 construction enforcing child-only attribution, distinct session refs, and prohibited-mode rejection; Tier-3 broker denial is covered by focused tests.
-**Artifacts:** packages/harness-factory/src/subagent.ts, packages/harness-factory/test/subagent.test.ts, dossiers/TASK-036.md
-**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test â€” 9 files, 60 tests passed; pnpm --filter @oikonomos/harness-factory typecheck â€” exit 0; pnpm lint â€” exit 0; git diff --check â€” exit 0. pnpm canaries cannot resolve unbuilt @oikonomos/approvals/@oikonomos/broker workspace packages in this clean worktree (CAN-03 and workspace tests passed).
+- [2026-08-18T11:54:50Z] [SV:CX] Reworked subagent enforcement wiring: public API export, typed L1 import, and CAN-05 now exercises the real subagent broker path with liveness mutation evidence.
+**Artifacts:** packages/harness-factory/src/subagent.ts, packages/harness-factory/src/index.ts, evals/harness/test/can-05-subagent-tier3.test.ts, dossiers/TASK-036.md
+**Test_Evidence:** pnpm -r build; pnpm --filter @oikonomos/harness-factory typecheck; pnpm --filter @oikonomos/harness-factory test (9 files, 60 passed); pnpm --filter @oikonomos/evals-harness typecheck; focused CAN-05 passed; pnpm lint; git diff --check; pnpm canaries (10 files, 14 passed, 2 skipped). Mutation removing the subagent broker consult made CAN-05 fail with zero audit events, then was restored.
 **Review_Findings:**
 - REWORK (ORCH opus adversarial, 2026-08-18T09:00Z; protected, author CX=codex / reviewer ORCH-opus, different-model holds). **THE BEHAVIOUR YOU BUILT IS CORRECT AND ALL THREE CORE MUTATIONS BIT - this comes back because the control is not WIRED IN, not because it is wrong.** Verified working: a subagent Tier-3 call routes through createSubagentL1 -> createL1PreToolUseHook -> the broker and is denied (mutation to an always-allow stub failed the unit suite); attribution is forced (createSubagentRunIdentity hardcodes isSubagent:true, assertSubagentRunIdentity throws when sessionRef equals the parent's) and CANNOT BE FORGED BY THE CALLER - I probed dist/subagent.js passing agentRef.isSubagent:false and run.isSubagent:false and it still returns isSubagent:true, which closes the laundering hole CAN-05 exists for; banned modes are rejected via assertNoBannedMode with string-assembled tokens (acceptEdits probe threw BANNED_MODE); and no path skips L1 - missing broker / missing fetch / empty baseUrl all THROW. Territory clean (3 files), no PLAN.md edit, compose.ts correctly untouched, 60/60 harness-factory, prior suites green, deterministic.
 - **[BLOCKING 1 - subagent.ts is UNREACHABLE: a control nothing can invoke]** It is not re-exported from packages/harness-factory/src/index.ts, and the package.json `exports` map only exposes "." -> dist/index.js. A repo-wide grep finds exactly ONE importer: its own test. **No production code can construct a subagent through this module.** Per ADR-005 that is configured-but-inert - the ninth-plus instance on this project, and this time inside the control meant to close CAN-05. FIX: export `createSubagentL1` and `createSubagentRunIdentity` from src/index.ts so the public surface exists (src/index.ts is now in your Owned_Paths).
@@ -1202,7 +1203,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [NOTED, no action] The redundant broker-port guard in subagent.ts has no test of its own (removing it did not fail anything) - benign, because createL1PreToolUseHook's own guard still throws, so behaviour is unchanged. Defence-in-depth, not a hole.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T08:31:51Z
+**Updated_At:** 2026-08-18T11:54:50Z
 
 ### TASK-037
 **Title:** OIK-041 — Fable adversarial review: harness-factory + hooks ⚑ protected
