@@ -1349,7 +1349,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-043
 **Title:** OIK-047 — Connector manifest schema + validator (N5)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-047; Build Handover §4.4 (manifest content contract); docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 N5; Gap Closure §G1
@@ -1369,10 +1369,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-18T14:57:17Z] [SV:GB] Manifest zod schema + validateManifest + CLI scanner; Handover gmail fixture accepted; N5/N4/tier/liveness tests green; account_ownership mutation proven. package.json validate script still needs ORCH wire at merge.
 **Artifacts:** packages/connectors/src/index.ts, packages/connectors/src/manifest/schema.ts, packages/connectors/src/manifest/validate.ts, packages/connectors/src/manifest/urlRef.ts, packages/connectors/src/manifest/scan.ts, packages/connectors/src/manifest/cli.ts, packages/connectors/manifests/gmail.yaml, packages/connectors/test/schema.test.ts, packages/connectors/test/scan.test.ts, packages/connectors/test/cli.test.ts, packages/connectors/test/helpers.ts, packages/connectors/test/fixtures/gmail.handover.yaml, dossiers/TASK-043.md
 **Test_Evidence:** pnpm --filter @oikonomos/connectors test — 22/22 pass. pnpm --filter @oikonomos/connectors typecheck exit 0. pnpm -r test exit 0. pnpm lint exit 0. pnpm canaries — 15 passed / 2 skipped, exit 0. MUTATION: z.literal(basileia)->z.string() reddened ZodLiteral + non-basileia reject tests; restored.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH fable-5 adversarial, 2026-08-18T15:40Z; non-protected path, author GB=grok, different-model holds). Territory clean (13 files, all Owned_Paths + own dossier), preflight logged (c8b9872), no PLAN.md edits. Every AC verified against a named test: Handover 4.4 gmail fixture accepted byte-for-byte AND ADR-008 suites path accepted; N5 rejects name the field; tier enum proven to BE @oikonomos/db riskTiers by identity (tested, not just imported); url_ref N4 rejects literal URLs, userinfo, and assembled credential params; ADR-005 liveness on missing-dir AND zero-manifests with TWO self-anchors (fixture + live manifests dir); CLI exit-0 only on all-valid AND >=1 found. INDEPENDENT RUN (review worktree, delegated): full recursive suite green, lint 0, canaries 15/2skip, connectors 22/22 - matches Test_Evidence. MUTATION RE-PROVEN INDEPENDENTLY: literal->string killed 4 tests across three files (schema, scan, cli). ORCH merge wiring done: validate script (tsc && node dist/manifest/cli.js) + CI step in the test job; proven live in both directions (valid exit 0, planted bad manifest exit 1 naming file+field). NOTE for TASK-048: gmail.yaml now exists as the live fixture - Gmail task narrows to evals + registration run.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-18T14:57:17Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-18T15:40:00Z
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
@@ -1429,7 +1430,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-051; Gap Closure §G1 (3–5 golden tasks per connector, ≥90%, draft-only mode); WBS §4 G-CONN; Directive §4 N9 (all harness invocations via packages/harness-factory)
@@ -1450,10 +1451,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-18T14:55:51Z] [SV:CX] Implemented the golden connector eval harness with composeHarness-only execution, typed suite validation, draft-only tiers, liveness checks, fixture suite, JSON-report CLI, and dossier evidence.
 **Artifacts:** evals/golden/src/index.ts, evals/golden/src/cli.ts, evals/golden/suites/_fixture/suite.yaml, evals/golden/test/runner.test.ts, evals/golden/package.json, dossiers/TASK-046.md
 **Test_Evidence:** pnpm --filter @oikonomos/evals-golden test (4/4 pass); pnpm --filter @oikonomos/evals-golden typecheck; pnpm -r test; pnpm lint; pnpm canaries all exit 0. CLI smoke exits 0 with pass_rate 1 and harness_invocations 3.
-**Review_Findings:** —
+**Review_Findings:**
+- REWORK, round 1 (ORCH fable-5, 2026-08-18T15:40Z). Substance is GOOD: territory clean, preflight logged, composeHarness-only execution with the harness-invocation liveness counter MUTATION-VERIFIED by ORCH (deleting the increment kills the fixture test), zero-task suite fails UNOBSERVABLE, independent run matches Test_Evidence (4/4, full suite/lint/canaries green). TWO BLOCKING, both in the runner core: (1) GOVERNANCE STUBS ARE HARDCODED, NOT INJECTED - runSuite bakes in handlePreToolUse: always-allow and a no-op auditSink. Fine under a fake queryFn, but the same path is the live `run` CLI, and OIK-051 evals feed G-CONN unlocks - a live eval run would execute with enforcement stubbed out (quality bar 'Governed'; ADR-001 spirit). The draft-only AC is currently enforced ONLY at suite-YAML validation, not at the harness layer. FIX: accept pretooluse/auditSink as injectable options with a FAIL-CLOSED default that denies any tool call above the draft tiers; add a test driving a Tier-3-resolving call through the composed harness and asserting deny. (2) loadSuite READS ONLY definitions[0] - additional task files in a suite dir are silently dropped. Silent coverage truncation inside the machinery certifying >=90% is exactly the ADR-005 s2 failure mode. FIX: load and merge ALL definition files (or fail loudly on >1), with a test that a second file's tasks are counted. NON-BLOCKING: derive draftOnlyTiers from @oikonomos/db riskTiers (slice), not fresh string literals - second-vocabulary-in-miniature; restore the dossier brief/interface sections you deleted (dossiers are append-only context, the brief is for the NEXT reader); evals.suite path from the manifest is ignored by loadSuite (connectorId convention wins) - document or reconcile.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-18T14:55:51Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-18T15:40:00Z
 
 ### TASK-047
 **Title:** OIK-050 — Scope-minimisation review checklist + per-connector onboarding records (ORCH-executed)
