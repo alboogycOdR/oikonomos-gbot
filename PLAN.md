@@ -799,7 +799,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-040
 **Title:** OIK-041 CRITICAL-1 — replay cache must be keyed on the ACTION, not just the principal ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-007-replay-window-semantics.md §3a (AMENDMENT - read this first, it is the corrected spec); docs/reviews/OIK-041-harness-factory-fable.md CRITICAL-1; docs/decisions/ADR-001-broker-enforcement-point.md R2/CAN-08
@@ -815,13 +815,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
 **Branch:** task/TASK-040-gb
 **Started_At:** 2026-08-18T12:50:30Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T12:58:22Z] [SV:GB] Replay cache now keys on tenant/role/toolUseId/toolName + @oikonomos/shared actionDigest({toolName,input,destination}); T1→T3 and payload-swap regressions added and mutation-proven.
+**Artifacts:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts, dossiers/TASK-040.md
+**Test_Evidence:** pnpm --filter @oikonomos/broker test 28/28; identity-only key mutation: 2 fail (T3 reuse allowed, payload not recomputed) then restore 28/28; pnpm lint exit 0; pnpm canaries 14 pass/2 skip (CAN-08 green); pnpm -r test exit 0 after local gitignored db dist rebuild (stale dist lacked getRun/startRun; not committed).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T12:50:30Z
+**Updated_At:** 2026-08-18T12:58:22Z
 
 ### TASK-041
 **Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
