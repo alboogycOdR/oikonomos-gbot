@@ -1,0 +1,21 @@
+connector_id: gmail
+account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
+mcp_server: { name: gmail, transport: remote, url_ref: secret://mcp/gmail/url }
+oauth_scopes: [gmail.readonly, gmail.compose]     # NO gmail.send in wave 1
+tools:
+  - tool_name: mcp__gmail__list_messages
+    capability_id: email.list
+    default_tier: T0_observe
+  - tool_name: mcp__gmail__create_draft
+    capability_id: email.create_draft
+    default_tier: T1_draft
+  - tool_name: mcp__gmail__send_message
+    capability_id: email.send
+    default_tier: T3_external
+    enabled: false                                 # until governance exit
+role_grants:
+  - role_id: inbox-triage
+    max_tier: T1_draft
+    constraints: { rate_per_hour: 40, domains: ["*"] }
+evals: { suite: evals/golden/gmail, min_pass_rate: 0.90 }
+review: { onboarded_by: "", date: "", scope_justification: "" }
