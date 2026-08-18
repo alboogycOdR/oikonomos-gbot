@@ -1176,7 +1176,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-036
 **Title:** OIK-040 — subagent policy enforcement (CAN-05) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-040; docs/decisions/ADR-001-broker-enforcement-point.md (F4, CAN-05)
@@ -1190,13 +1190,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm --filter @oikonomos/harness-factory test|typecheck`, `pnpm lint` exit 0
 **Branch:** task/TASK-036-cx
 **Started_At:** 2026-08-18T08:27:44Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T08:31:51Z] [SV:CX] Added subagent L1 construction enforcing child-only attribution, distinct session refs, and prohibited-mode rejection; Tier-3 broker denial is covered by focused tests.
+**Artifacts:** packages/harness-factory/src/subagent.ts, packages/harness-factory/test/subagent.test.ts, dossiers/TASK-036.md
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test â€” 9 files, 60 tests passed; pnpm --filter @oikonomos/harness-factory typecheck â€” exit 0; pnpm lint â€” exit 0; git diff --check â€” exit 0. pnpm canaries cannot resolve unbuilt @oikonomos/approvals/@oikonomos/broker workspace packages in this clean worktree (CAN-03 and workspace tests passed).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T08:27:44Z
+**Updated_At:** 2026-08-18T08:31:51Z
 
 ### TASK-037
 **Title:** OIK-041 — Fable adversarial review: harness-factory + hooks ⚑ protected
