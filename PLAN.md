@@ -1349,7 +1349,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-043
 **Title:** OIK-047 — Connector manifest schema + validator (N5)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-047; Build Handover §4.4 (manifest content contract); docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 N5; Gap Closure §G1
@@ -1365,13 +1365,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-043-gb
 **Started_At:** 2026-08-18T14:46:07Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T14:57:17Z] [SV:GB] Manifest zod schema + validateManifest + CLI scanner; Handover gmail fixture accepted; N5/N4/tier/liveness tests green; account_ownership mutation proven. package.json validate script still needs ORCH wire at merge.
+**Artifacts:** packages/connectors/src/index.ts, packages/connectors/src/manifest/schema.ts, packages/connectors/src/manifest/validate.ts, packages/connectors/src/manifest/urlRef.ts, packages/connectors/src/manifest/scan.ts, packages/connectors/src/manifest/cli.ts, packages/connectors/manifests/gmail.yaml, packages/connectors/test/schema.test.ts, packages/connectors/test/scan.test.ts, packages/connectors/test/cli.test.ts, packages/connectors/test/helpers.ts, packages/connectors/test/fixtures/gmail.handover.yaml, dossiers/TASK-043.md
+**Test_Evidence:** pnpm --filter @oikonomos/connectors test — 22/22 pass. pnpm --filter @oikonomos/connectors typecheck exit 0. pnpm -r test exit 0. pnpm lint exit 0. pnpm canaries — 15 passed / 2 skipped, exit 0. MUTATION: z.literal(basileia)->z.string() reddened ZodLiteral + non-basileia reject tests; restored.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T15:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T14:57:17Z
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
