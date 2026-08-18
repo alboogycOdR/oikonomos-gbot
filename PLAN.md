@@ -1349,7 +1349,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-043
 **Title:** OIK-047 — Connector manifest schema + validator (N5)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-047; Build Handover §4.4 (manifest content contract); docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 N5; Gap Closure §G1
@@ -1363,15 +1363,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] ADR-005 liveness: missing dir / zero manifests => fail as unobservable, with a test; plus a self-anchor test proving the validator actually parsed a known fixture
 - [ ] MUTATION-PROVEN: relaxing the `account_ownership` literal to accept any string turns a test red
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-043-gb
+**Started_At:** 2026-08-18T14:46:07Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_At:** 2026-08-18T15:05:00Z
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
