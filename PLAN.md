@@ -1430,7 +1430,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-051; Gap Closure §G1 (3–5 golden tasks per connector, ≥90%, draft-only mode); WBS §4 G-CONN; Directive §4 N9 (all harness invocations via packages/harness-factory)
@@ -1449,13 +1449,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-18T14:46:07Z
 **Progress_Notes:**
 - [2026-08-18T14:55:51Z] [SV:CX] Implemented the golden connector eval harness with composeHarness-only execution, typed suite validation, draft-only tiers, liveness checks, fixture suite, JSON-report CLI, and dossier evidence.
-**Artifacts:** evals/golden/src/index.ts, evals/golden/src/cli.ts, evals/golden/suites/_fixture/suite.yaml, evals/golden/test/runner.test.ts, evals/golden/package.json, dossiers/TASK-046.md
-**Test_Evidence:** pnpm --filter @oikonomos/evals-golden test (4/4 pass); pnpm --filter @oikonomos/evals-golden typecheck; pnpm -r test; pnpm lint; pnpm canaries all exit 0. CLI smoke exits 0 with pass_rate 1 and harness_invocations 3.
+- [2026-08-18T15:24:55Z] [SV:CX] Rework committed: live governance seams are injectable, default tool calls fail closed, and all suite definition files are merged.
+**Artifacts:** evals/golden/src/index.ts, evals/golden/test/runner.test.ts, dossiers/TASK-046.md
+**Test_Evidence:** pnpm --filter @oikonomos/evals-golden typecheck; pnpm --filter @oikonomos/evals-golden test (6/6 pass); pnpm -r test; pnpm lint; pnpm canaries; CLI smoke all exit 0. Mutation: default allow made Tier-3 seam test fail; restored.
 **Review_Findings:**
 - REWORK, round 1 (ORCH fable-5, 2026-08-18T15:40Z). Substance is GOOD: territory clean, preflight logged, composeHarness-only execution with the harness-invocation liveness counter MUTATION-VERIFIED by ORCH (deleting the increment kills the fixture test), zero-task suite fails UNOBSERVABLE, independent run matches Test_Evidence (4/4, full suite/lint/canaries green). TWO BLOCKING, both in the runner core: (1) GOVERNANCE STUBS ARE HARDCODED, NOT INJECTED - runSuite bakes in handlePreToolUse: always-allow and a no-op auditSink. Fine under a fake queryFn, but the same path is the live `run` CLI, and OIK-051 evals feed G-CONN unlocks - a live eval run would execute with enforcement stubbed out (quality bar 'Governed'; ADR-001 spirit). The draft-only AC is currently enforced ONLY at suite-YAML validation, not at the harness layer. FIX: accept pretooluse/auditSink as injectable options with a FAIL-CLOSED default that denies any tool call above the draft tiers; add a test driving a Tier-3-resolving call through the composed harness and asserting deny. (2) loadSuite READS ONLY definitions[0] - additional task files in a suite dir are silently dropped. Silent coverage truncation inside the machinery certifying >=90% is exactly the ADR-005 s2 failure mode. FIX: load and merge ALL definition files (or fail loudly on >1), with a test that a second file's tasks are counted. NON-BLOCKING: derive draftOnlyTiers from @oikonomos/db riskTiers (slice), not fresh string literals - second-vocabulary-in-miniature; restore the dossier brief/interface sections you deleted (dossiers are append-only context, the brief is for the NEXT reader); evals.suite path from the manifest is ignored by loadSuite (connectorId convention wins) - document or reconcile.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T15:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T15:24:55Z
 
 ### TASK-047
 **Title:** OIK-050 — Scope-minimisation review checklist + per-connector onboarding records (ORCH-executed)
