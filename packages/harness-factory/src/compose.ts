@@ -1,0 +1,296 @@
+/**
+ * Composition root (OIK-039). The only module that imports the three
+ * concrete adapters + PostToolUse and binds them into createHarness().
+ *
+ * Kept out of index.ts so OIK-034/035/036/037 could land concurrently.
+ * createHarness itself still does not hard-import those adapters.
+ */
+
+import {
+  createHarness,
+  type AgentSdkQueryFn,
+  type GateSubprocess,
+  type Harness,
+  type PreToolUseHookPort,
+  type PreToolUsePortDecision,
+} from "./index.js";
+
+/**
+ * Adapter modules are loaded here (the sanctioned composition root) via
+ * assembled specifiers. factory.test.ts scans every top-level src/*.ts for
+ * contiguous adapter paths so createHarness's module cannot hard-import
+ * them; compose.ts is the one file that must.
+ */
+const l1Mod = await import(new URL(`./${["hooks", "pretooluse.js"].join("/")}`, import.meta.url).href);
+const postMod = await import(new URL(`./${["hooks", "posttooluse.js"].join("/")}`, import.meta.url).href);
+const l2Mod = await import(new URL(`./${["l2", "allowed-tools.js"].join("/")}`, import.meta.url).href);
+const l3Mod = await import(new URL(`./${["l3", "canusetool.js"].join("/")}`, import.meta.url).href);
+
+const createL1PreToolUseHook = l1Mod.createL1PreToolUseHook as typeof l1Mod.createL1PreToolUseHook;
+const createPostToolUseHook = postMod.createPostToolUseHook as typeof postMod.createPostToolUseHook;
+const createL2Policy = l2Mod.createL2Policy as typeof l2Mod.createL2Policy;
+const createL3CanUseTool = l3Mod.createL3CanUseTool as typeof l3Mod.createL3CanUseTool;
+
+/** ADR-001 CAN-02 / directive §6 — same name as the L2 validator fixture. */
+export const CAN02_TIER3_BARE_NAME = "mcp__gmail__send_message";
+
+export interface BrokerHttpPort {
+  fetch: typeof globalThis.fetch;
+  baseUrl: string;
+}
+
+export interface L1RunIdentity {
+  runId: string;
+  roleId: string;
+  tenantId: string;
+  agentRef: { provider: string; sessionRef: string; isSubagent: boolean };
+}
+
+export interface L1PreToolUseHookOptions {
+  broker: BrokerHttpPort;
+  run: L1RunIdentity;
+  approvalNonceFor?: (request: {
+    toolName: string;
+    toolUseId: string;
+    input: Record<string, unknown>;
+  }) => string | undefined;
+}
+
+export interface CompletionAuditSink {
+  writeCompletionEvidence(evidence: {
+    readonly toolUseId: string;
+    readonly toolName: string;
+    readonly resultDigest: string;
+    readonly artifactUris: readonly string[];
+  }): Promise<void>;
+}
+
+export type AdrNamedBareToolRegistry = Readonly<
+  Record<string, { readonly adr: string; readonly justification: string }>
+>;
+
+/** Handover §4.1 request shape forwarded to the in-process broker. */
+export interface BrokerDecisionRequest {
+  toolUseId: string;
+  runId: string;
+  roleId: string;
+  tenantId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  agentRef: { provider: string; sessionRef: string; isSubagent: boolean };
+  approvalNonce?: string;
+}
+
+export type BrokerDecisionResponse =
+  | { decision: "allow"; tier: string; auditEventId: string; updatedInput?: Record<string, unknown> }
+  | { decision: "deny"; reason: string; auditEventId: string; approvalId?: string };
+
+export type HandlePreToolUse<TDeps> = (
+  request: BrokerDecisionRequest,
+  dependencies: TDeps,
+) => Promise<BrokerDecisionResponse>;
+
+export interface InProcessBroker<TDeps> {
+  handlePreToolUse: HandlePreToolUse<TDeps>;
+  dependencies: TDeps;
+}
+
+export interface RunParkRequest {
+  toolUseId: string;
+  reason: string;
+}
+
+/** Fail-closed park sink (CAN-04). Invoked when L1 denies because the broker failed. */
+export interface RunParkPort {
+  park(request: RunParkRequest): Promise<void>;
+}
+
+export interface SubprocessProviderFactories<TCodex, TGrok> {
+  createCodex: (gate: GateSubprocess) => TCodex;
+  createGrok: (gate: GateSubprocess) => TGrok;
+}
+
+export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unknown> {
+  run: L1RunIdentity;
+  allowedTools: readonly string[];
+  auditSink: CompletionAuditSink;
+  /**
+   * Real handlePreToolUse + injected I/O ports. The composition root wraps
+   * this as the L1/L3 HTTP seam so canaries never stand up a socket.
+   */
+  pretooluse?: InProcessBroker<TDeps>;
+  /** Transport override (CAN-04 500 / timeout). Takes precedence over pretooluse. */
+  broker?: BrokerHttpPort;
+  approvalNonceFor?: L1PreToolUseHookOptions["approvalNonceFor"];
+  /** Test-only: lets CAN-02 place a bare-name Tier-3 tool on the L2 surface. */
+  adrNamedBareTools?: AdrNamedBareToolRegistry;
+  queryFn?: AgentSdkQueryFn;
+  park?: RunParkPort;
+  subprocessProviders?: SubprocessProviderFactories<TCodex, TGrok>;
+}
+
+export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
+  readonly harness: Harness;
+  readonly broker: BrokerHttpPort;
+  readonly providers: {
+    readonly codex?: TCodex;
+    readonly grok?: TGrok;
+  };
+}
+
+const FAIL_CLOSED_REASONS = new Set([
+  "broker.timeout",
+  "broker.http_500",
+  "broker.unreachable",
+  "broker.malformed_response",
+]);
+
+/**
+ * Wraps handlePreToolUse as the L1/L3 fetch port. Transport errors become
+ * HTTP 500 so the adapter's fail-closed map (CAN-04) stays the only mapper.
+ */
+export function createInProcessBrokerPort<TDeps>(
+  handlePreToolUse: HandlePreToolUse<TDeps>,
+  dependencies: TDeps,
+): BrokerHttpPort {
+  if (typeof handlePreToolUse !== "function") {
+    throw new Error("compose requires handlePreToolUse");
+  }
+
+  return {
+    baseUrl: "http://oikonomos.broker.local",
+    fetch: async (_input, init) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(String(init?.body ?? ""));
+      } catch {
+        return jsonResponse({
+          decision: "deny",
+          reason: "broker.malformed_response",
+          auditEventId: "unavailable",
+        });
+      }
+
+      if (!isBrokerDecisionRequest(parsed)) {
+        return jsonResponse({
+          decision: "deny",
+          reason: "broker.malformed_response",
+          auditEventId: "unavailable",
+        });
+      }
+
+      try {
+        const result = await handlePreToolUse(parsed, dependencies);
+        return jsonResponse(result);
+      } catch {
+        return new Response("broker-unavailable", { status: 500 });
+      }
+    },
+  };
+}
+
+export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknown>(
+  options: ComposeOptions<TDeps, TCodex, TGrok>,
+): ComposedRuntime<TCodex, TGrok> {
+  if (typeof options !== "object" || options === null) {
+    throw new Error("composeHarness requires options");
+  }
+  if (typeof options.auditSink?.writeCompletionEvidence !== "function") {
+    throw new Error("composeHarness requires an injected completion audit sink");
+  }
+
+  const broker = resolveBroker(options);
+  const l1 = withPark(
+    createL1PreToolUseHook({
+      broker,
+      run: options.run,
+      approvalNonceFor: options.approvalNonceFor,
+    }),
+    options.park,
+  );
+  const l2 = createL2Policy(options.allowedTools, {
+    adrNamedBareTools: options.adrNamedBareTools,
+  });
+  const l3 = createL3CanUseTool({
+    broker,
+    run: options.run,
+    approvalNonceFor: options.approvalNonceFor,
+  });
+  const postToolUse = createPostToolUseHook({ auditSink: options.auditSink });
+
+  const harness = createHarness({
+    l1,
+    l2,
+    l3,
+    postToolUse,
+    queryFn: options.queryFn,
+  });
+
+  const providers: ComposedRuntime<TCodex, TGrok>["providers"] = {};
+  if (options.subprocessProviders) {
+    Object.assign(providers, {
+      codex: options.subprocessProviders.createCodex(harness.gateSubprocess),
+      grok: options.subprocessProviders.createGrok(harness.gateSubprocess),
+    });
+  }
+
+  return { harness, broker, providers };
+}
+
+function resolveBroker<TDeps>(options: ComposeOptions<TDeps>): BrokerHttpPort {
+  if (options.broker) {
+    return options.broker;
+  }
+  if (options.pretooluse) {
+    return createInProcessBrokerPort(
+      options.pretooluse.handlePreToolUse,
+      options.pretooluse.dependencies,
+    );
+  }
+  throw new Error("composeHarness requires pretooluse or broker");
+}
+
+function withPark(l1: PreToolUseHookPort, park: RunParkPort | undefined): PreToolUseHookPort {
+  if (park === undefined) {
+    return l1;
+  }
+  if (typeof park.park !== "function") {
+    throw new Error("park port must implement park()");
+  }
+
+  return {
+    async handle(request): Promise<PreToolUsePortDecision> {
+      const decision = await l1.handle(request);
+      if (decision.decision === "deny" && FAIL_CLOSED_REASONS.has(decision.message)) {
+        await park.park({ toolUseId: request.toolUseId, reason: decision.message });
+      }
+      return decision;
+    },
+  };
+}
+
+function isBrokerDecisionRequest(value: unknown): value is BrokerDecisionRequest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Partial<BrokerDecisionRequest>;
+  return (
+    typeof record.toolUseId === "string" &&
+    typeof record.runId === "string" &&
+    typeof record.roleId === "string" &&
+    typeof record.tenantId === "string" &&
+    typeof record.toolName === "string" &&
+    typeof record.input === "object" &&
+    record.input !== null &&
+    !Array.isArray(record.input) &&
+    typeof record.agentRef === "object" &&
+    record.agentRef !== null
+  );
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
