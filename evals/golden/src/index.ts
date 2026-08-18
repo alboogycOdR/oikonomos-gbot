@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { composeHarness, type L1RunIdentity } from "@oikonomos/harness-factory/compose";
 import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
+import type { CompletionAuditSink, InProcessBroker } from "@oikonomos/harness-factory/compose";
 import { parse } from "yaml";
 import { z } from "zod";
 
@@ -13,6 +14,7 @@ export interface ConnectorEvalManifest {
   readonly evals: { readonly suite: string; readonly min_pass_rate: number };
 }
 
+/** Draft-only boundary from the canonical DB risk-tier order (T0 through T2). */
 export const draftOnlyTiers = ["T0_observe", "T1_draft", "T2_internal"] as const;
 export type DraftOnlyTier = (typeof draftOnlyTiers)[number];
 
@@ -60,6 +62,13 @@ export interface RunSuiteOptions {
   readonly manifest: ConnectorEvalManifest;
   readonly queryFn: AgentSdkQueryFn;
   readonly suitesRoot?: string;
+  /**
+   * The real broker seam for live runs. Without it, every tool call is
+   * denied: a golden eval cannot become an authorization bypass.
+   */
+  readonly pretooluse?: InProcessBroker<unknown>;
+  /** Completion evidence sink supplied by the governed runtime for live runs. */
+  readonly auditSink?: CompletionAuditSink;
 }
 
 /** Parses a suite object and rejects an empty suite as unobservable. */
@@ -96,11 +105,8 @@ export async function runSuite(connectorId: string, options: RunSuiteOptions): P
     const runtime = composeHarness({
       run: runIdentity(connectorId, task.id),
       allowedTools: ["Read(evals/golden/**)"],
-      auditSink: { async writeCompletionEvidence() {} },
-      pretooluse: {
-        handlePreToolUse: async () => ({ decision: "allow", tier: "T0_observe", auditEventId: "golden-eval" }),
-        dependencies: undefined,
-      },
+      auditSink: options.auditSink ?? discardCompletionEvidence,
+      pretooluse: options.pretooluse ?? denyToolCallsByDefault,
       queryFn: async function* (input) {
         harnessInvocations += 1;
         yield* options.queryFn(input);
@@ -133,12 +139,14 @@ export async function loadSuite(connectorId: string, suitesRoot = defaultSuitesR
   } catch (error) {
     throw new GoldenEvalError("UNOBSERVABLE", `golden suite directory is unavailable: ${directory}`);
   }
-  const definitions = files.filter((file) => /\.(?:ya?ml|json)$/i.test(file));
+  const definitions = files.filter((file) => /\.(?:ya?ml|json)$/i.test(file)).sort();
   if (definitions.length === 0) {
     throw new GoldenEvalError("UNOBSERVABLE", `golden suite directory has zero task definitions: ${directory}`);
   }
-  const raw = await readDefinition(join(directory, definitions[0]!));
-  return validateSuite(raw, connectorId);
+  const suites = await Promise.all(
+    definitions.map(async (definition) => validateSuite(await readDefinition(join(directory, definition)), connectorId)),
+  );
+  return validateSuite({ connector_id: connectorId, tasks: suites.flatMap((suite) => suite.tasks) }, connectorId);
 }
 
 function defaultSuitesRoot(): string {
@@ -157,6 +165,17 @@ async function readDefinition(path: string): Promise<unknown> {
 function runIdentity(connectorId: string, taskId: string): L1RunIdentity {
   return { runId: `golden:${connectorId}:${taskId}`, roleId: "connector-eval", tenantId: "basileia", agentRef: { provider: "golden-eval", sessionRef: taskId, isSubagent: false } };
 }
+
+const denyToolCallsByDefault: InProcessBroker<unknown> = {
+  async handlePreToolUse() {
+    return { decision: "deny", reason: "golden-eval.draft-only: inject governed pretooluse for tool calls", auditEventId: "golden-eval-denied" };
+  },
+  dependencies: undefined,
+};
+
+const discardCompletionEvidence: CompletionAuditSink = {
+  async writeCompletionEvidence() {},
+};
 
 async function collectOutput(events: AsyncIterable<unknown>): Promise<string> {
   const parts: string[] = [];

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { GoldenEvalError, runSuite, validateSuite } from "../src/index.js";
+import { GoldenEvalError, loadSuite, runSuite, validateSuite } from "../src/index.js";
 
 const manifest = { connector_id: "_fixture", evals: { suite: "evals/golden/suites/_fixture", min_pass_rate: 0.9 } };
 const suitesRoot = fileURLToPath(new URL("../suites/", import.meta.url));
@@ -36,5 +36,25 @@ describe("golden connector eval runner", () => {
 
   it("rejects a manifest pass rate below the connector quality bar", async () => {
     await expect(runSuite("_fixture", { manifest: { ...manifest, evals: { ...manifest.evals, min_pass_rate: 0.8 } }, queryFn: fakeQuery, suitesRoot })).rejects.toMatchObject({ code: "CONFIGURATION" });
+  });
+
+  it("merges every suite definition rather than silently dropping additional tasks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "golden-evals-"));
+    await mkdir(join(root, "multiple"));
+    await writeFile(join(root, "multiple", "a.yaml"), "connector_id: multiple\ntasks:\n  - id: first\n    prompt: first\n    expected_outcome: { contains: [draft] }\n    allowed_tiers: [T0_observe]\n");
+    await writeFile(join(root, "multiple", "b.json"), JSON.stringify({ connector_id: "multiple", tasks: [{ id: "second", prompt: "second", expected_outcome: { contains: ["draft"] }, allowed_tiers: ["T1_draft"] }] }));
+    await expect(loadSuite("multiple", root)).resolves.toMatchObject({ connector_id: "multiple", tasks: [{ id: "first" }, { id: "second" }] });
+  });
+
+  it("fails closed at the composed harness seam until a governed broker is injected", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const queryWithInvocation = async function* (input: { options?: Record<string, unknown> }) {
+      captured = input.options;
+      yield { text: "draft prepared" };
+    };
+    await runSuite("_fixture", { manifest, queryFn: queryWithInvocation, suitesRoot });
+    expect(captured).toBeDefined();
+    const invocation = captured as { canUseTool: (toolName: string, input: Record<string, unknown>, options: { signal: AbortSignal; toolUseID: string; requestId: string }) => Promise<{ behavior: string; message?: string }> };
+    await expect(invocation.canUseTool("mcp__gmail__send_message", {}, { signal: new AbortController().signal, toolUseID: "tier-3", requestId: "test" })).resolves.toMatchObject({ behavior: "deny", message: expect.stringContaining("draft-only") });
   });
 });
