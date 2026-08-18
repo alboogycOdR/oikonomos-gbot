@@ -1428,7 +1428,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-051; Gap Closure §G1 (3–5 golden tasks per connector, ≥90%, draft-only mode); WBS §4 G-CONN; Directive §4 N9 (all harness invocations via packages/harness-factory)
@@ -1443,15 +1443,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Fixture suite (`suites/_fixture/`) with 3 golden tasks demonstrates an end-to-end run and a failing-task run producing pass-rate < 1
 - [ ] No credentials or live endpoints in any fixture (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-046-cx
+**Started_At:** 2026-08-18T14:46:07Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T14:46:07Z
 
 ### TASK-047
 **Title:** OIK-050 — Scope-minimisation review checklist + per-connector onboarding records (ORCH-executed)
