@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./compose": {
+      "types": "./dist/compose.d.ts",
+      "import": "./dist/compose.js"
     }
   },
   "main": "./dist/index.js",
@@ -20,7 +24,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "pnpm run build && vitest run"
   },
   "dependencies": {
     "@oikonomos/shared": "workspace:*",

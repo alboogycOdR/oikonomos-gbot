@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createHarness,
@@ -19,6 +19,7 @@ import {
   type ComposeOptions,
 } from "../src/compose.js";
 import type { CompletionEvidence } from "../src/hooks/posttooluse.js";
+import { BROKER_TIMEOUT_MS } from "../src/hooks/pretooluse.js";
 
 const composeSource = readFileSync(
   fileURLToPath(new URL("../src/compose.ts", import.meta.url)),
@@ -106,6 +107,14 @@ function options(
 }
 
 describe("composeHarness — sole composition root", () => {
+  it("is reachable from the public package entry point", async () => {
+    const publicCompose = await import("@oikonomos/harness-factory/compose");
+    expect(typeof publicCompose.composeHarness).toBe("function");
+
+    const composed = publicCompose.composeHarness(options());
+    expect(composed.harness.config.permissionMode).toBe(L2_PERMISSION_MODE);
+  });
+
   it("imports the three adapters + PostToolUse and only createHarness constructs the SDK path", () => {
     expect(composeSource).toContain("pretooluse.js");
     expect(composeSource).toContain("allowed-tools.js");
@@ -157,6 +166,131 @@ describe("composeHarness — sole composition root", () => {
       queryFn: async function* () {},
     });
     expect(harness.invocation.permissionMode).toBe(L2_PERMISSION_MODE);
+  });
+});
+
+describe("composeHarness — ADR-001 R3 run parking", () => {
+  it("parks approval_pending after denying the Tier-3 call", async () => {
+    const parked: Array<{ toolUseId: string; reason: string }> = [];
+    const composed = composeHarness(
+      options({
+        pretooluse: {
+          handlePreToolUse: async (request) => denyHandle(request),
+          dependencies: {},
+        },
+        park: {
+          async park(request) {
+            parked.push(request);
+          },
+        },
+      }),
+    );
+
+    const hook = composed.harness.invocation.hooks.PreToolUse[0]!.hooks[0]!;
+    const result = await hook(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_use_id: "approval-waiting",
+        tool_input: { command: "rm -rf /" },
+      },
+      "approval-waiting",
+      { signal: new AbortController().signal },
+    );
+
+    expect(result).toMatchObject({
+      hookSpecificOutput: {
+        permissionDecision: "deny",
+        permissionDecisionReason: "approval_pending",
+      },
+    });
+    expect(parked).toEqual([{ toolUseId: "approval-waiting", reason: "approval_pending" }]);
+  });
+
+  it.each([
+    ["broker.http_500", async () => new Response("unavailable", { status: 500 })],
+    ["broker.malformed_response", async () => new Response("not-json", { status: 200 })],
+    ["broker.unreachable", async () => { throw new Error("offline"); }],
+  ])("keeps fail-closed parking for %s", async (reason, fetch) => {
+    const parked: Array<{ toolUseId: string; reason: string }> = [];
+    const composed = composeHarness(
+      options({
+        pretooluse: undefined,
+        broker: { baseUrl: "http://broker.test", fetch },
+        park: {
+          async park(request) {
+            parked.push(request);
+          },
+        },
+      }),
+    );
+    const hook = composed.harness.invocation.hooks.PreToolUse[0]!.hooks[0]!;
+    const result = await hook(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Read",
+        tool_use_id: `fail-closed-${reason}`,
+        tool_input: { path: "secret" },
+      },
+      `fail-closed-${reason}`,
+      { signal: new AbortController().signal },
+    );
+
+    expect(result).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: reason },
+    });
+    expect(parked).toEqual([{ toolUseId: `fail-closed-${reason}`, reason }]);
+  });
+
+  it("keeps fail-closed parking for broker.timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const parked: Array<{ toolUseId: string; reason: string }> = [];
+      const composed = composeHarness(
+        options({
+          pretooluse: undefined,
+          broker: {
+            baseUrl: "http://broker.test",
+            fetch: (_input, init) =>
+              new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener("abort", () => {
+                  const error = new Error("This operation was aborted");
+                  error.name = "AbortError";
+                  reject(error);
+                });
+              }),
+          },
+          park: {
+            async park(request) {
+              parked.push(request);
+            },
+          },
+        }),
+      );
+      const hook = composed.harness.invocation.hooks.PreToolUse[0]!.hooks[0]!;
+      const toolUseId = "fail-closed-broker.timeout";
+      const pending = hook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_use_id: toolUseId,
+          tool_input: { path: "secret" },
+        },
+        toolUseId,
+        { signal: new AbortController().signal },
+      );
+
+      await vi.advanceTimersByTimeAsync(BROKER_TIMEOUT_MS);
+      await expect(pending).resolves.toMatchObject({
+        hookSpecificOutput: {
+          permissionDecision: "deny",
+          permissionDecisionReason: "broker.timeout",
+        },
+      });
+      expect(parked).toEqual([{ toolUseId, reason: "broker.timeout" }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

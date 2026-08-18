@@ -146,6 +146,13 @@ const FAIL_CLOSED_REASONS = new Set([
 ]);
 
 /**
+ * ADR-001 R3: broker failures fail closed and approval waits deny then park.
+ * Keep this separate from FAIL_CLOSED_REASONS: approval_pending is an expected
+ * Tier-3 state, not an infrastructure failure.
+ */
+const PARK_REASONS = new Set([...FAIL_CLOSED_REASONS, "approval_pending"]);
+
+/**
  * Wraps handlePreToolUse as the L1/L3 fetch port. Transport errors become
  * HTTP 500 so the adapter's fail-closed map (CAN-04) stays the only mapper.
  */
@@ -261,7 +268,7 @@ function withPark(l1: PreToolUseHookPort, park: RunParkPort | undefined): PreToo
   return {
     async handle(request): Promise<PreToolUsePortDecision> {
       const decision = await l1.handle(request);
-      if (decision.decision === "deny" && FAIL_CLOSED_REASONS.has(decision.message)) {
+      if (decision.decision === "deny" && PARK_REASONS.has(decision.message)) {
         await park.park({ toolUseId: request.toolUseId, reason: decision.message });
       }
       return decision;
