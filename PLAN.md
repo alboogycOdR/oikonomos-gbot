@@ -827,7 +827,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-041
 **Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-1, HIGH-3; docs/decisions/ADR-001-broker-enforcement-point.md R3
@@ -842,13 +842,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
 **Branch:** task/TASK-041-cx
 **Started_At:** 2026-08-18T13:02:33Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T13:07:18Z] [SV:CX] Exported composeHarness via the public package subpath and added distinct approval_pending run parking with behavioral and mutation coverage.
+**Artifacts:** packages/harness-factory/package.json, packages/harness-factory/src/compose.ts, packages/harness-factory/test/compose.test.ts, dossiers/TASK-041.md
+**Test_Evidence:** pnpm -r test passed; pnpm canaries passed (14 passed, 2 skipped); pnpm lint passed; focused harness-factory suite passed 66/66; mutation removing approval_pending from PARK_REASONS failed the new parking test, then was restored; git diff --check passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T13:02:33Z
+**Updated_At:** 2026-08-18T13:07:18Z
 
 ### TASK-042
 **Title:** OIK-041 HIGH-2 — wire the E4 enforcement chain into a production caller + ADR-005 liveness ⚑ protected
