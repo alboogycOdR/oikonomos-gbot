@@ -11,7 +11,7 @@ import {
   type CapabilityTier,
   type RiskTier,
 } from "@oikonomos/policy";
-import type { JsonValue } from "@oikonomos/shared";
+import { actionDigest, type JsonValue } from "@oikonomos/shared";
 
 export const workspaceName = "broker";
 
@@ -96,8 +96,9 @@ interface ReplayEntry {
 
 /**
  * One replay cache per dependency composition; WeakMap avoids retaining a
- * service on teardown. Entries are tenant- and role-scoped, expire after the
- * ADR-007 L1-to-L3 replay window, and use safe LRU eviction.
+ * service on teardown. Entries are scoped by tenant, role, toolUseId,
+ * toolName, and actionDigest({toolName, input, destination}) (ADR-007 §3a),
+ * expire after the ADR-007 L1-to-L3 replay window, and use safe LRU eviction.
  */
 const replayCaches = new WeakMap<BrokerDependencies, Map<string, ReplayEntry>>();
 
@@ -186,8 +187,15 @@ function failureReason(error: unknown): string {
   return "broker.dependency_failure";
 }
 
-function replayKey(request: PreToolUseRequest): string {
-  return `${request.tenantId}\0${request.roleId}\0${request.toolUseId}`;
+function replayKey(request: PreToolUseRequest, destination: string): string {
+  // ADR-007 §3a: the cache in front of authorisation is keyed on the full
+  // decision input, not only the requester. N10: one digest implementation.
+  const digest = actionDigest({
+    toolName: request.toolName,
+    input: request.input as JsonValue,
+    destination,
+  });
+  return `${request.tenantId}\0${request.roleId}\0${request.toolUseId}\0${request.toolName}\0${digest}`;
 }
 
 async function failClosed(
@@ -216,7 +224,14 @@ export async function handlePreToolUse(
     cache = new Map();
     replayCaches.set(dependencies, cache);
   }
-  const key = replayKey(request);
+  let key: string;
+  try {
+    // Destination is part of the decision input, so it must be resolved
+    // before the cache lookup — otherwise a payload swap reuses an allow.
+    key = replayKey(request, dependencies.destinationFor(request));
+  } catch (error) {
+    return failClosed(dependencies, request, failureReason(error));
+  }
   const replay = cache.get(key);
   if (replay !== undefined) {
     // An in-flight decision is always replayed, even if the nominal handoff
