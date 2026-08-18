@@ -254,9 +254,18 @@ importers:
 
   services/worker:
     dependencies:
+      '@oikonomos/agent-providers':
+        specifier: workspace:*
+        version: link:../../packages/agent-providers
+      '@oikonomos/broker':
+        specifier: workspace:*
+        version: link:../../packages/broker
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oikonomos/harness-factory':
+        specifier: workspace:*
+        version: link:../../packages/harness-factory
     devDependencies:
       '@types/node':
         specifier: ^22.17.0

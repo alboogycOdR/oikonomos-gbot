@@ -1,0 +1,92 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { CodexProvider, GrokProvider } from "@oikonomos/agent-providers";
+import { L2_PERMISSION_MODE } from "@oikonomos/harness-factory";
+import { describe, expect, it } from "vitest";
+
+import { executeTaskRun, WorkerExecutionError } from "../src/executeRun.js";
+import { createGatedSubprocessProviders } from "../src/subprocessProviders.js";
+
+import {
+  createCompletionSink,
+  createDecisionLog,
+  createWorkerBrokerDeps,
+  workerQueryFn,
+  workerRun,
+} from "./fixtures.js";
+
+const executeSource = readFileSync(
+  fileURLToPath(new URL("../src/executeRun.ts", import.meta.url)),
+  "utf8",
+);
+
+describe("executeTaskRun — production caller", () => {
+  it("imports composeHarness from the public package entry, not an ad-hoc path", () => {
+    expect(executeSource).toContain('from "@oikonomos/harness-factory/compose"');
+    expect(executeSource).toContain("composeHarness");
+    expect(executeSource).toContain('from "@oikonomos/broker"');
+    expect(executeSource).toContain("handlePreToolUse");
+    expect(executeSource).not.toMatch(/createHarness\s*\(/);
+    expect(executeSource).not.toContain("packages/harness-factory");
+    expect(executeSource).not.toContain("@anthropic-ai/claude-agent-sdk");
+  });
+
+  it("invokes the agent through the composed harness (L1/L2/L3 bound)", async () => {
+    const audit = createDecisionLog();
+    const result = await executeTaskRun({
+      prompt: "read the worker entry",
+      run: workerRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createWorkerBrokerDeps(audit),
+      auditSink: createCompletionSink(),
+      queryFn: workerQueryFn,
+    });
+
+    expect(result.runtime.harness.config.permissionMode).toBe(L2_PERMISSION_MODE);
+    expect(result.runtime.harness.invocation.hooks.PreToolUse).toHaveLength(1);
+    expect(typeof result.runtime.harness.invocation.canUseTool).toBe("function");
+    expect(result.events).toEqual([{ type: "result", toolUseId: "worker-e4-liveness-1" }]);
+  });
+
+  it("wires gated Codex/Grok providers from the production factory", async () => {
+    const audit = createDecisionLog();
+    const result = await executeTaskRun({
+      prompt: "read the worker entry",
+      run: workerRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createWorkerBrokerDeps(audit),
+      auditSink: createCompletionSink(),
+      queryFn: workerQueryFn,
+      subprocessProviders: createGatedSubprocessProviders({
+        codex: {
+          bin: "C:\\oikonomos\\must-not-spawn-codex.exe",
+          defaultModel: "gpt-5.4",
+          sandbox: "read-only",
+        },
+        grok: {
+          bin: "C:\\oikonomos\\must-not-spawn-grok.exe",
+          defaultModel: "grok-4.5",
+          sandbox: "read-only",
+          alwaysApprove: true,
+        },
+      }),
+    });
+
+    expect(result.runtime.providers.codex).toBeInstanceOf(CodexProvider);
+    expect(result.runtime.providers.grok).toBeInstanceOf(GrokProvider);
+  });
+
+  it("rejects a park port that is not callable", async () => {
+    await expect(
+      executeTaskRun({
+        prompt: "read the worker entry",
+        run: workerRun,
+        allowedTools: ["Read(src/**)"],
+        brokerDependencies: createWorkerBrokerDeps(createDecisionLog()),
+        auditSink: createCompletionSink(),
+        park: { park: undefined as never },
+      }),
+    ).rejects.toBeInstanceOf(WorkerExecutionError);
+  });
+});
