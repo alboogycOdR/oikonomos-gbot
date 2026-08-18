@@ -799,7 +799,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-040
 **Title:** OIK-041 CRITICAL-1 — replay cache must be keyed on the ACTION, not just the principal ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-007-replay-window-semantics.md §3a (AMENDMENT - read this first, it is the corrected spec); docs/reviews/OIK-041-harness-factory-fable.md CRITICAL-1; docs/decisions/ADR-001-broker-enforcement-point.md R2/CAN-08
@@ -813,15 +813,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] CAN-08 still passes unchanged - one toolUseId through both L1 and L3 still yields exactly one decision and one audit event (ADR-001 R2/CAN-08)
 - [ ] MUTATION-PROVEN: reverting the key to identity-only turns the new regression tests RED
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-040-gb
+**Started_At:** 2026-08-18T12:50:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T12:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T12:50:30Z
 
 ### TASK-041
 **Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
