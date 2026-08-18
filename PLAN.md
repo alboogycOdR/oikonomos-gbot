@@ -827,7 +827,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-041
 **Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-1, HIGH-3; docs/decisions/ADR-001-broker-enforcement-point.md R3
@@ -846,7 +846,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-18T13:07:18Z] [SV:CX] Exported composeHarness via the public package subpath and added distinct approval_pending run parking with behavioral and mutation coverage.
 **Artifacts:** packages/harness-factory/package.json, packages/harness-factory/src/compose.ts, packages/harness-factory/test/compose.test.ts, dossiers/TASK-041.md
 **Test_Evidence:** pnpm -r test passed; pnpm canaries passed (14 passed, 2 skipped); pnpm lint passed; focused harness-factory suite passed 66/66; mutation removing approval_pending from PARK_REASONS failed the new parking test, then was restored; git diff --check passed.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus adversarial, 2026-08-18T13:40Z; protected, author CX / reviewer ORCH-opus). BOTH FINDINGS CLOSED. **HIGH-1:** composeHarness is now reachable from the package's public surface via an explicit `./compose` subpath export with a proper types mapping - no more relative-source-path-only access. **HIGH-3:** approval_pending now parks the run, and CX got the subtle part right: PARK_REASONS is a SUPERSET of FAIL_CLOSED_REASONS rather than folding approval_pending into it, with a comment stating why - so an expected Tier-3 approval wait is not reclassified as a fail-closed error anywhere keyed on that set. **MUTATION-PROVEN: removing approval_pending from PARK_REASONS turns 'parks approval_pending after denying the Tier-3 call' RED.** Fail-closed park behaviour unchanged and still tested. harness-factory 66/66, canaries green, master green on the full recursive suite, territory clean (4 files), no PLAN.md edit. Merged --no-ff [AUTOPILOT]. Unblocks TASK-042 (the last item before E4 sign-off).
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-18T13:07:18Z
