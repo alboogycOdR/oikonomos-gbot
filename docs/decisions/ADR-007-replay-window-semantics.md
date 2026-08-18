@@ -45,6 +45,33 @@ Implementations cite **this section**. They must not cite non-negotiable #3.
 
 **Why not the alternative.** The tempting fix — keep the key and return a deterministic `deny` after expiry, so one `toolUseId` never yields two different allows — is **not implementable within a bounded cache**: once an entry is evicted there is no way to distinguish "expired" from "never seen", so the deny would have to apply to every unseen `toolUseId`, i.e. deny everything. Retaining keys to tell them apart re-creates the unbounded growth the bound exists to prevent. Rejected as unimplementable, not as undesirable.
 
+## 3a. AMENDMENT (2026-08-18) — the key must be scoped by the ACTION, not only the principal
+
+**§3 below was wrong by omission, and the omission was exploitable. This amendment supersedes it.**
+
+§3 declared `tenantId \0 roleId \0 toolUseId` and called all three components load-bearing. That closed the cross-tenant leak it was written for. It did **not** close the general case, because it stated the correct principle and then applied it one notch short:
+
+> *"an idempotency or caching layer placed in front of an authorisation check inherits the duty to be scoped by everything that check is scoped by."*
+
+The broker's authorisation decision is scoped by `tenantId`, `roleId`, **`toolName`, `input`, and `destination`**. The key covered only the first two. The OIK-041 Fable pass proved the consequence against the real `handlePreToolUse`:
+
+- Allow a `T1_draft` tool, then reissue the **same** `toolUseId`/tenant/role with `toolName: mcp__gmail__send_message` (`T3_external`, approval-requiring) ⇒ **`{"decision":"allow","tier":"T1_draft"}`**. `getCapability` was called once — the Tier-3 capability was never looked up. `recordDecision` was called once — **no audit event for the Tier-3 send.**
+- Same `toolUseId`, `input` mutated to a different recipient ⇒ **allow**, `destinationFor` never called, no audit event.
+
+That is tier escalation and payload substitution with no audit trail, on the primary enforcement path, inside a protected package. `toolUseId` originates on the untrusted side of the boundary (§3 says so itself, and `harness-factory/src/index.ts` *prefers* the hook payload's `tool_use_id` over the SDK's), so the precondition is attacker-influenceable.
+
+**Decision.** The replay key is:
+
+```
+tenantId \0 roleId \0 toolUseId \0 toolName \0 actionDigest({toolName, input, destination})
+```
+
+using the single `@oikonomos/shared` digest implementation (N10 — no second implementation).
+
+**Why this does not weaken CAN-08.** L1 and L3 gate the *same* invocation, so they necessarily share `toolName`, `input` and `destination`; the legitimate L1↔L3 pair still hits one key and still yields one decision and one audit event. What changes is that a *different action* reusing a `toolUseId` now misses the cache and is **recomputed** — and §2.3 already establishes a recompute is safe, because it re-runs every check and cannot grant what current policy would deny.
+
+**Rule generalised, so this is not repeated a third time:** a cache in front of an authorisation decision must be keyed on the *full input to that decision*, not on the identity of the requester. Identity scoping answers "who is asking"; it does not answer "for what". Both are load-bearing.
+
 ## 3. Scope of the replay key
 
 The replay key is `tenantId \0 roleId \0 toolUseId`, and **all three components are load-bearing**:

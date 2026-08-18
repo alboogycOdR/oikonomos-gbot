@@ -797,6 +797,82 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-16T11:27:52Z
 
+### TASK-040
+**Title:** OIK-041 CRITICAL-1 — replay cache must be keyed on the ACTION, not just the principal ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** critical
+**Spec_References:** docs/decisions/ADR-007-replay-window-semantics.md §3a (AMENDMENT - read this first, it is the corrected spec); docs/reviews/OIK-041-harness-factory-fable.md CRITICAL-1; docs/decisions/ADR-001-broker-enforcement-point.md R2/CAN-08
+**Owned_Paths:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected; directive §3 different-model review). **THIS IS A LIVE TIER-ESCALATION BYPASS ON THE PRIMARY ENFORCEMENT PATH, AND IT IS AN ORCH SPEC ERROR - NOT A BUILDER ERROR.** ADR-007 §3 (which ORCH authored) stated the correct principle - a caching layer inherits the duty to be scoped by everything the underlying check is scoped by - and then applied it one notch short, specifying `tenantId \0 roleId \0 toolUseId`. The broker's authorization is ALSO scoped by toolName, input and destination, none of which are in the key. The OIK-041 Fable pass proved the consequence against the real handlePreToolUse: allow a T1_draft tool, then reissue the SAME toolUseId/tenant/role with a T3_external tool -> **allow**, with getCapability called once (the Tier-3 capability never looked up) and recordDecision called once - **no audit event for the Tier-3 send**. Mutating `input` to a different recipient likewise replays an allow with destinationFor never called. Tier escalation and payload substitution, no audit trail, 60-second window, and toolUseId originates on the untrusted side of the boundary. **ADR-007 §3a is the corrected spec and specifies the fix exactly**: key on `tenantId \0 roleId \0 toolUseId \0 toolName \0 actionDigest({toolName, input, destination})` using the SINGLE @oikonomos/shared digest implementation (N10 - do NOT write a second digest). This does NOT weaken CAN-08: L1 and L3 gate the same invocation so they share toolName/input/destination and still hit one key; a DIFFERENT action reusing a toolUseId now misses the cache and is recomputed, which ADR-007 §2.3 already establishes as safe.
+**Acceptance_Criteria:**
+- [ ] The replay key includes toolName and actionDigest({toolName,input,destination}) from @oikonomos/shared - no second digest implementation (ADR-007 §3a; N10)
+- [ ] REGRESSION TEST mirroring the probe: allow a T1 tool, reissue the SAME toolUseId with a T3 tool, assert the second call is NOT served from cache - it must resolve the T3 capability, require approval, and write its OWN audit event (ADR-007 §3a)
+- [ ] A second test for payload substitution: same toolUseId, mutated input -> not replayed, destination re-resolved, own audit event
+- [ ] CAN-08 still passes unchanged - one toolUseId through both L1 and L3 still yields exactly one decision and one audit event (ADR-001 R2/CAN-08)
+- [ ] MUTATION-PROVEN: reverting the key to identity-only turns the new regression tests RED
+- [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-18T12:00:00Z
+
+### TASK-041
+**Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-1, HIGH-3; docs/decisions/ADR-001-broker-enforcement-point.md R3
+**Owned_Paths:** packages/harness-factory/src/index.ts, packages/harness-factory/src/compose.ts, packages/harness-factory/test/compose.test.ts, packages/harness-factory/package.json
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected; directive §3). Two findings from the OIK-041 Fable pass, both small. **HIGH-1: `composeHarness` is unreachable from the package entry point.** package.json exports only "." -> dist/index.js, and src/index.ts re-exports config/subagent/ports but NEVER compose.js - so the composition root that wires L1+L2+L3+PostToolUse can only be reached by relative source path from evals/harness/test/helpers.ts. Export it (either `export * from "./compose.js"` in src/index.ts or an explicit "./compose" subpath). **HIGH-3: approval_pending never parks the run, violating ADR-001 R3** - R3 requires deny-with-message AND park the run; compose.ts:141-146 omits approval_pending from FAIL_CLOSED_REASONS, so withPark skips the MOST COMMON Tier-3 path (a tool awaiting approval simply denies and the run keeps going instead of parking). Note approval_pending is NOT a fail-closed condition - it is a legitimate deny that must ALSO park - so use a park trigger set DISTINCT from FAIL_CLOSED_REASONS rather than folding it in.
+**Acceptance_Criteria:**
+- [ ] composeHarness is reachable from the package's public entry point; a test imports it via the package name, not a relative source path (OIK-041 HIGH-1)
+- [ ] An approval_pending decision PARKS the run as well as denying, via a park trigger set distinct from FAIL_CLOSED_REASONS (ADR-001 R3; OIK-041 HIGH-3)
+- [ ] MUTATION-PROVEN: removing approval_pending from the park set turns a test RED
+- [ ] Existing fail-closed park behaviour (broker unreachable/timeout/malformed) is unchanged and still tested
+- [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-18T12:00:00Z
+
+### TASK-042
+**Title:** OIK-041 HIGH-2 — wire the E4 enforcement chain into a production caller + ADR-005 liveness ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-2; docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-001-broker-enforcement-point.md (P1)
+**Owned_Paths:** services/worker/src/**, services/worker/test/**, services/worker/package.json, pnpm-lock.yaml, evals/harness/test/**
+**Depends_On:** TASK-041
+**Description:** **GB or CX only, NEVER S5** (protected-adjacent; directive §3 review). **THE WHOLE E4 ENFORCEMENT CHAIN CURRENTLY HAS NO PRODUCTION CALLER.** No package under services/** or apps/** depends on @oikonomos/harness-factory, @oikonomos/agent-providers or @oikonomos/broker (services/worker declares only @oikonomos/db). Every layer is built, tested and mutation-proven - and reachable only from evals/. That is the configured-but-inert shape ADR-005 exists to catch, this time at EPIC scale: the platform's entire enforcement stack could be deleted at runtime and nothing in production would notice. Depends on TASK-041 because composeHarness must be publicly exported first. Wire `composeHarness` into services/worker's run-execution path so a real agent invocation goes through the composed harness, and ship an ADR-005 §2 liveness assertion keyed on EVIDENCE THE CONTROL EMITS BY DOING ITS JOB - i.e. an audit event the broker writes when a worker-driven tool call is decided - NOT on configuration being present or an import existing.
+**Acceptance_Criteria:**
+- [ ] services/worker invokes agents through composeHarness (imported from the package entry point), not through any ad-hoc path (ADR-001 P1; N9)
+- [ ] The sole-constructor guard still passes - no second construction path was introduced
+- [ ] An ADR-005 §2 liveness assertion fails when the enforcement chain is inert, keyed on an audit event the broker emits by deciding a worker-driven call - not on config presence (ADR-005 §2)
+- [ ] MUTATION-PROVEN: making the worker bypass composeHarness turns the liveness assertion RED
+- [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-18T12:00:00Z
+
 ### TASK-027
 **Title:** Close the sandbox port band at the host (DOCKER-USER) ⛔ DEFERRED — do not dispatch
 **Status:** pending
@@ -1208,7 +1284,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-037
 **Title:** OIK-041 — Fable adversarial review: harness-factory + hooks ⚑ protected
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md §5 E4 OIK-041; specs/OIKONOMOS_BUILD_DIRECTIVE_v1.0.md §3; CLAUDE.md (adversarial review rule)
@@ -1224,7 +1300,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:**
+- DONE - review executed and recorded (ORCH on Claude Opus, 2026-08-18T12:00Z). Deliverable: docs/reviews/OIK-041-harness-factory-fable.md. **E4 IS NOT SIGNED OFF AND G-GOV DOES NOT OPEN** - the pass found 1 CRITICAL and 3 HIGH findings, now tracked as TASK-040/041/042. Different-model rule SATISFIED and documented per file: every PROTECTED-path E4 task was authored by GB (xAI) or CX (OpenAI) and reviewed on Claude Opus - different model and vendor. The one S5-authored task (034) sat on packages/db + services/worker, neither a protected path, so directive §3's S5-plus-Anthropic-reviewer prohibition does not bind; recorded explicitly so it is not later mistaken for a violation. **CRITICAL-1 is an ORCH spec error**: ADR-007 §3 stated the right principle and applied it one notch short, so the replay cache authorizes by identity but not by action - proven to yield tier escalation with NO audit event. ADR-007 §3a now amends the spec with the corrected key and generalises the rule. Carried-item correction: the >10s broker deadline is RESOLVED (real AbortController, fake-timer tested) and is struck from the open list; the ADR-007 never-settling entry and the N10 e2e gap remain open. This task's AC is met - findings documented and converted to tracked tasks - but E4 completion is explicitly gated on those tasks closing.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-17T11:00:00Z
