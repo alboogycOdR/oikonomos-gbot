@@ -854,7 +854,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-042
 **Title:** OIK-041 HIGH-2 — wire the E4 enforcement chain into a production caller + ADR-005 liveness ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-2; docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-001-broker-enforcement-point.md (P1)
@@ -869,13 +869,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
 **Branch:** task/TASK-042-gb
 **Started_At:** 2026-08-18T13:29:32Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T13:38:58Z] [SV:GB] Worker executeTaskRun now invokes agents through composeHarness; ADR-005 liveness keys on a broker decision audit event and goes red if composeHarness is bypassed.
+**Artifacts:** services/worker/src/executeRun.ts, services/worker/src/subprocessProviders.ts, services/worker/src/index.ts, services/worker/package.json, services/worker/test/executeRun.test.ts, services/worker/test/e4-liveness.test.ts, services/worker/test/fixtures.ts, evals/harness/test/can-09-worker-liveness.test.ts, pnpm-lock.yaml, dossiers/TASK-042.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker test: 10 passed / 3 skipped; sole-constructor 2/2; pnpm canaries: 15 passed / 2 skipped (CAN-09 included); pnpm lint exit 0; pnpm -r test exit 0; mutation: bypass composeHarness -> liveness RED (0 audit events), restored.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T13:29:32Z
+**Updated_At:** 2026-08-18T13:38:58Z
 
 ### TASK-027
 **Title:** Close the sandbox port band at the host (DOCKER-USER) ⛔ DEFERRED — do not dispatch
