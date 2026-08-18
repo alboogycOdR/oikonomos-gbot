@@ -107,6 +107,19 @@ The dispatch/builder prompt tells builders: *"blocked_reason must start with SPE
 
 **LOCAL PATCH APPLIED (oikonomos 2026-08-17, pending upstream):** `tg_commands.git_pull` changed from `git pull --rebase --autostash` to `git fetch` + `git merge --ff-only @{u}` (option 1/2 above). Verified in the exact failure state (local 9 commits ahead of a diverged origin): the patched call returned cleanly and left the working tree **on master, not detached, not conflicted** — it can no longer rebase-conflict; on divergence it does nothing and the caller proceeds on the local copy, which the docstring already declares acceptable. `git_pull` is called from four sites in the tick path (`supervisor.py:690`, `control.py:244/311/402`), so this also un-breaks `control.py drain`. `tg_commands.py` is `framework_owned` → reverted on the next pack sync; the real fix must ship upstream.
 
+### 16. Concurrent dispatch races on PLAN.md claim writes — one builder's claim is silently clobbered by the other's
+
+**Severity: medium — plan-vs-reality drift with a misleading commit message; found live on 2026-08-18, wave 1 of the E6 phase.** Two `dispatch.ps1` runs launched in parallel (GB → TASK-043, CX → TASK-046). Each SV performed an unserialized read-modify-write of PLAN.md to record its claim. Observed result: exactly **one** claim commit landed (`1285d04`), whose **message says "claim TASK-043 [SV origin=GB]" but whose diff contains only TASK-046's claim** (Status → claimed, `Branch: task/TASK-046-cx`, Started_At). GB's TASK-043 claim edit was clobbered: both SVs read the pre-claim file state, GB wrote its claim, CX overwrote the file from its own stale read and the commit captured CX's content under GB's in-flight message. PLAN.md was left showing TASK-043 `pending` with no Branch while GB was actively building it — the exact "files are the truth" invariant the pack depends on, silently false. `validate_plan.py` cannot catch this (the resulting file is legal, just wrong).
+
+Same launch also produced the sibling symptom on the other shared mutable store: both dispatches warned `atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db)` and then `atlas pack failed` — so **both builders launched without their ATLAS context section**. The dispatcher's own warning text acknowledges the contention, but the claim-write race has no guard at all.
+
+**Recovery performed:** ORCH restored TASK-043's claim fields by hand (commit `84ec404`) after cross-checking the dispatch log ("claimed TASK-043 for GB") against the PLAN state.
+
+**Recommend, in order of preference:**
+1. **Serialize the claim critical section** — a lock file (e.g. `.devteam/plan.lock` with retry/backoff) around read-PLAN → write-claim → commit, shared by every SV/control writer. The window is seconds; contention is rare but the cost is a silently wrong plan.
+2. At minimum, make the claim commit **verify its own diff**: after committing, re-read the block it claimed and fail loudly if the Status/Branch it wrote is absent — turning a silent clobber into a visible dispatch failure.
+3. Operationally until fixed: **stagger concurrent dispatches by ~30s** (documented here as the project's mitigation) so the claim windows cannot overlap.
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
@@ -134,4 +147,4 @@ These are project-level customizations we made to `CLAUDE.md` in response to rea
 
 ## Summary for forwarding
 
-Eight source-confirmed pack-code defects (items 1–8), two test-scaffolding defects found live in a resync (items 11–12, both traced to source before reporting so neither is a false positive), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
+Eight source-confirmed pack-code defects (items 1–8), two test-scaffolding defects found live in a resync (items 11–12, both traced to source before reporting so neither is a false positive), one live concurrency defect in the dispatch claim path (item 16, observed clobbering a claim commit on 2026-08-18), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
