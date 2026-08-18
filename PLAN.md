@@ -799,7 +799,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-040
 **Title:** OIK-041 CRITICAL-1 — replay cache must be keyed on the ACTION, not just the principal ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-007-replay-window-semantics.md §3a (AMENDMENT - read this first, it is the corrected spec); docs/reviews/OIK-041-harness-factory-fable.md CRITICAL-1; docs/decisions/ADR-001-broker-enforcement-point.md R2/CAN-08
@@ -819,7 +819,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-18T12:58:22Z] [SV:GB] Replay cache now keys on tenant/role/toolUseId/toolName + @oikonomos/shared actionDigest({toolName,input,destination}); T1→T3 and payload-swap regressions added and mutation-proven.
 **Artifacts:** packages/broker/src/index.ts, packages/broker/test/pretooluse.test.ts, dossiers/TASK-040.md
 **Test_Evidence:** pnpm --filter @oikonomos/broker test 28/28; identity-only key mutation: 2 fail (T3 reuse allowed, payload not recomputed) then restore 28/28; pnpm lint exit 0; pnpm canaries 14 pass/2 skip (CAN-08 green); pnpm -r test exit 0 after local gitignored db dist rebuild (stale dist lacked getRun/startRun; not committed).
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED (ORCH opus adversarial, 2026-08-18T13:20Z; protected, author GB=grok / reviewer ORCH-opus, different-model holds). **THE TIER-ESCALATION BYPASS IS CLOSED, VERIFIED BY THE EXACT MUTATION THAT WOULD RE-OPEN IT.** The key is now `tenantId\0roleId\0toolUseId\0toolName\0actionDigest({toolName,input,destination})` using the single @oikonomos/shared implementation (N10 - no second digest), with an inline comment citing ADR-007 §3a. **DECISIVE PROOF: reverting the key to identity-only turns THREE regression tests RED**, and they are named for exactly the bypasses the Fable probe found - 'does not replay a T1 allow when the same toolUseId is reused for a T3 tool', 'does not replay an allow when the same toolUseId is reused with a mutated payload', and 'keys replay on @oikonomos/shared actionDigest, not a local hash (N10)'. **CAN-08 IS NOT WEAKENED** - it still passes, because L1 and L3 gate the same invocation and therefore share toolName/input/destination, so the legitimate pair still resolves to one key and one audit event; only a DIFFERENT action reusing a toolUseId now misses the cache and is recomputed, which ADR-007 §2.3 already establishes as safe. Broker 28/28 (was 25 - three new regression tests), canaries green, master green on the full recursive suite, territory clean (3 files), no PLAN.md edit. Merged --no-ff [AUTOPILOT].
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-18T12:58:22Z
