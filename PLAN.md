@@ -1406,7 +1406,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-045
 **Title:** OIK-049 — Tool enumeration + capability auto-mapping; unmapped ⇒ deny proven
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered toolName ⇒ deny); docs/decisions/ADR-001-broker-enforcement-point.md
@@ -1420,15 +1420,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Zero-tool enumeration fails as unobservable (ADR-005)
 - [ ] MUTATION-PROVEN: making the check treat unmapped tools as pass turns a test red
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-045-gb
+**Started_At:** 2026-08-18T17:20:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T17:20:30Z
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
