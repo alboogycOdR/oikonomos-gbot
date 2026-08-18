@@ -8,7 +8,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "run": "node --experimental-strip-types src/cli.ts"
   },
   "dependencies": {
     "@oikonomos/connectors": "workspace:*",

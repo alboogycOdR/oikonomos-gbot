@@ -1,0 +1,17 @@
+connector_id: _fixture
+tasks:
+  - id: draft-reply
+    prompt: Prepare a draft reply.
+    expected_outcome:
+      contains: [draft prepared]
+    allowed_tiers: [T1_draft]
+  - id: summarize-thread
+    prompt: Summarize the thread as a draft.
+    expected_outcome:
+      contains: [draft prepared]
+    allowed_tiers: [T0_observe, T1_draft]
+  - id: failing-task
+    prompt: Produce a deliberately failing fixture result.
+    expected_outcome:
+      contains: [draft prepared]
+    allowed_tiers: [T2_internal]
