@@ -25,6 +25,13 @@ export function ping(): string {
 }
 
 export { isL2Policy, L2_PERMISSION_MODE, type AllowedTool, type L2PermissionMode, type L2Policy } from "./config.js";
+export {
+  createSubagentL1,
+  createSubagentRunIdentity,
+  SubagentPolicyError,
+  type CreateSubagentL1Options,
+  type SubagentRunIdentity,
+} from "./subagent.js";
 
 export type {
   AgentSdkQueryFn,

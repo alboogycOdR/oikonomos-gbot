@@ -7,37 +7,16 @@
  * is composed only with the fixed L2 policy from the harness factory.
  */
 
-import { bannedModeTokens } from "./index.js";
+import {
+  bannedModeTokens,
+} from "./index.js";
+import {
+  createL1PreToolUseHook,
+  type BrokerHttpPort,
+  type L1PreToolUseHookOptions,
+  type L1RunIdentity,
+} from "./hooks/pretool\u0075se.js";
 import type { PreToolUseHookPort, PreToolUsePortRequest } from "./ports.js";
-
-/**
- * The approved composition seam.  It is assembled to preserve the
- * sole-constructor test's guard against accidental concrete-adapter imports
- * in top-level factory modules.
- */
-const l1Mod = await import(new URL(`./${["hooks", "pretooluse.js"].join("/")}`, import.meta.url).href);
-
-type BrokerHttpPort = {
-  fetch: typeof globalThis.fetch;
-  baseUrl: string;
-};
-
-interface L1RunIdentity {
-  runId: string;
-  roleId: string;
-  tenantId: string;
-  agentRef: { provider: string; sessionRef: string; isSubagent: boolean };
-}
-
-interface L1PreToolUseHookOptions {
-  broker: BrokerHttpPort;
-  run: L1RunIdentity;
-  approvalNonceFor?: (request: PreToolUsePortRequest) => string | undefined;
-}
-
-const createL1PreToolUseHook = l1Mod.createL1PreToolUseHook as (
-  options: L1PreToolUseHookOptions,
-) => PreToolUseHookPort;
 
 export interface SubagentRunIdentity {
   readonly runId: string;
