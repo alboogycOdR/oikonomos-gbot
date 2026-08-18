@@ -1,7 +1,22 @@
 # OIK-041 — Fable adversarial review: harness-factory + hooks (Epic E4)
 
 **Date:** 2026-08-18 · **Reviewer:** ORCH on Claude Opus · **Scope:** E4 agent runtime & harness (TASK-028/029/030/031/032/033/034/035/036/039)
-**Verdict:** **NOT SIGNED OFF.** One CRITICAL and three HIGH findings must close first. **G-GOV does not open on this review.**
+**Verdict (2026-08-18, amended):** ✅ **SIGNED OFF.** All four blocking findings closed and independently re-verified by mutation. **G-GOV is OPEN.**
+
+> **Original verdict, retained for the record:** *NOT SIGNED OFF — one CRITICAL and three HIGH findings must close first. G-GOV does not open on this review.*
+
+### Closure record
+
+| Finding | Closed by | Verified how |
+|---|---|---|
+| **CRITICAL-1** replay cache keyed by identity, not action | TASK-040 | Key now `tenant\0role\0toolUseId\0toolName\0actionDigest(...)` per ADR-007 §3a. Reverting to identity-only turns **three** regression tests red — T1→T3 escalation, payload mutation, digest provenance. CAN-08 unaffected (L1/L3 share the action). |
+| **HIGH-1** `composeHarness` unreachable | TASK-041 | Explicit `./compose` subpath export with types mapping; imported by package name, not relative path. |
+| **HIGH-3** `approval_pending` never parks (R3c) | TASK-041 | `PARK_REASONS` is a *superset* of `FAIL_CLOSED_REASONS`, so an approval wait parks without being reclassified as a fail-closed error. Removing it turns the R3c test red. |
+| **HIGH-2** no production caller | TASK-042 | `services/worker.executeTaskRun` runs through `composeHarness`. ADR-005 liveness keys on a **broker decision audit event**; ORCH rewrote the worker to bypass `composeHarness` and the assertion turned **red**. |
+
+MEDIUM and LOW findings remain open and tracked; none gate G-GOV. Still open from §6: the ADR-007 never-settling replay entry (no time sweep) and the N10 end-to-end proof outside the canaries (MEDIUM-5, tied to `DATABASE_URL` on the CI canaries job).
+
+**Baseline at sign-off:** `pnpm -r test` exit 0; `pnpm canaries` 15 passed / 2 skipped (up from 14 — the liveness case joined the suite); lint and banned-modes clean.
 
 ---
 
