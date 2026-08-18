@@ -21,6 +21,11 @@ export {
   type ScanManifestsResult,
 } from "./manifest/scan.js";
 export { parseManifestsDir, runValidateCli, type CliIo } from "./manifest/cli.js";
+export {
+  deregisterConnector,
+  InvalidConnectorManifestError,
+  registerConnector,
+} from "./registration/index.js";
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
