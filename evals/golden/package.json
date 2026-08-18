@@ -1,27 +1,18 @@
 {
-  "name": "@oikonomos/connectors",
+  "name": "@oikonomos/evals-golden",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@oikonomos/db": "workspace:*",
+    "@oikonomos/connectors": "workspace:*",
+    "@oikonomos/harness-factory": "workspace:*",
     "@oikonomos/shared": "workspace:*",
     "yaml": "^2.8.0",
     "zod": "^3.25.0"
