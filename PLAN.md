@@ -1428,7 +1428,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-051; Gap Closure §G1 (3–5 golden tasks per connector, ≥90%, draft-only mode); WBS §4 G-CONN; Directive §4 N9 (all harness invocations via packages/harness-factory)
@@ -1445,13 +1445,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-046-cx
 **Started_At:** 2026-08-18T14:46:07Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-18T14:55:51Z] [SV:CX] Implemented the golden connector eval harness with composeHarness-only execution, typed suite validation, draft-only tiers, liveness checks, fixture suite, JSON-report CLI, and dossier evidence.
+**Artifacts:** evals/golden/src/index.ts, evals/golden/src/cli.ts, evals/golden/suites/_fixture/suite.yaml, evals/golden/test/runner.test.ts, evals/golden/package.json, dossiers/TASK-046.md
+**Test_Evidence:** pnpm --filter @oikonomos/evals-golden test (4/4 pass); pnpm --filter @oikonomos/evals-golden typecheck; pnpm -r test; pnpm lint; pnpm canaries all exit 0. CLI smoke exits 0 with pass_rate 1 and harness_invocations 3.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T14:46:07Z
+**Updated_At:** 2026-08-18T14:55:51Z
 
 ### TASK-047
 **Title:** OIK-050 — Scope-minimisation review checklist + per-connector onboarding records (ORCH-executed)
