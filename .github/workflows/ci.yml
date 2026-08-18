@@ -48,6 +48,46 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
+  canaries:
+    # ADR-001 requires CAN-01..CAN-08 to be CI-BLOCKING — this job failing must
+    # fail the build. CAN-02 (a bare-name allowedTools entry for a Tier-3 tool
+    # must STILL be denied by L1) is the regression test against the original
+    # architecture flaw; directive §6 calls it the most important test here.
+    # Postgres is provided so CAN-06 (replay a consumed nonce) and CAN-07
+    # (payload mutation invalidates) actually RUN: they are DB-gated on
+    # DATABASE_URL and, without it, skip — which would silently leave 2 of the
+    # 8 canaries unproven (found in review, TASK-035 rework 2026-08-18).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: oikonomos
+          POSTGRES_PASSWORD: oikonomos
+          POSTGRES_DB: oikonomos_canaries
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oikonomos -d oikonomos_canaries"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Apply schema (approvals FKs the canaries seed against)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/postgres/migrations/001_schema_v1.up.sql
+        env:
+          DATABASE_URL: postgresql://oikonomos:oikonomos@localhost:5432/oikonomos_canaries
+      - name: CAN-01..CAN-08 (CI-blocking)
+        run: pnpm canaries
+        env:
+          DATABASE_URL: postgresql://oikonomos:oikonomos@localhost:5432/oikonomos_canaries
+
   build:
     runs-on: ubuntu-latest
     steps:
