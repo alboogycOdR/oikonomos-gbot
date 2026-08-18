@@ -1377,7 +1377,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4, §4.2; docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 (N9 lint: raw SQL only in packages/db)
@@ -1394,13 +1394,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test` (with DATABASE_URL set for the db legs), `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-044-cx
 **Started_At:** 2026-08-18T15:28:30Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-18T15:33:18Z] [SV:CX] Implementation committed as 1f41ba7; all unit, workspace, lint, canary, and mutation checks pass. Required live DB integration remains unrun.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: DATABASE_URL is unset. The only discovered pg16 containers are pre-existing shared infrastructure; TASK-044 reversal integration deletes rows, which protocol forbids without explicit authority.
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T15:28:30Z
+**Updated_At:** 2026-08-18T15:33:18Z
 
 ### TASK-045
 **Title:** OIK-049 — Tool enumeration + capability auto-mapping; unmapped ⇒ deny proven
