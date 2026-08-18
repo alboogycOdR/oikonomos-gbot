@@ -854,7 +854,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-042
 **Title:** OIK-041 HIGH-2 — wire the E4 enforcement chain into a production caller + ADR-005 liveness ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-2; docs/decisions/ADR-005-control-liveness.md §2; docs/decisions/ADR-001-broker-enforcement-point.md (P1)
@@ -867,15 +867,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] An ADR-005 §2 liveness assertion fails when the enforcement chain is inert, keyed on an audit event the broker emits by deciding a worker-driven call - not on config presence (ADR-005 §2)
 - [ ] MUTATION-PROVEN: making the worker bypass composeHarness turns the liveness assertion RED
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-042-gb
+**Started_At:** 2026-08-18T13:29:32Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T12:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T13:29:32Z
 
 ### TASK-027
 **Title:** Close the sandbox port band at the host (DOCKER-USER) ⛔ DEFERRED — do not dispatch
