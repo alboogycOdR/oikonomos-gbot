@@ -47,6 +47,11 @@ jobs:
       # has no dist/, so the test job must build before it tests (TASK-023).
       - run: pnpm build
       - run: pnpm test
+      # OIK-047: invalid connector manifest rejected in CI (TASK-043 merge wiring).
+      # The CLI exits non-zero on any violation AND when zero manifests are found
+      # (ADR-005 liveness), so this step cannot go green vacuously.
+      - name: Validate connector manifests
+        run: pnpm --filter @oikonomos/connectors validate
 
   canaries:
     # ADR-001 requires CAN-01..CAN-08 to be CI-BLOCKING — this job failing must

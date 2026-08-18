@@ -18,7 +18,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "validate": "tsc && node dist/manifest/cli.js"
   },
   "dependencies": {
     "@oikonomos/db": "workspace:*",
