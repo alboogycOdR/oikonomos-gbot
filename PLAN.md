@@ -827,7 +827,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-041
 **Title:** OIK-041 HIGH-1/HIGH-3 — export composeHarness; park the run on approval_pending (R3c) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/reviews/OIK-041-harness-factory-fable.md HIGH-1, HIGH-3; docs/decisions/ADR-001-broker-enforcement-point.md R3
@@ -840,15 +840,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] MUTATION-PROVEN: removing approval_pending from the park set turns a test RED
 - [ ] Existing fail-closed park behaviour (broker unreachable/timeout/malformed) is unchanged and still tested
 - [ ] `pnpm -r test`, `pnpm canaries`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-041-cx
+**Started_At:** 2026-08-18T13:02:33Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-18T12:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-18T13:02:33Z
 
 ### TASK-042
 **Title:** OIK-041 HIGH-2 — wire the E4 enforcement chain into a production caller + ADR-005 liveness ⚑ protected
