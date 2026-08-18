@@ -1377,7 +1377,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-044
 **Title:** OIK-048 — MCP registration pipeline: manifest → capabilities rows → role_grants, idempotent + reversible
-**Status:** blocked
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4, §4.2; docs/decisions/ADR-008-connector-manifest-location.md; Directive §4 (N9 lint: raw SQL only in packages/db)
@@ -1398,7 +1398,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-18T15:33:18Z] [SV:CX] Implementation committed as 1f41ba7; all unit, workspace, lint, canary, and mutation checks pass. Required live DB integration remains unrun.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH fable-5, 2026-08-18T16:50Z). CX BLOCKED CORRECTLY rather than run destructive integration tests against shared pg containers without authority - the exact right instinct; ORCH resolved as the live-DB verification point (TASK-035/038 pattern): throwaway pgvector:pg16 + schema, db suite 29/29 EXECUTED zero skips (both new capabilities integration legs ran). Full independent pass with DATABASE_URL: recursive suite green, lint 0, canaries 17/17 incl CAN-06/07 executed. BOTH MUTATIONS KILLED: (1) validator-guard bypass -> refuses-invalid-manifest test red (store never called on invalid input); (2) deregister WHERE widened to delete-everything -> capabilities integration suite red (FK from approvals; the byte-identical two-connector assertion also covers it). Beyond spec: FOR UPDATE cross-connector ownership guard - a second connector cannot silently steal an owned capability_id. One transaction per op, no migrations, barrel append-only, territory clean. Merged --no-ff (f509b54), branch deleted. UNLOCKS TASK-045 (GB enumeration) and completes TASK-048's dependency set (043+044+046 all done - Gmail dispatchable to S5).
 **Blocked_Reason:** OWNERSHIP_CONFLICT: DATABASE_URL is unset. The only discovered pg16 containers are pre-existing shared infrastructure; TASK-044 reversal integration deletes rows, which protocol forbids without explicit authority.
 **Updated_By:** SV
 **Updated_At:** 2026-08-18T15:33:18Z
