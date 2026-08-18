@@ -10,6 +10,13 @@ export {
 } from "./seedInboxTriage.js";
 export { riskTiers, type Capability, type RiskTier, type RoleGrant } from "./types.js";
 export {
+  createConnectorRegistrationStore,
+  type ConnectorCapabilityRow,
+  type ConnectorRegistrationRows,
+  type ConnectorRegistrationStore,
+  type ConnectorRoleGrantRow,
+} from "./capabilities.js";
+export {
   insertAuditEvent,
   type AuditEvent,
   type NewAuditEvent,
