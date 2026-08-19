@@ -1500,7 +1500,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-048-s5
 **Started_At:** 2026-08-18T17:20:43Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-19T04:43:33Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-048-2026-08-18T19-11-02Z.log
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
