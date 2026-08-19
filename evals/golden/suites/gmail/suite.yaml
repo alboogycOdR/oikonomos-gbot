@@ -1,0 +1,22 @@
+connector_id: gmail
+tasks:
+  - id: list-unread
+    prompt: List the unread messages in the inbox and prepare a triage summary of what needs attention.
+    expected_outcome:
+      contains: [triage summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: summarize-thread
+    prompt: Summarize the most recent email thread with the vendor.
+    expected_outcome:
+      contains: [thread summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: draft-reply
+    prompt: Draft a reply confirming receipt of the vendor's invoice.
+    expected_outcome:
+      contains: [draft prepared]
+    allowed_tiers: [T1_draft]
+  - id: draft-followup
+    prompt: Draft a polite follow-up requesting a status update on the open support ticket.
+    expected_outcome:
+      contains: [draft prepared]
+    allowed_tiers: [T1_draft]
