@@ -26,6 +26,16 @@ export {
   InvalidConnectorManifestError,
   registerConnector,
 } from "./registration/index.js";
+export {
+  enumerateTools,
+  serializeEnumerationReport,
+  UNOBSERVABLE_ZERO_TOOLS,
+  type EnumerationReport,
+  type EnumerateToolsOptions,
+  type MappedTool,
+  type StaleTool,
+  type ToolEnumerator,
+} from "./enumeration/index.js";
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
