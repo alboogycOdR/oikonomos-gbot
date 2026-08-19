@@ -4,9 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-// Public policy API (Handover §4.2). package.json is outside Owned_Paths so
-// this is a source import of packages/policy/src/index.ts, not a new workspace dep.
-import { resolveCapabilityTier } from "../../policy/src/index.js";
+import { resolveCapabilityTier } from "@oikonomos/policy";
 import {
   enumerateTools,
   serializeEnumerationReport,

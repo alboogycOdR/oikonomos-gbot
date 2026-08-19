@@ -17,5 +17,5 @@ role_grants:
   - role_id: inbox-triage
     max_tier: T1_draft
     constraints: { rate_per_hour: 40, domains: ["*"] }
-evals: { suite: evals/golden/gmail, min_pass_rate: 0.90 }
+evals: { suite: evals/golden/suites/gmail, min_pass_rate: 0.90 }   # ADR-008: suites/<id>; Handover §4.4's path predates the runner convention
 review: { onboarded_by: "", date: "", scope_justification: "" }

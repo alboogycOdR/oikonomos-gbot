@@ -172,6 +172,9 @@ importers:
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../db
+      '@oikonomos/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@oikonomos/shared':
         specifier: workspace:*
         version: link:../shared

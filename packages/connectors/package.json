@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@oikonomos/db": "workspace:*",
+    "@oikonomos/policy": "workspace:*",
     "@oikonomos/shared": "workspace:*",
     "yaml": "^2.8.0",
     "zod": "^3.25.0"
