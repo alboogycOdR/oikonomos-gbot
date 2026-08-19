@@ -1406,7 +1406,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-045
 **Title:** OIK-049 — Tool enumeration + capability auto-mapping; unmapped ⇒ deny proven
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered toolName ⇒ deny); docs/decisions/ADR-001-broker-enforcement-point.md
@@ -1422,13 +1422,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-045-gb
 **Started_At:** 2026-08-18T17:20:30Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-19T04:43:33Z] [SV:GB] OIK-049 enumeration check: mapped/unmapped/stale JSON report; unmapped fails; stale warns; empty listTools is unobservable; Handover ┬º4.2 deny proven via real resolveCapabilityTier; unmapped-as-pass mutation reddened 4 tests.
+**Artifacts:** packages/connectors/src/enumeration/index.ts, packages/connectors/src/index.ts, packages/connectors/test/enumeration.test.ts, dossiers/TASK-045.md
+**Test_Evidence:** pnpm --filter @oikonomos/connectors test ΓÇö 34/34 pass. pnpm -r test exit 0. pnpm lint exit 0. pnpm canaries ΓÇö 15 passed / 2 skipped, exit 0. Mutation ok=true reddened 4 enumeration tests; restored.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-18T17:20:30Z
+**Updated_At:** 2026-08-19T04:43:33Z
 
 ### TASK-046
 **Title:** OIK-051 — Golden-eval harness for connectors (per-connector suites, pass-rate report)
