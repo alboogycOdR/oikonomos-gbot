@@ -1406,7 +1406,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-045
 **Title:** OIK-049 — Tool enumeration + capability auto-mapping; unmapped ⇒ deny proven
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered toolName ⇒ deny); docs/decisions/ADR-001-broker-enforcement-point.md
@@ -1426,7 +1426,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-19T04:43:33Z] [SV:GB] OIK-049 enumeration check: mapped/unmapped/stale JSON report; unmapped fails; stale warns; empty listTools is unobservable; Handover ┬º4.2 deny proven via real resolveCapabilityTier; unmapped-as-pass mutation reddened 4 tests.
 **Artifacts:** packages/connectors/src/enumeration/index.ts, packages/connectors/src/index.ts, packages/connectors/test/enumeration.test.ts, dossiers/TASK-045.md
 **Test_Evidence:** pnpm --filter @oikonomos/connectors test ΓÇö 34/34 pass. pnpm -r test exit 0. pnpm lint exit 0. pnpm canaries ΓÇö 15 passed / 2 skipped, exit 0. Mutation ok=true reddened 4 enumeration tests; restored.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH fable-5, 2026-08-19T05:25Z). Territory clean (4 files), preflight logged verbatim, no PLAN edits. INDEPENDENT RUN: full suite 376/52skip, lint 0, canaries 15/2skip, connectors 34/34 - matches Test_Evidence; BOTH named suites confirmed EXECUTED by name ('enumerateTools (OIK-049)' 7 tests, 'Handover 4.2 unmapped tool => policy deny' 1 test). TWO MUTATIONS KILLED: ok=true reddens 4 tests INCLUDING the policy-deny test (proves real coupling, not a tautology); deleting the zero-tools branch reddens exactly the ADR-005 liveness assertion. The AC's hard requirement is genuinely met - the deny is driven through the REAL resolveCapabilityTier, not a mock. BEYOND SPEC: fail-closed when listTools throws, duplicate tool_name rejection, empty-name rejection, deterministic sorting, injected clock for reproducible reports. ORCH MERGE WIRING: GB used a deep cross-package import (../../policy/src/index.js) because package.json is outside its territory - it FLAGGED this rather than reaching outside, which is exactly right; ORCH added @oikonomos/policy as a workspace dep and switched to the package specifier (113aa2c), connectors 34/34 still green. Merged --no-ff (f273b5e). COMPLETES THE E6 PIPELINE (043/044/045/046 all done).
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-19T04:43:33Z
@@ -1476,7 +1477,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Every merged Wave-1 connector has `docs/connectors/<id>.md` completed per template ("every connector has a written scope justification in docs/connectors/")
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-19T05:25:00Z] [ORCH] docs/connectors/gmail.md written at TASK-048's review - all seven checklist items answered (ownership N5, scopes+justification, tier map with T3 rationale, disabled-until-G-CONN incl. the role_grant cross-product caveat, evals with both positive and negative verification, reversal paths, decision). First Wave-1 record complete; task stays open until Calendar and Drive have theirs.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1486,7 +1488,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-048
 **Title:** OIK-052 — Wave 1: Gmail connector (readonly + compose; send present but disabled)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** WBS OIK-052; Build Handover §4.4 (gmail example is the normative manifest); Gap Closure §G1; WBS §4 G-CONN
@@ -1505,7 +1507,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-19T04:43:33Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-048-2026-08-18T19-11-02Z.log
 **Artifacts:** packages/connectors/manifests/gmail.yaml (unchanged, verified against Handover §4.4), evals/golden/suites/gmail/suite.yaml, dossiers/TASK-048.md
 **Test_Evidence:** AC1 schema: pnpm --filter @oikonomos/connectors validate exit 0 against live gmail.yaml (also covered by TASK-043's 22 tests via byte-identical fixture); connector tests 26/26. AC2 registration: throwaway pgvector:pg16 container (isolated port, torn down after; two pre-existing shared containers untouched), schema applied, registerConnector() run twice - byte-identical row snapshot both times (idempotent); email.send lands enabled:false. AC3 evals: gmail suite (4 draft-only tasks T0/T1) run via evals-golden CLI with fake queryFn - pass_rate:1, harness_invocations:4 (ADR-005 liveness satisfied), exit 0; evals-golden fixture suite still 6/6. AC4: pnpm -r test exit 0 (DB legs skip without DATABASE_URL, live-DB proof is the AC2 throwaway-container run above); pnpm lint exit 0; pnpm canaries 15/2skip exit 0. Full narrative + JSON snapshots in dossiers/TASK-048.md. NOTE: work was committed by ORCH (7b27fa1) after S5 hit its session limit post-evidence-writing; ORCH independent re-verification pending at review.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH fable-5, 2026-08-19T05:25Z). PLATFORM'S FIRST REAL CONNECTOR. Territory clean (2 files, both in Owned_Paths), preflight logged, no PLAN edits. Work was committed BY ORCH (7b27fa1) after S5 hit a session limit post-evidence-writing - recovery, not a violation (TASK-012 precedent); S5's own dossier is the most thorough evidence trail of the session. INDEPENDENTLY VERIFIED, not accepted on claim: gmail suite run through the real OIK-051 runner BOTH DIRECTIONS - positive pass_rate 1 (4/4), harness_invocations 4, exit 0; NEGATIVE (non-matching output) pass_rate 0, passed:false, exit 1, proving the scoring is live and not vacuous. Full suite 368/52skip, lint 0, canaries 15/2skip. Manifest discipline holds: no gmail.send scope, email.send T3_external enabled:false. S5 CORRECTLY REFUSED to 'fix' two out-of-territory inconsistencies and flagged them instead: (a) manifest evals.suite path vs the runner's suites/<id> convention - ORCH resolved in favour of ADR-008 (113aa2c); (b) the role_grant cross-product touching email.send - recorded in the onboarding record as a non-unlock. CAVEAT recorded in docs/connectors/gmail.md 5: eval assertions are substring 'contains' checks, so boilerplate output would pass every task - adequate as a wiring gate, must be strengthened before an eval pass is treated as model-quality evidence. Merged --no-ff (68520b9). **G-CONN FOR GMAIL REMAINS CLOSED** - opening it is Alister's explicit call, preconditions listed in the onboarding record 7.
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-18T17:20:43Z
