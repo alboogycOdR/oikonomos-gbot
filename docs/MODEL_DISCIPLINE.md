@@ -1,5 +1,13 @@
 # Model discipline — decision record & rationale
 
+> **AMENDMENT 2026-08-19 (ORCH): `claude-fable-5` is no longer available on this subscription.** Every fable row moves to `claude-opus-5`. The sections below that argue *why fable for decompose* remain as the historical record of the reasoning, but the operative rule is now:
+>
+> - **Decompose / spec authoring / Owned_Paths design → `claude-opus-5`** (medium effort floor, high for complex waves)
+> - **Review / scope triage → `claude-opus-4-8`** (unchanged; `autopilot.json` already pins this, so the unattended path needed no edit)
+>
+> **The parity argument survives the substitution, but is now weaker and worth stating honestly:** the original design kept three distinct voices — planner (fable), maker (sonnet-5), checker (opus). With fable gone, planner and checker are both Opus-family, so review no longer has a *model-level* independence from the spec author. What still holds: the reviewer is never the same model as the *builder* (GB=grok, CX=codex, S5=sonnet-5), which is the parity the protected-path rule actually mandates (CLAUDE.md "different model than the author"). What is lost: a decomposition error made by Opus-the-planner is now reviewed by Opus-the-checker. Mitigation until a third judgment-grade model is available — treat spec errors as a known blind spot and let builders challenge the spec: TASK-034 and TASK-016 were both cases where a *builder* caught an ORCH decompose error, and that channel matters more now, not less.
+
+
 `CLAUDE.md` carries the **table** (which model for which operation) because ORCH needs it in every session. This file carries the **reasoning**, because rationale is read once when you're deciding whether the rule still makes sense — not on every turn. See "Prefix hygiene" below for why that split matters.
 
 ---

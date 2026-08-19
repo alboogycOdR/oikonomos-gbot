@@ -80,7 +80,7 @@ Full reasoning for each row (and the S5 reviewer-parity decision of 2026-07-19 b
 
 | Operation | Model |
 |---|---|
-| Architectural decisions — `/devteam-decompose`, spec authoring, Owned_Paths design | `claude-fable-5` (medium reasoning effort minimum; high for complex waves) |
+| Architectural decisions — `/devteam-decompose`, spec authoring, Owned_Paths design | `claude-opus-5` (medium reasoning effort minimum; high for complex waves) |
 | `/devteam-review` — full territory diff + spec verification + test run | `claude-opus-4-8` |
 | Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-opus-4-8` |
 | `/devteam-status` — sync scan, health report, PLAN.md read | `claude-sonnet-4-6` |

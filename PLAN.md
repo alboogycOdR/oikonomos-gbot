@@ -1,8 +1,8 @@
 ---
-plan_version: 4.0
-last_updated: 2026-08-19T04:52:00Z
+plan_version: 5.0
+last_updated: 2026-08-19T06:10:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v4.0 - E6 CONNECTOR PIPELINE DECOMPOSED (2026-08-18T14:45Z, ORCH fable-5). E4 signed off, G-GOV open (see v3.x history in git). Nine new tasks TASK-043..051 from WBS E6 + Addendum D: pipeline first (043 manifest schema/validator GB, 044 registration CX, 045 enumeration GB, 046 golden-eval harness CX), then Wave 1 connectors (048 Gmail S5, 049 Calendar TBD, 050 Drive TBD) gated on the pipeline; 047 (OIK-050 records) is ORCH-executed in docs/connectors/ per ADR-008; 051 (OIK-164 Composio spike) backlog. ADR-008 moves machine manifests to packages/connectors/manifests/ (builder firewall vs Handover 4.4 path). ORCH pre-scaffolded evals/golden package + zod/yaml deps so builders never touch the lockfile. FIRST DISPATCH WAVE: TASK-043 (GB) + TASK-046 (CX) - territories disjoint (packages/connectors/** vs evals/golden/**). Per-connector G-CONN still gates Tier-3 enablement: every externally-visible capability ships enabled:false until that connector hits evals >=90%. STOP file from the Aug-17 detached-HEAD incident still present - remove before dispatch. Deferred, do NOT dispatch: TASK-027 (trigger is OIK-043). DISPATCH WAVE 1 (2026-08-18T14:55Z, ORCH): STOP file removed on Alister's instruction; GB launched on TASK-043 (manifest schema/validator), CX on TASK-046 (golden-eval harness), both headless via dispatch.ps1 in background. Territories disjoint. Next eligible on merge: TASK-044 (CX, after 043). STATUS SCAN (2026-08-19T04:52Z, ORCH): manual dispatches landed. TASK-045 (GB) at needs_review (control block drained, real commit 7898467). TASK-048 (S5) recovered from a session-limit interruption - S5 wrote full AC evidence into the dossier but hit 'session limit resets 1am' before committing or emitting a control block; ORCH committed the uncommitted work on its behalf (7b27fa1, files match Owned_Paths) and moved it to needs_review with Test_Evidence backfilled from the dossier narrative, same recovery class as the TASK-012 precedent. Both now queued for review."
+orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist."
 ---
 
 # Project Plan
@@ -1582,3 +1582,233 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-18T14:40:00Z
+
+### TASK-052
+**Title:** Live MCP server mount in composeHarness — tools reach L1 ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** critical
+**Spec_References:** WBS OIK-048 (MCP registration), OIK-033 (sole harness constructor, N9); docs/decisions/ADR-001-broker-enforcement-point.md L1/R1; Directive §4 N1/N3; Build Handover §4.2
+**Owned_Paths:** packages/harness-factory/src/mcp/**, packages/harness-factory/src/compose.ts, packages/harness-factory/test/mcp.test.ts, packages/harness-factory/package.json
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; Directive §3 different-model review). **THIS IS THE FOUNDATIONAL GAP FOR THE VERTICAL SLICE: `ComposeOptions` currently has NO MCP surface at all** — there is no way to mount an MCP server, so no `mcp__*` tool can exist at runtime and every connector to date is manifest-only. Add an `mcpServers` option to `ComposeOptions` that is passed through to the Agent SDK options inside `composeHarness`, and NOWHERE ELSE (N9: composeHarness stays the sole constructor). **The non-negotiable property: every `mcp__*` tool call MUST traverse L1 PreToolUse exactly like a built-in tool** — an MCP tool is not a special case and must not have its own path. Config shape: `mcpServers?: Readonly<Record<string, McpServerConfig>>` where McpServerConfig carries transport (stdio|http), command/url, and args/headers; **secret values arrive as already-resolved strings from the caller — this package never reads env, never logs the config, and any error message must not echo header/url values (N4)**. You own package.json for the SDK's MCP types only — no new runtime dependency without blocking first. Do NOT touch the L1/L2/L3 adapters or hooks/; if the SDK's MCP surface requires a change there, BLOCK with SPEC_AMBIGUITY rather than widening. Test with a FAKE in-process MCP transport (no network, no credentials) — a live server is TASK-054's job.
+**Acceptance_Criteria:**
+- [ ] `mcpServers` accepted by ComposeOptions and reaches the SDK options object; composeHarness remains the only place it is set (N9; OIK-033)
+- [ ] DECISIVE TEST: an `mcp__*` tool call from a mounted fake server reaches L1 handlePreToolUse with the correct toolName, and an L1 deny PREVENTS it — asserted on the deny, not on a log line (ADR-001; N1)
+- [ ] MUTATION-PROVEN: bypassing L1 for `mcp__*` names (early-return before the L1 call) turns that test RED
+- [ ] Fail closed: a broker deny/throw for an MCP tool denies exactly as for a built-in tool (N3), tested
+- [ ] No secret material in error messages or logs — test asserts a thrown/handled config error does not contain a supplied header/url value (N4)
+- [ ] Banned modes untouched; existing 66 harness-factory tests still green with zero assertions removed
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-053
+**Title:** Manifest → MCP server config resolution (secret refs, never literals)
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** WBS OIK-048; Build Handover §4.4 (`mcp_server` block, `url_ref: secret://…`); Directive §4 N4/N5; docs/decisions/ADR-008-connector-manifest-location.md
+**Owned_Paths:** packages/connectors/src/mcp/**, packages/connectors/test/mcp.test.ts
+**Depends_On:** TASK-052
+**Description:** Turn a validated manifest's `mcp_server` block into the `McpServerConfig` shape TASK-052 added. The manifest carries `url_ref: secret://mcp/gmail/url` — a REFERENCE. This task resolves it through an **injected `SecretResolver` port** (`resolve(ref: string): Promise<string>`); the default implementation reads a process env var derived from the ref (e.g. `secret://mcp/gmail/url` → `OIK_SECRET_MCP_GMAIL_URL`) and **throws a named error naming the REF, never the value, when unset**. No secret is ever returned in a report, log line, thrown message, or test fixture (N4) — assert this. A manifest whose `url_ref` is a literal URL is already rejected by TASK-043's validator; do not duplicate that check, but DO fail closed if a resolved value is empty. Also carry `account_ownership` forward as an assertion: refuse to build a config for a manifest whose ownership is not `basileia` (N5, defence in depth even though the validator already enforces it).
+**Acceptance_Criteria:**
+- [ ] `mcpConfigFromManifest(manifest, {resolve})` returns the McpServerConfig shape TASK-052 consumes (Handover §4.4)
+- [ ] Secret refs resolve via the injected port; unset secret throws naming the REF and NOT the value, tested (N4)
+- [ ] Test asserts no resolved secret value appears in any error message or returned report (N4)
+- [ ] Non-basileia ownership refuses config construction (N5), tested
+- [ ] MUTATION-PROVEN: making the unset-secret path return an empty config instead of throwing turns a test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-054
+**Title:** Live-server enumeration + allowedTools derivation from the manifest map
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered ⇒ deny); ADR-001 L2 (explicit allowedTools, no bare names); docs/decisions/ADR-002-permission-bypass-ban-scope.md
+**Owned_Paths:** packages/connectors/src/enumeration/**, packages/connectors/test/enumeration.test.ts, packages/connectors/test/allowedTools.test.ts
+**Depends_On:** TASK-053
+**Description:** Two halves. (1) Wire TASK-045's `enumerateTools` to a REAL `listTools()` backed by a mounted MCP server, so the enumeration check can run against a live surface rather than a fake — the port already exists, supply a real adapter. (2) NEW and load-bearing for the demo: `allowedToolsFor(manifest, report)` derives the L2 allowlist from the mapped tools — **fully-qualified `mcp__<server>__<tool>` names ONLY, never a bare name or wildcard** (ADR-001 L2; the CAN-02 flaw). A tool that is unmapped, or whose capability is `enabled: false`, MUST NOT appear in the allowlist — that is how `email.send` stays unreachable while Gmail's G-CONN is closed. Note the layering explicitly in your work log: the allowlist is defence in depth, NOT the enforcement point — L1 still decides (ADR-001), and a test must prove that a tool omitted from the allowlist is ALSO denied by L1 if it somehow gets called. **This task needs real MCP credentials to demonstrate the live half; if `OIK_SECRET_MCP_GMAIL_URL` (or equivalent) is not provisioned, complete the derivation half, then BLOCK with `MISSING_DEPENDENCY: live MCP credentials not provisioned` rather than faking a live run.**
+**Acceptance_Criteria:**
+- [ ] Real listTools adapter backed by a mounted MCP server; enumeration report generated from it (WBS OIK-049)
+- [ ] `allowedToolsFor` emits only fully-qualified mcp__ names — bare names and wildcards rejected by construction, tested (ADR-001 L2)
+- [ ] `enabled: false` capabilities (e.g. `email.send`) are ABSENT from the derived allowlist, tested by name (WBS §4 G-CONN)
+- [ ] Unmapped tool omitted from the allowlist AND independently denied at L1 — proves allowlist is not the enforcement point (Handover §4.2; ADR-001)
+- [ ] MUTATION-PROVEN: allowing `enabled: false` capabilities into the allowlist turns the `email.send` test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-055
+**Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** WBS OIK-038 (run lifecycle), OIK-125 (inbox-triage real sessions); Directive §5 DoD (Functional/Governed/Evidenced); ADR-005 liveness
+**Owned_Paths:** services/worker/src/**, services/worker/test/**
+**Depends_On:** TASK-054
+**Description:** **INTEGRATION TASK — `services/worker` is the shared seam between the runtime lane and the surface lane, so it has exactly one owner (you) and is sequenced after both of your prior tasks. CX must never touch it.** Extend `executeTaskRun` so a run can mount a connector's MCP server and use the derived allowlist: accept an optional connector context (manifest + resolved MCP config + derived allowedTools) and pass it through `composeHarness`. Then prove the whole chain: a triage run that lists messages (T0) and drafts a reply (T1) completes, while an attempt to send (T3, `enabled: false`) is DENIED and audited. Keep the existing ADR-005 liveness assertion intact (it keys on a broker decision audit event) and extend it to cover the MCP path — the control must die if MCP tool calls stop reaching the broker. Use an injected fake queryFn and fake MCP transport for the CI-green test; if live credentials are provisioned, ALSO record one real run in Test_Evidence. Do not modify packages/** — if the runtime lane left a gap, BLOCK rather than patch it from here.
+**Acceptance_Criteria:**
+- [ ] `executeTaskRun` accepts connector context and mounts the MCP server through composeHarness only (N9; OIK-033)
+- [ ] END-TO-END TEST: T0 list + T1 draft succeed through the governed path; T3 send is DENIED with an audit event, in one run (Directive §5 Governed; WBS §4 G-CONN)
+- [ ] Run lifecycle intact: session_ref persisted, run reaches a terminal state (OIK-038)
+- [ ] ADR-005 liveness extended to the MCP path and MUTATION-PROVEN: bypassing composeHarness for MCP calls turns the liveness assertion RED
+- [ ] Evidence: the run's audit trail answers what data, what actions, what was denied (Directive §5 Evidenced)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-056
+**Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** WBS OIK-084 ("OpenAPI spec published; all surfaces consume this, not the DB"); Build Handover §4.1; Directive §4 N4
+**Owned_Paths:** services/control-api/src/**, services/control-api/test/**, services/control-api/package.json
+**Depends_On:** —
+**Description:** `services/control-api` is currently a 13-line stub. Build the Fastify service that every surface consumes — **no surface talks to the DB directly (OIK-084)**. Endpoints: `POST /tasks` (create), `GET /runs`, `GET /runs/:id`, `GET /approvals` (pending), `POST /approvals/:nonce/decide` (approve|reject), `GET /runs/:id/evidence`. All persistence via `@oikonomos/db` and `@oikonomos/approvals` public APIs — **no raw SQL here (N9-style lint)**. The approval decision endpoint MUST delegate to the existing `packages/approvals` verify+consume path — **do not reimplement nonce handling; approvals are nonce-bound, single-use, one atomic SQL consume (N8), and that lives in packages/approvals**. Publish an OpenAPI document (served at `/openapi.json`) — it is the contract the Telegram lane codes against. No credentials in logs; request logging must redact bodies on the approvals routes (N4). Tests: route-level with injected fakes for the db/approvals ports, plus DATABASE_URL-gated integration legs that RUN locally (a skipping DB test is not evidence — TASK-035/044 precedent; ORCH re-runs live at review). Deps: Fastify is not yet installed — you own this package.json, so add it there ONLY; never touch the root package.json or the lockfile beyond what pnpm writes for your package.
+**Acceptance_Criteria:**
+- [ ] All six endpoints implemented and route-tested; OpenAPI document served and includes every route (OIK-084 "OpenAPI spec published")
+- [ ] Zero raw SQL in this service; all persistence through @oikonomos/db and @oikonomos/approvals public APIs (N9 spirit; OIK-084 "not the DB")
+- [ ] Approval decide route delegates to packages/approvals verify+consume — MUTATION-PROVEN: a local reimplementation of the nonce check turns a test RED (N8)
+- [ ] Double-decide on one nonce: exactly one succeeds, second is rejected, tested (N8)
+- [ ] Approvals route bodies redacted in logs; test asserts no nonce appears in emitted log output (N4)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-057
+**Title:** Telegram surface — task intake + run status commands (OIK-085)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** WBS OIK-085 (`/task`, `/runs`, `/approvals` functional); OIK-084 (surfaces consume control-api, not the DB)
+**Owned_Paths:** services/gateway-telegram/src/**, services/gateway-telegram/test/commands.test.ts
+**Depends_On:** TASK-056
+**Description:** `services/gateway-telegram/src` is a 13-line stub, but the package already carries salvaged utilities from the old bot (`test/formatting.test.ts`, `permissions.test.ts`, `session.store.test.ts`, `streamRenderer.test.ts` and their sources under `test/src`) — **read them first and reuse rather than rewrite**; note in your work log what you reused. Implement `/task <description>` (creates a task via control-api), `/runs` (lists recent runs + status), `/approvals` (lists pending). **Every call goes to control-api over HTTP — this service must not import @oikonomos/db at all (OIK-084); assert that with a test that fails if a db import appears.** The Telegram client is injected as a port so tests need no bot token and no network (N4 — no credentials in fixtures). Unknown/unauthorized chat IDs are refused (reuse the salvaged permissions module).
+**Acceptance_Criteria:**
+- [ ] `/task`, `/runs`, `/approvals` functional against an injected control-api client (OIK-085)
+- [ ] No `@oikonomos/db` import anywhere in this service — asserted by a test that scans the built surface (OIK-084 "not the DB")
+- [ ] Unauthorized chat ID refused, tested
+- [ ] No bot token or credential in any fixture; client injected (N4)
+- [ ] Salvaged utilities reused where applicable, with the reuse recorded in the work log
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-058
+**Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** services/gateway-telegram/src/approvals/**, services/gateway-telegram/test/approvals.test.ts
+**Depends_On:** TASK-057
+**Description:** **This is the demo's centrepiece: a Tier-3 action parks, your phone shows what the agent wants to do, you tap, and only then does it proceed.** Render a pending approval as a Telegram message with an inline keyboard: Approve / Edit / Reject. The rendered text MUST come from the approval's stored render (ADR-004 render provenance) — **do not re-render from raw payload in this service; a surface that composes its own description can show the operator something different from what the digest binds**. Approve/Reject post the decision to control-api's decide endpoint (TASK-056), which owns nonce consumption — **this service never consumes a nonce itself (N8)**. Edit must invalidate the prior approval and re-enter the cycle (OIK-086; OIK-023 digest mismatch ⇒ `invalidated`, new approval required). Callback data must not carry the raw nonce where a forwarded message would leak it — carry an opaque handle and resolve server-side; state your chosen mechanism in the work log. Tests use an injected Telegram port and an injected control-api client; no network, no token.
+**Acceptance_Criteria:**
+- [ ] Approve / Edit / Reject keyboard rendered from the approval's STORED render, not re-composed locally (ADR-004), tested
+- [ ] Approve and Reject delegate to control-api decide; this service contains no nonce consumption logic — MUTATION-PROVEN: adding a local consume turns a test RED (N8)
+- [ ] Edit invalidates the prior approval and issues a new one; the old nonce is unusable afterwards, tested (OIK-086; OIK-023)
+- [ ] Double-tap Approve on the same message results in exactly one consumed approval (N8), tested
+- [ ] Raw nonce not embedded in forwardable callback payloads; mechanism documented in the work log (N4)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-059
+**Title:** Telegram evidence delivery with the approval request (OIK-087)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** WBS OIK-087 ("Screenshots/diffs delivered with the approval request"); Directive §5 DoD Evidenced; Directive §4 N4
+**Owned_Paths:** services/gateway-telegram/src/evidence/**, services/gateway-telegram/test/evidence.test.ts
+**Depends_On:** TASK-058
+**Description:** Attach the evidence an operator needs to decide: for an email draft, the actual draft body and recipient; generally, the artifact URIs the PostToolUse hook recorded. Fetch via control-api's evidence endpoint (TASK-056) — never from the DB or the filesystem directly (OIK-084). Truncate long bodies for Telegram's limits with an explicit "truncated" marker — **never silently**; a silently truncated draft means the operator approves something they did not fully see, which defeats the purpose of the approval. Redact anything matching the audit redaction patterns before sending (N4) — reuse `packages/audit`'s redaction rather than writing a second one.
+**Acceptance_Criteria:**
+- [ ] Evidence fetched from control-api and rendered with the approval request (OIK-087)
+- [ ] Long content truncated with a visible marker, never silently — tested (Directive §5 Evidenced)
+- [ ] Redaction reuses packages/audit's implementation; no second redaction implementation (N4), asserted
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-060
+**Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Directive §5 DoD (Functional/Governed/Evidenced/Evaluated); WBS OIK-122 (runbooks); OIK-125
+**Owned_Paths:** docs/runbooks/**
+**Depends_On:** TASK-055, TASK-059
+**Description:** ORCH-executed — `docs/**` is outside builder territory. Once both lanes land, wire and demonstrate the full loop on real infrastructure: control-api up, Telegram gateway connected, worker running a governed inbox-triage against the live Gmail MCP server. Record the runbook: how to start it, how to trigger a run, what the approval looks like on the phone, how to stop/reverse. Capture the evidence trail for one complete run including a denied Tier-3 attempt. **This task is the demo Alister asked for; it closes only when the loop has actually been run end-to-end, not when the code exists** — demonstrate-not-assert, per the TASK-038 precedent. Assigned_To stays TBD so no builder claims it.
+**Acceptance_Criteria:**
+- [ ] Full loop demonstrated live: task in via Telegram → governed run → Tier-3 parks for approval → approve on phone → action completes → evidence retrievable (Directive §5 Functional/Governed/Evidenced)
+- [ ] A denied Tier-3 attempt captured in the same session's audit trail
+- [ ] Runbook records start, trigger, approve, stop/reverse (OIK-122)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-19T06:10:00Z
