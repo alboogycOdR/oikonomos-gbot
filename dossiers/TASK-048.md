@@ -1,14 +1,63 @@
-# TASK-048 — OIK-052 Wave 1: Gmail connector
+# TASK-048 dossier
 
 ## Brief
-First real connector through the pipeline: Gmail manifest (readonly + compose; `email.send` present at T3_external but `enabled: false` until Gmail's G-CONN) plus a 3–5 task golden suite scoring ≥90% via the OIK-051 runner.
-
-## Spec pointers
-- Build Handover §4.4 — the gmail example IS this manifest; follow it (no gmail.send scope in Wave 1).
-- WBS OIK-052 acceptance: "Evals ≥90%; send capability present but `enabled: false`".
-- N4/N5: `account_ownership: basileia`; `url_ref` is a secret reference; zero credentials in manifest or fixtures.
-
-## Intended approach
-Author `packages/connectors/manifests/gmail.yaml`; build `evals/golden/suites/gmail/` (triage unread, summarise thread, draft reply — draft-only tiers). Run TASK-043 validator + TASK-044 registration against local pg (record both), then the TASK-046 runner with the fake-query seam. ORCH writes `docs/connectors/gmail.md` at review (TASK-047) and rules on G-CONN.
+OIK-052 — Wave 1: Gmail connector (readonly + compose; send present but disabled). Author/verify the Gmail manifest (Handover §4.4 is the normative example), run the TASK-043 validator and the TASK-044 registration pipeline against a local DB, and build a golden eval suite (3–5 tasks, draft-only Tiers 0–2, ≥90% via the TASK-046 runner). `control.mode=strict` — no PLAN.md writes; only `Owned_Paths` (`packages/connectors/manifests/gmail.yaml`, `evals/golden/suites/gmail/**`) plus this dossier.
 
 ## Work Log
+
+- [2026-08-18T21:00:00Z] [S5] Session start (fresh dispatch on already-claimed TASK-048; no prior dossier existed). Read AGENTS.md, briefing, PLAN.md (main checkout, via `git show origin/master:PLAN.md`) fresh. Found the worktree stale: still on branch `task/TASK-034-s5` (97 commits behind `origin/master`), with unrelated uncommitted cruft (`dossiers/TASK-012.md` modified, `AUTOPILOT_LOG.md` untracked) left over from a prior confused session — neither ever committed anywhere, both predate this task, both outside my current territory. Confirmed `task/TASK-034-s5`'s HEAD (`597dced`) is an ancestor of `origin/master` (`git merge-base` == HEAD), so nothing of mine was at risk of being lost. `git stash push -u` to preserve that stray cruft without touching/discarding it (stash, not delete — not my call to make), then `git checkout -b task/TASK-048-s5 origin/master` for a clean base. TASK-048 itself was already `Status: claimed` on `origin/master` (by the dispatcher, `Started_At: 2026-08-18T17:20:43Z`) but had never been branched or worked — this is effectively session 1 despite the "resuming" framing in the dispatch prompt.
+- Preflight (`python scripts/preflight_paths.py TASK-048`), verbatim:
+  ```
+  [preflight] TASK-048 Owned_Paths inspected in C:/CLAUDECODE_TOOLSETS/wt-s5-oikonomos
+  [preflight] 2 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   packages/connectors/manifests/gmail.yaml  -> exists, 21 line(s), 921 bytes
+    GLOB   evals/golden/suites/gmail/**  -> matches nothing yet (new territory)
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+- Investigated before writing anything: read TASK-043/044/046's PLAN.md history in full. Key finding — `packages/connectors/manifests/gmail.yaml` **already exists**, authored by TASK-043 (GB) as the literal Handover §4.4 fixture, and TASK-043's own review note says "gmail.yaml now exists as the live fixture - Gmail task narrows to evals + registration run." Diffed it byte-for-byte against Handover §4.4 (`docs/architecture/OIKONOMOS_Build_Handover_Package_v1.0.md` lines 137–159): identical. Confirmed AC1 requirements already hold: `oauth_scopes` excludes `gmail.send`; `email.send` tool has `default_tier: T3_external`, `enabled: false`. **Decision: do not edit the manifest** — Handover §4.4 is explicitly named as the normative content for this manifest, and ADR precedence means I don't get to "fix" it on my own judgment. One known pre-existing inconsistency, flagged for ORCH below rather than silently patched.
+- Also read TASK-046's review history closely (it carries two notes explicitly addressed to TASK-048): (a) "live runs must inject BOTH `pretooluse` and `auditSink`" — not applicable to this task's fake-query dry-run (no live provider/tool calls happen; `runSuite`'s default `denyToolCallsByDefault` broker is never exercised because the queryFn returns plain text, no tool calls); noting for the record that a *live* gmail eval run later must supply both. (b) "`evals.suite` path from the manifest is ignored by `loadSuite` (connectorId convention wins) - document or reconcile" — confirmed this directly: manifest says `evals: { suite: evals/golden/gmail, ... }` (Handover §4.4 verbatim, no `suites/` segment) while `loadSuite` actually resolves `evals/golden/suites/<connector_id>/` (`evals/golden/src/index.ts` `defaultSuitesRoot()` + `resolve(suitesRoot, connectorId)`). Since the manifest text is spec-mandated verbatim and the loader convention is TASK-046's territory (not mine to alter), I did **not** "fix" either side — placed the suite at the real convention path (`evals/golden/suites/gmail/`, matching `_fixture`'s sibling layout) and record the discrepancy here for ORCH's `docs/connectors/gmail.md` write-up at review.
+- **Dependencies confirmed done on `origin/master`:** TASK-043 (`done`, merged), TASK-044 (`done`, merged), TASK-046 (`done`, merged, 2nd-pass approved). No `MISSING_DEPENDENCY` concern.
+- Environment prep: `pnpm install --frozen-lockfile` (clean). `dist/` build artifacts for `@oikonomos/db`, `@oikonomos/harness-factory` were stale/absent relative to their current source (pre-existing gitignored build state in this worktree, unrelated to my changes) — rebuilt both (`pnpm --filter @oikonomos/db build`, `pnpm --filter @oikonomos/harness-factory build`) so `packages/connectors` and `evals/golden` could resolve their workspace deps; these are gitignored `dist/` outputs, not committed, not part of any Owned_Paths.
+- **AC1 — manifest validates.** `packages/connectors` rebuilt + typechecked clean, then ran the real CLI against the real manifests dir:
+  ```
+  $ node packages/connectors/dist/manifest/cli.js --dir packages/connectors/manifests
+  ok: 1 manifest(s)
+  exit=0
+  ```
+  Confirms schema acceptance (incl. `account_ownership: basileia`, tier enum, `url_ref` secret-reference shape, `evals.min_pass_rate >= 0.9`) against the live file, not just the test fixture (which is a byte-identical copy, `packages/connectors/test/fixtures/gmail.handover.yaml`, already exercised by TASK-043's 22 tests — reran `pnpm --filter @oikonomos/connectors test`: 5 files, 26/26 pass).
+- **AC2 — registration run against a local DB, idempotent.** Followed the TASK-034/044/012 pattern: spun up an isolated, throwaway `pgvector/pgvector:pg16` container (`oikonomos-task048-pg`, `127.0.0.1:55510`, **not** the two pre-existing shared containers already running on this host — left those untouched), applied `infra/postgres/migrations/001_schema_v1.up.sql` directly (`psql < migration`, all statements succeeded: extensions, enums, 8 tables, 1 index). Ran `registerConnector(rawGmailYaml, createConnectorRegistrationStore(pool))` from `@oikonomos/connectors`/`@oikonomos/db` **twice in sequence** against this container, via a short Node script kept entirely **outside the repository** (`%TEMP%\task048-registration-run\run.mjs`, resolving the workspace packages by absolute `file://` path to their built `dist/` output rather than writing anything — even transiently — inside `packages/connectors` or `packages/db`, which are outside my `Owned_Paths`). Deleted the script and removed the container (`docker rm -f oikonomos-task048-pg`) immediately after capturing output; the two pre-existing containers (`oikonomos-canary-035-pg`, `tvcp-pg16`) were never touched.
+
+  Run 1 (`SELECT ... WHERE adapter = 'mcp:gmail'`, sorted):
+  ```json
+  {
+    "capabilities": [
+      { "capability_id": "email.create_draft", "description": "MCP tool mcp__gmail__create_draft.", "default_tier": "T1_draft", "adapter": "mcp:gmail", "enabled": true },
+      { "capability_id": "email.list", "description": "MCP tool mcp__gmail__list_messages.", "default_tier": "T0_observe", "adapter": "mcp:gmail", "enabled": true },
+      { "capability_id": "email.send", "description": "MCP tool mcp__gmail__send_message.", "default_tier": "T3_external", "adapter": "mcp:gmail", "enabled": false }
+    ],
+    "roleGrants": [
+      { "role_id": "inbox-triage", "capability_id": "email.create_draft", "max_tier": "T1_draft", "constraints": { "domains": ["*"], "rate_per_hour": 40 } },
+      { "role_id": "inbox-triage", "capability_id": "email.list", "max_tier": "T1_draft", "constraints": { "domains": ["*"], "rate_per_hour": 40 } },
+      { "role_id": "inbox-triage", "capability_id": "email.send", "max_tier": "T1_draft", "constraints": { "domains": ["*"], "rate_per_hour": 40 } }
+    ]
+  }
+  ```
+  Run 2 (immediately re-invoking `registerConnector` with the same raw manifest string): byte-identical JSON snapshot to run 1 (`JSON.stringify(first) === JSON.stringify(second)` → `true`) — idempotent per AC2, matching TASK-044's own "diff full row snapshots, not counts" bar. Note `email.send`'s capability row correctly lands `enabled: false` (per-tool `enabled: false` honoured) while `inbox-triage`'s role grant still cross-products onto it at `max_tier: T1_draft` — that flattening is TASK-044's registration-pipeline design (every role_grant × every tool), out of my territory; the disabled capability flag is what actually gates it at the tier-resolution layer per Handover §4.2, not the grant row.
+- **AC3 — golden eval suite, ≥90% via the OIK-051 runner.** Authored `evals/golden/suites/gmail/suite.yaml` (4 tasks, all within Handover-scoped Wave-1 capabilities and draft-only tiers T0–T1, well inside the T0–T2 draft-only ceiling): `list-unread` (T0_observe, "list unread + triage summary"), `summarize-thread` (T0_observe, "summarize a thread"), `draft-reply` (T1_draft), `draft-followup` (T1_draft) — matches the WBS example set ("list/triage unread, summarise a thread, draft a reply") plus one extra draft task for margin above the 90% floor. Ran it through the actual TASK-046 runner via its public CLI (`evals/golden/src/cli.ts`, unmodified — I own no files under `evals/golden/src` or `evals/golden/test`), with a fake `queryFn` module and a manifest-mirror module, both kept **outside the repo** (`%TEMP%\task048-golden-run\{manifest,query}.mjs`, deleted immediately after) for the same territory reason as the registration script:
+  ```
+  $ pnpm --filter @oikonomos/evals-golden run run gmail <tmp>/manifest.mjs <tmp>/query.mjs
+  {"connector_id":"gmail","tasks":[
+    {"id":"list-unread","pass":true,"assertions":[{"contains":"triage summary prepared","pass":true}],"output":"triage summary prepared"},
+    {"id":"summarize-thread","pass":true,"assertions":[{"contains":"thread summary prepared","pass":true}],"output":"thread summary prepared"},
+    {"id":"draft-reply","pass":true,"assertions":[{"contains":"draft prepared","pass":true}],"output":"draft prepared"},
+    {"id":"draft-followup","pass":true,"assertions":[{"contains":"draft prepared","pass":true}],"output":"draft prepared"}
+  ],"pass_rate":1,"min_pass_rate":0.9,"passed":true,"harness_invocations":4}
+  exit=0
+  ```
+  4/4 tasks pass, `pass_rate: 1` ≥ `min_pass_rate: 0.9` (from the manifest), `harness_invocations: 4` (composeHarness seam genuinely exercised once per task — ADR-005 liveness satisfied, not a stub). **This report is the "one recorded structured dry-run" required by AC3** and the "report artifact" — reproduced here verbatim rather than as a file under `evals/golden/suites/gmail/` because anything dropped in that directory is parsed by `loadSuite` as a task-definition file (every `.yaml`/`.json` in a suite dir is treated as suite content, not as a report sidecar) and would silently corrupt the suite. Also independently exercised by the package's own fixture suite (unrelated, `_fixture`, not gmail) via `pnpm --filter @oikonomos/evals-golden test`: 1 file, 6/6 pass — confirms the runner itself is healthy going into the gmail dry-run.
+- **AC4 — full checks.** `pnpm -r test` (all 17 workspace projects; DB-gated integration legs skip cleanly without `DATABASE_URL`, consistent with every prior task's evidence pattern — the registration DB proof above is the live-DB evidence for *this* task, done via a throwaway container rather than by setting `DATABASE_URL` for the whole recursive run): **exit 0**, no failures anywhere (confirmed via full log + `grep -i "fail"` sweep). `pnpm lint` (root eslint): **exit 0**. `pnpm canaries` (`@oikonomos/evals-harness`): **exit 0**, 11 files / 15 passed / 2 skipped (CAN-01…CAN-09 + workspace + subprocess-gate). Ran per the CLAUDE.md amendment (full recursive suite, not just my own package).
+- Cleanup verified: `git status --short` shows only `evals/golden/suites/gmail/` as new — no stray `dist/`, no leftover temp scripts, no container running (`docker ps` clean of `oikonomos-task048-pg`), the pre-existing stash (`stash@{0}`, unrelated `TASK-012`/`AUTOPILOT_LOG.md` cruft) left untouched in the stash list for whoever's session it actually belongs to.
+- **Carried forward for ORCH (`docs/connectors/gmail.md` record, TASK-047's territory):**
+  1. Manifest's `evals.suite: evals/golden/gmail` (Handover §4.4 verbatim) does not match the actual runner directory convention `evals/golden/suites/<connector_id>/` used by `loadSuite` — pre-existing, flagged by TASK-046's review, not resolved here since fixing either side is outside this task's `Owned_Paths` (the manifest text is spec-mandated; the loader is `evals/golden/src/**`, TASK-046/CX's territory).
+  2. A **live** (non-fake-query) gmail eval run must inject both a real `pretooluse` broker and a real `auditSink` into `runSuite`'s options — the defaults (`denyToolCallsByDefault`, `discardCompletionEvidence`) are draft-eval-safe but not what a governed live run should use, per TASK-046's carried note.
+- Committing manifest (no changes — verified as-is against Handover §4.4) is a no-op; only new file is the golden suite. All 4 acceptance criteria satisfied and evidenced above. Handing off `needs_review`.
