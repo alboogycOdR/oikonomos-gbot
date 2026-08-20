@@ -1690,7 +1690,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 ("OpenAPI spec published; all surfaces consume this, not the DB"); Build Handover §4.1; Directive §4 N4
@@ -1704,8 +1704,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-decide on one nonce: exactly one succeeds, second is rejected, tested (N8)
 - [ ] Approvals route bodies redacted in logs; test asserts no nonce appears in emitted log output (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-056-s5
+**Started_At:** 2026-08-20T14:23:18Z
 **Progress_Notes:**
 - [2026-08-20T14:30:00Z] [ORCH] RE-ASSIGNED CX -> S5 under protocol 7 triage. CX (Codex) hit its provider usage limit at dispatch ('try again at Aug 21st 2026 4:27 PM') and did zero work: no branch, no commit, no real control block. services/control-api is NOT a protected path, so S5 is eligible and the different-model review rule is unaffected (author S5=sonnet-5, reviewer ORCH=opus). **A bogus control block was quarantined, not drained**: dispatch.ps1's extractor scraped the EXAMPLE out of its own prompt (artifacts: ['path/a.dart'] in a TypeScript repo) and would have flipped this task to needs_review with test_evidence '...' on a branch that does not exist - recorded as pack finding #17. Claim state reset to pending so S5 claims cleanly.
 **Artifacts:** —
@@ -1713,7 +1713,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:30:00Z
+**Updated_At:** 2026-08-20T14:23:18Z
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
