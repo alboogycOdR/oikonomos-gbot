@@ -1819,7 +1819,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-061
 **Title:** packages/db — read + CRUD layer control-api needs (tasks, listRuns, pending approvals, audit read)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 (surfaces consume control-api, which consumes these); OIK-014 (typed query layer, no raw SQL outside packages/db); Synthesis Spec §5.1 (schema v1 — `tasks` table already exists)
@@ -1835,13 +1835,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-061-s5
 **Started_At:** 2026-08-20T14:29:25Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-20T14:43:38Z] [SV:S5] createTask/getTask/listTasks (new tasks.ts), listRuns (runs.ts), listPendingApprovals (approvals.ts), getAuditEventsForRun (auditEvents.ts) implemented per spec; barrel exports appended to index.ts. Did not touch packages/approvals (TASK-062 territory). One out-of-territory test (packages/db/test/persistence-surface.test.ts, not in Owned_Paths) needs a one-line allowlist update from ORCH to add listPendingApprovals — it's read-only and doesn't violate the guard's actual intent (blocking status-mutating helpers), but the test is an exact-match pin. Everything else is fully green.
+**Artifacts:** packages/db/src/tasks.ts, packages/db/src/tasks.test.ts, packages/db/src/runs.ts, packages/db/src/runs.test.ts, packages/db/src/approvals.ts, packages/db/src/auditEvents.ts, packages/db/src/index.ts
+**Test_Evidence:** DATABASE_URL against ephemeral pg16 container (created+destroyed by me, infra/postgres/migrations/001_schema_v1.up.sql applied, no shared infra touched). pnpm -r --no-bail test from repo root: packages/db 11 files/45 tests pass, 1 file/1 test fails (pre-existing out-of-territory persistence-surface.test.ts pin, described above) — all TASK-061 new tests green incl. live-DB legs (tasks.ts 5, tasks.test.ts 3 live, runs.ts 6, runs.test.ts 3 live covering listRuns/getAuditEventsForRun/listPendingApprovals, approvals.ts 2, auditEvents.ts 2), plus all pre-existing packages/db tests unchanged and green. packages/connectors has 1 unrelated pre-existing failure (Cannot find package '@oikonomos/policy', workspace-link issue, untouched by this task). Every other package/service green: agent-providers 33, memory 1, policy 21, shared 36, control-api 1, gateway-telegram 48, workspace 1, audit 35, approvals 57, harness-factory 66, broker 28, evals/golden 6, evals/harness 17, services/worker 13. pnpm typecheck (packages/db): clean. pnpm lint (root): clean, 0 errors. pnpm canaries: evals/harness 11 files/17 tests pass. Branch task/TASK-061-s5 committed and pushed to origin.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:29:25Z
+**Updated_At:** 2026-08-20T14:43:38Z
 
 ### TASK-062
 **Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
