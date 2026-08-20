@@ -1,6 +1,6 @@
 ---
-plan_version: 5.0
-last_updated: 2026-08-19T06:10:00Z
+plan_version: 5.1
+last_updated: 2026-08-20T14:40:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist."
 ---
@@ -1690,12 +1690,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 ("OpenAPI spec published; all surfaces consume this, not the DB"); Build Handover §4.1; Directive §4 N4
 **Owned_Paths:** services/control-api/src/**, services/control-api/test/**, services/control-api/package.json
-**Depends_On:** —
+**Depends_On:** TASK-061, TASK-062
 **Description:** `services/control-api` is currently a 13-line stub. Build the Fastify service that every surface consumes — **no surface talks to the DB directly (OIK-084)**. Endpoints: `POST /tasks` (create), `GET /runs`, `GET /runs/:id`, `GET /approvals` (pending), `POST /approvals/:nonce/decide` (approve|reject), `GET /runs/:id/evidence`. All persistence via `@oikonomos/db` and `@oikonomos/approvals` public APIs — **no raw SQL here (N9-style lint)**. The approval decision endpoint MUST delegate to the existing `packages/approvals` verify+consume path — **do not reimplement nonce handling; approvals are nonce-bound, single-use, one atomic SQL consume (N8), and that lives in packages/approvals**. Publish an OpenAPI document (served at `/openapi.json`) — it is the contract the Telegram lane codes against. No credentials in logs; request logging must redact bodies on the approvals routes (N4). Tests: route-level with injected fakes for the db/approvals ports, plus DATABASE_URL-gated integration legs that RUN locally (a skipping DB test is not evidence — TASK-035/044 precedent; ORCH re-runs live at review). Deps: Fastify is not yet installed — you own this package.json, so add it there ONLY; never touch the root package.json or the lockfile beyond what pnpm writes for your package.
 **Acceptance_Criteria:**
 - [ ] All six endpoints implemented and route-tested; OpenAPI document served and includes every route (OIK-084 "OpenAPI spec published")
@@ -1704,16 +1704,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-decide on one nonce: exactly one succeeds, second is rejected, tested (N8)
 - [ ] Approvals route bodies redacted in logs; test asserts no nonce appears in emitted log output (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-056-s5
-**Started_At:** 2026-08-20T14:23:18Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
+- [2026-08-20T14:40:00Z] [ORCH] S5 BLOCKED CORRECTLY AND WAS RIGHT - this was an ORCH DECOMPOSE ERROR, verified independently against the barrels: @oikonomos/db exports no tasks module, no listRuns, no listPendingApprovals and no audit read path; @oikonomos/approvals exports issue + verifyAndConsume but NO pending->granted/rejected transition. Five of six endpoints were unbuildable under this task's own no-raw-SQL rule. S5 neither wrote raw SQL nor reached into protected packages - exactly the right call, and the second time a builder has caught an ORCH spec error (cf. TASK-034, TASK-016), which the MODEL_DISCIPLINE amendment flags as the blind spot now that planner and checker share a model family. Remedy: TASK-061 (db read/CRUD, S5, not protected) and TASK-062 (approvals decide transitions, GB/CX only, protected) added as single-owner prerequisites; the tasks TABLE already exists in schema v1 so no migration is needed. This task reset to pending behind both.
 - [2026-08-20T14:30:00Z] [ORCH] RE-ASSIGNED CX -> S5 under protocol 7 triage. CX (Codex) hit its provider usage limit at dispatch ('try again at Aug 21st 2026 4:27 PM') and did zero work: no branch, no commit, no real control block. services/control-api is NOT a protected path, so S5 is eligible and the different-model review rule is unaffected (author S5=sonnet-5, reviewer ORCH=opus). **A bogus control block was quarantined, not drained**: dispatch.ps1's extractor scraped the EXAMPLE out of its own prompt (artifacts: ['path/a.dart'] in a TypeScript repo) and would have flipped this task to needs_review with test_evidence '...' on a branch that does not exist - recorded as pack finding #17. Claim state reset to pending so S5 claims cleanly.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:23:18Z
+**Updated_At:** 2026-08-20T14:40:00Z
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
@@ -1813,3 +1814,56 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-19T06:10:00Z
+
+### TASK-061
+**Title:** packages/db — read + CRUD layer control-api needs (tasks, listRuns, pending approvals, audit read)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** WBS OIK-084 (surfaces consume control-api, which consumes these); OIK-014 (typed query layer, no raw SQL outside packages/db); Synthesis Spec §5.1 (schema v1 — `tasks` table already exists)
+**Owned_Paths:** packages/db/src/tasks.ts, packages/db/src/tasks.test.ts, packages/db/src/runs.ts, packages/db/src/runs.test.ts, packages/db/src/approvals.ts, packages/db/src/auditEvents.ts, packages/db/src/index.ts
+**Depends_On:** —
+**Description:** **This task exists because ORCH's TASK-056 decompose was wrong — it specified endpoints with no backing db API. S5 caught it and blocked correctly rather than reaching outside territory or writing raw SQL in a service.** Add exactly the missing read/CRUD functions, following existing `runs.ts` conventions (typed, parameterised, no `any`): (1) NEW `tasks.ts` — `createTask`, `getTask`, `listTasks`; **the `tasks` table ALREADY EXISTS in `infra/postgres/migrations/001_schema_v1.up.sql` — read it and match the live columns exactly; do NOT write a migration and do NOT alter the schema** (if a column control-api needs is genuinely absent, BLOCK with SPEC_AMBIGUITY). (2) `listRuns(filter)` in runs.ts — paginated, newest first. (3) `listPendingApprovals()` in approvals.ts — status `pending`, unexpired. (4) A read path in auditEvents.ts — `getAuditEventsForRun(runId)`; the table is append-only (OIK-013) so this is read-only by construction, never an UPDATE/DELETE path. Barrel edits append-only. **Do NOT touch packages/approvals — that is protected and is TASK-062's territory.** Note for your work log: approval SQL already exists in two places (`packages/db/src/approvals.ts` and `packages/approvals/src/store.ts`); that split is pre-existing, do not attempt to unify it here.
+**Acceptance_Criteria:**
+- [ ] `createTask`/`getTask`/`listTasks` against the EXISTING tasks table — no migration, no schema change on the branch (Synthesis §5.1)
+- [ ] `listRuns` paginated and ordered deterministically; `listPendingApprovals` returns only pending, unexpired rows — both tested
+- [ ] `getAuditEventsForRun` is read-only; no UPDATE/DELETE path added to audit_events (OIK-013 append-only)
+- [ ] All SQL parameterised; no string interpolation of caller input, asserted by test or review-visible construction (OIK-014)
+- [ ] DB-gated integration legs actually RUN green locally against pg16 and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-20T14:40:00Z
+
+### TASK-062
+**Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** critical
+**Spec_References:** WBS OIK-086 (Approve/Reject), OIK-022 (atomic consume, N8), OIK-023 (invalidation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** packages/approvals/src/decide.ts, packages/approvals/src/decide.test.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; Directive §3 different-model review). Second half of the TASK-056 decompose gap S5 found: `packages/approvals` can issue and can `verifyAndConsume` an already-granted approval, but has **no way to move a `pending` row to `granted` or `rejected`** — so the human decision step has no API. Add `grantApproval` / `rejectApproval` (or one `decideApproval(nonce, decision)`) following the existing `store.ts` SQL conventions. **Each transition must be ONE atomic SQL statement guarded on the current status, exactly like `CONSUME_APPROVAL_SQL` — row count 1 or the transition did not happen (N8).** Non-negotiables that must hold and be tested: a `pending → granted` transition must not itself consume (consumption stays `verifyAndConsume`'s job — approve and use are separate steps); a second decide on an already-decided row must affect zero rows; an expired or invalidated row must never become granted. Do not weaken, re-route, or re-implement any existing consume/issue path — additive only; the existing approvals tests must stay byte-identical and green.
+**Acceptance_Criteria:**
+- [ ] `pending → granted` and `pending → rejected`, each ONE atomic status-guarded SQL statement; row count 1 or no transition (N8; OIK-022 pattern)
+- [ ] Granting does NOT consume — a granted approval still requires verifyAndConsume to be used, tested (N8 separation)
+- [ ] Concurrent/repeat decide on one nonce: exactly one succeeds, the second affects zero rows, tested
+- [ ] Expired and invalidated rows cannot be granted, tested per status (OIK-023)
+- [ ] MUTATION-PROVEN: removing the status guard from the transition SQL turns a test RED
+- [ ] Existing approvals tests unchanged and green; zero assertions removed
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-20T14:40:00Z
