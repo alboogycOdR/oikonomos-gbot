@@ -1818,7 +1818,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-061
 **Title:** packages/db — read + CRUD layer control-api needs (tasks, listRuns, pending approvals, audit read)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 (surfaces consume control-api, which consumes these); OIK-014 (typed query layer, no raw SQL outside packages/db); Synthesis Spec §5.1 (schema v1 — `tasks` table already exists)
@@ -1832,15 +1832,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] All SQL parameterised; no string interpolation of caller input, asserted by test or review-visible construction (OIK-014)
 - [ ] DB-gated integration legs actually RUN green locally against pg16 and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-061-s5
+**Started_At:** 2026-08-20T14:29:25Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-20T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-20T14:29:25Z
 
 ### TASK-062
 **Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
