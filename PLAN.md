@@ -1585,7 +1585,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-052
 **Title:** Live MCP server mount in composeHarness — tools reach L1 ⚑ protected
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-048 (MCP registration), OIK-033 (sole harness constructor, N9); docs/decisions/ADR-001-broker-enforcement-point.md L1/R1; Directive §4 N1/N3; Build Handover §4.2
@@ -1606,10 +1606,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-20T14:32:51Z] [SV:GB] composeHarness now mounts mcpServers onto SDK query options (N9); mcp__* tools traverse L1 and a deny prevents the fake in-process handler.
 **Artifacts:** packages/harness-factory/src/mcp/types.ts, packages/harness-factory/src/mcp/config.ts, packages/harness-factory/src/mcp/attach.ts, packages/harness-factory/src/mcp/index.ts, packages/harness-factory/src/compose.ts, packages/harness-factory/test/mcp.test.ts, packages/harness-factory/package.json, dossiers/TASK-052.md
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 79/79 pass (66 existing + 13 mcp). pnpm lint: exit 0. pnpm -r test: exit 0. pnpm canaries: 15 passed | 2 skipped (17).
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5 adversarial, 2026-08-20T15:05Z; PROTECTED path, author GB=grok / reviewer ORCH=opus, different-model holds). **THE FOUNDATIONAL GAP IS CLOSED - MCP tools now exist at runtime AND cannot skip L1.** Territory clean (8 files), no PLAN edits, commit tagged. INDEPENDENT RUN: full suite 399/52skip, lint 0, canaries 15/2skip, harness-factory 79/79 (66 existing + 13 new) - matches Test_Evidence exactly. BOTH MUTATIONS CAUGHT, and they bite DISJOINT test groups which is stronger than one test covering both: (A1) an early-return auto-allowing mcp__* before the L1 consult reddens 3 tests including the decisive 'mcp__* reaches L1 and a deny prevents it' and the N3 fail-closed parity test; (A2) making the mount a no-op reddens the 4 N9 'mcpServers reaches SDK options' tests. REVIEWER NOTE, recorded honestly: the DECISIVE L1 test does NOT fail under A2 - it exercises L1 independently of whether servers are actually mounted, so no single test proves both properties; that is a reasonable separation, not a gap, but it means neither test alone is the whole control. N4 VERIFIED AT SOURCE: no McpConfigError message path interpolates a url, header, command or arg value - only the server KEY plus fixed text, and INVALID_SERVER_NAME throws before interpolation so a hostile key never reaches a message; module never reads process.env. PRECEDENCE CORRECT: caller options are spread first and mcpServers set last, so composeHarness stays the sole setter - proven by its own test, and confirmed independently by the reviewer at the line. L1/L2/L3 adapters and hooks/ untouched. Merged --no-ff (3015ad6), branch deleted local+remote. UNLOCKS TASK-053 (GB); TASK-062 remains GB's higher-priority next claim.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:32:51Z
+**Updated_At:** 2026-08-20T15:05:00Z
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
@@ -1819,7 +1820,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-061
 **Title:** packages/db — read + CRUD layer control-api needs (tasks, listRuns, pending approvals, audit read)
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 (surfaces consume control-api, which consumes these); OIK-014 (typed query layer, no raw SQL outside packages/db); Synthesis Spec §5.1 (schema v1 — `tasks` table already exists)
@@ -1839,10 +1840,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-20T14:43:38Z] [SV:S5] createTask/getTask/listTasks (new tasks.ts), listRuns (runs.ts), listPendingApprovals (approvals.ts), getAuditEventsForRun (auditEvents.ts) implemented per spec; barrel exports appended to index.ts. Did not touch packages/approvals (TASK-062 territory). One out-of-territory test (packages/db/test/persistence-surface.test.ts, not in Owned_Paths) needs a one-line allowlist update from ORCH to add listPendingApprovals — it's read-only and doesn't violate the guard's actual intent (blocking status-mutating helpers), but the test is an exact-match pin. Everything else is fully green.
 **Artifacts:** packages/db/src/tasks.ts, packages/db/src/tasks.test.ts, packages/db/src/runs.ts, packages/db/src/runs.test.ts, packages/db/src/approvals.ts, packages/db/src/auditEvents.ts, packages/db/src/index.ts
 **Test_Evidence:** DATABASE_URL against ephemeral pg16 container (created+destroyed by me, infra/postgres/migrations/001_schema_v1.up.sql applied, no shared infra touched). pnpm -r --no-bail test from repo root: packages/db 11 files/45 tests pass, 1 file/1 test fails (pre-existing out-of-territory persistence-surface.test.ts pin, described above) — all TASK-061 new tests green incl. live-DB legs (tasks.ts 5, tasks.test.ts 3 live, runs.ts 6, runs.test.ts 3 live covering listRuns/getAuditEventsForRun/listPendingApprovals, approvals.ts 2, auditEvents.ts 2), plus all pre-existing packages/db tests unchanged and green. packages/connectors has 1 unrelated pre-existing failure (Cannot find package '@oikonomos/policy', workspace-link issue, untouched by this task). Every other package/service green: agent-providers 33, memory 1, policy 21, shared 36, control-api 1, gateway-telegram 48, workspace 1, audit 35, approvals 57, harness-factory 66, broker 28, evals/golden 6, evals/harness 17, services/worker 13. pnpm typecheck (packages/db): clean. pnpm lint (root): clean, 0 errors. pnpm canaries: evals/harness 11 files/17 tests pass. Branch task/TASK-061-s5 committed and pushed to origin.
-**Review_Findings:** —
+**Review_Findings:**
+- REWORK, round 1 (ORCH opus-5, 2026-08-20T15:05Z). SUBSTANCE IS GOOD and the hard part is right: territory clean (7 files), no PLAN edits, live-DB legs PROVABLY EXECUTED not skipped (0 skipped with DATABASE_URL vs 28 skipped without, and the new legs report real timings), read-only audit CLEAN (listRuns, listPendingApprovals, listTasks, getTask, getAuditEventsForRun are SELECT-only; auditEvents.ts has no UPDATE or DELETE path at all, so OIK-013 append-only holds), SQL audit CLEAN (all caller input via $N; the only interpolation is the positional index and internal column constants). ONE BLOCKING, in your own territory: **the pagination test asserts a guarantee it does not actually test.** 'listTasks paginates newest-first and the cursor never repeats or skips a row' still PASSES when the `task_id DESC` tiebreaker is deleted from the ORDER BY - the fixture rows all have distinct created_at, so keyset pagination's tiebreaker is never exercised. This is the code-correct/test-blind pattern that took TASK-017 four rounds; fix by adding fixture rows that SHARE a created_at, so removing the tiebreaker reddens the test. NON-BLOCKING: breaking $N parameterisation to a string-interpolated tenant_id also went undetected - your AC allows 'asserted by test OR review-visible construction' and the construction IS clean (ORCH verified), so this does not block, but an assertion would close it; also filter.status is passed through without validating against the taskStatuses const (worst case an empty result set, not injection). NOT YOUR FAULT, ORCH HANDLED: the red test/persistence-surface.test.ts pin is out of your Owned_Paths and you correctly escalated instead of editing it - same call GB made on TASK-045's package.json, and handled the same way. ORCH verified listPendingApprovals is a pure parameterised SELECT, then ADDED A SOURCE-LEVEL N8 GUARD (approvals.ts must contain exactly one UPDATE, the atomic consume, and zero DELETEs) so the control is stronger than before rather than one name looser; the name pin gets listPendingApprovals as part of THIS task's merge wiring, not before, since the export only exists on your branch.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:43:38Z
+**Updated_At:** 2026-08-20T15:05:00Z
 
 ### TASK-062
 **Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
