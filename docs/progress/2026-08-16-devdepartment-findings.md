@@ -120,6 +120,26 @@ Same launch also produced the sibling symptom on the other shared mutable store:
 2. At minimum, make the claim commit **verify its own diff**: after committing, re-read the block it claimed and fail loudly if the Status/Branch it wrote is absent — turning a silent clobber into a visible dispatch failure.
 3. Operationally until fixed: **stagger concurrent dispatches by ~30s** (documented here as the project's mitigation) so the claim windows cannot overlap.
 
+### 17. Control-block extractor scrapes the EXAMPLE out of the dispatch prompt when the builder emits nothing — producing a false `needs_review` with template evidence
+
+**Severity: high — it fabricates a state transition on work that was never done. Found live 2026-08-20.** CX was dispatched on TASK-056 and hit its provider usage limit (`ERROR: You've hit your usage limit ... try again at Aug 21st`) before doing any work — no branch, no commit, no `devteam-control` block. `dispatch.ps1`'s extractor nevertheless reported `CONTROL:TASK-056-2026-08-20T14-21-46Z.json`, and the file it wrote was **the worked example from the dispatch prompt itself**, verbatim:
+
+```json
+{"control_version": 1, "task": "TASK-056", "unit": "CX", "status": "needs_review",
+ "progress_note": "...", "artifacts": ["path/a.dart"], "test_evidence": "...", ...}
+```
+
+Note `artifacts: ["path/a.dart"]` — a Dart path, in a TypeScript repo: the giveaway that this is `dispatch.ps1`'s own prompt text (line ~295), not builder output. The extractor's fence-matching regex cannot distinguish the instructional example in the prompt it just printed from a block the builder actually emitted, and the transcript contains both.
+
+**Why this is worse than a no-op:** had it been drained, `control.py` would have flipped TASK-056 `claimed → needs_review` with `test_evidence: "..."` on a branch that does not exist. Under the unattended autopilot the next step is an automatic review; the review would eventually fail on the missing branch, but the *plan* would already be lying, and `validate_plan.py` cannot catch it (the resulting file is legal — `needs_review` with non-empty Test_Evidence, since `"..."` is a non-empty string). This is the same class as finding #16: a mechanical writer producing a plan state that is structurally valid and factually false.
+
+**Recovery performed:** ORCH quarantined the block to `.devteam/control/quarantine/` before any drain, and re-assigned the task rather than letting the false state land.
+
+**Recommend, in order of preference:**
+1. **Make the extractor scan only the tail of the transcript after the last prompt echo**, or better, have the builder write its control block to a *file* it owns rather than to stdout — the parent process should never have to disambiguate its own prompt from the child's output.
+2. **Reject blocks that match the prompt example** — a literal `artifacts: ["path/a.dart"]`, `progress_note: "..."`, or `test_evidence: "..."` should be treated as extraction failure, not as data. Cheap, and it would have caught this exact case.
+3. **Cross-check before applying**: `control.py drain` should refuse a `needs_review` transition when the named branch does not exist or carries no commits beyond its base. Test_Evidence is a claim; branch existence is a fact.
+
 ## Design gap, confirmed by measurement rather than reading
 
 ### 9. `.devteam/` is gitignored → ATLAS's index is per-worktree, and nothing documents or handles this
@@ -147,4 +167,4 @@ These are project-level customizations we made to `CLAUDE.md` in response to rea
 
 ## Summary for forwarding
 
-Eight source-confirmed pack-code defects (items 1–8), two test-scaffolding defects found live in a resync (items 11–12, both traced to source before reporting so neither is a false positive), one live concurrency defect in the dispatch claim path (item 16, observed clobbering a claim commit on 2026-08-18), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
+Eight source-confirmed pack-code defects (items 1–8), two test-scaffolding defects found live in a resync (items 11–12, both traced to source before reporting so neither is a false positive), two live defects in the dispatch/control path (item 16, a claim-commit clobber on 2026-08-18; item 17, a fabricated needs_review from the extractor scraping its own prompt example on 2026-08-20), one confirmed design gap that cost real diagnostic time across three rounds (item 9), one dormant/unwired feature worth surfacing rather than leaving silent (item 10), and two protocol-level lessons worth folding into onboarding guidance. None of these are OIKONOMOS-specific — all are properties of the DEVDEPARTMENT scripts and templates as shipped, reproducible on any project using multi-builder dispatch with worktrees on Windows/PowerShell.
