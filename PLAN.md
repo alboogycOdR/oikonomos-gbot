@@ -1585,7 +1585,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-052
 **Title:** Live MCP server mount in composeHarness — tools reach L1 ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-048 (MCP registration), OIK-033 (sole harness constructor, N9); docs/decisions/ADR-001-broker-enforcement-point.md L1/R1; Directive §4 N1/N3; Build Handover §4.2
@@ -1602,13 +1602,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-052-gb
 **Started_At:** 2026-08-20T14:19:58Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-20T14:32:51Z] [SV:GB] composeHarness now mounts mcpServers onto SDK query options (N9); mcp__* tools traverse L1 and a deny prevents the fake in-process handler.
+**Artifacts:** packages/harness-factory/src/mcp/types.ts, packages/harness-factory/src/mcp/config.ts, packages/harness-factory/src/mcp/attach.ts, packages/harness-factory/src/mcp/index.ts, packages/harness-factory/src/compose.ts, packages/harness-factory/test/mcp.test.ts, packages/harness-factory/package.json, dossiers/TASK-052.md
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 79/79 pass (66 existing + 13 mcp). pnpm lint: exit 0. pnpm -r test: exit 0. pnpm canaries: 15 passed | 2 skipped (17).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-20T14:19:58Z
+**Updated_At:** 2026-08-20T14:32:51Z
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
