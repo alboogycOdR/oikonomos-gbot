@@ -14,6 +14,26 @@ import {
   type PreToolUseHookPort,
   type PreToolUsePortDecision,
 } from "./index.js";
+import { attachMcpServersToQuery, resolveMcpServers, type McpServers } from "./mcp/index.js";
+
+export {
+  attachMcpServersToQuery,
+  isMcpServers,
+  McpConfigError,
+  resolveMcpServers,
+  type McpConfigErrorCode,
+} from "./mcp/index.js";
+export type {
+  McpHttpServerConfig,
+  McpServerConfig,
+  McpServers,
+  McpStdioServerConfig,
+  McpTransport,
+  SdkMcpHttpServerConfig,
+  SdkMcpServerConfig,
+  SdkMcpServers,
+  SdkMcpStdioServerConfig,
+} from "./mcp/index.js";
 
 /**
  * Adapter modules are loaded here (the sanctioned composition root) via
@@ -127,6 +147,12 @@ export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unkno
   queryFn?: AgentSdkQueryFn;
   park?: RunParkPort;
   subprocessProviders?: SubprocessProviderFactories<TCodex, TGrok>;
+  /**
+   * MCP servers mounted onto the Agent SDK query options. Set only here (N9).
+   * Secrets in url/headers are already-resolved strings; this module never
+   * reads env and never logs the record (N4).
+   */
+  mcpServers?: McpServers;
 }
 
 export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
@@ -225,13 +251,22 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
   });
   const postToolUse = createPostToolUseHook({ auditSink: options.auditSink });
 
-  const harness = createHarness({
+  const created = createHarness({
     l1,
     l2,
     l3,
     postToolUse,
     queryFn: options.queryFn,
   });
+
+  const mcpServers = resolveMcpServers(options.mcpServers);
+  const harness: Harness =
+    mcpServers === undefined
+      ? created
+      : {
+          ...created,
+          query: attachMcpServersToQuery(created.query, mcpServers),
+        };
 
   const providers: ComposedRuntime<TCodex, TGrok>["providers"] = {};
   if (options.subprocessProviders) {

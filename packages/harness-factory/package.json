@@ -14,6 +14,10 @@
     "./compose": {
       "types": "./dist/compose.d.ts",
       "import": "./dist/compose.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
     }
   },
   "main": "./dist/index.js",
