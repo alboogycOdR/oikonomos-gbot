@@ -1585,7 +1585,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-052
 **Title:** Live MCP server mount in composeHarness — tools reach L1 ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-048 (MCP registration), OIK-033 (sole harness constructor, N9); docs/decisions/ADR-001-broker-enforcement-point.md L1/R1; Directive §4 N1/N3; Build Handover §4.2
@@ -1600,15 +1600,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No secret material in error messages or logs — test asserts a thrown/handled config error does not contain a supplied header/url value (N4)
 - [ ] Banned modes untouched; existing 66 harness-factory tests still green with zero assertions removed
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-052-gb
+**Started_At:** 2026-08-20T14:19:58Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-20T14:19:58Z
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
