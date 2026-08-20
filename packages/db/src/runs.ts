@@ -327,6 +327,114 @@ export async function cancelRun(
   });
 }
 
+export interface RunListFilter {
+  tenantId?: string;
+  status?: RunStatus;
+  taskId?: string;
+  limit?: number;
+  /** Opaque page token from a previous `listRuns` call's `nextCursor`. */
+  cursor?: string;
+}
+
+export interface RunListPage {
+  runs: Run[];
+  nextCursor: string | null;
+}
+
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 200;
+
+interface RunCursor {
+  startedAt: string;
+  runId: string;
+}
+
+function encodeRunCursor(row: Pick<RunRow, "started_at" | "run_id">): string {
+  const payload: RunCursor = {
+    startedAt: row.started_at.toISOString(),
+    runId: row.run_id,
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function decodeRunCursor(cursor: string): RunCursor {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("cursor is not a valid listRuns cursor.");
+  }
+  const candidate = parsed as Partial<RunCursor> | null;
+  if (
+    candidate === null ||
+    typeof candidate !== "object" ||
+    typeof candidate.startedAt !== "string" ||
+    typeof candidate.runId !== "string"
+  ) {
+    throw new Error("cursor is not a valid listRuns cursor.");
+  }
+  return { startedAt: candidate.startedAt, runId: candidate.runId };
+}
+
+/**
+ * Newest-first, keyset-paginated run listing. Ordering is
+ * `(started_at DESC, run_id DESC)` so pagination stays stable and
+ * duplicate-free even when two runs share a `started_at` timestamp.
+ */
+export async function listRuns(
+  options: DatabaseOptions,
+  filter: RunListFilter = {},
+): Promise<RunListPage> {
+  const limit =
+    filter.limit === undefined
+      ? DEFAULT_LIST_LIMIT
+      : Math.min(Math.max(1, Math.trunc(filter.limit)), MAX_LIST_LIMIT);
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filter.tenantId !== undefined) {
+    params.push(requireNonEmpty(filter.tenantId, "tenantId"));
+    conditions.push(`tenant_id = $${params.length}`);
+  }
+  if (filter.status !== undefined) {
+    params.push(filter.status);
+    conditions.push(`status = $${params.length}`);
+  }
+  if (filter.taskId !== undefined) {
+    params.push(requireUuid(filter.taskId, "taskId"));
+    conditions.push(`task_id = $${params.length}`);
+  }
+  if (filter.cursor !== undefined) {
+    const cursor = decodeRunCursor(filter.cursor);
+    params.push(cursor.startedAt, requireUuid(cursor.runId, "cursor.runId"));
+    conditions.push(
+      `(started_at, run_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`,
+    );
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.push(limit + 1);
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RunRow>(
+      `SELECT ${runColumns}
+       FROM runs
+       ${where}
+       ORDER BY started_at DESC, run_id DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+
+    const hasMore = result.rows.length > limit;
+    const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+    const lastRow = rows[rows.length - 1];
+    const nextCursor = hasMore && lastRow !== undefined ? encodeRunCursor(lastRow) : null;
+
+    return { runs: rows.map(toRun), nextCursor };
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
@@ -349,6 +457,21 @@ if (import.meta.vitest) {
       await expect(
         cancelRun({ connectionString: "postgres://x" }, "not-a-uuid"),
       ).rejects.toThrow(/UUID/);
+      await expect(
+        listRuns(options),
+      ).rejects.toThrow(/connectionString/);
+    });
+
+    it("rejects an invalid taskId filter on listRuns", async () => {
+      await expect(
+        listRuns({ connectionString: "postgres://x" }, { taskId: "not-a-uuid" }),
+      ).rejects.toThrow(/UUID/);
+    });
+
+    it("rejects an invalid cursor on listRuns", async () => {
+      await expect(
+        listRuns({ connectionString: "postgres://x" }, { cursor: "not-base64json" }),
+      ).rejects.toThrow(/cursor/);
     });
 
     it("rejects an empty provider on startRun", async () => {

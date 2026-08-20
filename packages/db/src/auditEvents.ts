@@ -41,10 +41,21 @@ interface AuditEventRow extends QueryResultRow {
   evidence_uri: string | null;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     throw new Error(`${field} must not be empty.`);
+  }
+  return trimmed;
+}
+
+function requireUuid(value: string, field: string): string {
+  const trimmed = requireNonEmpty(value, field);
+  if (!UUID_RE.test(trimmed)) {
+    throw new Error(`${field} must be a UUID.`);
   }
   return trimmed;
 }
@@ -138,5 +149,56 @@ export async function insertAuditEvent(
       throw new Error("insertAuditEvent did not return a persisted row.");
     }
     return toAuditEvent(row);
+  });
+}
+
+/**
+ * Read-only by construction (OIK-013): `audit_events` carries `ON UPDATE
+ * ... DO INSTEAD NOTHING` / `ON DELETE ... DO INSTEAD NOTHING` rules at
+ * the schema level, and this module adds no UPDATE/DELETE statement on
+ * top of that. Oldest-first so a run's trail reads chronologically.
+ */
+export async function getAuditEventsForRun(
+  options: DatabaseOptions,
+  runId: string,
+): Promise<AuditEvent[]> {
+  const normalizedRunId = requireUuid(runId, "runId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<AuditEventRow>(
+      `SELECT event_id, tenant_id, run_id, at, actor, event_type, capability, tier, payload, evidence_uri
+       FROM audit_events
+       WHERE run_id = $1
+       ORDER BY at ASC, event_id ASC`,
+      [normalizedRunId],
+    );
+    return result.rows.map(toAuditEvent);
+  });
+}
+
+if (import.meta.vitest) {
+  const { describe, it, expect } = import.meta.vitest;
+
+  // Validation-only: no live-DB assertions here. This module is imported
+  // (transitively, via index.js) by every other test file in the package,
+  // and `import.meta.vitest` blocks re-register whenever the module loads
+  // — a live-DB test here would run once per importing file, concurrently,
+  // against the same rows. The live-DB coverage for `getAuditEventsForRun`
+  // lives in `runs.test.ts` (a dedicated, not-otherwise-imported file)
+  // instead.
+  describe("@oikonomos/db auditEvents — input validation (no DB required)", () => {
+    const options: DatabaseOptions = { connectionString: "   " };
+
+    it("rejects an empty connection string before opening a pool", async () => {
+      await expect(
+        getAuditEventsForRun(options, "11111111-1111-1111-1111-111111111111"),
+      ).rejects.toThrow(/connectionString/);
+    });
+
+    it("rejects a non-UUID runId", async () => {
+      await expect(
+        getAuditEventsForRun({ connectionString: "postgres://x" }, "not-a-uuid"),
+      ).rejects.toThrow(/UUID/);
+    });
   });
 }
