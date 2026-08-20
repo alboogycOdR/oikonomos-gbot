@@ -1690,7 +1690,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 ("OpenAPI spec published; all surfaces consume this, not the DB"); Build Handover §4.1; Directive §4 N4
@@ -1713,7 +1713,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: @oikonomos/db has no createTask/listTasks, no listRuns, no listPendingApprovals, no getAuditEventsForRun; @oikonomos/approvals has no pending->granted or pending->rejected transition exported from its barrel. TASK-056 requires all persistence via these packages' public APIs with zero raw SQL, so 5 of 6 endpoints (POST /tasks, GET /runs, GET /approvals, POST /approvals/:nonce/decide, GET /runs/:id/evidence) cannot be implemented until these are added to packages/db and packages/approvals (protected paths, outside my Owned_Paths). See dossiers/TASK-056.md for the full export inventory and per-endpoint gap mapping.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-20T14:29:01Z
 
