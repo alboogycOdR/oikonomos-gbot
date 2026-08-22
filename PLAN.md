@@ -1848,7 +1848,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-062
 **Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-086 (Approve/Reject), OIK-022 (atomic consume, N8), OIK-023 (invalidation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1863,12 +1863,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] MUTATION-PROVEN: removing the status guard from the transition SQL turns a test RED
 - [ ] Existing approvals tests unchanged and green; zero assertions removed
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-062-gb
+**Started_At:** 2026-08-22T05:51:10Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-20T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-22T05:51:10Z
