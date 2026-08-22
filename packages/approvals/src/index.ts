@@ -6,6 +6,14 @@ export {
   type VerifyAndConsumeResult,
 } from "./consume.js";
 export {
+  decideApproval,
+  grantApproval,
+  rejectApproval,
+  type ApprovalDecision,
+  type DecideApprovalResult,
+  type DecideDependencies,
+} from "./decide.js";
+export {
   DEFAULT_APPROVAL_TTL_MS,
   issueApproval,
   type ApprovalWaitSignal,
@@ -22,7 +30,9 @@ export {
 export {
   createDatabaseStore,
   EXPIRE_PENDING_SQL,
+  GRANT_APPROVAL_SQL,
   INVALIDATE_APPROVAL_SQL,
+  REJECT_APPROVAL_SQL,
   type ApprovalStore,
   type ConsumeApprovalResult,
   type ExpirePendingScope,

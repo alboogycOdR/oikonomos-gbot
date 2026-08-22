@@ -18,3 +18,36 @@ Additive only: existing consume/issue paths unchanged, existing tests byte-ident
 **Protected path:** GB or CX only, never S5 (different-model review).
 
 ## Work Log
+
+- [2026-08-22T05:54:00Z] [GB] Dispatcher-claimed (control.mode=strict). HEAD was detached at 3df4f96; created `task/TASK-062-gb`. Did not re-claim. Preflight (c8b9872) before any code:
+
+```text
+[preflight] TASK-062 Owned_Paths inspected in C:/CLAUDECODE_TOOLSETS/wt-grok-oikonomos
+[preflight] 4 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  NEW    packages/approvals/src/decide.ts  -> does not exist; parent packages/approvals/src/ exists
+  NEW    packages/approvals/src/decide.test.ts  -> does not exist; parent packages/approvals/src/ exists
+  FILE   packages/approvals/src/store.ts  -> exists, 180 line(s), 5645 bytes
+  FILE   packages/approvals/src/index.ts  -> exists, 29 line(s), 811 bytes
+[preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+```
+
+  Constraint that shaped the design: `ApprovalStore.grant`/`reject` are optional so existing fakes in `test/helpers.ts`, `test/consume.test.ts`, `test/issue.test.ts`, and `evals/harness/test/helpers.ts` stay type-valid (those files are outside Owned_Paths). SQL lives only in `store.ts` because `test/invalidate-sql.test.ts` forbids `UPDATE approvals SET status=` in every other `src/*.ts` file. Tests live in `src/decide.test.ts` (Owned_Paths) behind `import.meta.vitest` so they run via the existing `includeSource: src/**/*.ts` without touching `vitest.config.ts`. Next: implement SQL + API + tests.
+
+- [2026-08-22T06:04:21Z] [GB] Implementation complete on `task/TASK-062-gb`.
+
+  Public API: `grantApproval` / `rejectApproval` / `decideApproval(nonce, decision, decidedBy, deps)`. Each transition is one pinned UPDATE in `store.ts`:
+
+  - `GRANT_APPROVAL_SQL`: `UPDATE approvals SET status='granted', decided_by=$2, decided_at=now() WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL`
+  - `REJECT_APPROVAL_SQL`: same guards, `status='rejected'`
+
+  Neither statement sets `consumed_at`. `createDatabaseStore` wires `grant`/`reject`. `packages/db` is untouched (its N8 source guard still allows exactly one UPDATE there — consume).
+
+  Isolated `pgvector/pgvector:pg16` on `127.0.0.1:55462` (container `oikonomos-task062-pg`, not the shared compose volume); `001_schema_v1.up.sql` applied; container removed after the run.
+
+  MUTATION (drop `AND status='pending'` from GRANT_APPROVAL_SQL only, live DB):
+  - pin test RED (`toContain("AND status='pending'")`)
+  - Postgres parallel grant: expected 1 success, received 16
+  - Postgres invalidated-then-grant: row became granted again (OIK-023)
+  Restored; 82/82 green.
+
+  Existing `packages/approvals/test/**` unmodified (git diff empty). Ready for review.
