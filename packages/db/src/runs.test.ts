@@ -51,13 +51,32 @@ integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
     await pool.end();
   });
 
-  it("lists runs newest-first, filterable by status and taskId, keyset-paginated", async () => {
+  it("lists runs newest-first, filterable by status and taskId, keyset-paginated, tiebreaking a shared started_at via run_id DESC", async () => {
     const started = [];
     for (let i = 0; i < 5; i += 1) {
       started.push(
         await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" }),
       );
     }
+
+    // Force two independent, REAL started_at ties, each straddling a page
+    // boundary (limit=2: pages are [4,3][2,1][0]) — see the identical,
+    // rationale-documented fixture in `tasks.test.ts` (TASK-061 review
+    // round 1 finding: an untested `run_id DESC` tiebreaker, plus the
+    // `.toISOString()` cursor-precision bug it uncovered, both fixed
+    // there and mirrored here since `listRuns` shares the exact pattern).
+    await pool.query(
+      `UPDATE runs SET started_at = (SELECT started_at FROM runs WHERE run_id = $1)
+       WHERE run_id = $2`,
+      [started[2]!.runId, started[3]!.runId],
+    );
+    const [tieALoser, tieAWinner] = [started[2]!.runId, started[3]!.runId].sort();
+    await pool.query(
+      `UPDATE runs SET started_at = (SELECT started_at FROM runs WHERE run_id = $1)
+       WHERE run_id = $2`,
+      [started[0]!.runId, started[1]!.runId],
+    );
+    const [tieBLoser, tieBWinner] = [started[0]!.runId, started[1]!.runId].sort();
 
     const firstPage = await listRuns(
       { connectionString: connectionString! },
@@ -66,21 +85,31 @@ integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
     expect(firstPage.runs).toHaveLength(2);
     expect(firstPage.nextCursor).not.toBeNull();
     expect(firstPage.runs[0]?.runId).toBe(started[4]?.runId);
+    expect(firstPage.runs[1]?.runId).toBe(tieAWinner);
 
     const seen = new Set(firstPage.runs.map((r) => r.runId));
     let cursor = firstPage.nextCursor;
     let guard = 0;
+    let pageIndex = 0;
     while (cursor !== null && guard < 10) {
       const page = await listRuns(
         { connectionString: connectionString! },
         { taskId, status: "started", limit: 2, cursor },
       );
+      if (pageIndex === 0) {
+        expect(page.runs[0]?.runId).toBe(tieALoser);
+        expect(page.runs[1]?.runId).toBe(tieBWinner);
+      }
+      if (pageIndex === 1) {
+        expect(page.runs[0]?.runId).toBe(tieBLoser);
+      }
       for (const run of page.runs) {
         expect(seen.has(run.runId)).toBe(false);
         seen.add(run.runId);
       }
       cursor = page.nextCursor;
       guard += 1;
+      pageIndex += 1;
     }
 
     for (const run of started) {

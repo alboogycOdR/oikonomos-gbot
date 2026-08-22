@@ -117,6 +117,22 @@ function requireUuid(value: string, field: string): string {
   return trimmed;
 }
 
+/**
+ * `RunStatus` is a TS-level guarantee only — a caller building
+ * `RunListFilter` from an untyped source (an HTTP query string, a JSON
+ * body) can hand `listRuns` any string. Left unchecked, an invalid value
+ * either surfaces as a raw Postgres enum-cast error or, if the parameter
+ * inference ever changes, silently matches nothing. Reject it here with a
+ * clear message instead (TASK-061 review round 1, non-blocking finding —
+ * mirrored from the identical `listTasks` gap).
+ */
+function requireRunStatus(value: RunStatus, field: string): RunStatus {
+  if (!runStatuses.includes(value)) {
+    throw new Error(`${field} must be one of: ${runStatuses.join(", ")}.`);
+  }
+  return value;
+}
+
 function toRun(row: RunRow): Run {
   return {
     runId: row.run_id,
@@ -349,9 +365,32 @@ interface RunCursor {
   runId: string;
 }
 
-function encodeRunCursor(row: Pick<RunRow, "started_at" | "run_id">): string {
+/**
+ * Row shape returned by the `listRuns` query specifically: it adds
+ * `started_at_cursor`, a server-side `::text` cast of `started_at`, used
+ * ONLY to build the pagination cursor.
+ *
+ * `started_at` (the `RunRow` field, parsed to a JS `Date` by `pg`) is
+ * millisecond-precision, while Postgres's `timestamptz` column is
+ * microsecond-precision. `row.started_at.toISOString()` therefore silently
+ * truncates the cursor's timestamp down to the millisecond, which can make
+ * it strictly EARLIER than the true boundary row's timestamp whenever that
+ * row has a non-zero microsecond remainder (the common case) — the next
+ * page's `(started_at, run_id) < (cursor.startedAt, cursor.runId)` filter
+ * then silently EXCLUDES that boundary row, and any other row sharing its
+ * millisecond bucket, from every subsequent page (see the identical,
+ * empirically-confirmed bug in `tasks.ts`'s `encodeTaskCursor`, TASK-061
+ * review round 1). `started_at::text` is Postgres's own lossless textual
+ * representation, so casting it back with `::timestamptz` on the next
+ * query round-trips exactly.
+ */
+interface RunListRow extends RunRow {
+  started_at_cursor: string;
+}
+
+function encodeRunCursor(row: Pick<RunListRow, "started_at_cursor" | "run_id">): string {
   const payload: RunCursor = {
-    startedAt: row.started_at.toISOString(),
+    startedAt: row.started_at_cursor,
     runId: row.run_id,
   };
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -398,7 +437,7 @@ export async function listRuns(
     conditions.push(`tenant_id = $${params.length}`);
   }
   if (filter.status !== undefined) {
-    params.push(filter.status);
+    params.push(requireRunStatus(filter.status, "status"));
     conditions.push(`status = $${params.length}`);
   }
   if (filter.taskId !== undefined) {
@@ -417,8 +456,8 @@ export async function listRuns(
   params.push(limit + 1);
 
   return withPool(options, async (pool) => {
-    const result = await pool.query<RunRow>(
-      `SELECT ${runColumns}
+    const result = await pool.query<RunListRow>(
+      `SELECT ${runColumns}, started_at::text AS started_at_cursor
        FROM runs
        ${where}
        ORDER BY started_at DESC, run_id DESC
@@ -460,6 +499,15 @@ if (import.meta.vitest) {
       await expect(
         listRuns(options),
       ).rejects.toThrow(/connectionString/);
+    });
+
+    it("rejects a status filter on listRuns that is not in runStatuses", async () => {
+      await expect(
+        listRuns(
+          { connectionString: "postgres://x" },
+          { status: "not-a-status" as RunStatus },
+        ),
+      ).rejects.toThrow(/status/);
     });
 
     it("rejects an invalid taskId filter on listRuns", async () => {

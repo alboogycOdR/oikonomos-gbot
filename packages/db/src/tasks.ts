@@ -78,6 +78,21 @@ function requireUuid(value: string, field: string): string {
   return trimmed;
 }
 
+/**
+ * `TaskStatus` is a TS-level guarantee only — a caller building
+ * `TaskListFilter` from an untyped source (an HTTP query string, a JSON
+ * body) can hand `listTasks` any string. Left unchecked, an invalid value
+ * either surfaces as a raw Postgres enum-cast error or, if the parameter
+ * inference ever changes, silently matches nothing. Reject it here with a
+ * clear message instead (review round 1, non-blocking finding).
+ */
+function requireTaskStatus(value: TaskStatus, field: string): TaskStatus {
+  if (!taskStatuses.includes(value)) {
+    throw new Error(`${field} must be one of: ${taskStatuses.join(", ")}.`);
+  }
+  return value;
+}
+
 function toTask(row: TaskRow): Task {
   return {
     taskId: row.task_id,
@@ -183,9 +198,30 @@ interface TaskCursor {
   taskId: string;
 }
 
-function encodeTaskCursor(row: Pick<TaskRow, "created_at" | "task_id">): string {
+/**
+ * Row shape returned by the `listTasks` query specifically: it adds
+ * `created_at_cursor`, a server-side `::text` cast of `created_at`, used
+ * ONLY to build the pagination cursor.
+ *
+ * `created_at` (the `TaskRow` field, parsed to a JS `Date` by `pg`) is
+ * millisecond-precision, while Postgres's `timestamptz` column is
+ * microsecond-precision. `row.created_at.toISOString()` therefore silently
+ * truncates the cursor's timestamp down to the millisecond, which can make
+ * it strictly EARLIER than the true boundary row's timestamp whenever that
+ * row has a non-zero microsecond remainder (the common case) — the next
+ * page's `(created_at, task_id) < (cursor.createdAt, cursor.taskId)` filter
+ * then silently EXCLUDES that boundary row, and any other row sharing its
+ * millisecond bucket, from every subsequent page. `created_at::text` is
+ * Postgres's own lossless textual representation, so casting it back with
+ * `::timestamptz` on the next query round-trips exactly.
+ */
+interface TaskListRow extends TaskRow {
+  created_at_cursor: string;
+}
+
+function encodeTaskCursor(row: Pick<TaskListRow, "created_at_cursor" | "task_id">): string {
   const payload: TaskCursor = {
-    createdAt: row.created_at.toISOString(),
+    createdAt: row.created_at_cursor,
     taskId: row.task_id,
   };
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -232,7 +268,7 @@ export async function listTasks(
     conditions.push(`tenant_id = $${params.length}`);
   }
   if (filter.status !== undefined) {
-    params.push(filter.status);
+    params.push(requireTaskStatus(filter.status, "status"));
     conditions.push(`status = $${params.length}`);
   }
   if (filter.cursor !== undefined) {
@@ -247,8 +283,8 @@ export async function listTasks(
   params.push(limit + 1);
 
   return withPool(options, async (pool) => {
-    const result = await pool.query<TaskRow>(
-      `SELECT ${taskColumns}
+    const result = await pool.query<TaskListRow>(
+      `SELECT ${taskColumns}, created_at::text AS created_at_cursor
        FROM tasks
        ${where}
        ORDER BY created_at DESC, task_id DESC
@@ -290,6 +326,15 @@ if (import.meta.vitest) {
       await expect(
         getTask({ connectionString: "postgres://x" }, "not-a-uuid"),
       ).rejects.toThrow(/UUID/);
+    });
+
+    it("rejects a status filter on listTasks that is not in taskStatuses", async () => {
+      await expect(
+        listTasks(
+          { connectionString: "postgres://x" },
+          { status: "not-a-status" as TaskStatus },
+        ),
+      ).rejects.toThrow(/status/);
     });
 
     it("rejects empty roleId/title/goal/requestedBy on createTask", async () => {
