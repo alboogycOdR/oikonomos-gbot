@@ -1692,7 +1692,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-084 ("OpenAPI spec published; all surfaces consume this, not the DB"); Build Handover §4.1; Directive §4 N4
@@ -1715,10 +1715,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-22T09:19:28Z] [SV:S5] All six endpoints (POST /tasks, GET/POST /runs..., GET /approvals, POST /approvals/:nonce/decide, GET /runs/:id/evidence) implemented on services/control-api against the ControlApiDeps port, delegating exclusively to @oikonomos/db and @oikonomos/approvals public APIs (unblocked by TASK-061/062 merges). Verified live against a real Postgres (33/33 tests, 0 skipped), mutation-proved the decide route's delegation to packages/approvals (bypassing it turns 6 tests RED, cleanly reverted), fixed one lint warning, confirmed pnpm -r test / pnpm lint / pnpm canaries all exit 0.
 **Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/redact.ts, services/control-api/src/index.ts, services/control-api/test/app.test.ts, services/control-api/test/decide.route.test.ts, services/control-api/test/integration.test.ts, services/control-api/test/no-raw-sql.test.ts, dossiers/TASK-056.md
 **Test_Evidence:** pnpm --filter @oikonomos/control-api test (DATABASE_URL set, live Postgres oik-task056:55471, schema 001 applied): 4 files, 33/33 pass, 0 skipped, incl. both integration.test.ts legs actually executing (not skipped). Mutation drill: naive local reimplementation of the decide route (bypassing deps.decideApproval) turned 6 tests RED (double-decide, expired-row, unknown-nonce cases); reverted cleanly, suite back to green. pnpm -r test (full recursive, DATABASE_URL set): all packages green (one transient pre-existing/untracked harness-factory fixture cruft unrelated to this task, self-cleaned, re-verified green). pnpm lint: 0 errors, 0 warnings. pnpm --filter @oikonomos/control-api typecheck: clean. pnpm canaries: 17/17 pass.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5 adversarial, 2026-08-22T09:45Z). Territory clean (11 files), no PLAN edits. THIRD DISPATCH ATTEMPT delivered - first two killed mid-session by the harness (same reap pattern as earlier this project); ORCH preserved real uncommitted progress as an explicit WIP safety-net commit (not a completion claim) both times rather than discard it, and S5 finished cleanly on resume. DESIGN: ControlApiDeps is the SOLE persistence surface for every route - app.ts's only @oikonomos/db import is the runStatuses constant (input validation) plus types, zero direct persistence calls, zero @oikonomos/approvals import at all. TWO LIVENESS CONTROLS PROVEN LIVE, not just present: (1) no-raw-sql.test.ts - planting a literal SQL string in ports.ts turns it red on the exact assertion; (2) decide-route delegation - bypassing deps.decideApproval with a naive local reimplementation reddens 8 tests across 3 files (double-decide, already-expired, unknown-nonce, the real-DB N8 integration test). INDEPENDENT RUN: full suite 530/530 (0 fail), lint 0, canaries 17/17, DB legs confirmed EXECUTED (2 skipped with no DATABASE_URL vs actually running and initially catching a stale-build issue with it set - genuine execution, not a mock). N4 verified: redaction replaces the nonce in the logged URL before pino serializes it, request bodies never logged, and a test captures REAL pino output and asserts the nonce never appears. OpenAPI documents all six routes. Merged --no-ff (ef3914b). ORCH merge wiring: fastify resolved via pnpm-lock.yaml (b8e2b9f, committed on master since the territory hook blocks lockfile commits on any task branch regardless of committer identity - same class as TASK-043's wiring). UNLOCKS TASK-057 (CX, Telegram intake+status) - CX's chain is finally reachable; Codex usage limit reset 2026-08-21T16:27, should be available now.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-22T09:19:28Z
+**Updated_At:** 2026-08-22T09:45:00Z
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
