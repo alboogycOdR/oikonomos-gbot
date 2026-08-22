@@ -151,16 +151,24 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     }
   });
 
-  describe("listTasks ORDER BY — deterministic source-level tiebreak pin (review round 2)", () => {
-    it("MUTATION-PROVEN: the ORDER BY clause contains task_id DESC after created_at DESC", () => {
-      // The behavioural test above only catches a deleted tiebreaker
-      // ~82% of the time (measured: 14/17 runs), because Postgres does
-      // not guarantee any particular order among equal sort keys. This
-      // source-level assertion is the 100%-deterministic complement: it
-      // reads the compiled SQL string directly, so there is no run-to-run
-      // variance to escape through.
-      const src = readFileSync(new URL("./tasks.ts", import.meta.url), "utf8");
-      expect(src).toMatch(/ORDER BY created_at DESC, task_id DESC/);
-    });
+});
+
+// NOT gated behind `integration` (review round 3): this reads the compiled
+// SQL string directly off disk and asserts nothing about a live database, so
+// it must run unconditionally — the CI `pnpm test` job carries no
+// DATABASE_URL (only `canaries` has a Postgres service), and a pin left
+// inside the DATABASE_URL-gated describe above would silently no-op there,
+// meaning the tiebreaker could be deleted without the default pipeline ever
+// noticing.
+describe("listTasks ORDER BY — deterministic source-level tiebreak pin (review round 2)", () => {
+  it("MUTATION-PROVEN: the ORDER BY clause contains task_id DESC after created_at DESC", () => {
+    // The behavioural test above only catches a deleted tiebreaker
+    // ~82% of the time (measured: 14/17 runs), because Postgres does
+    // not guarantee any particular order among equal sort keys. This
+    // source-level assertion is the 100%-deterministic complement: it
+    // reads the compiled SQL string directly, so there is no run-to-run
+    // variance to escape through.
+    const src = readFileSync(new URL("./tasks.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/ORDER BY created_at DESC, task_id DESC/);
   });
 });
