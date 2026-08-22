@@ -245,3 +245,63 @@ export async function consumeApproval(
     return { rowCount: 0, approval: null };
   });
 }
+
+export interface PendingApprovalFilter {
+  tenantId?: string;
+}
+
+/**
+ * List every approval still awaiting a human decision: status `pending`
+ * and not yet expired. Oldest-requested first, so the longest-waiting
+ * approval surfaces at the top of an operator's queue. This is a read
+ * path only — it never touches `packages/approvals`' decide/consume SQL
+ * (TASK-062's territory).
+ */
+export async function listPendingApprovals(
+  options: DatabaseOptions,
+  filter: PendingApprovalFilter = {},
+): Promise<Approval[]> {
+  const conditions = [`status = 'pending'`, `expires_at > now()`];
+  const params: unknown[] = [];
+
+  if (filter.tenantId !== undefined) {
+    params.push(requireNonEmpty(filter.tenantId, "tenantId"));
+    conditions.push(`tenant_id = $${params.length}`);
+  }
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ApprovalRow>(
+      `SELECT ${approvalColumns}
+       FROM approvals
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY requested_at ASC, approval_id ASC`,
+      params,
+    );
+    return result.rows.map(toApproval);
+  });
+}
+
+if (import.meta.vitest) {
+  const { describe, it, expect } = import.meta.vitest;
+
+  // Validation-only: no live-DB assertions here. This module is imported
+  // (transitively, via index.js) by every other test file in the package,
+  // and `import.meta.vitest` blocks re-register whenever the module loads
+  // — a live-DB test here would run once per importing file, concurrently,
+  // against the same rows. The live-DB coverage for `listPendingApprovals`
+  // lives in `runs.test.ts` (a dedicated, not-otherwise-imported file)
+  // instead.
+  describe("@oikonomos/db approvals — input validation (no DB required)", () => {
+    const options: DatabaseOptions = { connectionString: "   " };
+
+    it("rejects an empty connection string before opening a pool", async () => {
+      await expect(listPendingApprovals(options)).rejects.toThrow(/connectionString/);
+    });
+
+    it("rejects an empty tenantId filter", async () => {
+      await expect(
+        listPendingApprovals({ connectionString: "postgres://x" }, { tenantId: "   " }),
+      ).rejects.toThrow(/tenantId/);
+    });
+  });
+}
