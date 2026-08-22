@@ -27,6 +27,12 @@ export interface ApprovalStore {
   consume(nonce: string): Promise<ConsumeApprovalResult>;
   invalidate(nonce: string): Promise<ConsumeApprovalResult>;
   expirePending(scope?: ExpirePendingScope): Promise<number>;
+  /**
+   * Optional: TASK-062 decision transitions. Existing fakes stay valid;
+   * production {@link createDatabaseStore} always implements both.
+   */
+  grant?(nonce: string, decidedBy: string): Promise<ConsumeApprovalResult>;
+  reject?(nonce: string, decidedBy: string): Promise<ConsumeApprovalResult>;
 }
 
 /** Pinned OIK-023 statement — granted + unused + digest already compared in-process. */
@@ -36,6 +42,20 @@ WHERE nonce=$1 AND status='granted' AND consumed_at IS NULL`;
 /** Pinned OIK-024 statement — only pending rows whose expiry has elapsed. */
 export const EXPIRE_PENDING_SQL = `UPDATE approvals SET status='expired'
 WHERE status='pending' AND expires_at<=now()`;
+
+/**
+ * Pinned pending→granted (OIK-086 / N8). Does not set consumed_at —
+ * approve and use are separate steps (OIK-022).
+ */
+export const GRANT_APPROVAL_SQL = `UPDATE approvals SET status='granted', decided_by=$2, decided_at=now()
+WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL`;
+
+/**
+ * Pinned pending→rejected (OIK-086 / N8). Same status/expiry/unused
+ * guards as grant; never consumes.
+ */
+export const REJECT_APPROVAL_SQL = `UPDATE approvals SET status='rejected', decided_by=$2, decided_at=now()
+WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL`;
 
 const APPROVAL_COLUMNS = `approval_id, tenant_id, run_id, capability_id, action_digest,
        action_render, destination, nonce, status, requested_at, expires_at,
@@ -154,6 +174,46 @@ async function invalidateApproval(
   });
 }
 
+async function runGuardedDecision(
+  options: DatabaseOptions,
+  sql: string,
+  nonce: string,
+  decidedBy: string,
+): Promise<ConsumeApprovalResult> {
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ApprovalRow>(
+      `${sql} RETURNING ${APPROVAL_COLUMNS}`,
+      [nonce, decidedBy],
+    );
+    const rowCount = result.rowCount ?? 0;
+    if (rowCount === 1 && result.rows[0] !== undefined) {
+      return { rowCount: 1, approval: toApproval(result.rows[0]) };
+    }
+    if (rowCount > 1) {
+      throw new Error(
+        `approval decision matched ${String(rowCount)} rows for one nonce; expected 0 or 1.`,
+      );
+    }
+    return { rowCount: 0, approval: null };
+  });
+}
+
+async function grantPendingApproval(
+  options: DatabaseOptions,
+  nonce: string,
+  decidedBy: string,
+): Promise<ConsumeApprovalResult> {
+  return runGuardedDecision(options, GRANT_APPROVAL_SQL, nonce, decidedBy);
+}
+
+async function rejectPendingApproval(
+  options: DatabaseOptions,
+  nonce: string,
+  decidedBy: string,
+): Promise<ConsumeApprovalResult> {
+  return runGuardedDecision(options, REJECT_APPROVAL_SQL, nonce, decidedBy);
+}
+
 async function expirePendingApprovals(
   options: DatabaseOptions,
   scope?: ExpirePendingScope,
@@ -176,5 +236,7 @@ export function createDatabaseStore(options: DatabaseOptions): ApprovalStore {
     consume: (nonce) => consumeApproval(options, nonce),
     invalidate: (nonce) => invalidateApproval(options, nonce),
     expirePending: (scope) => expirePendingApprovals(options, scope),
+    grant: (nonce, decidedBy) => grantPendingApproval(options, nonce, decidedBy),
+    reject: (nonce, decidedBy) => rejectPendingApproval(options, nonce, decidedBy),
   };
 }
