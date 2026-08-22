@@ -11,6 +11,18 @@ const integration = connectionString === undefined ? describe.skip : describe;
 integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
   let pool: Pool;
   const roleId = "task-061-tasks-suite";
+  // Dedicated tenantId, not the shared "basileia" default (review round 4):
+  // nine OTHER suites insert into `tasks` with the default tenant/status
+  // against the same DATABASE_URL (approvals decide + integration suites,
+  // db approvals/runs, worker runLifecycle, evals harness helpers), and
+  // `pnpm -r test` runs packages in parallel, so a foreign draft task could
+  // land at the head of a `tenantId: "basileia"`-filtered result set and
+  // break the ordering assertions below. Scoping every fixture row AND every
+  // `listTasks` call in this suite to a tenantId unique to this suite makes
+  // the test self-contained regardless of what else is concurrently writing
+  // to the table — the same isolation pattern the sibling `listRuns` test
+  // already uses via its own taskId scope.
+  const tenantId = "task-061-tasks-suite";
 
   async function cleanup(): Promise<void> {
     await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
@@ -30,6 +42,7 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     const created = await createTask(
       { connectionString: connectionString! },
       {
+        tenantId,
         roleId,
         title: "Triage inbox",
         goal: "Draft replies to unread mail",
@@ -38,7 +51,7 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     );
 
     expect(created.status).toBe("draft");
-    expect(created.tenantId).toBe("basileia");
+    expect(created.tenantId).toBe(tenantId);
     expect(created.routineId).toBeNull();
 
     const fetched = await getTask({ connectionString: connectionString! }, created.taskId);
@@ -60,7 +73,7 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
       created.push(
         await createTask(
           { connectionString: connectionString! },
-          { roleId, title: `task-${i}`, goal: "g", requestedBy: "alister" },
+          { tenantId, roleId, title: `task-${i}`, goal: "g", requestedBy: "alister" },
         ),
       );
     }
@@ -107,7 +120,7 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
 
     const firstPage = await listTasks(
       { connectionString: connectionString! },
-      { tenantId: "basileia", status: "draft", limit: 2 },
+      { tenantId, status: "draft", limit: 2 },
     );
     expect(firstPage.tasks).toHaveLength(2);
     expect(firstPage.nextCursor).not.toBeNull();
@@ -124,7 +137,7 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     while (cursor !== null && guard < 10) {
       const page = await listTasks(
         { connectionString: connectionString! },
-        { tenantId: "basileia", status: "draft", limit: 2, cursor },
+        { tenantId, status: "draft", limit: 2, cursor },
       );
       if (pageIndex === 0) {
         // Page 2 must lead with tie A's loser and trail with tie B's
