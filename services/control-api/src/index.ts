@@ -25,7 +25,6 @@ export async function start(): Promise<void> {
 // (by tests or by other packages) for its exports.
 if (import.meta.url === `file://${process.argv[1]}`) {
   start().catch((error: unknown) => {
-    // eslint-disable-next-line no-console -- process bootstrap, no logger yet
     console.error(error);
     process.exitCode = 1;
   });
