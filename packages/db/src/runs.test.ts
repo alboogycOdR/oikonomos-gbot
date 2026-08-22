@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -219,5 +221,18 @@ integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
     expect(ids).not.toContain(granted.approvalId);
     expect(result.every((a) => a.status === "pending")).toBe(true);
     expect(result.every((a) => a.expiresAt.getTime() > Date.now())).toBe(true);
+  });
+
+  describe("listRuns ORDER BY — deterministic source-level tiebreak pin (review round 2)", () => {
+    it("MUTATION-PROVEN: the ORDER BY clause contains run_id DESC after started_at DESC", () => {
+      // Same rationale as tasks.test.ts's sibling assertion: the
+      // behavioural tie test above only catches a deleted tiebreaker
+      // probabilistically (measured on the identical tasks.ts pattern:
+      // 14/17 runs, ~82%), since Postgres does not order equal sort keys
+      // deterministically. This reads the compiled SQL string directly
+      // for a 100%-deterministic complement.
+      const src = readFileSync(new URL("./runs.ts", import.meta.url), "utf8");
+      expect(src).toMatch(/ORDER BY started_at DESC, run_id DESC/);
+    });
   });
 });

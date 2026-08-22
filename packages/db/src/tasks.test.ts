@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -77,9 +79,14 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     // *equal* sort keys absent a full tiebreak column, so a single tie's
     // catch rate against that mutation is empirically well under 100%
     // (verified locally: ~70/30 over repeated runs) — two independent ties
-    // compound the odds of the mutation being caught close to certainty
-    // without the test ever asserting more than Postgres actually
-    // guarantees.
+    // compound the odds of the mutation being caught, but ORCH's own
+    // measurement over 17 runs came back 14 RED / 3 GREEN — a real but
+    // NOT total ~82% catch rate, not "close to certainty" as an earlier
+    // draft of this comment claimed. That is why the source-level check
+    // below exists: it is the 100%-deterministic half of this coverage,
+    // and this behavioural test is kept alongside it because it is the
+    // only one of the two that actually exercises `listTasks`'s runtime
+    // pagination, not merely its SQL text.
     //
     // Each UPDATE copies `created_at` server-side (never round-tripping
     // through the JS driver's Date, which is millisecond-precision and
@@ -142,5 +149,18 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     for (const task of created) {
       expect(seen.has(task.taskId)).toBe(true);
     }
+  });
+
+  describe("listTasks ORDER BY — deterministic source-level tiebreak pin (review round 2)", () => {
+    it("MUTATION-PROVEN: the ORDER BY clause contains task_id DESC after created_at DESC", () => {
+      // The behavioural test above only catches a deleted tiebreaker
+      // ~82% of the time (measured: 14/17 runs), because Postgres does
+      // not guarantee any particular order among equal sort keys. This
+      // source-level assertion is the 100%-deterministic complement: it
+      // reads the compiled SQL string directly, so there is no run-to-run
+      // variance to escape through.
+      const src = readFileSync(new URL("./tasks.ts", import.meta.url), "utf8");
+      expect(src).toMatch(/ORDER BY created_at DESC, task_id DESC/);
+    });
   });
 });
