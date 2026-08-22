@@ -147,6 +147,116 @@ Either:
 
 I'm blocking rather than guessing which of those ORCH prefers.
 
+## Session 2 — 2026-08-22 (resume after TASK-061/062 unblocked the task)
+
+### Starting state
+ORCH's TASK-061 round-4 review note confirms both prerequisites (TASK-061
+db read/CRUD, TASK-062 approvals grant/reject) merged to master, unblocking
+this task. Resumed on the existing `task/TASK-056-s5` branch (not
+re-claimed/re-branched). Found substantial prior work already on the
+branch as commit `ff925d6` — an ORCH safety-net "wip" commit explaining a
+prior S5 session was killed by the harness mid-work before it could finish
+or emit a control block: `app.ts`, `ports.ts`, `openapi.ts`, `redact.ts`,
+`index.ts`, and all four test files already existed, implementing all six
+endpoints against the `ControlApiDeps` port (delegating to `@oikonomos/db`
+and `@oikonomos/approvals` public functions only, per TASK-061/062's new
+exports). No dossier entry existed yet for that work since the session was
+killed before it could write one — recording it now.
+
+### Verification performed this session
+1. **Full control-api suite without `DATABASE_URL`**: 31 passed, 2 skipped
+   (integration.test.ts's two DB-gated cases, correctly `describe.skip`'d
+   per the TASK-035/044 precedent comment in the file).
+2. **Found an existing throwaway Postgres container** (`oik-task056`,
+   port 55471, schema `001_schema_v1` already applied — verified via
+   `\dt`) left running from the killed session. Exported
+   `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55471/postgres`
+   and re-ran: **33/33 pass, 0 skipped** — both integration legs
+   (`POST /tasks` → `startRun` → `GET /runs` → `GET /runs/:id` →
+   `insertAuditEvent` → `GET /runs/:id/evidence`, and
+   `GET /approvals` → `POST /approvals/:nonce/decide` → repeat-decide 409)
+   actually executed against real Postgres, not skipped (TASK-035/044
+   "a skipping DB test is not evidence" precedent satisfied).
+3. **MUTATION-PROVEN the delegation claim** (AC: "a local reimplementation
+   of the nonce check turns a test RED"). `decide.route.test.ts`'s own
+   header comment asserted this but the dossier had no record of it
+   actually being run — closed that gap: backed up `app.ts`, replaced the
+   `/approvals/:nonce/decide` handler body with a naive local
+   reimplementation that always returns `200 { decided: true }` without
+   calling `deps.decideApproval` at all (bypassing the packages/approvals
+   status-guarded transition entirely), re-ran the suite: **6 tests went
+   RED** (double-decide-rejected, double-decide-approve-then-reject,
+   expired-row-refused, unknown-nonce-refused, plus 2 more in the same
+   file) — the mutation is caught. Restored `app.ts` from the backup
+   byte-for-byte (`cp` from `/tmp/app.ts.bak`, confirmed via re-running the
+   suite green again, 31/33 pass/2 skip with no `DATABASE_URL`). No trace
+   of the mutation left in the working tree or any commit.
+4. **`pnpm -r test` (full recursive suite, `DATABASE_URL` set)**: every
+   workspace package green. One transient failure on first run —
+   `packages/harness-factory`'s `test/sole-constructor.test.ts` (N9 sole
+   harness-constructor guard) failed because a stray, **untracked**
+   `apps/__sole-constructor-fixture__/stray.ts` fixture file was already
+   sitting on disk before this session started (visible in the very first
+   `git status --porcelain` this session, alongside `AUTOPILOT_LOG.md`) —
+   leftover from that package's own self-cleaning test fixture, presumably
+   orphaned by the same harness-kill that produced the `wip` commit on
+   *this* branch. That file is entirely outside `services/control-api/**`
+   (outside my `Owned_Paths`, and `packages/harness-factory` is a
+   protected path besides) — I did not touch it. Re-ran
+   `pnpm --filter @oikonomos/harness-factory test` in isolation: the
+   test's own second case cleans up the fixture in its `finally` block,
+   the file is now gone from disk, and a follow-up `pnpm -r test` came
+   back **fully green across all packages** (confirmed 3 workspace
+   packages' Test Files/Tests counts explicitly, plus grepped the whole
+   run for `fail`/`✗` — zero hits). Recording this so the transient is
+   understood rather than silently ignored, per this project's "no silent
+   caps" norm — it was pre-existing environmental cruft, not a regression
+   I introduced or masked.
+5. **`pnpm lint`**: found and fixed one pre-existing warning in my own
+   territory — an unused `eslint-disable-next-line no-console` in
+   `index.ts`'s bootstrap catch handler (the rule apparently isn't firing
+   there under this project's config, so the directive was dead). Removed
+   the directive; `pnpm lint` now reports 0 errors, 0 warnings, exit 0.
+   Committed separately (`d44d892`).
+6. **`pnpm --filter @oikonomos/control-api typecheck`**: clean.
+7. **`pnpm canaries`**: 17/17 pass (with `DATABASE_URL` set, including the
+   two Postgres-backed CAN-06/CAN-07 atomicity canaries).
+
+### Acceptance criteria cross-check
+- All six endpoints implemented + route-tested + OpenAPI: ✅ —
+  `openapi.ts` documents `/tasks`, `/runs`, `/runs/{id}`,
+  `/runs/{id}/evidence`, `/approvals`, `/approvals/{nonce}/decide`;
+  served at `GET /openapi.json` (asserted in `app.test.ts`).
+- Zero raw SQL, all persistence via `@oikonomos/db`/`@oikonomos/approvals`:
+  ✅ — `ports.ts` is the sole import site for both packages; no other
+  source file imports either. `test/no-raw-sql.test.ts` is a liveness
+  control (scans for `pg` imports and bare SQL keywords across every
+  source file, plus a package.json dependency check, plus a self-check
+  that the scanner itself would catch a planted `pg` import) — satisfies
+  the CLAUDE.md "every mechanical control ships a liveness assertion"
+  rule.
+- Decide route delegates to packages/approvals, mutation-proven: ✅ —
+  verified live this session, see item 3 above.
+- Double-decide tested: ✅ — `decide.route.test.ts` and the live-Postgres
+  `integration.test.ts` both assert second-decide → 409.
+- Approvals route bodies/nonce redacted in logs, tested: ✅ —
+  `app.test.ts`'s "N4 log redaction" case captures real pino output via
+  an injected `logStream` and asserts the nonce string never appears in
+  it; `redact.ts`'s URL-path redaction is unit-tested separately.
+- `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0: ✅ — all
+  verified this session per items 4–7 above.
+
+### What I did NOT touch
+`pnpm-lock.yaml` (300 lines added by pnpm for the `fastify` dependency)
+remains **uncommitted** — it is outside `Owned_Paths` (root file, not
+under `services/control-api/**`) per the task description's explicit
+instruction ("never touch the root package.json or the lockfile beyond
+what pnpm writes for your package"); leaving it for ORCH to apply at
+merge, same pattern TASK-061 used for its persistence-surface pin.
+`apps/__sole-constructor-fixture__/` and `AUTOPILOT_LOG.md` untouched
+(pack/harness infrastructure, not this task's territory). No PLAN.md
+edits (control.mode=strict).
+
 ## Work Log
 - [2026-08-20T14:40:00Z] [S5] Session start, resolved stale checkpoint/hook
   state (TASK-048 already merged), confirmed real assignment TASK-056 from
@@ -158,3 +268,15 @@ I'm blocking rather than guessing which of those ORCH prefers.
   unimplementable without raw SQL or out-of-territory edits. Blocking
   MISSING_DEPENDENCY with the precise gap list above. No code written, no
   PLAN.md touched.
+- [2026-08-22T11:25:00Z] [S5] Resumed after TASK-061/062 merged and
+  unblocked this task. Found all six endpoints already implemented on the
+  branch from a prior killed session (ORCH's `wip` safety-net commit
+  `ff925d6`). Verified the full suite live against a real Postgres
+  (33/33, 0 skipped), mutation-proved the decide route's delegation to
+  `@oikonomos/approvals` (6 tests turn RED with a naive local
+  reimplementation, cleanly reverted), confirmed `pnpm -r test`/
+  `pnpm lint`/`pnpm canaries` all exit 0 (one transient harness-factory
+  failure traced to pre-existing untracked cruft outside my territory,
+  self-cleaned, re-verified green), fixed one pre-existing lint warning in
+  my own territory. All six acceptance criteria confirmed against the
+  spec text. Ready for review.
