@@ -9,6 +9,7 @@ const approvalRuntimeExports = [
   "consumeApproval",
   "getApprovalByNonce",
   "insertApproval",
+  "listPendingApprovals",
 ];
 
 // ORCH 2026-08-20: an allowlist widened one name at a time decays silently, so
