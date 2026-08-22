@@ -1848,7 +1848,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-062
 **Title:** packages/approvals — pending→granted / pending→rejected decision transitions ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-086 (Approve/Reject), OIK-022 (atomic consume, N8), OIK-023 (invalidation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1865,10 +1865,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-062-gb
 **Started_At:** 2026-08-22T05:51:10Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-22T06:05:50Z] [SV:GB] grantApproval/rejectApproval are one status-guarded UPDATE each (pending→granted/rejected); grant does not consume; mutation of the pending guard turns the parallel and invalidated tests red.
+**Artifacts:** packages/approvals/src/decide.ts, packages/approvals/src/decide.test.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts, dossiers/TASK-062.md
+**Test_Evidence:** Throwaway pgvector/pg16 on 127.0.0.1:55462 (schema 001 applied; container removed). pnpm --filter @oikonomos/approvals test: 14 files, 82/82 pass (25 decide tests incl. 5 Postgres legs). MUTATION drop status='pending' from GRANT_APPROVAL_SQL: pin RED; parallel grant expected 1 got 16; invalidated row became granted. Restored 82/82. pnpm lint exit 0. pnpm canaries 17/17. pnpm -r test exit 0. Existing approvals/test/** git diff empty.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-22T05:51:10Z
+**Updated_At:** 2026-08-22T06:05:50Z
