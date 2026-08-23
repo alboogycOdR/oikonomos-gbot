@@ -1614,7 +1614,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4 (`mcp_server` block, `url_ref: secret://…`); Directive §4 N4/N5; docs/decisions/ADR-008-connector-manifest-location.md
@@ -1628,15 +1628,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Non-basileia ownership refuses config construction (N5), tested
 - [ ] MUTATION-PROVEN: making the unset-secret path return an empty config instead of throwing turns a test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-053-gb
+**Started_At:** 2026-08-23T20:59:55Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-23T20:59:55Z
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
