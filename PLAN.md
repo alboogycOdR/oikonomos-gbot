@@ -1723,7 +1723,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-085 (`/task`, `/runs`, `/approvals` functional); OIK-084 (surfaces consume control-api, not the DB)
@@ -1739,13 +1739,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-057-cx
 **Started_At:** 2026-08-23T21:00:37Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-23T21:05:52Z] [SV:CX] Implemented token-free Telegram command handling through an injected control-api HTTP client, with authorization and DB-boundary coverage; committed as 4b689b8.
+**Artifacts:** services/gateway-telegram/src/index.ts, services/gateway-telegram/src/formatting.ts, services/gateway-telegram/test/commands.test.ts, dossiers/TASK-057.md
+**Test_Evidence:** pnpm --filter @oikonomos/gateway-telegram test: 54/54 pass; package typecheck, pnpm lint, and pnpm canaries (15/15, 2 skipped) pass. pnpm -r test reaches an unrelated @oikonomos/connectors failure: cannot resolve @oikonomos/policy.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-23T21:00:37Z
+**Updated_At:** 2026-08-23T21:05:52Z
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
