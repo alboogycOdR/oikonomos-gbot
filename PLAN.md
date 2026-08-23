@@ -1723,7 +1723,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-085 (`/task`, `/runs`, `/approvals` functional); OIK-084 (surfaces consume control-api, not the DB)
@@ -1737,15 +1737,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No bot token or credential in any fixture; client injected (N4)
 - [ ] Salvaged utilities reused where applicable, with the reuse recorded in the work log
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-057-cx
+**Started_At:** 2026-08-23T21:00:37Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-23T21:00:37Z
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
