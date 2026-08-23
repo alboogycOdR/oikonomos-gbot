@@ -1614,7 +1614,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4 (`mcp_server` block, `url_ref: secret://…`); Directive §4 N4/N5; docs/decisions/ADR-008-connector-manifest-location.md
@@ -1630,13 +1630,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-053-gb
 **Started_At:** 2026-08-23T20:59:55Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-23T21:09:22Z] [SV:GB] mcpConfigFromManifest resolves secret:// url_ref via injected SecretResolver into TASK-052 http McpServerConfig; unset throws naming the ref (mutation-proven); N5 non-basileia refused. connectors 50/50, lint 0, canaries 15/2skip. pnpm -r test red only in pre-existing control-api decide.route (outside territory).
+**Artifacts:** packages/connectors/src/mcp/types.ts, packages/connectors/src/mcp/errors.ts, packages/connectors/src/mcp/envSecretResolver.ts, packages/connectors/src/mcp/fromManifest.ts, packages/connectors/src/mcp/index.ts, packages/connectors/test/mcp.test.ts, dossiers/TASK-053.md
+**Test_Evidence:** pnpm --filter @oikonomos/connectors test: 7 files, 50/50 pass (16 new mcp). Mutation: unset->empty config reddens 'does not return an empty config on the unset path' (resolved {transport:http,url:''}); reverted. pnpm lint exit 0. pnpm canaries: 15 passed | 2 skipped. pnpm -r test: connectors green; fails in services/control-api test/decide.route.test.ts (4 failures, 400 vs 200/409) — pre-existing TASK-056 surface, not this diff.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-23T20:59:55Z
+**Updated_At:** 2026-08-23T21:09:22Z
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
