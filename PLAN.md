@@ -1614,7 +1614,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-053
 **Title:** Manifest → MCP server config resolution (secret refs, never literals)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-048; Build Handover §4.4 (`mcp_server` block, `url_ref: secret://…`); Directive §4 N4/N5; docs/decisions/ADR-008-connector-manifest-location.md
@@ -1634,10 +1634,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-23T21:09:22Z] [SV:GB] mcpConfigFromManifest resolves secret:// url_ref via injected SecretResolver into TASK-052 http McpServerConfig; unset throws naming the ref (mutation-proven); N5 non-basileia refused. connectors 50/50, lint 0, canaries 15/2skip. pnpm -r test red only in pre-existing control-api decide.route (outside territory).
 **Artifacts:** packages/connectors/src/mcp/types.ts, packages/connectors/src/mcp/errors.ts, packages/connectors/src/mcp/envSecretResolver.ts, packages/connectors/src/mcp/fromManifest.ts, packages/connectors/src/mcp/index.ts, packages/connectors/test/mcp.test.ts, dossiers/TASK-053.md
 **Test_Evidence:** pnpm --filter @oikonomos/connectors test: 7 files, 50/50 pass (16 new mcp). Mutation: unset->empty config reddens 'does not return an empty config on the unset path' (resolved {transport:http,url:''}); reverted. pnpm lint exit 0. pnpm canaries: 15 passed | 2 skipped. pnpm -r test: connectors green; fails in services/control-api test/decide.route.test.ts (4 failures, 400 vs 200/409) — pre-existing TASK-056 surface, not this diff.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5 adversarial, 2026-08-23T21:30Z). Territory clean (7 files), no PLAN edits. INDEPENDENT RUN after clean build: connectors 50/50, full recursive suite GREEN, lint 0, canaries 17/17. GB's reported control-api decide.route failure DID NOT REPRODUCE - stale dist artifact, as ORCH predicted from checking master directly; GB was right to flag it rather than paper over it. BOTH MUTATIONS CAUGHT: unset secret returning '' reddens 'throws naming the REF when the env var is unset'; removing the account_ownership guard reddens the N5 defence-in-depth test. Each caught by exactly one assertion - thin but adequate. **N4 IS PROVEN DIRECTLY, AND WELL** - four assertions, not an assumption: error serialization never contains the resolved value; console spied across all five methods asserts the url is never logged; a static source assertion that no error interpolates ${url}; and the strongest - a resolver that throws `leaked ${RESOLVED_URL}` is wrapped as SECRET_UNSET containing neither the value nor the word 'leaked'. The test's own sentinel is assembled at runtime via join() so the file holds no contiguous secret. Notably strong design in fromManifest.ts: a foreign resolver's throw is caught and the cause DISCARDED (no chaining), so a third-party resolver leaking a value in its own message cannot propagate it. RESIDUAL, out of this module's scope: the resolved url is returned in the frozen config, so a CALLER that logs the config would leak - that risk lives in harness-factory and should be watched at TASK-055. Merged --no-ff. UNLOCKS TASK-054 (live enumeration + allowedTools) - NOTE its live half needs Gmail MCP credentials or it blocks MISSING_DEPENDENCY by design.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-23T21:09:22Z
+**Updated_At:** 2026-08-23T21:30:00Z
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
@@ -1724,7 +1725,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-057
 **Title:** Telegram surface — task intake + run status commands (OIK-085)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WBS OIK-085 (`/task`, `/runs`, `/approvals` functional); OIK-084 (surfaces consume control-api, not the DB)
@@ -1744,10 +1745,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-23T21:05:52Z] [SV:CX] Implemented token-free Telegram command handling through an injected control-api HTTP client, with authorization and DB-boundary coverage; committed as 4b689b8.
 **Artifacts:** services/gateway-telegram/src/index.ts, services/gateway-telegram/src/formatting.ts, services/gateway-telegram/test/commands.test.ts, dossiers/TASK-057.md
 **Test_Evidence:** pnpm --filter @oikonomos/gateway-telegram test: 54/54 pass; package typecheck, pnpm lint, and pnpm canaries (15/15, 2 skipped) pass. pnpm -r test reaches an unrelated @oikonomos/connectors failure: cannot resolve @oikonomos/policy.
-**Review_Findings:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5, 2026-08-23T21:30Z). Territory clean (4 files), no PLAN edits. INDEPENDENT RUN after clean build: gateway 54/54, full recursive suite GREEN, lint 0, canaries 17/17 - CX's 'unrelated connectors @oikonomos/policy failure' likewise did not reproduce (stale worktree install). DESIGN IS RIGHT: ports-only - TelegramClient and ControlApiClient both injected, no Telegram SDK, no DB dependency even declared in package.json, base URL validated as absolute http(s). MUTATION CAUGHT: disabling the chat allowlist reddens 'refuses unauthorized chat IDs before they reach the control-api client' - and note the assertion checks the control-api client was never CALLED, not merely that a rejection was sent, which is the right shape for an authorization test. CREDENTIALS SCAN CLEAN: no token, key, or live endpoint anywhere; the only URL is control.example.test (RFC-6761 reserved). The runtime holds the bot token, the gateway never does. RECORDED, NOT BLOCKING: the OIK-084 no-DB-import guard test is real and works (verified by planting the import in a file no test imports - it reddens on the exact assertion), BUT it sits behind a stronger mechanical fact: @oikonomos/db is not a declared dependency, so such an import cannot even resolve. The guard only becomes the primary defence if that package is ever added for another reason - fine as belt-and-braces, just not load-bearing today. ALSO RECORDED, PRE-EXISTING and not this task's: services/gateway-telegram/test/src/ holds tracked shadow copies of salvaged bot source (bot/formatting, bot/permissions, bot/streamRenderer, session/store, types) - untouched by this diff, but odd source-under-test/ that warrants a cleanup ticket. Merged --no-ff. UNLOCKS TASK-058 (approval inline-keyboard - the demo's centrepiece).
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-23T21:05:52Z
+**Updated_At:** 2026-08-23T21:30:00Z
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
