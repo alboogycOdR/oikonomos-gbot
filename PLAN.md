@@ -1753,7 +1753,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1767,15 +1767,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-tap Approve on the same message results in exactly one consumed approval (N8), tested
 - [ ] Raw nonce not embedded in forwardable callback payloads; mechanism documented in the work log (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-058-cx
+**Started_At:** 2026-08-24T17:47:50Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-24T17:47:50Z
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
