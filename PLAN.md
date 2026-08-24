@@ -1642,7 +1642,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered ⇒ deny); ADR-001 L2 (explicit allowedTools, no bare names); docs/decisions/ADR-002-permission-bypass-ban-scope.md
@@ -1658,13 +1658,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-054-gb
 **Started_At:** 2026-08-24T17:48:34Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-24T18:00:03Z] [SV:GB] Derivation + real HTTP MCP listTools adapter committed on task/TASK-054-gb; local mounted-server enumeration green. Live Gmail tools/list not run because OIK_SECRET_MCP_GMAIL_URL is unset (not faked).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: live MCP credentials not provisioned
 **Updated_By:** SV
-**Updated_At:** 2026-08-24T17:48:34Z
+**Updated_At:** 2026-08-24T18:00:03Z
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
