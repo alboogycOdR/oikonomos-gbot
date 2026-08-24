@@ -1642,7 +1642,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered ⇒ deny); ADR-001 L2 (explicit allowedTools, no bare names); docs/decisions/ADR-002-permission-bypass-ban-scope.md
@@ -1656,15 +1656,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Unmapped tool omitted from the allowlist AND independently denied at L1 — proves allowlist is not the enforcement point (Handover §4.2; ADR-001)
 - [ ] MUTATION-PROVEN: allowing `enabled: false` capabilities into the allowlist turns the `email.send` test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-054-gb
+**Started_At:** 2026-08-24T17:48:34Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-24T17:48:34Z
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
