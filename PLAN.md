@@ -1,6 +1,6 @@
 ---
-plan_version: 5.1
-last_updated: 2026-08-24T06:10:00Z
+plan_version: 5.2
+last_updated: 2026-08-24T18:00:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051."
 ---
@@ -1753,12 +1753,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
 **Owned_Paths:** services/gateway-telegram/src/approvals/**, services/gateway-telegram/test/approvals.test.ts
-**Depends_On:** TASK-057
+**Depends_On:** TASK-057, TASK-063
 **Description:** **This is the demo's centrepiece: a Tier-3 action parks, your phone shows what the agent wants to do, you tap, and only then does it proceed.** Render a pending approval as a Telegram message with an inline keyboard: Approve / Edit / Reject. The rendered text MUST come from the approval's stored render (ADR-004 render provenance) — **do not re-render from raw payload in this service; a surface that composes its own description can show the operator something different from what the digest binds**. Approve/Reject post the decision to control-api's decide endpoint (TASK-056), which owns nonce consumption — **this service never consumes a nonce itself (N8)**. Edit must invalidate the prior approval and re-enter the cycle (OIK-086; OIK-023 digest mismatch ⇒ `invalidated`, new approval required). Callback data must not carry the raw nonce where a forwarded message would leak it — carry an opaque handle and resolve server-side; state your chosen mechanism in the work log. Tests use an injected Telegram port and an injected control-api client; no network, no token.
 **Acceptance_Criteria:**
 - [ ] Approve / Edit / Reject keyboard rendered from the approval's STORED render, not re-composed locally (ADR-004), tested
@@ -1767,16 +1767,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-tap Approve on the same message results in exactly one consumed approval (N8), tested
 - [ ] Raw nonce not embedded in forwardable callback payloads; mechanism documented in the work log (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-058-cx
-**Started_At:** 2026-08-24T17:47:50Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
+- [2026-08-24T18:00:00Z] [ORCH] CX BLOCKED CORRECTLY AND WAS RIGHT — verified independently: control-api exposes only listPendingApprovals + decide, ControlApiDeps has no invalidate/reissue, and no such route exists; yet this task's AC requires Edit to invalidate the prior approval and re-enter the cycle. Building that lifecycle in the gateway would have violated OIK-084 (surfaces must not own persistence) and N8. THIRD ORCH DECOMPOSE ERROR OF THE SAME SHAPE (cf. TASK-056's missing db/approvals APIs, found by S5): I specified a consumer's requirements without checking the producer's published contract. The primitives DO exist in packages/approvals (ApprovalStore.invalidate with OIK-023's pinned SQL, plus issueApproval) — they were simply never surfaced through control-api. Remedy: TASK-063 adds the atomic edit/reissue operation; this task now depends on it and is reset to pending. CX wrote no code and left the branch clean.
 - [2026-08-24T17:50:34Z] [SV:CX] Blocked before implementation: control-api lacks an invalidate-and-reissue approval operation required for Edit.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: published control-api contract exposes only approval list and decide; it has no control-plane endpoint/client operation to invalidate an approval and issue a replacement.
+**Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-24T17:50:34Z
+**Updated_At:** 2026-08-24T18:00:00Z
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
@@ -1891,3 +1892,32 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-22T06:40:00Z
+
+### TASK-063
+**Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** services/control-api/src/**, services/control-api/test/**
+**Depends_On:** —
+**Description:** **This task exists because ORCH's decompose was wrong again — TASK-056 specified six control-api endpoints and none of them can Edit an approval, yet TASK-058's acceptance criteria require exactly that. CX blocked before writing a line rather than build the lifecycle inside the gateway, which would have violated OIK-084 and N8. That was the right call.** The primitives already exist and must be REUSED, not reimplemented: `packages/approvals` exports the store port with `invalidate(nonce)` (OIK-023's pinned status-guarded SQL) and `issueApproval`. Add ONE control-api operation — route `POST /approvals/:nonce/edit` plus a `ControlApiDeps` method — that (1) invalidates the named approval and (2) issues a replacement carrying a NEW nonce and a NEW digest bound to the EDITED payload, **both inside a single database transaction**. **The hazard this guards is two simultaneously-valid approvals for one action**: a non-transactional implementation can leave the old row `pending` while the replacement is already issued, giving an operator two live nonces for the same capability — a double-approval path. A partial failure must leave the old approval untouched, never invalidated-with-no-replacement. **ADR-004 render provenance is binding**: the replacement's stored render must be regenerated from the edited payload and its digest must bind that same edited payload — a render that describes the old payload while the digest binds the new one is precisely the approve-one-thing-execute-another failure ADR-004 exists to prevent. Do NOT touch packages/approvals (protected); consume its public API only — if a needed primitive is genuinely missing there, BLOCK with SPEC_AMBIGUITY rather than reach in. Publish the new route in the OpenAPI document (OIK-084) — the Telegram lane codes against it.
+**Acceptance_Criteria:**
+- [ ] `POST /approvals/:nonce/edit` implemented and documented in the OpenAPI document (OIK-084 "OpenAPI spec published")
+- [ ] Invalidate + reissue occur in ONE transaction; a forced failure mid-operation leaves the ORIGINAL approval untouched and no replacement issued, tested against a live DB (OIK-086)
+- [ ] The old nonce is unusable after a successful edit — decide and consume both refuse it, tested by nonce (OIK-023)
+- [ ] **Never two live approvals for one action**: after edit, exactly one `pending` row exists for that run/capability — asserted by query, not inferred (N8)
+- [ ] Replacement carries a NEW nonce AND a digest bound to the EDITED payload; stored render regenerated from the edited payload, tested that render and digest describe the same thing (ADR-004)
+- [ ] Reuses `packages/approvals` invalidate/issue primitives — no reimplementation; MUTATION-PROVEN: a local reimplementation of invalidation turns a test RED
+- [ ] Editing a non-pending approval (already decided, expired, invalidated, consumed) is refused per status, tested for each
+- [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044/061 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-24T18:00:00Z
