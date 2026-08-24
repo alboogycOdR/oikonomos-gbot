@@ -1753,7 +1753,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1769,13 +1769,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-058-cx
 **Started_At:** 2026-08-24T17:47:50Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-24T17:50:34Z] [SV:CX] Blocked before implementation: control-api lacks an invalidate-and-reissue approval operation required for Edit.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: published control-api contract exposes only approval list and decide; it has no control-plane endpoint/client operation to invalidate an approval and issue a replacement.
 **Updated_By:** SV
-**Updated_At:** 2026-08-24T17:47:50Z
+**Updated_At:** 2026-08-24T17:50:34Z
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
