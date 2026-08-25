@@ -1896,7 +1896,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-063
 **Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1913,12 +1913,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Editing a non-pending approval (already decided, expired, invalidated, consumed) is refused per status, tested for each
 - [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044/061 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-063-s5
+**Started_At:** 2026-08-25T05:40:10Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-24T18:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-25T05:40:10Z
