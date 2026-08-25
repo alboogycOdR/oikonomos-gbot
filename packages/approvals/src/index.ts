@@ -23,6 +23,11 @@ export {
 export { generateNonce } from "./nonce.js";
 export { actionRender } from "./render.js";
 export {
+  invalidatePendingApproval,
+  type InvalidatePendingApprovalResult,
+  type InvalidatePendingDependencies,
+} from "./invalidatePending.js";
+export {
   sweepExpiredApprovals,
   type SweepDependencies,
   type SweepExpiredResult,
@@ -32,6 +37,7 @@ export {
   EXPIRE_PENDING_SQL,
   GRANT_APPROVAL_SQL,
   INVALIDATE_APPROVAL_SQL,
+  INVALIDATE_PENDING_APPROVAL_SQL,
   REJECT_APPROVAL_SQL,
   type ApprovalStore,
   type ConsumeApprovalResult,
