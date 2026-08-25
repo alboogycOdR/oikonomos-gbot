@@ -1927,7 +1927,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-064
 **Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
-**Status:** blocked
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-022 (atomic consume pattern); Directive §4 N8
@@ -1950,7 +1950,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-08-25T05:55:28Z] [SV:CX] Implemented and committed 6c913e9: pending-only approval invalidation primitive, public export, and coverage; awaits required live-DB verification.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: no sanctioned DATABASE_URL is supplied for the mandatory live-DB integration tests; the only running Postgres container is unscoped/unrelated and was not used.
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5 adversarial, 2026-08-25T06:30Z; PROTECTED, author CX=codex / reviewer ORCH=opus, different-model holds). CX implemented fully and blocked ONLY on the live-DB legs, refusing to use an unscoped running container - same correct instinct as TASK-044; ORCH resolved it as the verification point (throwaway pg16). BOTH HARD CONSTRAINTS HELD: INVALIDATE_APPROVAL_SQL byte-identical to master, and packages/approvals/test/** diff EMPTY - nothing weakened to make this pass; all new tests are in-source. INDEPENDENT RUN: approvals 92/92 with 0 skipped, full suite 562 passed / 0 failed, lint 0, canaries 17/17. DB legs PROVEN LIVE: 22 skipped without DATABASE_URL vs 0 with, new Postgres legs visibly timed. **THE DISJOINTNESS PROPERTY IS PROVEN TWICE** - by tests in both memory and DB flavours, AND independently by an ORCH direct-DB probe: granted-path invalidate on a pending row returns rowCount 0 and leaves it pending; the new pending-path on a granted row returns rowCount 0 and leaves it granted; both positive controls still transition their own status. Neither control absorbs the other's job, so OIK-023 still means what it says. MUTATION M1 (drop status='pending') reddens FOUR tests, THREE of them behavioural DB tests not string pins - including the concurrency leg (exactly one of N callers wins). Non-consumption defended at three layers: SQL SET touches status only, invalidatePending.ts throws if a returned row has non-null consumedAt, and both memory+DB tests assert it. Fails closed on a missing store port, with nonce validation before any store call. Optional ApprovalStore member so existing fakes stay valid. TWO MINOR NOTES, non-blocking and recorded: (1) mutation M2 (drop consumed_at IS NULL) is caught ONLY by the textual SQL pin - but that clause is genuinely redundant today (no row can be pending with consumed_at set, since consumed_at is only written on granted->consumed), so it is defence-in-depth against a future write path and no behavioural test CAN exist for it; correct to keep, just know the pin is its only sentinel. (2) expired/rejected/consumed refusals are memory-store-only; granted and invalidated also have DB-backed refusals. Merged --no-ff. UNLOCKS TASK-063 (S5, control-api edit route).
+**Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-25T05:55:28Z
+**Updated_At:** 2026-08-25T06:30:00Z
