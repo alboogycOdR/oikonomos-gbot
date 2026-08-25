@@ -1896,7 +1896,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-063
 **Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1915,10 +1915,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-063-s5
 **Started_At:** 2026-08-25T05:40:10Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-25T05:46:08Z] [SV:S5] Investigated the reuse primitive named in the task (packages/approvals ApprovalStore.invalidate). Its pinned SQL is guarded to status='granted' and is proven-by-test to no-op against 'pending' rows (packages/approvals/test/invalidate.test.ts: 'does not invalidate a still-pending approval'; invalidate-sql.test.ts: 'invalidates only granted unused rows'). But this task's own AC #7 requires Edit to be valid ONLY on status='pending' (matching OIK-086: Approve/Edit/Reject are offered on a still-pending Telegram approval, and decideApproval's GRANT/REJECT SQL confirm pending is the pre-decision state). So calling invalidate() from the new edit route against the one state Edit must accept will always return rowCount 0 — a successful edit is structurally impossible through the named primitive as it exists today. No other export in packages/approvals or packages/db provides a pending-guarded invalidate. Per this task's own instruction ('if a needed primitive is genuinely missing there, BLOCK with SPEC_AMBIGUITY rather than reach in'), blocking rather than adding a new pinned SQL/method inside packages/approvals (protected, needs adversarial review by a different model) or packages/db (both outside Owned_Paths regardless). No implementation code written; branch has only a PLAN.md-sync-driven dossier commit. Full investigation with file:line citations in dossiers/TASK-063.md.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SPEC_AMBIGUITY: packages/approvals ApprovalStore.invalidate(nonce) is pinned to `WHERE ... status='granted' AND consumed_at IS NULL` (packages/approvals/src/store.ts:39-40, tests at invalidate-sql.test.ts:12 and invalidate.test.ts:73 prove it no-ops on 'pending'). This task's AC #7 requires Edit to apply only to status='pending' approvals (per OIK-086's Approve/Edit/Reject flow and decideApproval's pending-guarded GRANT/REJECT SQL). No exported primitive in packages/approvals or packages/db transitions pending->invalidated. The task forbids touching packages/approvals (protected) and packages/db is outside Owned_Paths. Recommend ORCH add a new pinned primitive (e.g. invalidatePending(nonce), mirroring GRANT_APPROVAL_SQL/REJECT_APPROVAL_SQL's pending+expiry+unused guard) to packages/approvals via protected-path adversarial review, or clarify if edit is actually meant to apply to a different status than 'pending'.
 **Updated_By:** SV
-**Updated_At:** 2026-08-25T05:40:10Z
+**Updated_At:** 2026-08-25T05:46:08Z
