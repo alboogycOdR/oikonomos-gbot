@@ -1927,7 +1927,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-064
 **Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-022 (atomic consume pattern); Directive §4 N8
@@ -1944,12 +1944,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing `packages/approvals/test/**` byte-identical; `INVALIDATE_APPROVAL_SQL` unchanged — verified by diff
 - [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-064-cx
+**Started_At:** 2026-08-25T05:48:34Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-25T06:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-25T05:48:34Z
