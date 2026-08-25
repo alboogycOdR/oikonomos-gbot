@@ -1927,7 +1927,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-064
 **Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-022 (atomic consume pattern); Directive §4 N8
@@ -1946,10 +1946,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-064-cx
 **Started_At:** 2026-08-25T05:48:34Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-25T05:55:28Z] [SV:CX] Implemented and committed 6c913e9: pending-only approval invalidation primitive, public export, and coverage; awaits required live-DB verification.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: no sanctioned DATABASE_URL is supplied for the mandatory live-DB integration tests; the only running Postgres container is unscoped/unrelated and was not used.
 **Updated_By:** SV
-**Updated_At:** 2026-08-25T05:48:34Z
+**Updated_At:** 2026-08-25T05:55:28Z
