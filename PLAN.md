@@ -1,8 +1,8 @@
 ---
-plan_version: 5.4
-last_updated: 2026-08-26T15:00:00Z
+plan_version: 5.5
+last_updated: 2026-08-26T16:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051. GROK-BOT STUDY DECOMPOSE (2026-08-26T15:00Z, ORCH, plan v5.4): docs/STUDY-grok-bot-018.md distilled into TASK-065..071, ALL priority:low post-MVP backlog so the dispatcher cannot claim them ahead of the demo lane (054/055 + 058/059 -> 060). 065 approvals generation+epoch binding (CX, protected, after 063), 066 broker construction-time policy completeness + call-time re-check (GB, protected, after 055), 067 broker describe-or-deny + model-directed denials (GB, protected, after 066), 068 connectors SWR enumeration cache (GB, after 054), 069 shared error registry (S5, unprotected, no deps), 070 CI publication-tree self-proof + negative-control greps (CX, protected, no deps), 071 harness-factory decorator seam (CX, protected, after 055). Territories verified disjoint from all active lanes; protected-path assignments respect the different-model rule (no S5 on broker/approvals/harness-factory/infra-ci)."
+orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051. GROK-BOT STUDY DECOMPOSE (2026-08-26T15:00Z, ORCH, plan v5.4): docs/STUDY-grok-bot-018.md distilled into TASK-065..071, ALL priority:low post-MVP backlog so the dispatcher cannot claim them ahead of the demo lane (054/055 + 058/059 -> 060). 065 approvals generation+epoch binding (CX, protected, after 063), 066 broker construction-time policy completeness + call-time re-check (GB, protected, after 055), 067 broker describe-or-deny + model-directed denials (GB, protected, after 066), 068 connectors SWR enumeration cache (GB, after 054), 069 shared error registry (S5, unprotected, no deps), 070 CI publication-tree self-proof + negative-control greps (CX, protected, no deps), 071 harness-factory decorator seam (CX, protected, after 055). Territories verified disjoint from all active lanes; protected-path assignments respect the different-model rule (no S5 on broker/approvals/harness-factory/infra-ci). FULL EXTRACTION (2026-08-26T16:00Z, ORCH, plan v5.5, Alister request): every study pattern dispositioned in docs/STUDY-grok-bot-018.md §Full extraction disposition (TASK / COVERED / DEFER / CONVENTION / REJECT — nothing dropped silently). Added TASK-072..079, all priority:low post-MVP: 072 agent-providers budget hook + registration completeness (S5), 073 broker refusal memory (GB, protected, after 067), 074 shared scheduling policies + digest fixture pin (S5 — pin gap is real, no literal-hex digest pin exists today), 075 db intake idempotency ledger (S5, db primitive only; control-api wiring follows 063), 076 worker lanes + approval-aware idle (GB, after 055 — worker single-owner rule holds), 077 audit outbox hardening (S5), 078 policy tier-ceiling clamp (CX, protected), 079 loopback MCP bridge for CLI harnesses (GB, after 072). TASK-066 gained a bidirectional-closure AC. Explicit DEFERS with owners-when-wave-arrives recorded in the disposition table: secrets-labelled-request flow (secrets wave), process-identity binding + adopt-if-busy supervision (long-lived worker processes), Docker/sandbox hardening deltas (sandbox wave), pure-function Tier-0 routing + model catalog (budget wave, week 5). Backlog now 15 study tasks total (065-079); builder queues balanced GB=5/CX=4/S5=6 with protected paths never on S5."
 ---
 
 # Project Plan
@@ -1994,6 +1994,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Acceptance_Criteria:**
 - [ ] Broker construction with an unmapped tool name throws `PolicyMissingError` naming the tool — this test is the liveness assertion (ADR-005; study §Tier 1.4)
 - [ ] Call-time re-check denies a tool absent from the manifest map even when it appears in the mounted tool list — tested (study §Tier 1.6)
+- [ ] Bidirectional closure: a policy entry naming a tool that no manifest maps is surfaced as a stale-entry error at construction, tested (study §6.2 bidirectional inventory closure)
 - [ ] Existing L1 decision path unchanged — existing broker tests byte-identical and green
 - [ ] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
@@ -2135,3 +2136,210 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-072
+**Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Full extraction disposition + §Tier 2 (deferred-bundle, mandatory-bindings); CLAUDE.md Budget (per-routine budgets from week 5)
+**Owned_Paths:** packages/agent-providers/src/budget.ts, packages/agent-providers/src/registration.ts, packages/agent-providers/src/metadata.ts, packages/agent-providers/src/budget.test.ts, packages/agent-providers/src/registration.test.ts, packages/agent-providers/src/index.ts
+**Depends_On:** —
+**Description:** The existing ProviderEvent stream already normalizes usage + costUsd across Claude Code / Codex / Grok, so the study's deferred-bundle pattern is largely built. Three deltas remain. (1) **Budget hook**: a `BudgetSink` port on the provider interface — every completed turn reports `{provider, model, costUsd, tokens}` to an injected sink BEFORE the result is surfaced, so the week-5 per-routine budget broker has a single interception point rather than N provider-specific ones; a throwing sink fails the turn (fail closed — an unaccounted turn must not succeed silently). (2) **Registration completeness** (their `assertProductionLocalExecRuntime`, study §Tier 2 item 20): a provider registry that validates at registration time that every declared capability of the provider contract is implemented — a partially-implemented provider throws a typed error enumerating the missing members at startup, never failing on first use. (3) **Namespaced metadata**: provider-specific extras travel under a provider-keyed namespace (`{claude: {sessionRef}}`, `{codex: {responseId}}`) instead of widening the shared type — additive type change only. Do not modify the three existing provider implementations beyond wiring; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Budget sink invoked exactly once per completed turn with cost+tokens; a throwing sink fails the turn — both tested per provider via injected fakes
+- [ ] Registering a provider missing a contract member throws at registration naming the member, tested
+- [ ] Provider extras only reachable via the provider-keyed namespace; shared type unchanged, typecheck-asserted
+- [ ] Existing agent-providers tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-073
+**Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 5 (refusal memory); Directive §4 N3, N8
+**Owned_Paths:** packages/broker/src/refusalMemory.ts, packages/broker/src/refusalMemory.test.ts
+**Depends_On:** TASK-067
+**Description:** **GB or CX only, NEVER S5** (protected path). Grok Bot's densest control (study: their `local-tool-permission-controller.ts`): a denied action must STAY denied for the rest of that run — a retrying agent re-asking the human is a nagging vector and a budget burn. Implement per-run refusal memory in the broker decision path: (1) a denial records `(runId, tool, sha256(canonical target))`; a repeat of the same action in the same run is auto-denied with the TASK-067 `modelGuidance` stating it was already refused and a later permission change does not authorize it — without re-parking for approval. (2) **Bounded, failing closed**: cap entries per run (512 per the reference); on eviction, mark the run saturated and auto-deny everything further in it rather than silently forgetting refusals — forgetting fails open, saturation fails closed. (3) **Grant-widening is not retroactive**: a policy/tier change to auto-allow applies only to actions initiated after the change — record the change epoch and compare. Memory is in-process per run (no schema change); note in the work log that persistence across worker restarts is deliberately out of scope (a restart re-parks, which is safe — the failure direction is re-ASKING, not re-running).
+**Acceptance_Criteria:**
+- [ ] Same (tool, target) re-attempted in one run after denial ⇒ auto-denied, no second approval request issued — tested
+- [ ] Guidance on the repeat denial states already-refused + do-not-retry (TASK-067 shape), asserted
+- [ ] Saturation: overflowing the cap denies subsequent actions in that run — fail-closed eviction tested
+- [ ] Policy widened mid-run does not resurrect a previously denied action, tested
+- [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-074
+**Title:** packages/shared — named scheduling policies + canonical-digest fixture pin
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (scheduling policies) + §Tier 1 item 7 (digest liveness); WBS OIK-017/018
+**Owned_Paths:** packages/shared/src/scheduling/**, packages/shared/test/scheduling.test.ts, packages/shared/test/digestPin.test.ts, packages/shared/src/index.ts
+**Depends_On:** —
+**Description:** Two shared-package hardenings. (1) **Scheduling policies** (their `internal/scheduling.ts`): `DeadlinePolicy`, `RetryPolicy`, `PollingPolicy`, `IdleWatchdogPolicy`, `DebouncePolicy` — each takes an injected `Clock` (deterministic tests, no fake-timer globals), validates its options in the constructor (throw RangeError eagerly), carries a mandatory non-empty `name` so every timeout error is attributable (`DeadlineExceededError.policyName`), and `unref()`s its timers. Zero runtime dependencies (shared's standing constraint). Adoption by other packages is NOT this task. (2) **Digest fixture pin**: `packages/shared/test` proves key-order insensitivity but contains NO hard-coded digest — a canonicalization regression would today be silently re-baselined by re-running the suite. Add `digestPin.test.ts` asserting `actionDigest(<fixed fixture>)` equals a literal hex string computed once and committed, plus the same for `canonicalJson` byte output, covering the README edge cases (-0, unicode, nested, null-vs-absent). **Do not modify canonicalJson.ts or actionDigest.ts** — if the pin exposes a discrepancy against the README spec, that is a SPEC_AMBIGUITY block, not a fix-in-place (N10: this implementation is platform-wide law; changing its bytes is an ORCH decision).
+**Acceptance_Criteria:**
+- [ ] Five policies implemented with injected Clock; constructor option validation tested per policy; timeout errors carry the policy name
+- [ ] Zero runtime dependencies added; all timers unref'd
+- [ ] Literal-hex digest pins committed for actionDigest and canonicalJson across the README edge-case fixtures — MUTATION-PROVEN: perturbing key sort order in a test-local copy yields a different digest than the pin
+- [ ] canonicalJson.ts and actionDigest.ts byte-identical to master
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-075
+**Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (nonce ledger with input-digest binding); Directive §4 N8 spirit; OIK-014 (typed query layer)
+**Owned_Paths:** infra/postgres/migrations/003_intake_nonces.up.sql, infra/postgres/migrations/003_intake_nonces.down.sql, packages/db/src/intakeNonces.ts, packages/db/src/intakeNonces.test.ts
+**Depends_On:** —
+**Description:** Task intake (Telegram `/task`, future surfaces) currently has no replay protection: a retried webhook or double-tapped message creates two tasks. Grok Bot's prompt-acceptance ledger (study §Tier 2) is the reference: (1) migration 003 creates `intake_nonces(tenant_id, client_nonce, input_digest, status, task_id, created_at)` with a UNIQUE index on `(tenant_id, client_nonce)`. (2) `admitIntake(tenantId, nonce, inputDigest)` — one atomic INSERT … ON CONFLICT returning `dispatch` (new) or `duplicate` (replay, with the original task_id); **the same nonce arriving with a DIFFERENT input_digest is a typed error, never a silent dedupe** — identical-looking retries are safe, content-swapped ones are an attack or a bug and must surface. Digest via `packages/shared` actionDigest/canonicalJson ONLY (N10 — no local hashing). (3) Tri-state `lookupIntake` — `found | not-found`; include the study's `unknown-durability` distinction only if an eviction policy is added (it is not, in v1 — rows are kept; note that in the work log). A replayed nonce whose original was rejected replays the rejection. **db primitive only** — control-api/gateway wiring is a follow-up after TASK-063 lands (their territory is otherwise occupied); barrel export deferred to that wiring task to keep index.ts out of this territory.
+**Acceptance_Criteria:**
+- [ ] Migration additive + reversible; UNIQUE (tenant_id, client_nonce) enforced, tested against live pg16
+- [ ] `admitIntake` is one atomic statement; concurrent same-nonce calls yield exactly one `dispatch`, rest `duplicate` — tested
+- [ ] Same nonce + different digest ⇒ typed error, never a duplicate result, tested
+- [ ] Digest computed exclusively via @oikonomos/shared — asserted (no crypto import in this module)
+- [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-061 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-076
+**Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
+**Owned_Paths:** services/worker/src/scheduler/**, services/worker/test/scheduler.test.ts
+**Depends_On:** TASK-055
+**Description:** Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker). Three run-orchestration properties from the study: (1) **Per-agent serialization** — at most one active run per agent/routine identity, enforced by a promise-chain queue keyed on that identity, where one failed run does not poison the queue (their six-line `Map<agentId, Promise>` with self-deleting entries). (2) **Lanes** — `user | agent | background` priority lanes; user-initiated work preempts queued background work at dequeue time, never mid-run. (3) **Approval-aware idle** (study §Tier 2): the worker's health/idle signal distinguishes "busy running" from "busy only because every active run is parked awaiting a human approval" — the idle clock does NOT advance while merely awaiting approval, so a future drain/upgrade path can quiesce safely without cancelling human-blocked work; expose `{isBusy, busyOnlyAwaitingApproval, lastBusyAt}`. A watchdog interrupts a run exceeding a configurable wall-clock budget and records the interruption in the run's audit trail (never a silent kill). Injected clock throughout; no schema changes.
+**Acceptance_Criteria:**
+- [ ] Two runs for one agent identity never execute concurrently; a failed run does not block the next — both tested
+- [ ] User-lane task dequeued ahead of earlier-queued background tasks, tested
+- [ ] `busyOnlyAwaitingApproval` true and `lastBusyAt` frozen while the only active run is parked on approval, tested
+- [ ] Watchdog interruption reaches the run's audit trail, tested
+- [ ] MUTATION-PROVEN: removing the serialization queue turns a concurrency test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-077
+**Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (audit dual-sink); OIK-013 (append-only); Directive §4 N4
+**Owned_Paths:** packages/audit/src/outbox.ts, packages/audit/src/outbox.test.ts, packages/audit/src/format.ts, packages/audit/src/format.test.ts, packages/audit/src/index.ts
+**Depends_On:** —
+**Description:** Delivery hardening from Grok Bot's `action-audit-service.ts` (study §Tier 2), for audit events bound to a remote/secondary sink (future dashboard push, Telegram evidence). (1) **Capped persistent outbox**: undelivered events queue durably (a DB-backed `audit_outbox` is NOT wanted — reuse the append-only `audit_events` table with a delivery-cursor row instead, keeping one source of truth; if that proves incompatible with OIK-013's no-UPDATE rule for cursor storage, store the cursor in `kv`-style state, and BLOCK with SPEC_AMBIGUITY only if neither fits). Cap the in-memory batch; oldest-dropped ONLY with an explicit dropped-count event emitted — never silent loss. (2) **Backoff honouring `Retry-After`** on sink rate-limits, via injected clock. (3) **Exhaustive-union formatter**: one function mapping every audit action kind to its serialized line, written so adding a kind is a COMPILE error until its format exists (their `localAuditJsonlLine` switch-with-never). Redaction stays `redact.ts`'s job — call it, never reimplement (N4; TASK-059's rule). Local append-path behaviour unchanged; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Sink failure ⇒ events retained and redelivered after recovery; delivery order preserved — tested with injected failing sink
+- [ ] Cap overflow emits an explicit dropped-count marker, never silent — tested
+- [ ] Retry-After honoured before next attempt, tested with injected clock
+- [ ] Formatter exhaustive: a new action kind without a format branch fails typecheck — demonstrated in Test_Evidence with a scratch kind, reverted
+- [ ] All outbound content passes through the existing redact.ts — asserted, no second redaction implementation (N4)
+- [ ] Existing audit tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-078
+**Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (admin ceiling rank clamp); Directive §4 N2 (no bypass); ADR-001
+**Owned_Paths:** packages/policy/src/ceiling.ts, packages/policy/src/ceiling.test.ts, packages/policy/src/index.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; note packages/policy has ZERO I/O imports, lint-enforced — pure functions only). The four-line primitive that makes "no bypass" structural (study §Tier 2): risk-tier decisions get an optional `ceiling` — `resolveEffectiveTier(requested, ceiling)` returns the STRICTER of the two by a declared rank order, so any per-routine, per-user, or per-config preference can only ever tighten the platform default, never loosen it. Wire it into the existing tier-resolution path as the single exit point (every resolved tier passes through the clamp); a missing/undefined ceiling means no relaxation either — the platform default IS the floor. This is the primitive a future org-config surface consumes; the config surface itself is out of scope. Pure function, exhaustive over the risk_tier enum (adding a tier without a rank fails typecheck). Existing policy tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Clamp returns the stricter tier for every (requested, ceiling) pair — exhaustively table-tested over the enum
+- [ ] Every tier resolution flows through the clamp — MUTATION-PROVEN: bypassing it for one path turns a test RED
+- [ ] A new enum member without a rank fails typecheck — demonstrated with a scratch member, reverted
+- [ ] Zero I/O imports preserved (lint), existing policy tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-079
+**Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (loopback bridge) + §Anti-patterns 2 (no regex destructiveness); ADR-001 (broker remains the enforcement point); Directive §4 N1
+**Owned_Paths:** packages/agent-providers/src/mcpBridge/**, packages/agent-providers/src/mcpBridge.test.ts
+**Depends_On:** TASK-072
+**Description:** When a routine runs on a CLI harness that cannot take inline tool definitions (Codex CLI, Grok Build), OIKONOMOS's connectors must reach it as an MCP server — and every call through that server is a broker interception point. Port Grok Bot's `routed-mcp-bridge.ts` (~88 lines, study §Tier 2): an in-process HTTP MCP server per run — `listen(0, "127.0.0.1")` (ephemeral port, loopback ONLY), a crypto-random capability path acting as the bearer (`/mcp/<randomUUID>`), request body cap (1 MiB), method+path allowlist (404 anything else), `tools/list` answering from a snapshot taken at mount, `tools/call` accepted only for snapshot names, torn down unconditionally in a `finally` when the run ends. **Every `tools/call` MUST pass through the injected broker decision port before reaching the real connector — the bridge is transport, the broker stays the enforcement point (ADR-001; N1)**; a broker deny returns an MCP error result carrying the TASK-067 modelGuidance, never a thrown 500. Tool annotations (readOnly/destructive) come from the connector manifest verbatim — **NEVER derived from names or descriptions** (study §Anti-patterns 2). Broker port is injected (no packages/broker import cycle); wiring composeHarness to actually mount the bridge is harness-factory territory — a follow-up, not this task.
+**Acceptance_Criteria:**
+- [ ] Server binds 127.0.0.1 on an ephemeral port; wrong path or method ⇒ 404; oversized body ⇒ 413 — all tested
+- [ ] Every tools/call invokes the injected broker port first — MUTATION-PROVEN: bypassing the broker for one call turns a test RED (N1)
+- [ ] Broker deny surfaces as an MCP error result with guidance text, not a transport error, tested
+- [ ] tools/call for a name outside the mount snapshot refused, tested
+- [ ] Annotations sourced from the manifest only; no name/description heuristic anywhere — asserted
+- [ ] Bridge closed after run end even when the run throws — tested
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z

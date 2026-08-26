@@ -87,6 +87,54 @@ Files: `scripts/native-e2e-check.mjs`, `scripts/verify.mjs:53-54`.
 - Malformed persisted records ⇒ dropped, never coerced; wrong schema version ⇒ whole document discarded, defaults used.
 - Publication-tree self-proof: `git archive HEAD` → re-add in scratch repo → `write-tree` must equal `HEAD^{tree}` (catches .gitignore swallowing source). 43 lines, runs in CI.
 
+## Full extraction disposition (2026-08-26, ORCH)
+
+Every pattern from the three study reports, dispositioned against the live codebase. Statuses: **TASK** (has a PLAN.md task), **COVERED** (already built/decided here), **DEFER** (real, but its wave hasn't arrived — reason given), **CONVENTION** (technique to apply in reviews/specs, not a work item), **REJECT**.
+
+| Pattern | Disposition |
+|---|---|
+| Approval nonce + generation + epoch triple | **TASK-065** |
+| Construction-time policy completeness (unmapped tool ⇒ throw) | **TASK-066** |
+| Enforce-time re-check of enumeration-time filters | **TASK-066** |
+| Bidirectional closure (stale policy entries with no tool also flagged) | **TASK-066** (AC added) |
+| Undescribable ⇒ denied + size cap | **TASK-067** |
+| Model-directed denial messages | **TASK-067** |
+| Refusal memory (denials stick per turn; saturation fails closed; grants not retroactive) | **TASK-073** |
+| SWR tool discovery keyed by server-set | **TASK-068** |
+| Closed error registry with payload allowlist | **TASK-069** |
+| Publication-tree self-proof + negative-control greps | **TASK-070** |
+| Tool decorators (AsyncContext scope, finally-retire, mandatory toolCallId) | **TASK-071** |
+| Deferred-bundle provider normalization | **COVERED** — agent-providers already emits a normalized ProviderEvent stream with costUsd; deltas below |
+| Budget hook in the provider interface + registration completeness (partial provider cannot register) | **TASK-072** |
+| Provider-namespaced metadata escape hatch | **TASK-072** |
+| Named injectable scheduling policies (Clock-parameterised, named, unref'd) | **TASK-074** |
+| Hard-coded canonical-digest fixture pin (regression cannot silently re-baseline) | **TASK-074** — key-order fixture exists in packages/shared/test, no literal-hex pin does |
+| Nonce ledger with input-digest binding (same nonce + different content ⇒ error; tri-state lookup) | **TASK-075** (db primitive; control-api/telegram wiring after TASK-063 lands) |
+| Lane-based per-agent run scheduler + per-agent turn serialization | **TASK-076** |
+| Approval-aware health (busy-only-awaiting-approval; safe drain) | **TASK-076** |
+| Audit dual-sink: capped persistent outbox, Retry-After backoff, exhaustive-union formatter | **TASK-077** |
+| Admin ceiling as a rank clamp (org policy only tightens) | **TASK-078** |
+| Ephemeral loopback MCP bridge (hand connectors to CLI harnesses; broker intercepts every tools/call) | **TASK-079** |
+| Executor-side independent re-verification of approvals | **COVERED in principle** (atomic SQL consume IS the executing check, N8) — revisit when execution moves out-of-process; then apply TASK-065's binding there too |
+| One canonical digest implementation | **COVERED** — TASK-003; their 12 divergent copies are the cautionary tale |
+| Atomic single-statement approval transitions | **COVERED** — TASK-062/064 |
+| Two-tier validation (hand parsers at process boundaries, zod at model-facing inputs) | **CONVENTION** — matches current practice; hold the line in review |
+| Closed method tables + Object.hasOwn | **COVERED-ish** — control-api OpenAPI + ports serve this role; apply the table idiom if a raw RPC surface ever appears |
+| Protocol-breach state machine (breach ⇒ named shutdown reason) | **DEFER** — no raw long-lived channel exists yet; applies to a future worker↔control-api stream |
+| Secrets never enter the transcript (labelled secret request; value flows control-plane→destination) | **DEFER to secrets wave** — needs its own decompose; N4-critical, do not lose |
+| Process identity binding (generation token in env+argv; PID never trusted) + adopt-if-busy supervision | **DEFER** — becomes relevant when worker supervises long-lived agent processes |
+| Content-addressed runtime staging + ownership labels + Docker hardening deltas | **DEFER to sandbox/infra wave** — carry the §Anti-patterns 5/6 warnings into that decompose |
+| Pure-function model routing (explicit inputs record) | **DEFER to budget/Tier-0 wave (week 5)** — adopt the shape then |
+| Model-parameter conflict attribution | **DEFER** — no model catalog exists yet |
+| Extension kernel (topo-sorted DI graph) | **DEFER/REJECT for now** — pnpm package boundaries already give composition; revisit only if a monolithic host process emerges |
+| No-cache read-modify-write settings store | **REJECT** — Postgres is the source of truth; the problem it solves (multi-process shared file) doesn't exist here |
+| Snapshot–act–verify around file mutation; anchor-exactly-once patching; rename-quarantine CAS | **CONVENTION** — apply if/when scripts rewrite config files; DB-centric core doesn't need it |
+| esbuild-in-test module loading; adversarial SSE chunking; DI-with-closures fixtures | **CONVENTION** — cite in review when transport parsers appear |
+| Structured blocker lists; `not-evaluated` ≠ pass | **CONVENTION** — apply in evals wave verdict records |
+| Streaming-parity shims documented in comments | **CONVENTION** |
+| Electron posture (contextIsolation, preload surface, webview hardening) | **N/A** — no Electron surface |
+| Regex-guessed tool destructiveness; grep-tests as controls; mock permission service; credentials mounted into sandbox | **REJECT** — anti-patterns, §above |
+
 ## Where this feeds the plan
 
 - **TASK-054** (allowedTools derivation): adopt server-set-keyed discovery cache + enforce-time re-check (§6, tools-discovery pattern).
