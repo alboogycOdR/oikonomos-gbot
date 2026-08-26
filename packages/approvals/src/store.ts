@@ -67,9 +67,28 @@ WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL
 export const REJECT_APPROVAL_SQL = `UPDATE approvals SET status='rejected', decided_by=$2, decided_at=now()
 WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL`;
 
-const APPROVAL_COLUMNS = `approval_id, tenant_id, run_id, capability_id, action_digest,
+export const APPROVAL_COLUMNS = `approval_id, tenant_id, run_id, capability_id, action_digest,
        action_render, destination, nonce, status, requested_at, expires_at,
        decided_by, decided_at, consumed_at`;
+
+/**
+ * Replacement-row insert for editApproval. Mirrors packages/db insertApproval
+ * so invalidate + insert can share one client; do not add a WHERE clause here.
+ */
+export const INSERT_APPROVAL_SQL = `INSERT INTO approvals (
+         tenant_id, run_id, capability_id, action_digest, action_render,
+         destination, nonce, expires_at
+       )
+       VALUES (
+         COALESCE($1, 'basileia'),
+         $2,
+         $3,
+         $4,
+         $5,
+         $6,
+         COALESCE($7::uuid, gen_random_uuid()),
+         $8
+       )`;
 
 interface ApprovalRow {
   approval_id: string;
@@ -93,12 +112,29 @@ interface PgResult<T extends object> {
   rowCount: number | null;
 }
 
+interface PgClient {
+  query<T extends object = Record<string, unknown>>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<PgResult<T>>;
+  release(): void;
+}
+
 interface PgPool {
   query<T extends object = Record<string, unknown>>(
     text: string,
     values?: readonly unknown[],
   ): Promise<PgResult<T>>;
+  connect(): Promise<PgClient>;
   end(): Promise<void>;
+}
+
+/** One borrowed client. Callers own any transaction; this type only queries. */
+export interface ApprovalClient {
+  query<T extends object = Record<string, unknown>>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
 }
 
 interface PgModule {
@@ -141,6 +177,24 @@ async function withPool<T>(
   } finally {
     await pool.end();
   }
+}
+
+/**
+ * Borrow one client from a short-lived pool. Caller owns any transaction;
+ * this helper only guarantees `release()` and `pool.end()` on every path.
+ */
+export async function withApprovalClient<T>(
+  options: DatabaseOptions,
+  fn: (client: ApprovalClient) => Promise<T>,
+): Promise<T> {
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      return await fn(client);
+    } finally {
+      client.release();
+    }
+  });
 }
 
 function toApproval(row: ApprovalRow): Approval {
