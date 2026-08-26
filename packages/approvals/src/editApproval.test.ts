@@ -13,6 +13,7 @@ import { bindActionDigest } from "./bind.js";
 import { verifyAndConsume } from "./consume.js";
 import { grantApproval, rejectApproval } from "./decide.js";
 import {
+  EDIT_APPROVAL_TEST_HOOKS,
   editApproval,
   type EditApprovalDependencies,
 } from "./editApproval.js";
@@ -100,6 +101,28 @@ if (import.meta.vitest) {
           database: { connectionString: "postgres://invalid" },
         }),
       ).rejects.toThrow(/nonce/);
+    });
+
+    it("binds the replacement to the voided row's run_id/capability_id/tenant_id before INSERT", () => {
+      const identity = editSrc.indexOf("assertIdentityBound");
+      const insert = editSrc.indexOf("INSERT_APPROVAL_SQL", identity);
+      expect(identity).toBeGreaterThan(-1);
+      expect(insert).toBeGreaterThan(identity);
+      expect(editSrc).toContain("cannot rebind run_id.");
+      expect(editSrc).toContain("cannot rebind capability_id.");
+      expect(editSrc).toContain("cannot rebind tenant_id.");
+      expect(editSrc).toContain("invalidated.tenantId");
+      expect(editSrc).toContain("invalidated.runId");
+      expect(editSrc).toContain("invalidated.capabilityId");
+    });
+
+    it("does not accept a structurally-typed afterInvalidate as a production hook", () => {
+      const indexSrc = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+      expect(editSrc).toContain("EDIT_APPROVAL_TEST_HOOKS");
+      expect(editSrc).not.toMatch(/testHooks\?\.afterInvalidate/);
+      expect(editSrc).toContain("testHooks?.[EDIT_APPROVAL_TEST_HOOKS]");
+      expect(indexSrc).not.toContain("EDIT_APPROVAL_TEST_HOOKS");
+      expect(indexSrc).not.toContain("EditApprovalTestHooks");
     });
 
     it("fails closed on empty edited fields before opening a client", async () => {
@@ -240,6 +263,9 @@ if (import.meta.vitest) {
       expect(newRow!.actionDigest.equals(originalRow!.actionDigest)).toBe(false);
       expect(expectedRender).toContain("edited subject");
       expect(expectedRender).toContain(EDITED_PAYLOAD.destination);
+      expect(newRow!.runId).toBe(originalRow!.runId);
+      expect(newRow!.capabilityId).toBe(originalRow!.capabilityId);
+      expect(newRow!.tenantId).toBe(originalRow!.tenantId);
     });
 
     it("refuses the old nonce via decide AND consume; replacement is the only pending row", async () => {
@@ -287,8 +313,10 @@ if (import.meta.vitest) {
 
       await expect(
         editApproval(original.nonce, fixtureRequest(runId, EDITED_PAYLOAD), deps, {
-          afterInvalidate: async () => {
-            throw new Error(INJECTED_FAULT);
+          [EDIT_APPROVAL_TEST_HOOKS]: {
+            afterInvalidate: async () => {
+              throw new Error(INJECTED_FAULT);
+            },
           },
         }),
       ).rejects.toThrow(INJECTED_FAULT);
@@ -337,8 +365,10 @@ if (import.meta.vitest) {
       for (let i = 0; i < 8; i += 1) {
         await expect(
           editApproval(original.nonce, fixtureRequest(runId, EDITED_PAYLOAD), deps, {
-            afterInvalidate: async () => {
-              throw new Error(INJECTED_FAULT);
+            [EDIT_APPROVAL_TEST_HOOKS]: {
+              afterInvalidate: async () => {
+                throw new Error(INJECTED_FAULT);
+              },
             },
           }),
         ).rejects.toThrow(INJECTED_FAULT);
@@ -406,6 +436,136 @@ if (import.meta.vitest) {
         expect(after).toEqual(snapshots[index]);
       }
 
+      const afterCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+      expect(afterCount.rows[0]?.n).toBe(beforeCount.rows[0]?.n);
+    });
+
+    it("refuses a still-pending row whose expires_at is already past (sweeper not run) with zero writes", async () => {
+      const store = createDatabaseStore(options);
+      const runId = await insertRun();
+      const stale = await issueApproval(
+        fixtureRequest(runId, { expiresAt: new Date(Date.now() - 1_000) }),
+        { store },
+      );
+      const before = await loadByNonce(stale.nonce);
+      expect(before?.status).toBe("pending");
+      expect(before!.expiresAt.getTime()).toBeLessThan(Date.now());
+      const beforeCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+
+      const result = await editApproval(stale.nonce, fixtureRequest(runId, EDITED_PAYLOAD), deps);
+      expect(result).toEqual({ edited: false, rowCount: 0 });
+      expect(await loadByNonce(stale.nonce)).toEqual(before);
+      const afterCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+      expect(afterCount.rows[0]?.n).toBe(beforeCount.rows[0]?.n);
+      expect(await pendingCount(runId)).toBe(1);
+    });
+
+    it("ignores a structurally-typed afterInvalidate on the 4th argument", async () => {
+      const store = createDatabaseStore(options);
+      const runId = await insertRun();
+      const original = await issueApproval(fixtureRequest(runId), { store });
+      const result = await editApproval(
+        original.nonce,
+        fixtureRequest(runId, EDITED_PAYLOAD),
+        deps,
+        {
+          afterInvalidate: async () => {
+            throw new Error(INJECTED_FAULT);
+          },
+        } as never,
+      );
+      expect(result.edited).toBe(true);
+      expect((await loadByNonce(original.nonce))?.status).toBe("invalidated");
+    });
+
+    it("refuses a replacement bound to a different run_id, rolling back the invalidate", async () => {
+      const store = createDatabaseStore(options);
+      const runId = await insertRun();
+      const otherRunId = await insertRun();
+      const original = await issueApproval(fixtureRequest(runId), { store });
+      const before = await loadByNonce(original.nonce);
+      const beforeCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id IN ($1, $2)",
+        [runId, otherRunId],
+      );
+
+      await expect(
+        editApproval(original.nonce, fixtureRequest(otherRunId, EDITED_PAYLOAD), deps),
+      ).rejects.toThrow(/cannot rebind run_id/);
+
+      expect(await loadByNonce(original.nonce)).toEqual(before);
+      expect(await pendingCount(runId)).toBe(1);
+      expect(await pendingCount(otherRunId)).toBe(0);
+      const afterCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id IN ($1, $2)",
+        [runId, otherRunId],
+      );
+      expect(afterCount.rows[0]?.n).toBe(beforeCount.rows[0]?.n);
+    });
+
+    it("refuses a replacement bound to a different capability_id, rolling back the invalidate", async () => {
+      const store = createDatabaseStore(options);
+      const runId = await insertRun();
+      const original = await issueApproval(fixtureRequest(runId), { store });
+      const before = await loadByNonce(original.nonce);
+      const beforeCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+
+      await expect(
+        editApproval(
+          original.nonce,
+          fixtureRequest(runId, { ...EDITED_PAYLOAD, capabilityId: "email.list" }),
+          deps,
+        ),
+      ).rejects.toThrow(/cannot rebind capability_id/);
+
+      expect(await loadByNonce(original.nonce)).toEqual(before);
+      expect(await pendingCount(runId)).toBe(1);
+      const afterCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+      expect(afterCount.rows[0]?.n).toBe(beforeCount.rows[0]?.n);
+    });
+
+    it("refuses a replacement bound to a different tenant_id, rolling back the invalidate", async () => {
+      const store = createDatabaseStore(options);
+      const runId = await insertRun();
+      const original = await issueApproval(
+        fixtureRequest(runId, { tenantId: "task-080-tenant-a" }),
+        { store },
+      );
+      const before = await loadByNonce(original.nonce);
+      expect(before?.tenantId).toBe("task-080-tenant-a");
+      const beforeCount = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
+        [runId],
+      );
+
+      await expect(
+        editApproval(
+          original.nonce,
+          fixtureRequest(runId, { ...EDITED_PAYLOAD, tenantId: "task-080-tenant-b" }),
+          deps,
+        ),
+      ).rejects.toThrow(/cannot rebind tenant_id/);
+      await expect(
+        editApproval(original.nonce, fixtureRequest(runId, EDITED_PAYLOAD), deps),
+      ).rejects.toThrow(/cannot rebind tenant_id/);
+
+      expect(await loadByNonce(original.nonce)).toEqual(before);
+      expect(await pendingCount(runId)).toBe(1);
       const afterCount = await pool.query<{ n: string }>(
         "SELECT count(*)::text AS n FROM approvals WHERE run_id = $1",
         [runId],

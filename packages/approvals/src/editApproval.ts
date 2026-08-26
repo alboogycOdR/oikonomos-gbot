@@ -23,10 +23,21 @@ export type EditApprovalDependencies = {
   readonly database: DatabaseOptions;
 };
 
-/** Test-only hook. Production callers omit this argument. */
-export type EditApprovalTestHooks = {
+/**
+ * @internal Test-only key for injected mid-transaction faults.
+ * Not re-exported from the package barrel; a structurally-typed
+ * `{ afterInvalidate }` argument is ignored.
+ */
+export const EDIT_APPROVAL_TEST_HOOKS: unique symbol = Symbol(
+  "oikonomos.approvals.editApproval.testHooks",
+);
+
+/** @internal */
+type EditApprovalTestHooks = {
   readonly afterInvalidate?: () => Promise<void>;
 };
+
+const DEFAULT_TENANT_ID = "basileia";
 
 export type EditApprovalResult =
   | {
@@ -99,6 +110,21 @@ function toApproval(row: ApprovalRow): Approval {
   };
 }
 
+function assertIdentityBound(
+  invalidated: Approval,
+  requested: { runId: string; capabilityId: string; tenantId: string },
+): void {
+  if (invalidated.runId !== requested.runId) {
+    throw new Error("editApproval cannot rebind run_id.");
+  }
+  if (invalidated.capabilityId !== requested.capabilityId) {
+    throw new Error("editApproval cannot rebind capability_id.");
+  }
+  if (invalidated.tenantId !== requested.tenantId) {
+    throw new Error("editApproval cannot rebind tenant_id.");
+  }
+}
+
 function toWaitSignal(persisted: Approval, actionDigestHex: string): ApprovalWaitSignal {
   if (persisted.status !== "pending") {
     throw new Error(
@@ -129,13 +155,14 @@ async function rollback(client: ApprovalClient): Promise<void> {
  * Atomically void a still-pending approval and issue a replacement bound
  * to the edited payload. Both writes share one client inside BEGIN/COMMIT
  * (N8 / OIK-086). A mid-flight failure leaves the original pending and
- * inserts nothing.
+ * inserts nothing. The replacement is bound to the voided row's run_id,
+ * capability_id, and tenant_id — a divergent request rolls back.
  */
 export async function editApproval(
   nonce: string,
   editedRequest: IssueApprovalRequest,
   deps: EditApprovalDependencies,
-  testHooks?: EditApprovalTestHooks,
+  testHooks?: { readonly [EDIT_APPROVAL_TEST_HOOKS]?: EditApprovalTestHooks },
 ): Promise<EditApprovalResult> {
   const normalizedNonce = requireUuid(nonce, "nonce");
   const runId = requireUuid(editedRequest.runId, "runId");
@@ -143,9 +170,9 @@ export async function editApproval(
   const toolName = requireNonEmpty(editedRequest.toolName, "toolName");
   const destination = requireNonEmpty(editedRequest.destination, "destination");
   const expiresAt = resolveExpiresAt(editedRequest.expiresAt);
-  const tenantId =
+  const requestedTenantId =
     editedRequest.tenantId === undefined
-      ? undefined
+      ? DEFAULT_TENANT_ID
       : requireNonEmpty(editedRequest.tenantId, "tenantId");
 
   const action = {
@@ -183,16 +210,22 @@ export async function editApproval(
       if (invalidated.consumedAt !== null) {
         throw new Error("editing a pending approval must not consume it.");
       }
-      if (testHooks?.afterInvalidate !== undefined) {
-        await testHooks.afterInvalidate();
+      assertIdentityBound(invalidated, {
+        runId,
+        capabilityId,
+        tenantId: requestedTenantId,
+      });
+      const hooks = testHooks?.[EDIT_APPROVAL_TEST_HOOKS];
+      if (hooks?.afterInvalidate !== undefined) {
+        await hooks.afterInvalidate();
       }
 
       const inserted = await client.query<ApprovalRow>(
         `${INSERT_APPROVAL_SQL} RETURNING ${APPROVAL_COLUMNS}`,
         [
-          tenantId ?? null,
-          runId,
-          capabilityId,
+          invalidated.tenantId,
+          invalidated.runId,
+          invalidated.capabilityId,
           actionDigestToBytes(actionDigestHex),
           derivedRender,
           destination,
