@@ -1,0 +1,6 @@
+# TASK-070 dossier
+
+## Work Log
+
+- [2026-08-26T16:52:00Z] [CX] Stopped before implementation: dispatcher reports claimed branch `task/TASK-070-cx`, but this worktree is detached at `18a521e` and `git branch -a --list '*TASK-070*'` returns no branch/ref. The worktree's local PLAN is also stale (`scripts/preflight_paths.py TASK-070` reports task not found), while the authoritative main checkout at `C:\CLAUDECODE_TOOLSETS\oikonomos\PLAN.md` records TASK-070 as claimed. Need supervisor sync/branch repair before work can safely continue.
+- [2026-08-26T17:03:00Z] [CX] Resume sync is repaired: worktree is on `task/TASK-070-cx`; authoritative PLAN preflight reports all three allocated paths as new territory. Implementation is blocked by ownership: required CI wiring can only be made in `.github/workflows/ci.yml`, but TASK-070 owns only `infra/ci/checks/publication-tree.sh`, `infra/ci/checks/negative-controls.sh`, and `infra/ci/workflows/**`. The existing workflow has explicit jobs and no discovery/dispatch of `infra/ci/workflows/**`; therefore owned-path-only additions cannot satisfy the required-CI-step acceptance criterion. No CI or control implementation was written, avoiding an inert, unwired control.
