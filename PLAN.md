@@ -2088,7 +2088,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-070
 **Title:** infra/ci — publication-tree self-proof + negative-control greps ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Useful test-harness tricks + §Anti-patterns item 4; Directive §4 N2 (bypass ban), N4; ADR-005
@@ -2101,15 +2101,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing bypass-mode grep untouched or strictly strengthened — verified by diff
 - [ ] Both checks wired as required CI steps
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-070-cx
+**Started_At:** 2026-08-26T15:45:36Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-26T15:45:36Z
 
 ### TASK-071
 **Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
