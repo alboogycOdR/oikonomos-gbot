@@ -1896,7 +1896,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-063
 **Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1913,8 +1913,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Editing a non-pending approval (already decided, expired, invalidated, consumed) is refused per status, tested for each
 - [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044/061 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-063-s5
+**Started_At:** 2026-08-26T15:42:58Z
 **Progress_Notes:**
 - [2026-08-25T06:00:00Z] [ORCH] S5 BLOCKED CORRECTLY AND WAS RIGHT — verified at source: INVALIDATE_APPROVAL_SQL is pinned `status='granted'` (store.ts:39-40) and its own tests prove it no-ops on pending, but Edit's only valid input state IS pending. FOURTH ORCH DECOMPOSE ERROR OF THIS FAMILY — I named a reuse primitive without checking its guard, exactly as I earlier specified consumers against unchecked producer contracts (TASK-056, TASK-058). S5 wrote no code and cited file:line. Remedy: TASK-064 adds a pending-guarded primitive on the protected path (CX, different-model review); this task now depends on it. REJECTED SHORTCUT, recorded so nobody 'simplifies' to it later: Edit could have reused the existing pending-guarded rejectApproval, but 'rejected' means the operator declined while 'invalidated' means the request became void and is being replaced — collapsing them would make the audit trail misreport an edit as a rejection.
 - [2026-08-25T05:46:08Z] [SV:S5] Investigated the reuse primitive named in the task (packages/approvals ApprovalStore.invalidate). Its pinned SQL is guarded to status='granted' and is proven-by-test to no-op against 'pending' rows (packages/approvals/test/invalidate.test.ts: 'does not invalidate a still-pending approval'; invalidate-sql.test.ts: 'invalidates only granted unused rows'). But this task's own AC #7 requires Edit to be valid ONLY on status='pending' (matching OIK-086: Approve/Edit/Reject are offered on a still-pending Telegram approval, and decideApproval's GRANT/REJECT SQL confirm pending is the pre-decision state). So calling invalidate() from the new edit route against the one state Edit must accept will always return rowCount 0 — a successful edit is structurally impossible through the named primitive as it exists today. No other export in packages/approvals or packages/db provides a pending-guarded invalidate. Per this task's own instruction ('if a needed primitive is genuinely missing there, BLOCK with SPEC_AMBIGUITY rather than reach in'), blocking rather than adding a new pinned SQL/method inside packages/approvals (protected, needs adversarial review by a different model) or packages/db (both outside Owned_Paths regardless). No implementation code written; branch has only a PLAN.md-sync-driven dossier commit. Full investigation with file:line citations in dossiers/TASK-063.md.
@@ -1923,7 +1923,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-25T06:00:00Z
+**Updated_At:** 2026-08-26T15:42:58Z
 
 ### TASK-064
 **Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
