@@ -1754,7 +1754,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1768,8 +1768,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-tap Approve on the same message results in exactly one consumed approval (N8), tested
 - [ ] Raw nonce not embedded in forwardable callback payloads; mechanism documented in the work log (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-058-cx
+**Started_At:** 2026-08-26T20:55:29Z
 **Progress_Notes:**
 - [2026-08-24T18:00:00Z] [ORCH] CX BLOCKED CORRECTLY AND WAS RIGHT — verified independently: control-api exposes only listPendingApprovals + decide, ControlApiDeps has no invalidate/reissue, and no such route exists; yet this task's AC requires Edit to invalidate the prior approval and re-enter the cycle. Building that lifecycle in the gateway would have violated OIK-084 (surfaces must not own persistence) and N8. THIRD ORCH DECOMPOSE ERROR OF THE SAME SHAPE (cf. TASK-056's missing db/approvals APIs, found by S5): I specified a consumer's requirements without checking the producer's published contract. The primitives DO exist in packages/approvals (ApprovalStore.invalidate with OIK-023's pinned SQL, plus issueApproval) — they were simply never surfaced through control-api. Remedy: TASK-063 adds the atomic edit/reissue operation; this task now depends on it and is reset to pending. CX wrote no code and left the branch clean.
 - [2026-08-24T17:50:34Z] [SV:CX] Blocked before implementation: control-api lacks an invalidate-and-reissue approval operation required for Edit.
@@ -1778,7 +1778,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-24T18:00:00Z
+**Updated_At:** 2026-08-26T20:55:29Z
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
