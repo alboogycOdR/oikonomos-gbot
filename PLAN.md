@@ -2347,7 +2347,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-080
 **Title:** packages/approvals — atomic editApproval: pending-invalidate + reissue in one transaction ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** WBS OIK-086; OIK-023; Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md; dossiers/TASK-063.md (S5's gap analysis, 2026-08-26)
@@ -2364,12 +2364,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing packages/approvals/test/** byte-identical; INVALIDATE_APPROVAL_SQL and TASK-064's pending SQL unchanged — verified by diff
 - [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-044/061/064 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-080-gb
+**Started_At:** 2026-08-26T15:48:41Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T17:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-26T15:48:41Z
