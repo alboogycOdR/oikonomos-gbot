@@ -288,3 +288,14 @@ The replacement's stored render must be regenerated from the **edited** payload,
   adversarial review — this package (`services/control-api`) is NOT itself protected-path (no
   different-model requirement), but the two upstream primitives it now calls (TASK-064, TASK-080)
   already went through that process.
+
+- [2026-08-26T22:25:00Z] [S5] Session resumed (checkpoint at .devteam/CHECKPOINT.md pointed here;
+  re-read AGENTS.md, briefing, PLAN.md fresh from disk per §10). Found all implementation work
+  already committed (`b821054`, prior session) — `git status` clean except the untracked
+  pack-infra `AUTOPILOT_LOG.md` (not mine) and the now-stale `.devteam/CHECKPOINT.md` (not in
+  Owned_Paths, left in place). Confirmed `git diff master...HEAD --stat` touches only
+  `dossiers/TASK-063.md` + `services/control-api/{src,test}/**` — no ownership drift. Re-ran
+  `pnpm --filter @oikonomos/control-api build` this session: clean, 0 errors, matching the prior
+  session's verification. No code changes needed; re-affirming `needs_review` as recorded in the
+  prior work-log entry with its full test evidence (603/603 recursive suite, lint clean, canaries
+  17/17, all DB legs proven live under DATABASE_URL).
