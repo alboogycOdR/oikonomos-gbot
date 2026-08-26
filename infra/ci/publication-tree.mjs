@@ -60,10 +60,18 @@ export function verifyPublicationTree({ root = process.cwd(), ref = 'HEAD' } = {
     command('git', ['init', '--quiet'], { cwd: scratch });
     command('git', ['add', '--all'], { cwd: scratch });
 
+    // Inspect the first scratch tree before restoring modes. A file omitted by
+    // .gitignore cannot be passed to update-index, so only restore a mode when
+    // that path survived the clean add. This keeps an ignored executable a
+    // normal, diagnosable tree mismatch instead of a control-runtime error.
+    const initiallyAddedTree = command('git', ['write-tree'], { cwd: scratch }).trim();
+    const initiallyAddedFiles = treeFiles(scratch, initiallyAddedTree);
+
     // Windows tar extraction does not retain POSIX execute bits. Restore the
     // modes declared by the committed tree in the scratch index so write-tree
     // remains an exact comparison on every CI developer platform.
     for (const file of executableFiles(repository, ref)) {
+      if (!initiallyAddedFiles.has(file)) continue;
       command('git', ['update-index', '--chmod=+x', '--', file], { cwd: scratch });
     }
 

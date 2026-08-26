@@ -21,7 +21,15 @@ function fixture(root, relativePath, content) {
 }
 
 test('reserved fixture hostnames are accepted', () => {
-  for (const hostname of ['broker.example.invalid', 'service.test', 'example.com', 'local.dev.localhost']) {
+  for (const hostname of [
+    'broker.example.invalid',
+    'service.test',
+    'example.com',
+    'api.example.com',
+    'api.example.net',
+    'api.example.org',
+    'local.dev.localhost',
+  ]) {
     assert.equal(isReservedHostname(hostname), true, hostname);
   }
 });
@@ -40,10 +48,10 @@ test('planted provider variable name and live hostname are both rejected', () =>
   const root = mkdtempSync(join(tmpdir(), 'oik-negative-bad-'));
   const providerName = providerEnvironmentNames().find((name) => name.startsWith('OPENAI'));
   try {
-    fixture(root, 'test/fixtures/bad.env', `${providerName}=PLACEHOLDER\nhttps://api.vendor.example.com\n`);
+    fixture(root, 'test/fixtures/bad.env', `${providerName}=PLACEHOLDER\nhttps://api.vendor.live\n`);
     const findings = scanNegativeControls({ root });
     assert.ok(findings.some((finding) => finding.kind === 'provider-env-name' && finding.value === providerName));
-    assert.ok(findings.some((finding) => finding.kind === 'live-hostname' && finding.value === 'api.vendor.example.com'));
+    assert.ok(findings.some((finding) => finding.kind === 'live-hostname' && finding.value === 'api.vendor.live'));
 
     const command = spawnSync('node', [join(here, 'negative-controls.mjs'), '--root', root], {
       encoding: 'utf8', windowsHide: true,

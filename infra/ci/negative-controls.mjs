@@ -36,7 +36,9 @@ export function isReservedHostname(hostname) {
     || normalized.endsWith('.test')
     || normalized.endsWith('.invalid')
     || normalized.endsWith('.example')
-    || ['example.com', 'example.net', 'example.org'].includes(normalized);
+    || ['example.com', 'example.net', 'example.org'].some(
+      (domain) => normalized === domain || normalized.endsWith(`.${domain}`),
+    );
 }
 
 function lineNumber(text, offset) {
