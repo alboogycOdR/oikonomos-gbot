@@ -1,8 +1,8 @@
 ---
-plan_version: 5.1
-last_updated: 2026-08-22T10:00:00Z
+plan_version: 5.18
+last_updated: 2026-08-26T22:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot)."
+orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051. GROK-BOT STUDY DECOMPOSE (2026-08-26T15:00Z, ORCH, plan v5.4): docs/STUDY-grok-bot-018.md distilled into TASK-065..071, ALL priority:low post-MVP backlog so the dispatcher cannot claim them ahead of the demo lane (054/055 + 058/059 -> 060). 065 approvals generation+epoch binding (CX, protected, after 063), 066 broker construction-time policy completeness + call-time re-check (GB, protected, after 055), 067 broker describe-or-deny + model-directed denials (GB, protected, after 066), 068 connectors SWR enumeration cache (GB, after 054), 069 shared error registry (S5, unprotected, no deps), 070 CI publication-tree self-proof + negative-control greps (CX, protected, no deps), 071 harness-factory decorator seam (CX, protected, after 055). Territories verified disjoint from all active lanes; protected-path assignments respect the different-model rule (no S5 on broker/approvals/harness-factory/infra-ci). FULL EXTRACTION (2026-08-26T16:00Z, ORCH, plan v5.5, Alister request): every study pattern dispositioned in docs/STUDY-grok-bot-018.md §Full extraction disposition (TASK / COVERED / DEFER / CONVENTION / REJECT — nothing dropped silently). Added TASK-072..079, all priority:low post-MVP: 072 agent-providers budget hook + registration completeness (S5), 073 broker refusal memory (GB, protected, after 067), 074 shared scheduling policies + digest fixture pin (S5 — pin gap is real, no literal-hex digest pin exists today), 075 db intake idempotency ledger (S5, db primitive only; control-api wiring follows 063), 076 worker lanes + approval-aware idle (GB, after 055 — worker single-owner rule holds), 077 audit outbox hardening (S5), 078 policy tier-ceiling clamp (CX, protected), 079 loopback MCP bridge for CLI harnesses (GB, after 072). TASK-066 gained a bidirectional-closure AC. Explicit DEFERS with owners-when-wave-arrives recorded in the disposition table: secrets-labelled-request flow (secrets wave), process-identity binding + adopt-if-busy supervision (long-lived worker processes), Docker/sandbox hardening deltas (sandbox wave), pure-function Tier-0 routing + model catalog (budget wave, week 5). Backlog now 15 study tasks total (065-079); builder queues balanced GB=5/CX=4/S5=6 with protected paths never on S5. GMAIL PROVISIONING DECIDED (2026-08-26T16:30Z): official Google-hosted Gmail MCP server (gmailmcp.googleapis.com/mcp/v1) — scope-exact (readonly+compose), NO send tool on its surface at all; docs/runbooks/gmail-mcp-provisioning.md is the click-by-click; Alister executing now, will notify. Manifest tool-name reconciliation (list_messages/send_message vs live search_threads/get_message/label tools) is an ORCH decision at TASK-054 review — runbook §4. DISPATCH WAVE 4 (2026-08-26T16:35Z, ORCH): S5 -> TASK-063 (control-api edit/reissue, critical, unblocked by 064), CX -> auto-claim from {070 CI self-proof, 078 policy ceiling clamp} (both dep-free; 058 still gated on 063), staggered ~30s. GB idle by design: all GB-eligible tasks gated on 054 (Gmail creds, with Alister) or 055/067; GB resumes the moment creds land. WAVE 4 FALLOUT (2026-08-26T17:00Z): S5 blocked 063 AGAIN, rightly — no transactional composition in packages/approvals (withPool = fresh Pool per call, zero BEGIN/COMMIT; ORCH-verified). FIFTH producer-contract decompose error. TASK-080 added (GB, protected, critical): atomic editApproval on one BEGIN/COMMIT client; 063 reset pending behind it. CX 070 claim hit SYNC_MISMATCH (detached worktree, no branch) — ORCH created task/TASK-070-cx from master and will re-dispatch. REVIEW ROUND 1 RESULTS (2026-08-26T18:20Z, ORCH opus-4-8 adversarial): BOTH first submissions of the day sent to rework, both on real findings beyond a trust-the-tests read, neither a territory or process violation. TASK-080 (GB): transaction/atomicity work verified exemplary under two ORCH-run mutations (incl. one the source-pin missed and only the live behavioural test caught) — REWORK is one finding: editApproval never binds the replacement to the ORIGINAL's run_id/capability_id/tenant_id, a tier-laundering shape since capability_id drives broker policy and the ADR-004 digest doesn't cover it; ~8-line fix, added as an explicit new AC. TASK-070 (CX): all 5 stated ACs literally met and both controls independently reproduced firing on planted defects — REWORK is two findings: publication-tree dies with an opaque exit-2 instead of the mandated report when the swallowed file is executable (hits infra/ci/hooks/pre-commit itself), and the RFC 6761 allowlist false-positives on api.example.com with the shipped test PINNING that as correct. Both reset to in_progress with precise findings; both units resume on the same branch. Non-blocking follow-up candidates logged in Review_Findings for a later task: TASK-070's negative-controls fixture/hostname/env-name matching is narrow enough to be near-inert against this repo's real layout (1 of 11 planted leaks caught); new CI controls absent from infra/ci/run-local.mjs (outside this task's territory). TASK-070 CORRECTION (17:15Z): CX blocked OWNERSHIP_CONFLICT, rightly — my Owned_Paths named infra/ci/checks/ and infra/ci/workflows/ which DO NOT EXIST; real convention is flat infra/ci/<name>.mjs + test-<name>.mjs wired in .github/workflows/ci.yml. SIXTH decompose error (path assumption without ls). Owned_Paths corrected (incl. ci.yml, additive-steps-only constraint), reset pending, re-dispatching CX. STATUS SCAN (2026-08-26T20:30Z, ORCH): plan legal, 0 territory violations on any active branch. DRIFT FOUND: TASK-080 (GB) and TASK-070 (CX) have sat in_progress ~2h with rework findings recorded and ZERO commits since -- their redispatches were killed by a session interrupt earlier and never retried; not a builder problem, a dispatch-followup gap. TRIAGE: redispatch both now, no spec/re-sequence/re-assign needed, findings still valid. TASK-054 correctly blocked awaiting Alister's Gmail provisioning, no new info. TASK-063 correctly pending behind TASK-080 (working as designed). Stale checkpoint .devteam/CHECKPOINT.md (predates this session, 2026-08-25T18:42Z) read per its own resume procedure and deleted. Non-blocking cleanup debt noted, not actioned: 13 branches for done/superseded tasks never deleted post-merge; docs/STUDY-grok-bot-018.pdf generated but not yet committed. TASK-070 REWORK ROUND 2 (2026-08-26T20:45Z): CX fixed both required findings, APPROVED after independent scratch-repo reproduction + overshoot probing + mutation testing, merged. Not on critical path. TASK-080 REWORK ROUND 2 (2026-08-26T21:00Z): GB closed the identity-bind finding at the strong level (reviewer's own mutation confirmed all 3 fields, not just capability_id); APPROVED, merged. UNLOCKS TASK-063 (S5) — carried forward a new AC requiring the edit route to forward tenant_id (editApproval now hard-refuses omitted tenantId for non-basileia tenants). Both critical-path rework items now closed same-day. Found and fixed a misfiled Progress_Note (an earlier plan edit's string-match landed inside TASK-080's own Progress_Notes instead of this frontmatter) while closing out the task. TASK-063 REWORK (2026-08-26T21:30Z): S5's first submission was strong (every stated AC mutation-proven true) but review found expiresAt on the edit route is caller-supplied with zero bound validation — a past timestamp is silently accepted and bricks the approval (the exact invalidated-with-no-replacement hazard the task's own spec forbids), reachable through ordinary use, no attack needed. Sent back rather than merge-plus-ticket, consistent with today's bar on TASK-070/080. New explicit AC added, S5 redispatching. RESUME-STATE PROCESS GAP, SECOND OCCURRENCE (21:35Z): S5's resume session re-submitted the identical prior commit unchanged, claiming the rework finding needed no code — verified false at source, app.ts's expiresAt pass-through is untouched. Same defect class already on record from TASK-061 (2026-08-22): a resumed session checks only its own last Progress_Note and misses fresh content in Review_Findings above it. NOT scored as a review round; explicit resume instruction written directly into the task block quoting the exact line and exact fix. Worth a dispatch-prompt fix at the infra level so a third occurrence doesn't happen to a different unit — recorded here since that's outside this session's file scope. CORRECTION (21:40Z): the two identical resubmissions were ORCH's fault, not S5's — redispatched twice without merging master into the worktree first, so the resume instruction never reached S5's branch; that's a session-level dispatch-hygiene miss (I did remember this step for TASK-070/080 earlier the same wave and dropped it here), not a repeat of the TASK-061 defect class. Fixed by merging master into task/TASK-063-s5 and confirming the instruction is present before the third redispatch. TASK-063 APPROVED + MERGED, round 2 (2026-08-26T22:00Z): fix genuinely closed — reviewer's own live reproduction (independent throwaway Postgres, 12 direct DB probes) plus 3 mutations, including moving the validation to AFTER editApproval, which still reddened 4 tests via call-count/status assertions, proving the ordering is mechanically enforced. One residual (a ~40-50ms deliberate-targeting-only window) recorded non-blocking, does not meet round-1's own escalation bar. UNLOCKS TASK-058 (CX, Telegram approval inline-keyboard — the demo centerpiece) and TASK-065. Both surface-lane and runtime-lane critical-path items closed today except TASK-054/055, still gated on Alister's Gmail provisioning."
 ---
 
 # Project Plan
@@ -1642,7 +1642,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
-**Status:** pending
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered ⇒ deny); ADR-001 L2 (explicit allowedTools, no bare names); docs/decisions/ADR-002-permission-bypass-ban-scope.md
@@ -1656,15 +1656,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Unmapped tool omitted from the allowlist AND independently denied at L1 — proves allowlist is not the enforcement point (Handover §4.2; ADR-001)
 - [ ] MUTATION-PROVEN: allowing `enabled: false` capabilities into the allowlist turns the `email.send` test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-054-gb
+**Started_At:** 2026-08-24T17:48:34Z
+**Progress_Notes:**
+- [2026-08-24T18:00:03Z] [SV:GB] Derivation + real HTTP MCP listTools adapter committed on task/TASK-054-gb; local mounted-server enumeration green. Live Gmail tools/list not run because OIK_SECRET_MCP_GMAIL_URL is unset (not faked).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Blocked_Reason:** MISSING_DEPENDENCY: live MCP credentials not provisioned
+**Updated_By:** SV
+**Updated_At:** 2026-08-24T18:00:03Z
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
@@ -1753,12 +1754,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-058
 **Title:** Telegram approval inline-keyboard flow — the governance money shot (OIK-086)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("Approve/Edit/Reject; edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
 **Owned_Paths:** services/gateway-telegram/src/approvals/**, services/gateway-telegram/test/approvals.test.ts
-**Depends_On:** TASK-057
+**Depends_On:** TASK-057, TASK-063
 **Description:** **This is the demo's centrepiece: a Tier-3 action parks, your phone shows what the agent wants to do, you tap, and only then does it proceed.** Render a pending approval as a Telegram message with an inline keyboard: Approve / Edit / Reject. The rendered text MUST come from the approval's stored render (ADR-004 render provenance) — **do not re-render from raw payload in this service; a surface that composes its own description can show the operator something different from what the digest binds**. Approve/Reject post the decision to control-api's decide endpoint (TASK-056), which owns nonce consumption — **this service never consumes a nonce itself (N8)**. Edit must invalidate the prior approval and re-enter the cycle (OIK-086; OIK-023 digest mismatch ⇒ `invalidated`, new approval required). Callback data must not carry the raw nonce where a forwarded message would leak it — carry an opaque handle and resolve server-side; state your chosen mechanism in the work log. Tests use an injected Telegram port and an injected control-api client; no network, no token.
 **Acceptance_Criteria:**
 - [ ] Approve / Edit / Reject keyboard rendered from the approval's STORED render, not re-composed locally (ADR-004), tested
@@ -1767,15 +1768,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Double-tap Approve on the same message results in exactly one consumed approval (N8), tested
 - [ ] Raw nonce not embedded in forwardable callback payloads; mechanism documented in the work log (N4)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-058-cx
+**Started_At:** 2026-08-26T20:55:29Z
+**Progress_Notes:**
+- [2026-08-24T18:00:00Z] [ORCH] CX BLOCKED CORRECTLY AND WAS RIGHT — verified independently: control-api exposes only listPendingApprovals + decide, ControlApiDeps has no invalidate/reissue, and no such route exists; yet this task's AC requires Edit to invalidate the prior approval and re-enter the cycle. Building that lifecycle in the gateway would have violated OIK-084 (surfaces must not own persistence) and N8. THIRD ORCH DECOMPOSE ERROR OF THE SAME SHAPE (cf. TASK-056's missing db/approvals APIs, found by S5): I specified a consumer's requirements without checking the producer's published contract. The primitives DO exist in packages/approvals (ApprovalStore.invalidate with OIK-023's pinned SQL, plus issueApproval) — they were simply never surfaced through control-api. Remedy: TASK-063 adds the atomic edit/reissue operation; this task now depends on it and is reset to pending. CX wrote no code and left the branch clean.
+- [2026-08-24T17:50:34Z] [SV:CX] Blocked before implementation: control-api lacks an invalidate-and-reissue approval operation required for Edit.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-26T20:55:29Z
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
@@ -1890,3 +1893,532 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-22T06:40:00Z
+
+### TASK-063
+**Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
+**Status:** done
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** services/control-api/src/**, services/control-api/test/**
+**Depends_On:** TASK-080
+**Description:** **This task exists because ORCH's decompose was wrong again — TASK-056 specified six control-api endpoints and none of them can Edit an approval, yet TASK-058's acceptance criteria require exactly that. CX blocked before writing a line rather than build the lifecycle inside the gateway, which would have violated OIK-084 and N8. That was the right call.** The primitives already exist and must be REUSED, not reimplemented: `packages/approvals` exports the store port with `invalidate(nonce)` (OIK-023's pinned status-guarded SQL) and `issueApproval`. Add ONE control-api operation — route `POST /approvals/:nonce/edit` plus a `ControlApiDeps` method — that (1) invalidates the named approval and (2) issues a replacement carrying a NEW nonce and a NEW digest bound to the EDITED payload, **both inside a single database transaction**. **The hazard this guards is two simultaneously-valid approvals for one action**: a non-transactional implementation can leave the old row `pending` while the replacement is already issued, giving an operator two live nonces for the same capability — a double-approval path. A partial failure must leave the old approval untouched, never invalidated-with-no-replacement. **ADR-004 render provenance is binding**: the replacement's stored render must be regenerated from the edited payload and its digest must bind that same edited payload — a render that describes the old payload while the digest binds the new one is precisely the approve-one-thing-execute-another failure ADR-004 exists to prevent. Do NOT touch packages/approvals (protected); consume its public API only — if a needed primitive is genuinely missing there, BLOCK with SPEC_AMBIGUITY rather than reach in. Publish the new route in the OpenAPI document (OIK-084) — the Telegram lane codes against it.
+**Acceptance_Criteria:**
+- [ ] `POST /approvals/:nonce/edit` implemented and documented in the OpenAPI document (OIK-084 "OpenAPI spec published")
+- [ ] Invalidate + reissue occur in ONE transaction; a forced failure mid-operation leaves the ORIGINAL approval untouched and no replacement issued, tested against a live DB (OIK-086)
+- [ ] The old nonce is unusable after a successful edit — decide and consume both refuse it, tested by nonce (OIK-023)
+- [ ] **Never two live approvals for one action**: after edit, exactly one `pending` row exists for that run/capability — asserted by query, not inferred (N8)
+- [ ] Replacement carries a NEW nonce AND a digest bound to the EDITED payload; stored render regenerated from the edited payload, tested that render and digest describe the same thing (ADR-004)
+- [ ] Reuses `packages/approvals` invalidate/issue primitives — no reimplementation; MUTATION-PROVEN: a local reimplementation of invalidation turns a test RED
+- [ ] Editing a non-pending approval (already decided, expired, invalidated, consumed) is refused per status, tested for each
+- [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence — a skipping DB test is not evidence (TASK-035/044/061 precedent)
+- [ ] NEW (carried forward from TASK-080's round-2 review): the edit route MUST forward tenant_id to editApproval on every call — an omitted tenantId is a HARD REFUSAL in editApproval for any non-basileia tenant (fail-closed by design, not a bug), so a route that drops tenant_id will silently fail every edit for a non-default tenant; tested by nonce for a non-basileia tenant
+- [ ] NEW (added at review, round 1): a caller-supplied `expiresAt` that is not strictly in the future, or exceeds the platform's approval TTL, is REJECTED before `editApproval` is called — tested: a past timestamp refuses with the original approval left untouched and pending; an excessive future timestamp likewise refuses; omitting `expiresAt` still succeeds and inherits `editApproval`'s own default
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-063-s5
+**Started_At:** 2026-08-26T19:39:41Z
+**Progress_Notes:**
+- [2026-08-26T21:00:00Z] [ORCH] UNBLOCKED — TASK-080 approved+merged round 2 (packages/approvals now exports editApproval(nonce, editedRequest, tenantId?)). Resume per your own dossier's next_step: implement POST /approvals/:nonce/edit calling editApproval, add ControlApiDeps method + fake-backed route tests + DB-gated integration test with a forced-failure leg. ONE NEW REQUIREMENT surfaced by editApproval's round-2 fix (see new AC above): editApproval now HARD-REFUSES an edit whose tenantId doesn't match the original row, and treats an OMITTED tenantId as belonging to the default 'basileia' tenant — so your route must read tenant_id from the approval context and pass it through explicitly, never assume single-tenant.
+- [2026-08-26T20:11:30Z] [SV:S5] POST /approvals/:nonce/edit implemented, delegating entirely to @oikonomos/approvals' editApproval via ControlApiDeps — no local invalidate/reissue logic, no raw SQL. Route published in OpenAPI. tenantId forwarded explicitly on every call including when omitted. N4 nonce redaction widened to the new route. ADR-004: schema mechanically forbids a caller-supplied render.
+- [2026-08-26T21:35:00Z] [ORCH] REJECTED, NOT A REVIEW ROUND — S5's resume session re-submitted commit b821054 UNCHANGED (only a dossier commit added on top) and claimed "no new code needed," but the round-1 rework finding was never addressed: verified myself just now, app.ts:258 still reads `...(expiresAt !== undefined && { expiresAt: new Date(expiresAt) })` — the exact unvalidated pass-through the review flagged, unchanged. This is the SAME resume-state gap already on record from TASK-061 (2026-08-22): a resumed builder session checked only its own last Progress_Note and missed fresh content in Review_Findings above it. Recorded as a repeat occurrence of that exact pack finding, not scored as a new review round against S5. **RESUME INSTRUCTION, unambiguous: your own Acceptance_Criteria list above now has a NEW bullet — "a caller-supplied expiresAt that is not strictly in the future, or exceeds the platform's approval TTL, is REJECTED before editApproval is called." Nothing in app.ts currently does this. Add the validation in the route handler at services/control-api/src/app.ts (around the expiresAt destructure at line 245 and the editApproval call at line ~257), before calling editApproval — reject a non-future timestamp and one that exceeds the platform TTL (check packages/approvals for its existing default-TTL constant rather than inventing a new one), add the two live-DB tests the new AC specifies, and fold in the OpenAPI 400-response documentation from the same review round. Read the full Review_Findings entry below before touching code.**
+- [2026-08-26T21:40:00Z] [ORCH] CORRECTION, TWO IDENTICAL RESUBMISSIONS WERE ORCH'S FAULT, NOT S5's: verified the S5 worktree's own PLAN.md never contained the resume instruction above — I redispatched twice via dispatch.ps1's resume path without first merging master into task/TASK-063-s5, and that path explicitly does NOT refresh the worktree ("Worktree is on 'X' - NOT refreshing (resume path)"). S5 truthfully reported no drift and no new instructions because none had reached its branch. Merged master into task/TASK-063-s5 just now — verified the instruction is now present in the worktree's PLAN.md. Retracting the "resume-state process gap, second occurrence" framing from the note above as far as blaming S5 goes; the underlying dispatch-must-sync-before-redispatch lesson stands and is now applied. Redispatching a third time, this one should actually deliver the instruction.
+- [2026-08-26T21:55:00Z] [SV:S5] Rework complete: expiresAt is now bound-validated in the edit route (validateEditExpiresAt in app.ts) before editApproval is ever called — a non-future or excessive-TTL timestamp is refused with 400 and the original approval is never touched. Reused packages/approvals' existing DEFAULT_APPROVAL_TTL_MS constant. Also documented the 400 response on both /edit and /decide in openapi.ts with a new shared ErrorResponse schema.
+- [2026-08-26T17:00:00Z] [ORCH] S5 BLOCKED CORRECTLY AGAIN and was right AGAIN — verified at source: store.ts's withPool() opens a fresh Pool per call and closes it; zero BEGIN/COMMIT/PoolClient anywhere in packages/approvals src. invalidatePendingApproval + issueApproval therefore cannot compose atomically from control-api, and AC #2's forced-mid-failure atomicity test is structurally unsatisfiable without either raw SQL in the service (mechanically forbidden) or a transactional primitive inside the protected package. FIFTH decompose error of the producer-contract family: TASK-064 fixed the guard but I never checked the two primitives could share a transaction. Remedy: TASK-080 adds editApproval(nonce, request) as ONE pool.connect()+BEGIN/COMMIT/ROLLBACK operation inside packages/approvals (GB — idle anyway, protected path holds, different-model review CX-authored 064 so GB diversifies authorship). This task reset to pending behind it; S5's next_step in its dossier stands verbatim as the resume plan.
+- [2026-08-25T06:00:00Z] [ORCH] S5 BLOCKED CORRECTLY AND WAS RIGHT — verified at source: INVALIDATE_APPROVAL_SQL is pinned `status='granted'` (store.ts:39-40) and its own tests prove it no-ops on pending, but Edit's only valid input state IS pending. FOURTH ORCH DECOMPOSE ERROR OF THIS FAMILY — I named a reuse primitive without checking its guard, exactly as I earlier specified consumers against unchecked producer contracts (TASK-056, TASK-058). S5 wrote no code and cited file:line. Remedy: TASK-064 adds a pending-guarded primitive on the protected path (CX, different-model review); this task now depends on it. REJECTED SHORTCUT, recorded so nobody 'simplifies' to it later: Edit could have reused the existing pending-guarded rejectApproval, but 'rejected' means the operator declined while 'invalidated' means the request became void and is being replaced — collapsing them would make the audit trail misreport an edit as a rejection.
+- [2026-08-25T05:46:08Z] [SV:S5] Investigated the reuse primitive named in the task (packages/approvals ApprovalStore.invalidate). Its pinned SQL is guarded to status='granted' and is proven-by-test to no-op against 'pending' rows (packages/approvals/test/invalidate.test.ts: 'does not invalidate a still-pending approval'; invalidate-sql.test.ts: 'invalidates only granted unused rows'). But this task's own AC #7 requires Edit to be valid ONLY on status='pending' (matching OIK-086: Approve/Edit/Reject are offered on a still-pending Telegram approval, and decideApproval's GRANT/REJECT SQL confirm pending is the pre-decision state). So calling invalidate() from the new edit route against the one state Edit must accept will always return rowCount 0 — a successful edit is structurally impossible through the named primitive as it exists today. No other export in packages/approvals or packages/db provides a pending-guarded invalidate. Per this task's own instruction ('if a needed primitive is genuinely missing there, BLOCK with SPEC_AMBIGUITY rather than reach in'), blocking rather than adding a new pinned SQL/method inside packages/approvals (protected, needs adversarial review by a different model) or packages/db (both outside Owned_Paths regardless). No implementation code written; branch has only a PLAN.md-sync-driven dossier commit. Full investigation with file:line citations in dossiers/TASK-063.md.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/redact.ts, services/control-api/test/app.test.ts, services/control-api/test/edit.route.integration.test.ts, dossiers/TASK-063.md
+**Test_Evidence:** ROUND 2 (current) — control-api WITH DATABASE_URL: 5 files, 59/59 passed, 0 skipped (all 14 edit-route integration legs incl. 6 new expiresAt-bound legs ran live). WITHOUT: 43 passed/16 skipped. pnpm -r test WITH DATABASE_URL: exit 0, all 16 workspaces green, 609/609 (full recursive suite). WITHOUT: 515 passed/94 skipped. pnpm lint exit 0. pnpm canaries WITH DB: 17/17, 0 skipped. ROUND 1 (superseded): control-api WITH DATABASE_URL: 5 files, 53/53 passed. WITHOUT: 40 passed/13 skipped. pnpm -r test WITH DATABASE_URL: 603/603. Throwaway pgvector/pg16, schema pre-migrated, container removed.
+**Review_Findings:**
+- REWORK (ORCH opus-4-8 adversarial, 2026-08-26T21:30Z). Not a protected path but reviewed at protected-path rigor given it consumes TASK-080's critical-path primitive. Every ORIGINAL stated AC independently verified true and MUTATION-PROVEN — three separate mutations run by the reviewer, all reverted: deleting the forwarded tenantId reddened both a fake-port test and a live-DB integration test; injecting a raw SQL string into app.ts reddened no-raw-sql.test.ts; removing BEGIN from packages/approvals' editApproval reddened the atomicity test with the exact forbidden partial-failure state (invalidated/no replacement) — confirming the forced-failure test exercises the REAL transaction via the public HTTP API, not a mock. Tenant-forwarding AC specifically verified sound: app.ts passes tenantId unconditionally (not spread-omitted like the sibling expiresAt field), deliberately surviving refactors; tested against a live non-default tenant both directions (omitted ⇒ 400 + original untouched; forwarded ⇒ replacement's persisted tenant_id reads back correct). Per-status refusal covers FIVE independent legs (granted/rejected/consumed/invalidated/expired-pending), each reached through the real decide/consume primitives, not hand-rolled UPDATEs. Territory clean (4 src + 2 test + dossier), zero PLAN.md edits, no pre-existing test weakened. Gates reproduced exactly: build clean, 603/603 full recursive suite, lint clean, canaries 17/17. REWORK IS ONE FINDING BEYOND THE STATED ACs, same treatment as TASK-080's round 1 (an unstated-but-real gap gets an explicit new AC and a rework round, not a pass-with-followup) — the reviewer's own recommendation was "merge, file a ticket," overridden here because this reaches the exact state the task's own hazard section forbids, through ordinary use, no attack required: **`expiresAt` is caller-supplied with zero bound validation.** A past timestamp is ACCEPTED (200, edited:true) — the original approval is invalidated and the replacement is inserted already-expired, permanently ungrantable (GRANT_APPROVAL_SQL and INVALIDATE_PENDING_APPROVAL_SQL both require expires_at>now()). That is "invalidated with no usable replacement" — the dossier's own forbidden hazard — reached with a single successful call, no forced fault needed. A 10-years-out timestamp is equally accepted, contradicting Synthesis §5.1's 4h TTL and creating a caller-controlled unbounded-lifetime bearer nonce. Both proven live against the DB by the reviewer. Fix is entirely in this task's territory (app.ts, before the editApproval call) and cheap — added as an explicit new AC. FOLD IN, same round (cheap, directly related): document the `400` response in the OpenAPI schema (openapi.ts currently documents only 200/409, yet 400 is the ONLY signal for both the tenant-hard-refusal and the identity-rebind-refusal this task introduces — the Telegram lane codes against this document per OIK-084; note the sibling /decide route has the same gap, so this is a consistency fix, not a new pattern to invent). ADVISORY, NOT BLOCKING, recorded for later: `actionDigest` is serialized two different ways in one response body (base64 for the invalidated row, hex for the replacement) with no schema distinguishing them — a consumer diffing old-vs-new digests would get it wrong; the generic catch-all maps every error including DB/pool failures to 400 with the raw error message on the wire — pre-existing pattern across six other routes, not introduced here, worth a service-wide cleanup task; **cross-package integration tests resolve `@oikonomos/approvals` to its `dist/` build, not `src/`** — the reviewer's first mutation attempt came back falsely green because the package wasn't rebuilt, meaning "integration test green" repo-wide is only as trustworthy as the last build; worth an ORCH-level decision (path-alias `src` in shared vitest config, or make `test` depend on `build`) — flagging as a candidate cross-cutting follow-up, not this task's fault; no-raw-sql.test.ts (TASK-056 precedent) pins a hardcoded source-file list rather than a glob, so a genuinely new src file added later would escape the scan silently — same configured-but-inert shape ADR-005 targets, pre-existing; N4 redaction test covers only the success path (code inspection confirms the request serializer applies unconditionally and no error message embeds a nonce, so no live leak, but the test itself wouldn't catch a future regression on the error paths) — same gap as the decide-route precedent; no authn/authz on the route, consistent with every other control-api route, the nonce is itself the bearer secret and assertIdentityBound blocks any cross-tenant/run/capability rebind regardless. No dead code, no hardcoded credentials, RFC 6761 fixture hostnames throughout.
+- APPROVED + MERGED, round 2 (ORCH opus-4-8 adversarial, 2026-08-26T22:00Z). The required fix is genuinely closed, verified by live reproduction and mutation, not by trusting the shipped tests: `validateEditExpiresAt` runs BEFORE `editApproval` is ever called (confirmed in final source, not just diff); TTL comes from `packages/approvals`' real exported `DEFAULT_APPROVAL_TTL_MS` (4h, matches Synthesis §5.1), not a copy-pasted number. Reviewer built an INDEPENDENT throwaway Postgres, seeded its own fixtures, and ran 12 direct probes reading the DB back rather than trusting HTTP responses: every past/far-past/exactly-now/unparseable/far-future/TTL-exceeded input left the ORIGINAL approval pending with exactly one pending row for that run+capability; every valid input (at-TTL, TTL-5s, omitted) correctly invalidated-and-replaced with the new row's expires_at landing within 47ms of the expected default. Edge cases specifically checked: exactly-now correctly rejected (strictly-future), omitted still defaults correctly on the PERSISTED row not just the response, invalid-Date still rejected with no regression. THREE MUTATIONS RUN BY THE REVIEWER: disabling the non-future guard exactly reproduced round 1's original bug on this code (200, invalidated, zero pending rows, already-expired replacement) and reddened 2 tests; disabling the TTL upper bound reddened 2 tests; **moving the validation to AFTER the editApproval call — the specific ordering trap the review was asked to probe — still returned 400 at the HTTP layer (would fool a naive test) but reddened 4 tests including a call-count assertion and a status assertion**, proving the ordering property is mechanically enforced, not merely coincidental. OpenAPI 400 documentation validated at runtime from the built document (not source): both /edit and /decide expose 400 via a real shared ErrorResponse schema, all $refs resolve. Round-1 properties re-confirmed unweakened: git diff master...HEAD -- services/control-api/test contains zero deleted lines. Gates: build clean; 59/59 with DB (609/609 recursive); lint clean; canaries 17/17. Merged --no-ff, branch deleted, worktree removed. ONE RESIDUAL FINDING, NOT TREATED AS BLOCKING (unlike round 1's, this does NOT meet the "reachable through ordinary use, no attack required" bar that triggered round 1's rework): a narrow ~40-50ms window exists where an expiresAt just past route validation's future-check can still be already-expired by the time it's persisted, reaching the same bricked end state — but only a caller DELIBERATELY choosing a timestamp in that narrow window lands in it; ordinary request latency (+1-25ms naturally rejected, +60ms+ naturally fine) avoids it entirely. Recommend a cheap follow-up (minimum floor, e.g. reject anything under 30-60s out — also matches that a human needs real time to review an approval) before TASK-058 ships, and TASK-058's own build should simply never construct an expiresAt close to "now" regardless. UNLOCKS TASK-058 (CX, Telegram approval inline-keyboard — the demo centerpiece) and TASK-065 (low-priority backlog). Other advisories carried forward unchanged from round 1 (dual digest encoding, pre-existing error-mapping pattern, no-raw-sql.test.ts's hardcoded file list, N4 redaction test's success-path-only coverage) plus two new from round 2: PLAN.md's Test_Evidence field was stale pre-merge (now refreshed above with the correct 59/59/609/609 counts); cross-package tests resolving to packages/approvals' dist/ rather than src/ remains the single most valuable repo-wide fix candidate — the reviewer's first mutation attempt came back falsely green until the package was rebuilt, meaning "integration green" anywhere in the monorepo is only as trustworthy as the last build.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T22:00:00Z
+
+### TASK-064
+**Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
+**Status:** done
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-022 (atomic consume pattern); Directive §4 N8
+**Owned_Paths:** packages/approvals/src/invalidatePending.ts, packages/approvals/src/invalidatePending.test.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; Directive §3 different-model review). **This task exists because ORCH named a reuse primitive without checking its guard — the fourth decompose error of this shape. S5 blocked before writing code and was right.** `INVALIDATE_APPROVAL_SQL` is pinned `WHERE nonce=$1 AND status='granted' AND consumed_at IS NULL` (store.ts:39-40) — that is OIK-023's control for *a payload mutating after approval was granted*. The Edit button in OIK-086 acts on a **pending** approval (Approve/Edit/Reject are offered pre-decision), so the existing primitive always returns rowCount 0 for Edit's only valid input state. Nothing in packages/approvals or packages/db transitions pending→invalidated per-nonce (`EXPIRE_PENDING_SQL` is time-based and not nonce-scoped). Add `invalidatePendingApproval(nonce)` as ONE atomic status-guarded statement mirroring GRANT/REJECT's shape: `WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL` — row count 1 or the transition did not happen (N8). **Do not weaken, re-route, or re-guard the existing granted-path `INVALIDATE_APPROVAL_SQL`** — it is a live OIK-023 security control and must keep working exactly as it does; this is purely additive. **A deliberate rejected shortcut, recorded so it is not "simplified" later:** Edit must NOT reuse `rejectApproval`. `rejected` means the operator declined the action; `invalidated` means the request became void and is being replaced. Collapsing them would make the audit trail misreport an edit as a rejection, and the audit trail is the product. Existing approvals tests must stay byte-identical and green.
+**Acceptance_Criteria:**
+- [ ] `invalidatePendingApproval(nonce)` — ONE atomic statement guarded on `status='pending' AND expires_at>now() AND consumed_at IS NULL`; row count 1 or no transition (N8; OIK-022 pattern)
+- [ ] **The two invalidation paths stay disjoint and both stay honest**: the existing granted-path SQL still no-ops on a pending row, AND the new pending-path SQL no-ops on a granted row — both asserted by test, so neither control silently absorbs the other's job (OIK-023)
+- [ ] Repeat/concurrent invalidatePending on one nonce: exactly one succeeds, the rest affect zero rows, tested
+- [ ] Expired, rejected, granted, invalidated and consumed rows are each refused, tested per status
+- [ ] Does not consume — `consumed_at` stays null on the invalidated row, tested (N8 separation)
+- [ ] MUTATION-PROVEN: removing the `status='pending'` guard turns a test RED
+- [ ] Existing `packages/approvals/test/**` byte-identical; `INVALIDATE_APPROVAL_SQL` unchanged — verified by diff
+- [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-064-cx
+**Started_At:** 2026-08-25T05:48:34Z
+**Progress_Notes:**
+- [2026-08-25T05:55:28Z] [SV:CX] Implemented and committed 6c913e9: pending-only approval invalidation primitive, public export, and coverage; awaits required live-DB verification.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:**
+- APPROVED + MERGED first pass (ORCH opus-5 adversarial, 2026-08-25T06:30Z; PROTECTED, author CX=codex / reviewer ORCH=opus, different-model holds). CX implemented fully and blocked ONLY on the live-DB legs, refusing to use an unscoped running container - same correct instinct as TASK-044; ORCH resolved it as the verification point (throwaway pg16). BOTH HARD CONSTRAINTS HELD: INVALIDATE_APPROVAL_SQL byte-identical to master, and packages/approvals/test/** diff EMPTY - nothing weakened to make this pass; all new tests are in-source. INDEPENDENT RUN: approvals 92/92 with 0 skipped, full suite 562 passed / 0 failed, lint 0, canaries 17/17. DB legs PROVEN LIVE: 22 skipped without DATABASE_URL vs 0 with, new Postgres legs visibly timed. **THE DISJOINTNESS PROPERTY IS PROVEN TWICE** - by tests in both memory and DB flavours, AND independently by an ORCH direct-DB probe: granted-path invalidate on a pending row returns rowCount 0 and leaves it pending; the new pending-path on a granted row returns rowCount 0 and leaves it granted; both positive controls still transition their own status. Neither control absorbs the other's job, so OIK-023 still means what it says. MUTATION M1 (drop status='pending') reddens FOUR tests, THREE of them behavioural DB tests not string pins - including the concurrency leg (exactly one of N callers wins). Non-consumption defended at three layers: SQL SET touches status only, invalidatePending.ts throws if a returned row has non-null consumedAt, and both memory+DB tests assert it. Fails closed on a missing store port, with nonce validation before any store call. Optional ApprovalStore member so existing fakes stay valid. TWO MINOR NOTES, non-blocking and recorded: (1) mutation M2 (drop consumed_at IS NULL) is caught ONLY by the textual SQL pin - but that clause is genuinely redundant today (no row can be pending with consumed_at set, since consumed_at is only written on granted->consumed), so it is defence-in-depth against a future write path and no behavioural test CAN exist for it; correct to keep, just know the pin is its only sentinel. (2) expired/rejected/consumed refusals are memory-store-only; granted and invalidated also have DB-backed refusals. Merged --no-ff. UNLOCKS TASK-063 (S5, control-api edit route).
+**Blocked_Reason:** —
+**Updated_By:** SV
+**Updated_At:** 2026-08-25T06:30:00Z
+
+### TASK-065
+**Title:** packages/approvals — bind approvals to process generation + user-context epoch (restart/redirect invalidation) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 1; Directive §4 N8; OIK-022/OIK-023; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** infra/postgres/migrations/002_approval_binding.up.sql, infra/postgres/migrations/002_approval_binding.down.sql, packages/approvals/src/binding.ts, packages/approvals/src/binding.test.ts, packages/approvals/src/store.ts, packages/approvals/src/consume.ts, packages/approvals/src/index.ts
+**Depends_On:** TASK-063
+**Description:** **GB or CX only, NEVER S5** (protected path; different-model review). Post-MVP hardening from the Grok Bot study: an approval nonce alone survives two events that should void it — a control-plane restart and a user redirect. Grok Bot binds every approval to a `hostGeneration` (uuid minted at process start) and a `userMessageEpoch` (bumped on every new operator instruction), checked at redemption alongside the nonce (study §Tier 1.1; their `sand-auto-review.ts` resolution guard). Port that: (1) migration 002 adds nullable `control_plane_generation uuid` and `user_context_epoch bigint` columns to `approvals` — additive, no rewrite of existing rows, down migration provided. (2) `issueApproval` records both when the issuer supplies them. (3) The atomic consume SQL gains `AND (control_plane_generation IS NULL OR control_plane_generation=$n) AND (user_context_epoch IS NULL OR user_context_epoch=$m)` — **still ONE statement, row count 1 or no consume (N8); NULL columns mean "unbound" so every existing caller and row keeps working unchanged**. (4) A `bumpUserContextEpoch`-style helper is NOT this task — epoch storage/bump lives with the caller (worker/control-api, later task); here you only accept and enforce the values. Do not weaken any existing guard; existing approvals tests stay byte-identical and green (TASK-062/064 precedent).
+**Acceptance_Criteria:**
+- [ ] Migration 002 additive + reversible; existing rows valid with NULL binding columns; apply/reapply idempotent (OIK-012 precedent)
+- [ ] Consume with a stale generation or stale epoch affects ZERO rows — tested per column against a live DB (N8; study §Tier 1.1)
+- [ ] Unbound (NULL) approvals consume exactly as before — full existing suite byte-identical and green
+- [ ] Consume remains ONE atomic statement — MUTATION-PROVEN: dropping the generation guard turns a test RED
+- [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061/064 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-066
+**Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 4 and 6; ADR-001; ADR-005 (liveness); Build Handover §4.2 (unregistered ⇒ deny)
+**Owned_Paths:** packages/broker/src/registry.ts, packages/broker/src/registry.test.ts, packages/broker/src/recheck.ts, packages/broker/src/recheck.test.ts, packages/broker/src/index.ts
+**Depends_On:** TASK-055
+**Description:** **GB or CX only, NEVER S5** (protected path). Two Grok Bot patterns that convert silent gating holes into loud failures. (1) **Construction-time completeness** (study §Tier 1.4; their `serveEdge` throws on any contract method without a handler): add a broker policy registry that, given the set of tool names a harness will mount, requires every name to map to a policy entry — constructing the broker with an unmapped tool throws a typed `PolicyMissingError` naming the tool. "We forgot to gate the new tool" becomes a startup crash, not a fail-open hole; the throwing path IS the ADR-005 liveness assertion. (2) **Call-time re-check** (study §Tier 1.6; their `executeTool` re-checks the disabled map at invocation, not just enumeration): the PreToolUse decision path re-validates the called tool against the derived allowedTools/manifest map at every call, assuming the model may hold a stale tool list — an enumeration-time filter alone is not enforcement. Both are additive to the existing L1 decision path — do not re-route or weaken it; L1 remains the enforcement point (ADR-001). If wiring requires touching composeHarness (harness-factory, outside Owned_Paths), BLOCK with OWNERSHIP_CONFLICT rather than reach in.
+**Acceptance_Criteria:**
+- [ ] Broker construction with an unmapped tool name throws `PolicyMissingError` naming the tool — this test is the liveness assertion (ADR-005; study §Tier 1.4)
+- [ ] Call-time re-check denies a tool absent from the manifest map even when it appears in the mounted tool list — tested (study §Tier 1.6)
+- [ ] Bidirectional closure: a policy entry naming a tool that no manifest maps is surfaced as a stale-entry error at construction, tested (study §6.2 bidirectional inventory closure)
+- [ ] Existing L1 decision path unchanged — existing broker tests byte-identical and green
+- [ ] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-067
+**Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 2 and 5; Directive §4 N3 (fail closed); ADR-004 (render provenance)
+**Owned_Paths:** packages/broker/src/describe.ts, packages/broker/src/describe.test.ts, packages/broker/src/decision.ts, packages/broker/src/decision.test.ts
+**Depends_On:** TASK-066
+**Description:** **GB or CX only, NEVER S5** (protected path). Two adoptions from the Grok Bot permission machinery. (1) **Undescribable ⇒ denied** (study §Tier 1.2): any tool call the broker cannot render into a human-readable `{action, target}` via a registered describer is refused when the decision tier requires human approval — *"if we cannot render it to a human, we cannot ask about it, therefore we do not run it."* Unknown tool shapes return undefined from the describer and undefined MUST deny, and an oversized target (>10,000 chars) is refused as unpresentable. This composes with ADR-004: the stored render for an approval comes from this same describe step, so what the operator sees is what the digest binds. (2) **Model-directed denials** (study §Tier 1.5): extend the deny decision shape with `{code, humanReason, modelGuidance}` where `modelGuidance` tells the calling agent what happened, that retrying is futile, and what to do instead (their twelve `SAND_LOCAL_TOOLS_*` messages are the reference) — a denial without guidance burns agent turns on retries. Additive: existing allow/deny semantics unchanged; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] A tool call with no registered describer is DENIED on any approval-requiring tier — fail-closed default tested (study §Tier 1.2; N3)
+- [ ] Target >10,000 chars refused as unpresentable, tested
+- [ ] Deny decisions carry `{code, humanReason, modelGuidance}`; guidance strings state do-not-retry and an alternative, asserted for at least the undescribable and allowlist-miss codes
+- [ ] MUTATION-PROVEN: making undescribable fall through to allow turns a test RED
+- [ ] Existing broker tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-068
+**Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tools-discovery pattern); WBS OIK-049; TASK-054 (live enumeration)
+**Owned_Paths:** packages/connectors/src/discovery-cache/**, packages/connectors/test/discovery-cache.test.ts
+**Depends_On:** TASK-054
+**Description:** Grok Bot's `tools-discovery.ts` is the reference design (study §Tier 2): cache key = the sorted server-name set joined on a separator (so any change of mounted servers is a different key), entries record both requested and resolved key (a resolution that raced a config change can't be misattributed), TTL'd, with **stale-while-revalidate** — on refresh failure, stale tools are served and immediately re-fetched — and a `getToolsForTurnStart()` entry point that NEVER blocks a run start (returns cached-or-empty and kicks a background refresh). Build that cache in front of TASK-054's live `listTools` adapter. Partial-failure policy: failure of one server's enumeration degrades that server only; failure of the only source is an error, not an empty success. **The cache feeds enumeration/reporting only — allowedTools derivation and the broker's call-time re-check (TASK-066) must keep consuming the manifest map, never a cached live listing; state that layering in your work log.** Injected clock and transport for tests; no live credentials needed (fake MCP transport per TASK-054's offline half).
+**Acceptance_Criteria:**
+- [ ] Cache keyed by sorted server-set; changing the mounted set is a distinct key, tested
+- [ ] Stale-while-revalidate: refresh failure serves stale AND schedules re-fetch, tested with injected clock
+- [ ] `getToolsForTurnStart` never blocks: cold start returns empty + kicks refresh, tested
+- [ ] One-server failure degrades that server only; sole-source failure errors — both tested
+- [ ] Empty/failed live listing never widens or feeds the allowlist path, asserted
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-069
+**Title:** packages/shared — closed error registry with payload allowlist
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (error registry); Directive §4 N4 (no credentials in logs/audit)
+**Owned_Paths:** packages/shared/src/errors/**, packages/shared/test/errors.test.ts
+**Depends_On:** —
+**Description:** From Grok Bot's `shared/errors/registry.ts` (study §Tier 2): a closed registry of error codes, each declaring `{code, domain, retryable, summary, payload: string[]}`, with a single emit-boundary function that converts any error into loggable/audit-safe tags. Fail-closed rules: an UNREGISTERED error maps to the generic code with its payload dropped entirely; a registered error emits ONLY the fields its definition declares, and string values only when they match a bounded safe charset (`/^[0-9A-Za-z._|:-]{1,64}$/` per the reference) — everything else is dropped, never truncated-and-kept. This solves three problems at once: PII/credential leakage into audit payloads (N4), unbounded metric label cardinality, and retryability decisions scattered across catch blocks. Generate typed constructors from the registry so the taxonomy is the only way to mint a registered error. Seed the registry with the error families that already exist in the codebase (survey broker/approvals/harness-factory/audit test failures for names — read-only survey; do not modify other packages). Zero runtime dependencies (matches packages/shared's existing constraint). Adoption by other packages is explicitly NOT this task — later tasks migrate callers.
+**Acceptance_Criteria:**
+- [ ] Unregistered error → generic code, payload dropped entirely, tested
+- [ ] Registered error emits only declared fields; out-of-charset and oversized strings dropped, tested
+- [ ] `retryable` readable from the definition; constructors typed per declared payload
+- [ ] A test proves a credential-shaped string in an undeclared field never reaches the emitted tags (N4)
+- [ ] Zero runtime dependencies added
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-070
+**Title:** infra/ci — publication-tree self-proof + negative-control greps ⚑ protected
+**Status:** done
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Useful test-harness tricks + §Anti-patterns item 4; Directive §4 N2 (bypass ban), N4; ADR-005
+**Owned_Paths:** infra/ci/publication-tree.mjs, infra/ci/test-publication-tree.mjs, infra/ci/negative-controls.mjs, infra/ci/test-negative-controls.mjs, .github/workflows/ci.yml
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path). Two cheap CI controls the study flagged as the exact discipline Grok Bot's otherwise-rigorous repo lacked — its best verification scripts never ran in CI (study §Anti-patterns 4). (1) **Publication-tree self-proof** (~40 lines, their `verify-publication-tree.mjs`): `git archive HEAD` → extract to scratch → `git init && git add --all` → `write-tree` must equal `HEAD^{tree}`; on mismatch, print the omitted/unexpected file lists. Catches the whole class of "a .gitignore rule silently swallowed real source in a fresh clone." (2) **Negative-control greps** extending the existing bypass-mode grep (N2): assert the ABSENCE of forbidden strings where they must never appear — real provider API key env names (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) in test fixtures, non-`.invalid`/non-reserved live hostnames in fixtures (RFC 6761 discipline the study confirmed), and `bypassPermissions`/`acceptEdits` (keep the existing check; do not weaken it — additive only). Each check MUST come with its own liveness proof per ADR-005: a way to run it against a deliberately-bad fixture input that exits non-zero, recorded in Test_Evidence — a grep that can never fire is an inert control. FOLLOW THE EXISTING infra/ci CONVENTIONS (sixth ORCH decompose error corrected here — the original Owned_Paths named infra/ci/checks/ and infra/ci/workflows/, which do not exist): each control is a flat `infra/ci/<name>.mjs` with a sibling `test-<name>.mjs` self-test (the banned-modes.mjs / secret-scan.mjs pattern), and CI wiring is `.github/workflows/ci.yml` — run the self-test immediately before the control, exactly as lines 115-116 and 125-126 do today. Edits to ci.yml are ADDITIVE steps only: do not reorder, weaken, or remove any existing job or step (test-job-order is itself pinned by test-test-job-order.mjs).
+**Acceptance_Criteria:**
+- [ ] Publication-tree check passes on current HEAD and FAILS (demonstrated) when a tracked-file-ignoring .gitignore rule is planted locally — evidence recorded, change reverted
+- [ ] Negative-control grep fails (demonstrated) on a planted fixture containing a real provider key name — evidence recorded, change reverted
+- [ ] Existing bypass-mode grep untouched or strictly strengthened — verified by diff
+- [ ] Both checks wired as required CI steps
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-070-cx
+**Started_At:** 2026-08-26T15:51:32Z
+**Progress_Notes:**
+- [2026-08-26T17:30:00Z] [ORCH] UNBLOCKED. CX implemented fully (commit 9920104 on task/TASK-070-cx) and the new publication-tree control CAUGHT A REAL PRE-EXISTING DEFECT on first run: board/index.html tracked but matched by .gitignore's board/ rule. ORCH (as .gitignore owner) fixed master (board/* + !board/index.html), merged master into the task branch, removed untracked drill cruft (apps/__sole-constructor-fixture__/stray.ts) from the worktree. RESUME: re-run node infra/ci/publication-tree.mjs (expect clean), then pnpm -r test / lint / canaries, record evidence, needs_review.
+- [2026-08-26T17:45:00Z] [SV:CX] Publication-tree and negative-control CI safeguards complete, self-proven, clean on repaired HEAD; added Windows executable-mode preservation to keep the exact tree comparison portable.
+- [2026-08-26T19:23:41Z] [SV:CX] Rework complete: executable omissions now produce the required mismatch report, and RFC 6761 reserved example-domain subdomains are accepted.
+**Artifacts:** infra/ci/publication-tree.mjs, infra/ci/test-publication-tree.mjs, infra/ci/negative-controls.mjs, infra/ci/test-negative-controls.mjs, .github/workflows/ci.yml, dossiers/TASK-070.md
+**Test_Evidence:** ROUND 2: node infra/ci/test-publication-tree.mjs: 2/2 pass including ignored-executable-CLI exit-1 diagnostic; node infra/ci/test-negative-controls.mjs: 3/3 pass; node infra/ci/test-test-job-order.mjs: 9/9 pass; pnpm -r test / pnpm lint / pnpm canaries all exit 0. ORCH independently re-verified in a fresh scratch repo (not the shipped fixture): a directory-level gitignore rule swallowing a tracked 100755 file under the pre-fix code reproduces the exact round-1 exit-2 bug; the same scratch repo under the fix produces exit 1 + "omitted from clean add: <path>". F2 checked for the classic substring-overshoot failure against 9 hand-planted hostnames (api.example.com accepted; evilexample.com, example.com.attacker.net, api.realvendor.io all still correctly flagged) — no overshoot. F3's new mutation test reddened under 4 independent reverts of the fix (guard removed, full revert, mismatch-returns-0, omission-line suppressed), confirming it is a real regression guard. ROUND 1: node infra/ci/test-publication-tree.mjs: 2/2 pass incl. deliberate ignored-tracked-file failure; node infra/ci/publication-tree.mjs: clean; node infra/ci/test-negative-controls.mjs: 3/3 pass incl. planted OPENAI_API_KEY/live-hostname non-zero proof; node infra/ci/negative-controls.mjs, test-banned-modes, banned-modes: pass; pnpm install --frozen-lockfile / pnpm -r test / pnpm lint: pass; pnpm canaries: 11 files, 15 passed/2 skipped.
+**Review_Findings:**
+- APPROVED + MERGED, round 2 (ORCH opus-4-8 adversarial, 2026-08-26T20:45Z; PROTECTED, author CX / reviewer opus, different-model holds). All three round-1 required fixes verified independently, not from the builder's self-tests: (1) F1's exit-2-on-executable bug reproduced on PRE-fix code in a freshly constructed scratch repo (a directory-level gitignore rule, not the shipped file-level fixture) to confirm causation, then confirmed the fix produces the correct exit-1 + "omitted from clean add" report on the same repo — generalizes beyond the shipped test case. (2) F2's RFC 6761 subdomain fix (`normalized === domain || normalized.endsWith('.' + domain)`, a proper label-boundary match) tested against 9 hand-planted hostnames specifically probing for the classic substring-overshoot failure (evilexample.com, example.com.attacker.net) — none slipped through. (3) F3's required new mutation test reddened under 4 independent reverts of the fix, confirming it's a real regression guard, not a same-shape-different-value test. Territory clean, banned-modes.mjs and ci.yml diffs re-confirmed unchanged/purely-additive. Independent gate re-run: pnpm -r test 494/68/0 across 16 projects, lint clean, canaries 15/2. Merged --no-ff (a48354d), branch deleted, worktree removed. FIVE NON-BLOCKING FOLLOW-UPS RECORDED (none gate this merge): (a) the SAME bug class survives via a different trigger — `git ls-tree`'s default path-quoting means a tracked executable with a non-ASCII name still throws exit 2 instead of reporting; latent (no such path exists in the repo today) and fails closed, but is precisely "fixed the trigger shown, not the class" — worth a follow-up fix (`core.quotePath=false` or `-z` in executableFiles/treeFiles); (b) test-publication-tree.mjs:50 resolves its target path via cwd instead of import.meta.url like its sibling test file — works in CI, breaks if invoked from elsewhere; (c) the round-1 mutation-case instruction was satisfied by REPLACING the existing non-executable ignored-file test rather than adding alongside it — that plain case now has no coverage; (d) no automated test pins F2's subdomain-boundary rejections (evilexample.com etc.) — verified by hand this round, could silently regress under a future refactor to a regex; (e) none of these were present or worse than round 1 — this round's changes didn't introduce new issues, they're pre-existing gaps the deeper adversarial pass surfaced. Recommend a small follow-up task bundling (a)-(d) whenever infra/ci gets touched again; not urgent enough to block or to spawn standalone right now.
+- REWORK (ORCH opus-4-8 adversarial, 2026-08-26T18:00Z). Territory clean (5 files, all in corrected Owned_Paths, no PLAN.md edits). All 5 stated ACs are literally satisfied and every suite is green (independently re-run: pnpm -r test 494 passed/68 skipped/0 failed across 16 projects; pnpm lint clean; pnpm canaries 11 files/15 passed/2 skipped; banned-modes.mjs diff vs master EMPTY — AC3 confirmed; ci.yml diff vs master +20/-0 — purely additive; test-test-job-order.mjs 9/9 pass, ci.yml pin intact). Independently reproduced both controls firing on planted defects in an isolated clone — the mechanism genuinely works. REWORK is driven by two specific, demonstrated defects in the controls' behavior, not by AC non-compliance: **F1 (publication-tree.mjs:66-68)** — the executable-mode-restoration loop (the "Windows executable mode preservation" fix mentioned in Test_Evidence) runs BEFORE the tree comparison and hard-fails with an opaque exit 2 + no diagnostics when the swallowed file is executable — reproduced by committing infra/backup/backup.sh into .gitignore: `git update-index --chmod=+x` errors "cannot add to the index" and the run dies before printing the omitted-file report the spec requires. This affects 8 tracked executable files including infra/ci/hooks/pre-commit (the territory hook itself). Exit 2 is this codebase's established "control could not run" code (banned-modes.mjs:92, secret-scan.mjs:154 use it the same way) — a wrapper that treats 2 as infra-flake would silently convert this true positive into a skip, the exact configured-but-inert failure ADR-005 exists to prevent. Still non-zero so CI blocks (not fail-open), but the operator-facing report the AC promises never appears. **F2 (negative-controls.mjs:39 + test-negative-controls.mjs:46)** — the RFC 6761 reserved-domain allowlist is exact-match only (`['example.com','example.net','example.org'].includes(normalized)`), so `api.example.com` — the single most conventional documentation hostname, and one RFC 6761 §6.5 explicitly reserves alongside its subdomains — is flagged as a live host, AND the test pins this wrong behavior as intended (asserts on `api.vendor.example.com` as the expected finding). Fails safe (over-strict, not a security gap) but will red-line CI on ordinary documentation fixtures and any real fix now has to edit the test too. REQUIRED FOR APPROVAL: (1) fix F1 so a missing-from-scratch-index executable path degrades to the omitted-file report instead of exit 2; (2) fix F2's allowlist to match reserved subdomains and correct the test that currently pins the bug; (3) add a mutation case to test-publication-tree.mjs covering an ignored+executable file so F1 cannot silently regress. ADVISORY, NOT BLOCKING, records for follow-up tasks rather than this rework round: F3 mode-restoration loop is unconditional (Windows-only problem, Linux CI unaffected — fix is sound, just broader than needed); F4 scratch git init inherits ambient git config (local/run-local.mjs use only, CI unaffected — lib/walk.mjs's gitEnv() already solves this exact class elsewhere and wasn't reused); **F5-F7 negative-controls scope is narrow enough to be near-inert against this repo's actual layout** — fixture-directory matching only 3 files repo-wide, hostname regex scheme-bound to http(s)://, env-name list missing OPENROUTER_API_KEY/HF_TOKEN/AWS_SECRET_ACCESS_KEY/etc and case-sensitive (of 11 planted bad values, caught exactly 1, which was the F2 false positive) — raw key MATERIAL is still caught correctly by the pre-existing secret-scan.mjs on the same tree, so this is a real but non-catastrophic gap in the new control specifically, worth its own follow-up task; F8 new controls default to cwd not repoRoot() unlike banned-modes/secret-scan (only works invoked from repo root); **F9 new controls are absent from infra/ci/run-local.mjs's self-test+control pairing — NOT the builder's fault, that file is outside TASK-070's Owned_Paths — but it means the local CI mirror gives a green CI would not; needs an ORCH follow-up task or Owned_Paths amendment**; F10 dossiers/TASK-070.md technically outside Owned_Paths, strong precedent (TASK-053/056/061 same pattern) so not treated as a rework trigger; F11-F15 minor (temp-dir leak on setup failure only, never on the real repo; --root-with-no-value UX; one update-index call per file instead of batched; 64MB archive buffer ceiling); F16 AC1 only trips once a bad .gitignore rule is COMMITTED, not on an uncommitted working-tree edit — correct-by-design for a CI gate, worth recording so a future reviewer doesn't read it as broken; F17 "required" CI step enforcement depends on GitHub branch protection outside this diff, both jobs correctly need no pnpm install.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T18:00:00Z
+
+### TASK-071
+**Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
+**Owned_Paths:** packages/harness-factory/src/decorators/**, packages/harness-factory/test/decorators.test.ts
+**Depends_On:** TASK-055
+**Description:** **GB or CX only, NEVER S5** (protected path). Port Grok Bot's `turn-toolset.ts` decorator chain (study §Tier 2) as the harness-factory's enforcement seam, so per-call obligations are structural rather than per-tool discipline: (1) `withApprovalScope` — binds `{runId, toolCallId, approvalNonce?}` into the call context (AsyncLocalStorage, not a threaded parameter, so nested/indirect calls inherit it and a tool cannot "forget" to pass it) and retires/releases the scope in a `finally` — **unconditionally, including on throw** — which is where single-use approval hygiene lives on the client side (the atomic SQL consume in packages/approvals remains the enforcement point, N8; state that layering in the work log). (2) `withToolTimeout` — per-tool-name budget via race, timer always cleared. (3) `withMandatoryCallId` — a tool invocation with no bound toolCallId THROWS (their `withRecordedToolCallNames`): call identity is mandatory for the audit trail, never best-effort. Decorators compose over the existing tool shape; composeHarness applies them to every mounted tool — a tool reaching the model undecorated must be impossible by construction, asserted. Additive; existing harness-factory tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Scope available to nested calls without parameter threading; released in finally even when the tool throws — both tested
+- [ ] Missing toolCallId ⇒ typed throw, tested
+- [ ] Timeout fires per tool name and clears its timer on success, tested with injected clock
+- [ ] composeHarness applies the chain to every mounted tool — MUTATION-PROVEN: mounting one undecorated tool turns a test RED
+- [ ] Existing harness-factory tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-072
+**Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Full extraction disposition + §Tier 2 (deferred-bundle, mandatory-bindings); CLAUDE.md Budget (per-routine budgets from week 5)
+**Owned_Paths:** packages/agent-providers/src/budget.ts, packages/agent-providers/src/registration.ts, packages/agent-providers/src/metadata.ts, packages/agent-providers/src/budget.test.ts, packages/agent-providers/src/registration.test.ts, packages/agent-providers/src/index.ts
+**Depends_On:** —
+**Description:** The existing ProviderEvent stream already normalizes usage + costUsd across Claude Code / Codex / Grok, so the study's deferred-bundle pattern is largely built. Three deltas remain. (1) **Budget hook**: a `BudgetSink` port on the provider interface — every completed turn reports `{provider, model, costUsd, tokens}` to an injected sink BEFORE the result is surfaced, so the week-5 per-routine budget broker has a single interception point rather than N provider-specific ones; a throwing sink fails the turn (fail closed — an unaccounted turn must not succeed silently). (2) **Registration completeness** (their `assertProductionLocalExecRuntime`, study §Tier 2 item 20): a provider registry that validates at registration time that every declared capability of the provider contract is implemented — a partially-implemented provider throws a typed error enumerating the missing members at startup, never failing on first use. (3) **Namespaced metadata**: provider-specific extras travel under a provider-keyed namespace (`{claude: {sessionRef}}`, `{codex: {responseId}}`) instead of widening the shared type — additive type change only. Do not modify the three existing provider implementations beyond wiring; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Budget sink invoked exactly once per completed turn with cost+tokens; a throwing sink fails the turn — both tested per provider via injected fakes
+- [ ] Registering a provider missing a contract member throws at registration naming the member, tested
+- [ ] Provider extras only reachable via the provider-keyed namespace; shared type unchanged, typecheck-asserted
+- [ ] Existing agent-providers tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-073
+**Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 5 (refusal memory); Directive §4 N3, N8
+**Owned_Paths:** packages/broker/src/refusalMemory.ts, packages/broker/src/refusalMemory.test.ts
+**Depends_On:** TASK-067
+**Description:** **GB or CX only, NEVER S5** (protected path). Grok Bot's densest control (study: their `local-tool-permission-controller.ts`): a denied action must STAY denied for the rest of that run — a retrying agent re-asking the human is a nagging vector and a budget burn. Implement per-run refusal memory in the broker decision path: (1) a denial records `(runId, tool, sha256(canonical target))`; a repeat of the same action in the same run is auto-denied with the TASK-067 `modelGuidance` stating it was already refused and a later permission change does not authorize it — without re-parking for approval. (2) **Bounded, failing closed**: cap entries per run (512 per the reference); on eviction, mark the run saturated and auto-deny everything further in it rather than silently forgetting refusals — forgetting fails open, saturation fails closed. (3) **Grant-widening is not retroactive**: a policy/tier change to auto-allow applies only to actions initiated after the change — record the change epoch and compare. Memory is in-process per run (no schema change); note in the work log that persistence across worker restarts is deliberately out of scope (a restart re-parks, which is safe — the failure direction is re-ASKING, not re-running).
+**Acceptance_Criteria:**
+- [ ] Same (tool, target) re-attempted in one run after denial ⇒ auto-denied, no second approval request issued — tested
+- [ ] Guidance on the repeat denial states already-refused + do-not-retry (TASK-067 shape), asserted
+- [ ] Saturation: overflowing the cap denies subsequent actions in that run — fail-closed eviction tested
+- [ ] Policy widened mid-run does not resurrect a previously denied action, tested
+- [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-074
+**Title:** packages/shared — named scheduling policies + canonical-digest fixture pin
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (scheduling policies) + §Tier 1 item 7 (digest liveness); WBS OIK-017/018
+**Owned_Paths:** packages/shared/src/scheduling/**, packages/shared/test/scheduling.test.ts, packages/shared/test/digestPin.test.ts, packages/shared/src/index.ts
+**Depends_On:** —
+**Description:** Two shared-package hardenings. (1) **Scheduling policies** (their `internal/scheduling.ts`): `DeadlinePolicy`, `RetryPolicy`, `PollingPolicy`, `IdleWatchdogPolicy`, `DebouncePolicy` — each takes an injected `Clock` (deterministic tests, no fake-timer globals), validates its options in the constructor (throw RangeError eagerly), carries a mandatory non-empty `name` so every timeout error is attributable (`DeadlineExceededError.policyName`), and `unref()`s its timers. Zero runtime dependencies (shared's standing constraint). Adoption by other packages is NOT this task. (2) **Digest fixture pin**: `packages/shared/test` proves key-order insensitivity but contains NO hard-coded digest — a canonicalization regression would today be silently re-baselined by re-running the suite. Add `digestPin.test.ts` asserting `actionDigest(<fixed fixture>)` equals a literal hex string computed once and committed, plus the same for `canonicalJson` byte output, covering the README edge cases (-0, unicode, nested, null-vs-absent). **Do not modify canonicalJson.ts or actionDigest.ts** — if the pin exposes a discrepancy against the README spec, that is a SPEC_AMBIGUITY block, not a fix-in-place (N10: this implementation is platform-wide law; changing its bytes is an ORCH decision).
+**Acceptance_Criteria:**
+- [ ] Five policies implemented with injected Clock; constructor option validation tested per policy; timeout errors carry the policy name
+- [ ] Zero runtime dependencies added; all timers unref'd
+- [ ] Literal-hex digest pins committed for actionDigest and canonicalJson across the README edge-case fixtures — MUTATION-PROVEN: perturbing key sort order in a test-local copy yields a different digest than the pin
+- [ ] canonicalJson.ts and actionDigest.ts byte-identical to master
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-075
+**Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (nonce ledger with input-digest binding); Directive §4 N8 spirit; OIK-014 (typed query layer)
+**Owned_Paths:** infra/postgres/migrations/003_intake_nonces.up.sql, infra/postgres/migrations/003_intake_nonces.down.sql, packages/db/src/intakeNonces.ts, packages/db/src/intakeNonces.test.ts
+**Depends_On:** —
+**Description:** Task intake (Telegram `/task`, future surfaces) currently has no replay protection: a retried webhook or double-tapped message creates two tasks. Grok Bot's prompt-acceptance ledger (study §Tier 2) is the reference: (1) migration 003 creates `intake_nonces(tenant_id, client_nonce, input_digest, status, task_id, created_at)` with a UNIQUE index on `(tenant_id, client_nonce)`. (2) `admitIntake(tenantId, nonce, inputDigest)` — one atomic INSERT … ON CONFLICT returning `dispatch` (new) or `duplicate` (replay, with the original task_id); **the same nonce arriving with a DIFFERENT input_digest is a typed error, never a silent dedupe** — identical-looking retries are safe, content-swapped ones are an attack or a bug and must surface. Digest via `packages/shared` actionDigest/canonicalJson ONLY (N10 — no local hashing). (3) Tri-state `lookupIntake` — `found | not-found`; include the study's `unknown-durability` distinction only if an eviction policy is added (it is not, in v1 — rows are kept; note that in the work log). A replayed nonce whose original was rejected replays the rejection. **db primitive only** — control-api/gateway wiring is a follow-up after TASK-063 lands (their territory is otherwise occupied); barrel export deferred to that wiring task to keep index.ts out of this territory.
+**Acceptance_Criteria:**
+- [ ] Migration additive + reversible; UNIQUE (tenant_id, client_nonce) enforced, tested against live pg16
+- [ ] `admitIntake` is one atomic statement; concurrent same-nonce calls yield exactly one `dispatch`, rest `duplicate` — tested
+- [ ] Same nonce + different digest ⇒ typed error, never a duplicate result, tested
+- [ ] Digest computed exclusively via @oikonomos/shared — asserted (no crypto import in this module)
+- [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-061 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-076
+**Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
+**Owned_Paths:** services/worker/src/scheduler/**, services/worker/test/scheduler.test.ts
+**Depends_On:** TASK-055
+**Description:** Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker). Four run-orchestration properties from the study: (1) **Per-agent serialization** — at most one active run per agent/routine identity, enforced by a promise-chain queue keyed on that identity, where one failed run does not poison the queue (their six-line `Map<agentId, Promise>` with self-deleting entries). (2) **Lanes** — `user | agent | background` priority lanes; user-initiated work preempts queued background work at dequeue time, never mid-run. (3) **Approval-aware idle** (study §Tier 2): the worker's health/idle signal distinguishes "busy running" from "busy only because every active run is parked awaiting a human approval" — the idle clock does NOT advance while merely awaiting approval, so a future drain/upgrade path can quiesce safely without cancelling human-blocked work; expose `{isBusy, busyOnlyAwaitingApproval, lastBusyAt}`. A watchdog interrupts a run exceeding a configurable wall-clock budget and records the interruption in the run's audit trail (never a silent kill). (4) **Priority interrupt, user lane protected** — added from the study's multi-agent section (docs/STUDY-grok-bot-018.md §Multi-agent coordination; verified at Grok Bot's `agent-to-agent-messaging.ts:125-140`, `scheduler.getActiveLane(agentId) === "user"` guard): a priority-flagged interrupt request for a given identity MUST preempt that identity's active `agent`- or `background`-lane run, and MUST NOT preempt an active `user`-lane run for that identity — check the active lane first, return without interrupting if it's `user`, otherwise interrupt and record `{reason, wasInFlight}` in the run's audit trail so a preempted run is distinguishable from one that finished normally. This is a request-time guard inside the SAME scheduler as (1)/(2)/(3), not a new module — do not build a separate priority-messaging feature, just the guarded-interrupt primitive the future multi-agent/OME work (WBS E10) will call. Injected clock throughout; no schema changes.
+**Acceptance_Criteria:**
+- [ ] Two runs for one agent identity never execute concurrently; a failed run does not block the next — both tested
+- [ ] User-lane task dequeued ahead of earlier-queued background tasks, tested
+- [ ] `busyOnlyAwaitingApproval` true and `lastBusyAt` frozen while the only active run is parked on approval, tested
+- [ ] Watchdog interruption reaches the run's audit trail, tested
+- [ ] A priority interrupt request against an identity in the `agent` or `background` lane preempts its active run and records `{reason, wasInFlight}` in the audit trail — tested
+- [ ] The SAME priority interrupt request against an identity in the `user` lane is a no-op — the active run continues untouched, tested
+- [ ] MUTATION-PROVEN: removing the serialization queue turns a concurrency test RED; removing the user-lane guard turns the no-op test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-077
+**Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (audit dual-sink); OIK-013 (append-only); Directive §4 N4
+**Owned_Paths:** packages/audit/src/outbox.ts, packages/audit/src/outbox.test.ts, packages/audit/src/format.ts, packages/audit/src/format.test.ts, packages/audit/src/index.ts
+**Depends_On:** —
+**Description:** Delivery hardening from Grok Bot's `action-audit-service.ts` (study §Tier 2), for audit events bound to a remote/secondary sink (future dashboard push, Telegram evidence). (1) **Capped persistent outbox**: undelivered events queue durably (a DB-backed `audit_outbox` is NOT wanted — reuse the append-only `audit_events` table with a delivery-cursor row instead, keeping one source of truth; if that proves incompatible with OIK-013's no-UPDATE rule for cursor storage, store the cursor in `kv`-style state, and BLOCK with SPEC_AMBIGUITY only if neither fits). Cap the in-memory batch; oldest-dropped ONLY with an explicit dropped-count event emitted — never silent loss. (2) **Backoff honouring `Retry-After`** on sink rate-limits, via injected clock. (3) **Exhaustive-union formatter**: one function mapping every audit action kind to its serialized line, written so adding a kind is a COMPILE error until its format exists (their `localAuditJsonlLine` switch-with-never). Redaction stays `redact.ts`'s job — call it, never reimplement (N4; TASK-059's rule). Local append-path behaviour unchanged; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Sink failure ⇒ events retained and redelivered after recovery; delivery order preserved — tested with injected failing sink
+- [ ] Cap overflow emits an explicit dropped-count marker, never silent — tested
+- [ ] Retry-After honoured before next attempt, tested with injected clock
+- [ ] Formatter exhaustive: a new action kind without a format branch fails typecheck — demonstrated in Test_Evidence with a scratch kind, reverted
+- [ ] All outbound content passes through the existing redact.ts — asserted, no second redaction implementation (N4)
+- [ ] Existing audit tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-078
+**Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (admin ceiling rank clamp); Directive §4 N2 (no bypass); ADR-001
+**Owned_Paths:** packages/policy/src/ceiling.ts, packages/policy/src/ceiling.test.ts, packages/policy/src/index.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; note packages/policy has ZERO I/O imports, lint-enforced — pure functions only). The four-line primitive that makes "no bypass" structural (study §Tier 2): risk-tier decisions get an optional `ceiling` — `resolveEffectiveTier(requested, ceiling)` returns the STRICTER of the two by a declared rank order, so any per-routine, per-user, or per-config preference can only ever tighten the platform default, never loosen it. Wire it into the existing tier-resolution path as the single exit point (every resolved tier passes through the clamp); a missing/undefined ceiling means no relaxation either — the platform default IS the floor. This is the primitive a future org-config surface consumes; the config surface itself is out of scope. Pure function, exhaustive over the risk_tier enum (adding a tier without a rank fails typecheck). Existing policy tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Clamp returns the stricter tier for every (requested, ceiling) pair — exhaustively table-tested over the enum
+- [ ] Every tier resolution flows through the clamp — MUTATION-PROVEN: bypassing it for one path turns a test RED
+- [ ] A new enum member without a rank fails typecheck — demonstrated with a scratch member, reverted
+- [ ] Zero I/O imports preserved (lint), existing policy tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-079
+**Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (loopback bridge) + §Anti-patterns 2 (no regex destructiveness); ADR-001 (broker remains the enforcement point); Directive §4 N1
+**Owned_Paths:** packages/agent-providers/src/mcpBridge/**, packages/agent-providers/src/mcpBridge.test.ts
+**Depends_On:** TASK-072
+**Description:** When a routine runs on a CLI harness that cannot take inline tool definitions (Codex CLI, Grok Build), OIKONOMOS's connectors must reach it as an MCP server — and every call through that server is a broker interception point. Port Grok Bot's `routed-mcp-bridge.ts` (~88 lines, study §Tier 2): an in-process HTTP MCP server per run — `listen(0, "127.0.0.1")` (ephemeral port, loopback ONLY), a crypto-random capability path acting as the bearer (`/mcp/<randomUUID>`), request body cap (1 MiB), method+path allowlist (404 anything else), `tools/list` answering from a snapshot taken at mount, `tools/call` accepted only for snapshot names, torn down unconditionally in a `finally` when the run ends. **Every `tools/call` MUST pass through the injected broker decision port before reaching the real connector — the bridge is transport, the broker stays the enforcement point (ADR-001; N1)**; a broker deny returns an MCP error result carrying the TASK-067 modelGuidance, never a thrown 500. Tool annotations (readOnly/destructive) come from the connector manifest verbatim — **NEVER derived from names or descriptions** (study §Anti-patterns 2). Broker port is injected (no packages/broker import cycle); wiring composeHarness to actually mount the bridge is harness-factory territory — a follow-up, not this task.
+**Acceptance_Criteria:**
+- [ ] Server binds 127.0.0.1 on an ephemeral port; wrong path or method ⇒ 404; oversized body ⇒ 413 — all tested
+- [ ] Every tools/call invokes the injected broker port first — MUTATION-PROVEN: bypassing the broker for one call turns a test RED (N1)
+- [ ] Broker deny surfaces as an MCP error result with guidance text, not a transport error, tested
+- [ ] tools/call for a name outside the mount snapshot refused, tested
+- [ ] Annotations sourced from the manifest only; no name/description heuristic anywhere — asserted
+- [ ] Bridge closed after run end even when the run throws — tested
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T16:00:00Z
+
+### TASK-080
+**Title:** packages/approvals — atomic editApproval: pending-invalidate + reissue in one transaction ⚑ protected
+**Status:** done
+**Assigned_To:** GB
+**Priority:** critical
+**Spec_References:** WBS OIK-086; OIK-023; Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md; dossiers/TASK-063.md (S5's gap analysis, 2026-08-26)
+**Owned_Paths:** packages/approvals/src/editApproval.ts, packages/approvals/src/editApproval.test.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path; different-model review — CX authored TASK-064, so GB authorship also diversifies the adversarial pairing). **Fifth producer-contract decompose error: TASK-064 added the pending-guarded invalidate, but every store operation runs through `withPool()` which opens and closes a fresh Pool per call — there is no BEGIN/COMMIT/PoolClient anywhere in the package, so invalidate + reissue cannot compose atomically from control-api (S5's finding, verified by ORCH at store.ts:128-134).** Add `editApproval(nonce, editedRequest)`: ONE operation that on a single `pool.connect()` client runs `BEGIN` → the pending-guarded invalidate UPDATE (rowCount must be 1 or `ROLLBACK` and refuse — the TASK-064 guard exactly, not a re-derivation) → INSERT of the replacement row (new crypto-random nonce, digest bound to the EDITED payload, stored render regenerated from the EDITED payload per ADR-004) → `COMMIT`; any error ⇒ `ROLLBACK` and the client always released in `finally`. The private transaction pattern in `packages/db/src/capabilities.ts` is the in-repo precedent for the shape. **The hazard is the double-approval window**: partial failure must leave the original untouched and no replacement — never invalidated-with-no-replacement, never two live nonces for one action. Reuse the existing pinned SQL constants where they exist; do not duplicate their WHERE clauses as new strings (a drifted copy is a second, weaker control). Do not alter withPool or any existing operation — additive only; existing `packages/approvals/test/**` byte-identical and green (TASK-062/064 precedent).
+**Acceptance_Criteria:**
+- [ ] `editApproval` runs invalidate + insert on ONE client inside BEGIN/COMMIT; client released on every path — verified in review by construction
+- [ ] Forced failure between invalidate and insert (injected fault) ⇒ original row still `pending`, no replacement row — tested against live pg16 (the AC TASK-063 could not satisfy)
+- [ ] After success: old nonce refused by decide AND consume; exactly one `pending` row exists for that action — asserted by query (N8)
+- [ ] Replacement digest + stored render both derive from the EDITED payload — tested they describe the same thing (ADR-004)
+- [ ] Non-pending inputs (granted, rejected, invalidated, expired, consumed) each refused with zero writes, tested per status
+- [ ] MUTATION-PROVEN: removing the transaction (two independent pools) turns the forced-failure test RED
+- [ ] Existing packages/approvals/test/** byte-identical; INVALIDATE_APPROVAL_SQL and TASK-064's pending SQL unchanged — verified by diff
+- [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-044/061/064 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+- [ ] NEW (added at review, round 1): the replacement row is bound to the SAME run_id, capability_id, and tenant_id as the row it invalidates — an edit cannot mint a replacement for a different run/capability/tenant than the one it voided, tested per field
+**Branch:** task/TASK-080-gb
+**Started_At:** 2026-08-26T15:48:41Z
+**Progress_Notes:**
+- [2026-08-26T18:15:00Z] [SV:GB] editApproval runs pending-invalidate + reissue on one client inside BEGIN/COMMIT; forced mid-flight failure leaves the original pending; ADR-004 digest/render bind the edited payload; existing approvals/test/** and TASK-064 SQL unchanged.
+- [2026-08-26T19:27:42Z] [SV:GB] Rework: replacement is bound to the voided row's run_id/capability_id/tenant_id (compare+throw before INSERT; INSERT copies those columns from the invalidated row). Test hooks keyed on unique symbol; pending-but-past-expires_at refused with zero writes.
+**Artifacts:** packages/approvals/src/editApproval.ts, packages/approvals/src/editApproval.test.ts, packages/approvals/src/store.ts, packages/approvals/src/index.ts, dossiers/TASK-080.md
+**Test_Evidence:** ROUND 2 — Isolated pgvector/pg16 (schema 001, container removed). DATABASE_URL set: 16 files, 113/113 passed, 0 skipped (editApproval 21/21 live). DATABASE_URL unset: 79 passed / 34 skipped. pnpm -r test with DATABASE_URL: all 16 workspaces green (113/79/54/51/50/45/36/35/33/28/21/17/13/6/1/1 across approvals/harness-factory/gateway-telegram/db/connectors/agent-providers/shared/audit/control-api/broker/policy/evals-harness/worker/evals-golden/memory/workspace). pnpm lint exit 0, pnpm canaries 17/17. ROUND 1: Isolated pgvector/pg16 127.0.0.1:55480. DATABASE_URL set: pnpm --filter @oikonomos/approvals test — 16 files, 106/106 passed, 0 skipped (editApproval 14/14 live, incl. rollback-on-fault, two-pool contrast, decide+consume refuse, per-status zero writes, 8-way concurrent edit). DATABASE_URL unset: 77 passed / 29 skipped. MUTATION-PROVEN: removing BEGIN reddens forced-failure (pending → invalidated); restored. pnpm lint exit 0. pnpm canaries 17/17. pnpm --filter @oikonomos/approvals build; pnpm -r test (no DATABASE_URL) exit 0. git diff -- packages/approvals/test empty.
+**Review_Findings:**
+- REWORK (ORCH opus-4-8 adversarial, 2026-08-26T18:20Z; PROTECTED, author GB=grok / reviewer opus, different-model holds). Territory clean (4 files + dossier, no PLAN.md edits — the diff-vs-master noise on .gitignore/PLAN.md is branch staleness against master's TASK-070-unblock commits, not builder edits; resolves on merge). Every STATED AC independently verified true, including two ORCH-run mutations beyond the builder's own: removing BEGIN reddens the forced-failure test AS CLAIMED, and — the reviewer's own addition — running the invalidate on an INDEPENDENT connection (the AC's literal "two independent pools" wording) ALSO reddens it, and notably was NOT caught by the source-level SQL pin, only by the live behavioural test, confirming the behavioural test is the real control. Transaction lifecycle correct by construction: withApprovalClient's ApprovalClient type exposes only `query`, so the "accidentally used pool.query() for one step" class of bug is structurally impossible, not just avoided. client.release() proven on every path via an 8-iteration fault loop (a leak would exhaust the pool's max:10). Pending-guard and all existing SQL constants byte-compared master-vs-HEAD via git show: IDENTICAL, zero drift; only symbol change is APPROVAL_COLUMNS gaining `export` (visibility only). ADR-004 confirmed by construction, not just by test: digest and render are built from ONE literal object, no stale-reference path exists. DB legs proven live (106/106 with DATABASE_URL vs 77/29 without) and gate counts reproduced exactly by the reviewer. REWORK is ONE finding beyond the stated ACs, which is why it's the new AC added above rather than a rejection of what was built: **editApproval takes run_id/capability_id/tenant_id entirely from the caller-supplied editedRequest and never compares them against the row it is invalidating (editApproval.ts:177-202, before the INSERT at :190) — a successful edit can mint a replacement for a DIFFERENT run, DIFFERENT capability, or (via an omitted tenantId defaulting to 'basileia') DIFFERENT tenant than the one it just voided, all inside one COMMIT.** capability_id is what the broker matches for tier/policy, so this is a tier-laundering shape, and the ADR-004 digest re-binding does NOT close it — the digest binds {toolName,input,destination}, not capability_id. TASK-063 (the consumer) cannot enforce this from outside: it's forbidden from reaching into packages/approvals, and editApproval returns the invalidated row only AFTER commit, so control-api could detect a substitution but not prevent the write — which is precisely why this primitive was moved inside the protected package in the first place, and precisely why it must close the gap itself. Fix is ~8 lines inside editApproval.ts (compare invalidated.runId/capabilityId/tenantId against the request before the INSERT; throw to trigger the existing rollback path if they diverge) plus one test — fully in-territory. FOLD IN, same round (one line each): (F2) `testHooks` is exported production API surface on `editApproval()` — structural typing lets any consumer pass `{afterInvalidate}` even though `EditApprovalTestHooks` isn't re-exported; bounded risk (the hook takes no args, can only throw-safely or stall) but tag `@internal` or key it behind a module-private symbol. (F6) add a test for the realistic "still pending but expires_at already past, sweeper hasn't run yet" case — currently only the post-sweep 'expired' status and a different file's pinned SQL cover this angle. ADVISORY, NOT BLOCKING, logged for later: validation helpers (requireNonEmpty/requireUuid/resolveExpiresAt/toApproval/toWaitSignal) are now a third near-verbatim copy across issue.ts/store.ts/editApproval.ts — small extraction task worth opening; INSERT_APPROVAL_SQL duplicates packages/db/src/approvals.ts's INSERT shape (mitigated by a pinned substring test, but still a copy not a reuse); replacement expires_at isn't required to be in-the-future (matches issueApproval's existing behavior, not a regression, just sharper here since edit destroys a working approval to do it); no lock_timeout/statement_timeout on the transaction (pre-existing package-wide, hardening-wave item). No dead code, no hardcoded paths, no credentials in fixtures (RFC 6761 .test hostnames, postgres://invalid for fail-before-connect cases).
+- APPROVED + MERGED, round 2 (ORCH opus-4-8 adversarial, 2026-08-26T21:00Z; PROTECTED, author GB / reviewer opus, different-model holds). The one required finding is closed at the STRONG level: `assertIdentityBound` runs inside the same BEGIN/COMMIT, against the row the invalidate UPDATE just returned (row-locked until COMMIT/ROLLBACK — no TOCTOU window), checks all three fields with distinct error messages, AND the INSERT sources tenant_id/run_id/capability_id SOLELY from the invalidated row — caller input for those three fields never reaches the write at all, not merely a guard clause. REVIEWER'S OWN MUTATION IS THE HEADLINE EVIDENCE: neutering only the check's call site (leaving the function body + error strings intact, so a source-text pin couldn't mask the result) reddened all THREE fields independently against live pg16 — run_id and tenant_id have genuine regression protection, not just capability_id as the dossier's own evidence summary implied. A bespoke 7-scenario live probe specifically targeting the real escalation shape (email.create_draft → email.send, T3_external) confirmed zero writes on every rebinding attempt, including the exact original-bug trigger (omitted tenantId against a non-basileia original) which now hard-refuses rather than silently defaulting. F2 (testHooks) confirmed closed via a module-private unforgeable Symbol, verified both at the type level and by deep-import (ERR_PACKAGE_PATH_NOT_EXPORTED). F6 (unswept-expiry) confirmed against a real live row. Round-1 properties re-confirmed untouched: BEGIN/COMMIT/rollback/release intact, packages/approvals/test/** diff still empty, all pinned SQL byte-identical (only APPROVAL_COLUMNS gains `export`), ADR-004 still by single-object construction. Gates: build clean; DATABASE_URL set — 113/113 across 16 files, all 16 workspaces green recursively; DATABASE_URL unset — 79/34; lint clean; canaries 17/17. Territory clean (5 files + dossier), no PLAN.md edits. Merged --no-ff, branch deleted, worktree removed. FOUR NON-BLOCKING RESIDUAL NOTES: (1) the INSERT-sources-from-row property itself has no independent regression test — the source-pin the builder added is satisfied by the guard function's own body containing the matching strings, so a future refactor could silently revert the INSERT to caller-sourced fields while the guard still throws and the suite stays green; the LIVE behavioural protection holds today (proven by the reviewer's mutation), this is a testing-completeness gap, not a live hole — cheap fix is a fake-client test asserting the actual INSERT param array. (2) **OPERATIONAL, CARRIED FORWARD TO TASK-063**: an omitted tenantId is now a HARD REFUSAL for any non-basileia tenant (fail-closed, correct) — TASK-063's control-api MUST forward tenant_id on every edit call or those edits will fail closed; noted on TASK-063 below so S5 doesn't discover this by a failing integration test. (3) the capability_id test fixture uses a downgrade (email.list, T0) rather than the actual escalation threat shape (email.send, T3) that the reviewer verified live by probe — recommend swapping the fixture. (4) round-1 advisories (triplicated validation helpers, INSERT_APPROVAL_SQL duplication, no lock/statement timeout, expires_at not required future) still stand, unchanged. UNLOCKS TASK-063 (S5, control-api edit route) — now eligible.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T21:00:00Z
+
+### TASK-081
+**Title:** packages/policy — four-way approval resolution (allow-once/deny/always/never) as a standing-mode decision primitive ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Multi-agent coordination (research2 companion pack — verified against `source/shared/local-tool-permission.ts`, `source/host/extensions/local-tool-permission/local-tool-permission-controller.ts`); Directive §4 N2 (no bypass), N3 (fail closed); ADR-001
+**Owned_Paths:** packages/policy/src/approvalResolution.ts, packages/policy/src/approvalResolution.test.ts, packages/policy/src/index.ts
+**Depends_On:** TASK-078
+**Description:** **GB or CX only, NEVER S5** (protected path; packages/policy has ZERO I/O imports, lint-enforced — pure functions only, same constraint as TASK-078). The study's multi-agent research confirmed Grok Bot's local-tool permission model resolves every approval decision as one of FOUR outcomes — `allow-once | deny | always | never` — not the binary approve/reject OIKONOMOS's nonce-based approvals currently model. `allow-once` and `deny` are what `packages/approvals` already does per-nonce (grant/reject, single-use, TASK-062/064/080); `always` and `never` are a DIFFERENT, currently-missing primitive: a STANDING mode for a (role_id, capability_id) pair that future decisions consult BEFORE parking for a new approval. This task builds the pure DECISION function only — not the standing-mode store, not wiring, not a config surface (same scoping discipline as TASK-078: "the config surface itself is out of scope"). `resolveApprovalRequest({ resolution, existingStandingMode, adminCeiling, requestedAtEpoch, standingModeSetAtEpoch })` composes with TASK-078's `resolveEffectiveTier` rank-clamp (an admin ceiling can force `always`→`ask`-equivalent behavior, never widen past what TASK-078 already permits) and mirrors TASK-073's non-retroactive rule verbatim: a standing mode set to `always` at epoch N does NOT retroactively authorize a request whose `requestedAtEpoch` predates `standingModeSetAtEpoch` — **repetition must never silently promote to a standing grant; only an explicit `always`/`never` resolution changes the standing mode** (this is the one property Grok Bot's own docs flag as commonly misunderstood — verify it holds here too). Exhaustive over a `ApprovalResolution` enum (adding a fifth resolution without updating the decision table fails typecheck). Existing packages/policy tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] `allow-once` and `deny` resolutions pass through unchanged to the existing per-nonce approvals flow — this function does not re-decide them, only routes them (no duplication of packages/approvals' job)
+- [ ] `always`/`never` resolution produces a standing-mode value the caller can persist; the function itself performs no I/O — asserted (packages/policy zero-I/O constraint)
+- [ ] A request whose `requestedAtEpoch` predates `standingModeSetAtEpoch` is evaluated WITHOUT the standing mode (falls through to `ask`) — tested; a request at or after that epoch uses it — tested
+- [ ] Admin ceiling composes with TASK-078's clamp: a standing `always` cannot resolve to an effective allow above the ceiling — exhaustively table-tested
+- [ ] MUTATION-PROVEN: removing the epoch comparison turns the non-retroactive test RED
+- [ ] A new enum member added to `ApprovalResolution` without a corresponding decision-table entry fails typecheck — demonstrated with a scratch member, reverted
+- [ ] Zero I/O imports preserved (lint), existing packages/policy tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T20:00:00Z
