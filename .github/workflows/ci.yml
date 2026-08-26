@@ -125,6 +125,26 @@ jobs:
       - run: node infra/ci/test-secret-scan.mjs
       - run: node infra/ci/secret-scan.mjs
 
+  publication-tree:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node infra/ci/test-publication-tree.mjs
+      - run: node infra/ci/publication-tree.mjs
+
+  negative-controls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node infra/ci/test-negative-controls.mjs
+      - run: node infra/ci/negative-controls.mjs
+
   protected-path-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
