@@ -14,6 +14,11 @@ export {
   type DecideDependencies,
 } from "./decide.js";
 export {
+  editApproval,
+  type EditApprovalDependencies,
+  type EditApprovalResult,
+} from "./editApproval.js";
+export {
   DEFAULT_APPROVAL_TTL_MS,
   issueApproval,
   type ApprovalWaitSignal,

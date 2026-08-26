@@ -21,6 +21,7 @@ coverage/
 *.tsbuildinfo
 .env
 STOP
-board/
+board/*
+!board/index.html
 backups/
 .source-import/
