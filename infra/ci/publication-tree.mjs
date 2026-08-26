@@ -34,6 +34,16 @@ function treeFiles(root, treeish) {
   );
 }
 
+function executableFiles(root, treeish) {
+  return command('git', ['ls-tree', '-r', treeish], { cwd: root })
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .flatMap((entry) => {
+      const [metadata, file] = entry.split('\t');
+      return metadata.startsWith('100755 ') ? [file] : [];
+    });
+}
+
 function difference(left, right) {
   return [...left].filter((item) => !right.has(item)).sort();
 }
@@ -49,6 +59,13 @@ export function verifyPublicationTree({ root = process.cwd(), ref = 'HEAD' } = {
     rmSync(archivePath, { force: true });
     command('git', ['init', '--quiet'], { cwd: scratch });
     command('git', ['add', '--all'], { cwd: scratch });
+
+    // Windows tar extraction does not retain POSIX execute bits. Restore the
+    // modes declared by the committed tree in the scratch index so write-tree
+    // remains an exact comparison on every CI developer platform.
+    for (const file of executableFiles(repository, ref)) {
+      command('git', ['update-index', '--chmod=+x', '--', file], { cwd: scratch });
+    }
 
     const expectedTree = command('git', ['rev-parse', `${ref}^{tree}`], { cwd: repository }).trim();
     const actualTree = command('git', ['write-tree'], { cwd: scratch }).trim();
