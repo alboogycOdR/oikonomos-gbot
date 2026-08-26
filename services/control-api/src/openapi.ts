@@ -126,6 +126,10 @@ export function getOpenApiDocument(): Record<string, unknown> {
               description: "Decision did not apply (already decided, expired, invalidated, or unknown nonce)",
               content: { "application/json": { schema: { $ref: "#/components/schemas/DecideApprovalResponse" } } },
             },
+            "400": {
+              description: "Request rejected before a decision was attempted (invalid body, or the decision failed for a reason reported as an error)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } },
+            },
           },
         },
       },
@@ -152,6 +156,11 @@ export function getOpenApiDocument(): Record<string, unknown> {
               description:
                 "Edit did not apply (approval is not pending — already decided, expired, invalidated, or consumed — or unknown nonce)",
               content: { "application/json": { schema: { $ref: "#/components/schemas/EditApprovalResponse" } } },
+            },
+            "400": {
+              description:
+                "Request rejected before any invalidate/reissue was attempted — invalid body, an expiresAt that is not strictly in the future or exceeds the platform approval TTL, an omitted tenantId hard-refused for a non-basileia tenant, or an identity-rebind refusal. The original approval, if any, is left untouched.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } },
             },
           },
         },
@@ -224,6 +233,13 @@ export function getOpenApiDocument(): Record<string, unknown> {
             edited: { type: "boolean" },
             invalidated: { $ref: "#/components/schemas/Approval" },
             replacement: { type: "object" },
+          },
+        },
+        ErrorResponse: {
+          type: "object",
+          required: ["error"],
+          properties: {
+            error: { type: "string" },
           },
         },
       },

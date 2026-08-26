@@ -3,7 +3,7 @@ import { Writable } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 import type { Approval, AuditEvent, Run, Task } from "@oikonomos/db";
-import type { ApprovalWaitSignal, EditApprovalResult } from "@oikonomos/approvals";
+import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResult } from "@oikonomos/approvals";
 
 import { buildApp } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
@@ -414,6 +414,52 @@ describe("POST /approvals/:nonce/edit", () => {
     const forwarded = deps.calls[0]?.args[1] as { expiresAt?: Date };
     expect(forwarded.expiresAt).toBeInstanceOf(Date);
     expect(forwarded.expiresAt?.toISOString()).toBe(expiresAt);
+    await app.close();
+  });
+
+  it("rejects a past expiresAt with 400 before reaching the port — original approval left untouched", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
+    const app = buildApp(deps, { logger: false });
+    const pastExpiresAt = new Date(Date.now() - 1_000).toISOString();
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody({ expiresAt: pastExpiresAt }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toMatch(/strictly in the future/);
+    // never reaches editApproval — the ONLY way the original approval can
+    // be left untouched, since editApproval is what performs the invalidate.
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("rejects an expiresAt beyond the platform approval TTL with 400 before reaching the port", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
+    const app = buildApp(deps, { logger: false });
+    const excessiveExpiresAt = new Date(Date.now() + DEFAULT_APPROVAL_TTL_MS + 24 * 60 * 60 * 1000).toISOString();
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody({ expiresAt: excessiveExpiresAt }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toMatch(/exceed the platform approval TTL/);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("accepts an omitted expiresAt — inherits editApproval's own default, no bound check applied", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
+    const app = buildApp(deps, { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody(),
+    });
+    expect(res.statusCode).toBe(200);
+    const forwarded = deps.calls[0]?.args[1] as { expiresAt?: Date };
+    expect(forwarded.expiresAt).toBeUndefined();
     await app.close();
   });
 

@@ -299,3 +299,125 @@ The replacement's stored render must be regenerated from the **edited** payload,
   session's verification. No code changes needed; re-affirming `needs_review` as recorded in the
   prior work-log entry with its full test evidence (603/603 recursive suite, lint clean, canaries
   17/17, all DB legs proven live under DATABASE_URL).
+
+- [2026-08-26T22:32:00Z] [S5] Another session resume (fresh dispatch, same stopping point).
+  Re-read AGENTS.md, briefing, PLAN.md fresh from disk. `git diff master...HEAD --stat` unchanged
+  from the previous entry — only `dossiers/TASK-063.md` + `services/control-api/{src,test}/**` in
+  the diff, no drift; `git status --porcelain` shows nothing but the non-owned untracked
+  `AUTOPILOT_LOG.md`. Independently re-ran verification rather than trusting the prior entry's
+  claim:
+  - `pnpm --filter @oikonomos/control-api build` — clean, 0 errors.
+  - `pnpm --filter @oikonomos/control-api test` WITHOUT `DATABASE_URL`: 3 files passed / 2 skipped,
+    40 tests passed / 13 skipped — exact match to the prior session's recorded evidence; confirms
+    the DB-gated tests (`edit.route.integration.test.ts`'s 11, `integration.test.ts`'s 2) skip
+    cleanly rather than silently passing, everything else green.
+  No code changes needed or made. Re-affirming `Status: needs_review` — all ACs previously verified
+  true against spec text; full recursive suite (603/603) and canaries (17/17) already proven live
+  under DATABASE_URL in a prior session; build and non-DB suite reconfirmed clean this session.
+
+- [2026-08-26T22:55:00Z] [S5] Session resumed via `.devteam/CHECKPOINT.md` (compaction safety net,
+  control.mode=strict). Re-read AGENTS.md, briefing, PLAN.md fresh from disk. **This time actually
+  read past my own last Progress_Note** — the prior three resume sessions (22:15/22:25/22:32) each
+  stopped at "no drift, re-affirm needs_review" without reading the fresh `Review_Findings` entry
+  ORCH had appended above those notes. That entry (21:30Z, ORCH opus-4-8 adversarial review) is
+  REWORK, not a pass: every originally-stated AC was verified true and mutation-proven, but the
+  reviewer found an AC-shaped gap the task's own hazard section forbids — **`expiresAt` is
+  caller-supplied with zero bound validation.** A past timestamp was ACCEPTED (200, edited:true),
+  invalidating the original and persisting an already-expired, permanently-ungrantable replacement —
+  exactly the "invalidated with no usable replacement" hazard this task's own Description names,
+  reached through ordinary use, no forced fault needed. A 10-years-out timestamp was equally
+  accepted, contradicting Synthesis §5.1's 4h TTL. ORCH's 21:35Z note gave the precise resume
+  instruction (also independently confirmed correct after ORCH's 21:40Z note explained the two
+  prior identical resubmissions were ORCH's own dispatch-sync bug, not a resume-reading miss on my
+  part this time — this session's own `git log` shows the rework-instruction commits `053c0ee` and
+  `118a5ad` already present, and PLAN.md's Review_Findings text confirmed genuinely current, not
+  stale).
+
+  Implemented exactly as instructed, in `services/control-api/src/app.ts`:
+  - New `validateEditExpiresAt(expiresAt, now)` helper (placed after `isRunStatus`, before
+    `buildApp`) — rejects a caller-supplied `expiresAt` that is not strictly in the future
+    (`<= now`) or that exceeds the platform's own default approval TTL
+    (`DEFAULT_APPROVAL_TTL_MS`, imported from `@oikonomos/approvals`'s `issue.ts` barrel export —
+    reused the existing constant per the review's explicit instruction, not invented). A value that
+    fails to parse to a valid `Date` is deliberately left unvalidated here — `editApproval`'s own
+    `resolveExpiresAt` already throws "expiresAt must be a valid Date." for that case and the
+    route's existing catch-all already maps it to 400; duplicating that check would just be a
+    second implementation of the same validation.
+  - Wired into the `POST /approvals/:nonce/edit` handler: when `expiresAt` is present in the body,
+    it is parsed to a `Date` and run through `validateEditExpiresAt` **before** `deps.editApproval`
+    is ever called. A validation failure returns 400 immediately and never reaches `editApproval` —
+    this is what actually satisfies "the original approval left untouched": the invalidate half of
+    the atomic operation simply never starts, not merely "rolls back." Renamed the previously-raw
+    `new Date(expiresAt)` spread into `deps.editApproval(...)`'s request object to use the
+    already-validated `parsedExpiresAt` local, so there is exactly one `Date` construction on this
+    path, not two.
+  - `expiresAt` omitted (`undefined`) skips the new check entirely — `parsedExpiresAt` stays
+    `undefined`, the spread into the `editApproval` request omits the field, and `editApproval`'s
+    own `resolveExpiresAt` applies its own default exactly as before. No change to that path.
+
+  OpenAPI (`services/control-api/src/openapi.ts`, OIK-084 fold-in from the same review round):
+  added a `400` response entry to both `/approvals/{nonce}/edit` (the new one this task
+  introduces — documents the tenant-hard-refusal, identity-rebind-refusal, and the new
+  expiresAt-bound-refusal, all previously undocumented) and `/approvals/{nonce}/decide` (review's
+  own words: "the sibling /decide route has the same gap, so this is a consistency fix, not a new
+  pattern to invent" — in `Owned_Paths` either way, applied the identical treatment). Added a new
+  shared `ErrorResponse` schema component (`{ error: string }`, matching the actual `{ error:
+  (error as Error).message }` shape both routes' catch-alls already send on the wire) rather than
+  inlining an untyped object schema twice.
+
+  Tests added, both fake-backed and live-DB, covering all three legs the new AC specifies:
+  - `test/app.test.ts` (+3, fake port): past `expiresAt` → 400 + `deps.calls` empty (proves
+    `editApproval` genuinely never invoked, not just that its result was discarded); excessive
+    future `expiresAt` (`DEFAULT_APPROVAL_TTL_MS` + 24h) → 400 + `deps.calls` empty; omitted
+    `expiresAt` → still 200, `forwarded.expiresAt` is `undefined` (unaffected by the new check).
+  - `test/edit.route.integration.test.ts` (+3, live Postgres via `createDatabaseBackedDeps`, real
+    `editApproval`): past `expiresAt` → 400, `error` message matches, AND re-reads the original
+    approval by nonce afterward — `status: 'pending'`, `destination` still the ORIGINAL value (not
+    just "not invalidated" but literally byte-for-byte untouched), AND `listPendingApprovals`
+    still shows exactly one pending row for that run+capability, the same nonce as before (this is
+    strictly stronger evidence than the unit test: proves no partial DB write happened, not just
+    that the HTTP response was 400). Excessive-future `expiresAt` → 400, original still pending.
+    Omitted `expiresAt` → 200, re-reads the persisted replacement row and asserts its
+    `expires_at` lands within a 60s window of `Date.now() + DEFAULT_APPROVAL_TTL_MS` at the moment
+    the request ran (window rather than exact-millisecond match, since `editApproval`'s own clock
+    read happens server-side a few ms after the test's `before` timestamp).
+
+  **Full verification run, this session, fresh, nothing trusted from a prior session's claim:**
+  - Found the throwaway container `oikonomos-task063-pg` (pgvector/pg16, `127.0.0.1:55481`) still
+    running from a prior session (`docker ps -a` showed it `Up`, schema already migrated) — reused
+    it rather than starting a second one. Its actual credentials
+    (`oikonomos`/`local_test_only`/`oikonomos`, read via `docker inspect ... Config.Env`, NOT the
+    `postgres`/`postgres`/`postgres` guess that fails with "password authentication failed") were
+    needed to connect — recording this because a future resume session hitting the same auth error
+    should inspect the container's real env rather than assume the default-looking connection
+    string is right.
+  - `pnpm --filter @oikonomos/approvals build` then `pnpm --filter @oikonomos/control-api build` —
+    both clean, 0 errors (rebuilt approvals first since the review's own advisory noted
+    cross-package integration tests resolve `@oikonomos/approvals` to its `dist/` build, not `src/`
+    — stale dist would make a passing test misleading).
+  - `pnpm --filter @oikonomos/control-api test` WITHOUT `DATABASE_URL`: 3 files passed / 2 skipped,
+    43 passed / 16 skipped (up from the pre-rework 40/13 baseline by exactly the 3 new fake-backed
+    tests — confirms nothing else regressed and the new tests are real, not silently skipped).
+  - Same command WITH `DATABASE_URL` (real credentials above): **5 files, 59/59 passed, 0
+    skipped** — all 14 `edit.route.integration.test.ts` legs ran live (11 pre-existing + 3 new),
+    both `integration.test.ts` legs ran live.
+  - `pnpm -r test` WITH `DATABASE_URL`: **exit 0, all 16 workspaces green, 609/609** (up from the
+    prior 603/603 baseline by exactly the +3 unit +3 integration new tests) — full recursive suite
+    per CLAUDE.md's DEVDEPARTMENT amendment, never a filtered per-package run.
+  - `pnpm lint` — exit 0, no findings.
+  - `pnpm canaries` — 17/17, exit 0, `DATABASE_URL` set (CAN-06/CAN-07 Postgres-atomicity legs ran
+    live).
+  - `git diff master...HEAD --stat`: only `dossiers/TASK-063.md` +
+    `services/control-api/{src,test}/**` (4 src files, 2 test files) — territory clean, no drift,
+    no `packages/approvals` touch (protected, consumed exactly as `editApproval` exports it,
+    re-confirmed by re-reading `packages/approvals/src/editApproval.ts` at source this session
+    rather than trusting the prior sessions' description of it).
+
+  Committing this dossier entry together with the code changes on `task/TASK-063-s5`. All stated
+  ACs (original + the two rework ACs added at the 21:30Z review) now independently verified true
+  against the spec text, with fresh live-DB evidence gathered this session, not carried forward
+  from a stale claim.
+
+  **Status: needs_review.** This is a genuine rework submission — new code, new tests, new
+  evidence — not a resubmission of the unchanged `b821054` commit that was correctly rejected at
+  21:35Z.

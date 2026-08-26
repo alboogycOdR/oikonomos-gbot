@@ -2,7 +2,7 @@ import type { Writable } from "node:stream";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { runStatuses, type Approval, type RunStatus } from "@oikonomos/db";
-import type { JsonValue } from "@oikonomos/approvals";
+import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
@@ -98,6 +98,43 @@ function serializeApproval(approval: Approval): Record<string, unknown> {
 
 function isRunStatus(value: string): value is RunStatus {
   return (runStatuses as readonly string[]).includes(value);
+}
+
+/**
+ * TASK-063 rework (round-1 review): a caller-supplied `expiresAt` on the
+ * edit route was accepted with zero bound validation, letting a single
+ * ordinary call reach the exact hazard this task's own Description
+ * forbids — "invalidated with no usable replacement" — by invalidating
+ * the original approval and then persisting a replacement that is
+ * already expired (or, in the other direction, a caller-controlled
+ * unbounded-lifetime bearer nonce). This runs BEFORE `editApproval` is
+ * ever called, so a rejection here leaves the original approval
+ * completely untouched — no invalidate has happened yet.
+ *
+ * Bound is the platform's own default approval TTL
+ * (`DEFAULT_APPROVAL_TTL_MS`, `@oikonomos/approvals`'s `issue.ts`) rather
+ * than a new invented constant here, per the review's instruction to
+ * reuse the existing default-TTL constant. An omitted `expiresAt` is not
+ * validated here at all — it is left `undefined` and `editApproval`
+ * applies that same default itself.
+ *
+ * A value that fails to parse to a valid `Date` is intentionally NOT
+ * rejected here: `editApproval`'s own `resolveExpiresAt` already throws
+ * "expiresAt must be a valid Date." for that case, and the route's
+ * existing catch-all maps it to 400 — duplicating that check here would
+ * just be a second implementation of the same validation.
+ */
+function validateEditExpiresAt(expiresAt: Date, now: number): string | undefined {
+  if (Number.isNaN(expiresAt.getTime())) {
+    return undefined;
+  }
+  if (expiresAt.getTime() <= now) {
+    return "expiresAt must be strictly in the future.";
+  }
+  if (expiresAt.getTime() > now + DEFAULT_APPROVAL_TTL_MS) {
+    return `expiresAt must not exceed the platform approval TTL (${DEFAULT_APPROVAL_TTL_MS}ms from now).`;
+  }
+  return undefined;
 }
 
 /**
@@ -243,6 +280,21 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     async (request, reply) => {
       try {
         const { runId, capabilityId, toolName, input, destination, tenantId, expiresAt } = request.body;
+        // TASK-063 rework AC: a caller-supplied expiresAt that is not
+        // strictly in the future, or that exceeds the platform's approval
+        // TTL, is rejected HERE — before editApproval is ever called — so
+        // the original approval is left completely untouched on refusal.
+        // Omitted expiresAt (undefined) skips this check entirely and
+        // inherits editApproval's own default.
+        let parsedExpiresAt: Date | undefined;
+        if (expiresAt !== undefined) {
+          parsedExpiresAt = new Date(expiresAt);
+          const validationError = validateEditExpiresAt(parsedExpiresAt, Date.now());
+          if (validationError !== undefined) {
+            await reply.code(400).send({ error: validationError });
+            return;
+          }
+        }
         // TASK-063 AC (carried forward from TASK-080 round-2 review): tenantId
         // is forwarded explicitly on EVERY call, even when undefined — an
         // omitted tenantId is a HARD REFUSAL in editApproval for any
@@ -255,7 +307,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           input: input as JsonValue,
           destination,
           tenantId,
-          ...(expiresAt !== undefined && { expiresAt: new Date(expiresAt) }),
+          ...(parsedExpiresAt !== undefined && { expiresAt: parsedExpiresAt }),
         });
         if (result.edited) {
           await reply.code(200).send({

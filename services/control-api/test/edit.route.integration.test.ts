@@ -11,7 +11,7 @@ import {
   startRun,
   type DatabaseOptions,
 } from "@oikonomos/db";
-import { verifyAndConsume } from "@oikonomos/approvals";
+import { DEFAULT_APPROVAL_TTL_MS, verifyAndConsume } from "@oikonomos/approvals";
 
 import { buildApp } from "../src/app.js";
 import { createDatabaseBackedDeps } from "../src/ports.js";
@@ -326,6 +326,97 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
     const body = JSON.parse(res.body) as { replacement: { nonce: string } };
     const replacement = await getApprovalByNonce(options, body.replacement.nonce);
     expect(replacement?.tenantId).toBe("acme");
+
+    await app.close();
+  });
+
+  it("REWORK AC: a past expiresAt is rejected before editApproval runs — original approval left untouched and pending, live DB", async () => {
+    const { run, approval } = await fixture();
+    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${approval.nonce}/edit`,
+      payload: {
+        runId: run.runId,
+        capabilityId: "email.create_draft",
+        toolName: "create_draft",
+        input: { subject: "should not apply" },
+        destination: "should-not-apply@example.test",
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((JSON.parse(res.body) as { error: string }).error).toMatch(/strictly in the future/);
+
+    // The original approval must be COMPLETELY untouched: still pending,
+    // still the original nonce, still the original destination — proves
+    // editApproval's invalidate never ran, not merely that it rolled back.
+    const original = await getApprovalByNonce(options, approval.nonce);
+    expect(original?.status).toBe("pending");
+    expect(original?.destination).toBe("original@example.test");
+
+    const pending = await listPendingApprovals(options);
+    const matches = pending.filter((a) => a.runId === run.runId && a.capabilityId === "email.create_draft");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.nonce).toBe(approval.nonce);
+
+    await app.close();
+  });
+
+  it("REWORK AC: an expiresAt beyond the platform approval TTL is rejected before editApproval runs — original approval untouched, live DB", async () => {
+    const { run, approval } = await fixture();
+    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+
+    const excessiveExpiresAt = new Date(Date.now() + DEFAULT_APPROVAL_TTL_MS + 24 * 60 * 60 * 1000).toISOString();
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${approval.nonce}/edit`,
+      payload: {
+        runId: run.runId,
+        capabilityId: "email.create_draft",
+        toolName: "create_draft",
+        input: { subject: "should not apply" },
+        destination: "should-not-apply@example.test",
+        expiresAt: excessiveExpiresAt,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((JSON.parse(res.body) as { error: string }).error).toMatch(/exceed the platform approval TTL/);
+
+    const original = await getApprovalByNonce(options, approval.nonce);
+    expect(original?.status).toBe("pending");
+
+    await app.close();
+  });
+
+  it("REWORK AC: omitting expiresAt still succeeds and the replacement inherits editApproval's own default TTL, live DB", async () => {
+    const { run, approval } = await fixture();
+    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+
+    const before = Date.now();
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${approval.nonce}/edit`,
+      payload: {
+        runId: run.runId,
+        capabilityId: "email.create_draft",
+        toolName: "create_draft",
+        input: { subject: "edited, default expiry" },
+        destination: "edited@example.test",
+        // expiresAt deliberately omitted.
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { replacement: { nonce: string } };
+    const replacement = await getApprovalByNonce(options, body.replacement.nonce);
+    expect(replacement).not.toBeNull();
+    const expiresAtMs = replacement!.expiresAt.getTime();
+    // editApproval's own default is Date.now() + DEFAULT_APPROVAL_TTL_MS at
+    // the moment it ran; assert it lands within a generous window around
+    // that default rather than pinning an exact millisecond.
+    expect(expiresAtMs).toBeGreaterThan(before + DEFAULT_APPROVAL_TTL_MS - 60_000);
+    expect(expiresAtMs).toBeLessThan(before + DEFAULT_APPROVAL_TTL_MS + 60_000);
 
     await app.close();
   });
