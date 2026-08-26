@@ -198,3 +198,93 @@ The replacement's stored render must be regenerated from the **edited** payload,
   is protected-path work needing a new TASK (same shape as TASK-064) assigned to GB or CX with
   different-model adversarial review — outside this task's `Owned_Paths` regardless of who
   implements it, so it can't be done from this worktree/task either way.
+
+- [2026-08-26T22:15:00Z] [S5] Session resumed (control.mode=strict). Re-read AGENTS.md, briefing,
+  PLAN.md fresh from disk. TASK-080 (`editApproval(nonce, editedRequest, deps)` — one
+  `pool.connect()` client, `BEGIN`→pending-guarded invalidate→identity-bound INSERT→`COMMIT`,
+  identity-bind fix from round-2 review) is `Status: done`, merged into `master`
+  (`d60bd7b`/`d5b83d5`/`039d5e8`), and this task's `Depends_On: TASK-080` is satisfied — ORCH's
+  2026-08-26T21:00Z note explicitly unblocks and hands back my own dossier's `next_step`
+  recommendation verbatim as the resume plan.
+
+  Found the worktree already carrying uncommitted implementation work against master's merged
+  `editApproval` — `services/control-api/src/{app,ports,openapi,redact}.ts`,
+  `test/app.test.ts`, and a new `test/edit.route.integration.test.ts`, all still unstaged, no prior
+  dossier entry for it (a session that built this apparently ended before logging/committing).
+  Read every changed file in full against this task's ACs and TASK-080's actual exported signature
+  (`editApproval.ts` read at source) rather than trusting the diff was correct:
+  - `ports.ts`: adds `editApproval(nonce, editedRequest)` to `ControlApiDeps`, wired in
+    `createDatabaseBackedDeps` straight to `approvalsEditApproval(nonce, editedRequest, {
+    database: options })` — no local logic, matches OIK-084 "not the DB" / no-reimplementation.
+  - `app.ts`: `POST /approvals/:nonce/edit`, JSON-schema body with `additionalProperties: false`
+    and no `render` field (ADR-004 — render is always derived downstream, never caller-supplied),
+    tenant_id forwarded through explicitly even when `undefined` (per TASK-080 round-2's carried-
+    forward AC — omitted tenantId is a hard refusal for non-basileia tenants, must never be
+    dropped), 200 on `edited:true` returning both the invalidated approval and the replacement wait
+    signal, 409 on `edited:false`, 400 on thrown error — same try/catch shape as the existing
+    decide route, nothing bespoke.
+  - `openapi.ts`: `/approvals/{nonce}/edit` path + `EditApprovalRequest`/`EditApprovalResponse`
+    schemas added (OIK-084); `app.test.ts`'s existing "every registered route appears in the OpenAPI
+    doc" assertion covers it structurally.
+  - `redact.ts`: nonce-redaction regex widened from decide-only to `decide|edit` — the same N4
+    hazard (bearer nonce in the URL) applies to the new route; a dedicated real-pino-stream test
+    proves the nonce never appears in log output for this route.
+  - `test/app.test.ts`: fake-backed route tests — 200/409/400 shapes, schema rejects a body missing
+    required fields *before* reaching the port (`deps.calls` empty), a caller-supplied `render`
+    field is stripped by the schema and never reaches the port, `tenantId` forwarded verbatim
+    (present, absent-as-undefined, and non-default value), `expiresAt` string converted to `Date`,
+    and the N4 redaction test using a real pino stream.
+  - `test/edit.route.integration.test.ts` (new, DB-gated via `describe.skip` when `DATABASE_URL` is
+    unset — TASK-035/044/061/064/080 evidence precedent): exercises the route through
+    `createDatabaseBackedDeps` against real Postgres — success path with ADR-004 digest/render
+    verified by reading the persisted replacement row back (not inferred from the response alone),
+    old-nonce-refused-by-both-decide-and-consume, exactly-one-pending-row-by-query, per-status
+    refusal for granted/rejected/consumed/invalidated (each status reached via the real
+    decide/verifyAndConsume primitives, never a hand-rolled UPDATE), a pending-but-past-expiry
+    refusal, a forced-mid-operation-failure leg reached through the public HTTP API (mismatched
+    `runId` trips `editApproval`'s own identity-bind check post-invalidate, proving the rollback
+    over a live DB from *this* task's territory without needing an internal test hook), and both
+    the tenantId-omitted-hard-refusal and tenantId-forwarded-succeeds legs for a non-basileia
+    tenant (the round-2 TASK-080 lesson AC).
+
+  Found a running throwaway container `oikonomos-task063-pg` (pgvector/pg16, port 55481, schema
+  already migrated — 8 tables incl. `approvals`) left up from whatever session built this, evidently
+  for exactly this purpose. Verified it's a private throwaway (not `docker-compose`'s shared
+  service, distinct name/port from `tvcp-pg16`) before using it — reused rather than starting a
+  second one.
+
+  **Full verification run, this session, fresh:**
+  - `pnpm --filter @oikonomos/control-api build` — clean, 0 errors.
+  - `pnpm --filter @oikonomos/control-api test` WITH `DATABASE_URL` set: 5 files, 53/53 passed, 0
+    skipped (all 11 new edit-route integration tests ran live, not skipped).
+  - Same command WITHOUT `DATABASE_URL`: 40 passed / 13 skipped — proves the DB legs are real gated
+    tests, not silently-always-skipped ones (TASK-035/044/061 evidence shape).
+  - `pnpm -r test` WITH `DATABASE_URL` set: exit 0, all 16 workspaces green — memory 1, policy 21,
+    db 51, agent-providers 45, gateway-telegram 54, shared 36, workspace 1, audit 35, connectors 50,
+    approvals 113 (incl. `editApproval.test.ts` 21/21 and `invalidatePending.test.ts` 10/10 live),
+    harness-factory 79, evals-golden 6, broker 28, control-api 53, worker 13, evals-harness 17 — 603
+    tests total, 0 failed. This is the full recursive suite per CLAUDE.md's DEVDEPARTMENT amendment
+    (never a filtered per-package run), so a cross-package regression like the 2026-08-15 TASK-014
+    incident would have surfaced here.
+  - `pnpm lint` — exit 0.
+  - `pnpm canaries` — 17/17 (`evals/harness`), exit 0, with `DATABASE_URL` set (CAN-06/CAN-07's
+    Postgres-atomicity legs ran live, not skipped).
+
+  No `packages/approvals` files touched (protected, outside `Owned_Paths` either way) — `editApproval`
+  consumed exactly as TASK-080 exports it, confirmed by re-reading its source this session rather
+  than trusting the pre-existing diff. All AC boxes below verified true against the spec text, not
+  the diff's own comments.
+
+  Staged and committing everything under `Owned_Paths`
+  (`services/control-api/src/**`, `services/control-api/test/**`) plus this dossier. Nothing outside
+  those globs touched; `git status` before commit showed only those files plus the untracked
+  `AUTOPILOT_LOG.md` (pack infrastructure, not mine, left alone) and the stale
+  `.devteam/CHECKPOINT.md` (not in `Owned_Paths`, left in place per "files are the truth" —
+  superseded by this entry; will be deleted once the resume state is genuinely stale, not by me
+  mid-task).
+
+  **Status: needs_review.** All stated ACs satisfied and independently re-verified this session;
+  full recursive suite green; DB legs proven live both directions (gated vs run). Ready for
+  adversarial review — this package (`services/control-api`) is NOT itself protected-path (no
+  different-model requirement), but the two upstream primitives it now calls (TASK-064, TASK-080)
+  already went through that process.

@@ -24,8 +24,11 @@ import {
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
+  editApproval as approvalsEditApproval,
   type ApprovalDecision,
   type DecideApprovalResult,
+  type EditApprovalResult,
+  type IssueApprovalRequest,
 } from "@oikonomos/approvals";
 
 /**
@@ -46,6 +49,15 @@ export interface ControlApiDeps {
     decision: ApprovalDecision,
     decidedBy: string,
   ): Promise<DecideApprovalResult>;
+  /**
+   * TASK-063 / OIK-086: atomically invalidate the named PENDING approval
+   * and issue a replacement bound to `editedRequest` (ADR-004 render
+   * provenance; N8 single nonce). `editedRequest.tenantId` MUST be
+   * forwarded by every caller — an omitted tenantId defaults to
+   * `basileia` inside `@oikonomos/approvals` and is a HARD REFUSAL for
+   * any other tenant's approval (fail-closed by design).
+   */
+  editApproval(nonce: string, editedRequest: IssueApprovalRequest): Promise<EditApprovalResult>;
   getAuditEventsForRun(runId: string): Promise<AuditEvent[]>;
 }
 
@@ -63,6 +75,8 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),
     decideApproval: (nonce, decision, decidedBy) =>
       approvalsDecideApproval(nonce, decision, decidedBy, { database: options }),
+    editApproval: (nonce, editedRequest) =>
+      approvalsEditApproval(nonce, editedRequest, { database: options }),
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),
   };
 }

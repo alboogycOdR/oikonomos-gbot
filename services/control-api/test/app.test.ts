@@ -3,6 +3,7 @@ import { Writable } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 import type { Approval, AuditEvent, Run, Task } from "@oikonomos/db";
+import type { ApprovalWaitSignal, EditApprovalResult } from "@oikonomos/approvals";
 
 import { buildApp } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
@@ -58,6 +59,20 @@ function fixtureApproval(overrides: Partial<Approval> = {}): Approval {
   };
 }
 
+function fixtureWaitSignal(overrides: Partial<ApprovalWaitSignal> = {}): ApprovalWaitSignal {
+  return {
+    reason: "approval_pending",
+    approvalId: randomUUID(),
+    nonce: randomUUID(),
+    expiresAt: new Date(Date.now() + 60_000),
+    actionDigest: "ab".repeat(32),
+    actionRender: "Create a Gmail draft to review@example.test",
+    destination: "review@example.test",
+    status: "pending",
+    ...overrides,
+  };
+}
+
 function fixtureAuditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
   return {
     eventId: "1",
@@ -93,6 +108,7 @@ function createFakeDeps(overrides: Partial<ControlApiDeps> = {}): FakeDeps {
     getRun: async (runId) => fixtureRun({ runId }),
     listPendingApprovals: async () => [fixtureApproval()],
     decideApproval: async () => ({ decided: false, rowCount: 0 }),
+    editApproval: async () => ({ edited: false, rowCount: 0 }),
     getAuditEventsForRun: async () => [fixtureAuditEvent()],
     ...overrides,
   };
@@ -107,6 +123,7 @@ function createFakeDeps(overrides: Partial<ControlApiDeps> = {}): FakeDeps {
       defaults.listPendingApprovals as never,
     ) as ControlApiDeps["listPendingApprovals"],
     decideApproval: record("decideApproval", defaults.decideApproval as never) as ControlApiDeps["decideApproval"],
+    editApproval: record("editApproval", defaults.editApproval as never) as ControlApiDeps["editApproval"],
     getAuditEventsForRun: record(
       "getAuditEventsForRun",
       defaults.getAuditEventsForRun as never,
@@ -127,6 +144,7 @@ describe("GET /openapi.json", () => {
       "/runs/{id}/evidence",
       "/approvals",
       "/approvals/{nonce}/decide",
+      "/approvals/{nonce}/edit",
     ]) {
       expect(doc.paths[path], `missing OpenAPI path ${path}`).toBeDefined();
     }
@@ -274,11 +292,155 @@ describe("POST /approvals/:nonce/decide", () => {
   });
 });
 
+describe("POST /approvals/:nonce/edit", () => {
+  function editBody(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+    return {
+      runId: randomUUID(),
+      capabilityId: "email.create_draft",
+      toolName: "create_draft",
+      input: { subject: "edited subject" },
+      destination: "review@example.test",
+      ...overrides,
+    };
+  }
+
+  it("returns 200 with the invalidated approval and the replacement wait signal when the port reports edited:true", async () => {
+    const invalidated = fixtureApproval({ status: "invalidated" });
+    const replacement = fixtureWaitSignal();
+    const deps = createFakeDeps({
+      editApproval: async (): Promise<EditApprovalResult> => ({
+        edited: true,
+        rowCount: 1,
+        invalidated,
+        replacement,
+      }),
+    });
+    const app = buildApp(deps, { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${invalidated.nonce}/edit`,
+      payload: editBody(),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as {
+      edited: boolean;
+      invalidated: { actionDigest: string; status: string };
+      replacement: ApprovalWaitSignal;
+    };
+    expect(body.edited).toBe(true);
+    expect(body.invalidated.status).toBe("invalidated");
+    expect(body.invalidated.actionDigest).toBe(Buffer.from(invalidated.actionDigest).toString("base64"));
+    expect(body.replacement).toEqual({ ...replacement, expiresAt: replacement.expiresAt.toISOString() });
+    await app.close();
+  });
+
+  it("returns 409 when the port reports edited:false (not pending, expired, or unknown nonce)", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
+    const app = buildApp(deps, { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody(),
+    });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).edited).toBe(false);
+    await app.close();
+  });
+
+  it("rejects a body missing required fields with 400, before reaching the port", async () => {
+    const deps = createFakeDeps();
+    const app = buildApp(deps, { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: { runId: randomUUID() },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("strips a caller-supplied 'render' field before it ever reaches the port — ADR-004 render is always derived, never accepted", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
+    const app = buildApp(deps, { logger: false });
+    await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody({ render: "a caller-authored render" }),
+    });
+    expect(deps.calls).toHaveLength(1);
+    const forwarded = deps.calls[0]?.args[1] as Record<string, unknown>;
+    expect(forwarded).not.toHaveProperty("render");
+    await app.close();
+  });
+
+  it("forwards tenantId through to the port on every call, even for a non-basileia tenant (round-2 TASK-080 lesson)", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
+    const app = buildApp(deps, { logger: false });
+    const nonce = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: `/approvals/${nonce}/edit`,
+      payload: editBody({ tenantId: "acme" }),
+    });
+    expect(deps.calls[0]?.name).toBe("editApproval");
+    const forwarded = deps.calls[0]?.args[1] as { tenantId?: string };
+    expect(forwarded.tenantId).toBe("acme");
+    await app.close();
+  });
+
+  it("forwards tenantId as undefined (not silently coerced) when the caller omits it — editApproval owns the default", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
+    const app = buildApp(deps, { logger: false });
+    await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody(),
+    });
+    const forwarded = deps.calls[0]?.args[1] as { tenantId?: string };
+    expect(forwarded.tenantId).toBeUndefined();
+    await app.close();
+  });
+
+  it("forwards an expiresAt string as a Date to the port", async () => {
+    const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
+    const app = buildApp(deps, { logger: false });
+    const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+    await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody({ expiresAt }),
+    });
+    const forwarded = deps.calls[0]?.args[1] as { expiresAt?: Date };
+    expect(forwarded.expiresAt).toBeInstanceOf(Date);
+    expect(forwarded.expiresAt?.toISOString()).toBe(expiresAt);
+    await app.close();
+  });
+
+  it("returns 400 when the port throws (e.g. identity mismatch rejected inside editApproval)", async () => {
+    const deps = createFakeDeps({
+      editApproval: async () => {
+        throw new Error("editApproval cannot rebind run_id.");
+      },
+    });
+    const app = buildApp(deps, { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: editBody(),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toMatch(/rebind run_id/);
+    await app.close();
+  });
+});
+
 describe("redactApprovalNonceFromUrl (unit)", () => {
   it("replaces the nonce path segment and leaves the rest of the url intact", async () => {
     const { redactApprovalNonceFromUrl } = await import("../src/redact.js");
     const nonce = randomUUID();
     expect(redactApprovalNonceFromUrl(`/approvals/${nonce}/decide`)).toBe("/approvals/[REDACTED]/decide");
+    expect(redactApprovalNonceFromUrl(`/approvals/${nonce}/edit`)).toBe("/approvals/[REDACTED]/edit");
   });
 
   it("leaves unrelated urls untouched", async () => {
@@ -307,6 +469,48 @@ describe("N4 log redaction on the approvals decide route", () => {
       method: "POST",
       url: `/approvals/${nonce}/decide`,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+
+    const logOutput = Buffer.concat(chunks).toString("utf8");
+    expect(logOutput.length).toBeGreaterThan(0);
+    expect(logOutput).not.toContain(nonce);
+  });
+});
+
+describe("N4 log redaction on the approvals edit route", () => {
+  it("never emits the nonce anywhere in the real pino log output for that request", async () => {
+    const nonce = randomUUID();
+    const invalidated = fixtureApproval({ nonce, status: "invalidated" });
+    const deps = createFakeDeps({
+      editApproval: async () => ({
+        edited: true,
+        rowCount: 1,
+        invalidated,
+        replacement: fixtureWaitSignal(),
+      }),
+    });
+
+    const chunks: Buffer[] = [];
+    const logStream = new Writable({
+      write(chunk: Buffer, _enc, callback) {
+        chunks.push(Buffer.from(chunk));
+        callback();
+      },
+    });
+
+    const app = buildApp(deps, { logStream });
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${nonce}/edit`,
+      payload: {
+        runId: randomUUID(),
+        capabilityId: "email.create_draft",
+        toolName: "create_draft",
+        input: { subject: "edited" },
+        destination: "review@example.test",
+      },
     });
     expect(res.statusCode).toBe(200);
     await app.close();

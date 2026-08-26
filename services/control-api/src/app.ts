@@ -2,6 +2,7 @@ import type { Writable } from "node:stream";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { runStatuses, type Approval, type RunStatus } from "@oikonomos/db";
+import type { JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
@@ -59,6 +60,27 @@ const DECIDE_APPROVAL_SCHEMA = {
   properties: {
     decision: { type: "string", enum: ["granted", "rejected"] },
     decidedBy: { type: "string" },
+  },
+} as const;
+
+/**
+ * TASK-063 / ADR-004: no `render` property here — the replacement's
+ * action_render is always DERIVED from {toolName, input, destination}
+ * inside `packages/approvals`, never caller-supplied. `additionalProperties:
+ * false` mechanically refuses a caller who tries to pass one.
+ */
+const EDIT_APPROVAL_SCHEMA = {
+  type: "object",
+  required: ["runId", "capabilityId", "toolName", "input", "destination"],
+  additionalProperties: false,
+  properties: {
+    runId: { type: "string" },
+    capabilityId: { type: "string" },
+    toolName: { type: "string" },
+    input: {},
+    destination: { type: "string" },
+    tenantId: { type: "string" },
+    expiresAt: { type: "string" },
   },
 } as const;
 
@@ -198,6 +220,52 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           return;
         }
         await reply.code(409).send({ decided: false });
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.post<{
+    Params: { nonce: string };
+    Body: {
+      runId: string;
+      capabilityId: string;
+      toolName: string;
+      input: unknown;
+      destination: string;
+      tenantId?: string;
+      expiresAt?: string;
+    };
+  }>(
+    "/approvals/:nonce/edit",
+    { schema: { body: EDIT_APPROVAL_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const { runId, capabilityId, toolName, input, destination, tenantId, expiresAt } = request.body;
+        // TASK-063 AC (carried forward from TASK-080 round-2 review): tenantId
+        // is forwarded explicitly on EVERY call, even when undefined — an
+        // omitted tenantId is a HARD REFUSAL in editApproval for any
+        // non-basileia tenant's approval, so this field must never be
+        // dropped while building the request passed downstream.
+        const result = await deps.editApproval(request.params.nonce, {
+          runId,
+          capabilityId,
+          toolName,
+          input: input as JsonValue,
+          destination,
+          tenantId,
+          ...(expiresAt !== undefined && { expiresAt: new Date(expiresAt) }),
+        });
+        if (result.edited) {
+          await reply.code(200).send({
+            edited: true,
+            invalidated: serializeApproval(result.invalidated),
+            replacement: result.replacement,
+          });
+          return;
+        }
+        await reply.code(409).send({ edited: false });
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }

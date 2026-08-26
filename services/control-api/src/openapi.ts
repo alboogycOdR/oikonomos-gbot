@@ -129,6 +129,33 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/approvals/{nonce}/edit": {
+        post: {
+          summary:
+            "Atomically invalidate a pending approval and issue a replacement bound to the edited payload (OIK-086, ADR-004, N8)",
+          operationId: "editApproval",
+          parameters: [{ name: "nonce", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/EditApprovalRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Old approval invalidated; replacement issued with a new nonce and digest bound to the edited payload",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/EditApprovalResponse" } } },
+            },
+            "409": {
+              description:
+                "Edit did not apply (approval is not pending — already decided, expired, invalidated, or consumed — or unknown nonce)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/EditApprovalResponse" } } },
+            },
+          },
+        },
+      },
     },
     components: {
       schemas: {
@@ -169,6 +196,34 @@ export function getOpenApiDocument(): Record<string, unknown> {
           properties: {
             decided: { type: "boolean" },
             approval: { $ref: "#/components/schemas/Approval" },
+          },
+        },
+        EditApprovalRequest: {
+          type: "object",
+          required: ["runId", "capabilityId", "toolName", "input", "destination"],
+          description:
+            "No 'render' field — action_render is always derived from {toolName, input, destination} inside packages/approvals (ADR-004), never caller-supplied.",
+          properties: {
+            runId: { type: "string" },
+            capabilityId: { type: "string" },
+            toolName: { type: "string" },
+            input: {},
+            destination: { type: "string" },
+            tenantId: {
+              type: "string",
+              description:
+                "Must match the original approval's tenant. Omitted defaults to 'basileia' and is a hard refusal for any other tenant's approval.",
+            },
+            expiresAt: { type: "string", format: "date-time" },
+          },
+        },
+        EditApprovalResponse: {
+          type: "object",
+          required: ["edited"],
+          properties: {
+            edited: { type: "boolean" },
+            invalidated: { $ref: "#/components/schemas/Approval" },
+            replacement: { type: "object" },
           },
         },
       },
