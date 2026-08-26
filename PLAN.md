@@ -1896,7 +1896,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-063
 **Title:** control-api — atomic invalidate-and-reissue approval operation (Edit lifecycle)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** WBS OIK-086 ("edit invalidates prior approval and re-enters cycle"); OIK-023 (invalidation on payload mutation); OIK-084 (surfaces consume control-api, not the DB); Directive §4 N8; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1915,7 +1915,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] NEW (carried forward from TASK-080's round-2 review): the edit route MUST forward tenant_id to editApproval on every call — an omitted tenantId is a HARD REFUSAL in editApproval for any non-basileia tenant (fail-closed by design, not a bug), so a route that drops tenant_id will silently fail every edit for a non-default tenant; tested by nonce for a non-basileia tenant
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-063-s5
-**Started_At:** 2026-08-26T15:42:58Z
+**Started_At:** 2026-08-26T19:39:41Z
 **Progress_Notes:**
 - [2026-08-26T21:00:00Z] [ORCH] UNBLOCKED — TASK-080 approved+merged round 2 (packages/approvals now exports editApproval(nonce, editedRequest, tenantId?)). Resume per your own dossier's next_step: implement POST /approvals/:nonce/edit calling editApproval, add ControlApiDeps method + fake-backed route tests + DB-gated integration test with a forced-failure leg. ONE NEW REQUIREMENT surfaced by editApproval's round-2 fix (see new AC above): editApproval now HARD-REFUSES an edit whose tenantId doesn't match the original row, and treats an OMITTED tenantId as belonging to the default 'basileia' tenant — so your route must read tenant_id from the approval context and pass it through explicitly, never assume single-tenant.
 - [2026-08-26T17:00:00Z] [ORCH] S5 BLOCKED CORRECTLY AGAIN and was right AGAIN — verified at source: store.ts's withPool() opens a fresh Pool per call and closes it; zero BEGIN/COMMIT/PoolClient anywhere in packages/approvals src. invalidatePendingApproval + issueApproval therefore cannot compose atomically from control-api, and AC #2's forced-mid-failure atomicity test is structurally unsatisfiable without either raw SQL in the service (mechanically forbidden) or a transactional primitive inside the protected package. FIFTH decompose error of the producer-contract family: TASK-064 fixed the guard but I never checked the two primitives could share a transaction. Remedy: TASK-080 adds editApproval(nonce, request) as ONE pool.connect()+BEGIN/COMMIT/ROLLBACK operation inside packages/approvals (GB — idle anyway, protected path holds, different-model review CX-authored 064 so GB diversifies authorship). This task reset to pending behind it; S5's next_step in its dossier stands verbatim as the resume plan.
@@ -1926,7 +1926,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-08-26T15:42:58Z
+**Updated_At:** 2026-08-26T19:39:41Z
 
 ### TASK-064
 **Title:** packages/approvals — pending→invalidated primitive for the Edit lifecycle ⚑ protected
