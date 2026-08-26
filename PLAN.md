@@ -1,8 +1,8 @@
 ---
-plan_version: 5.3
-last_updated: 2026-08-25T06:00:00Z
+plan_version: 5.4
+last_updated: 2026-08-26T15:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051."
+orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051. GROK-BOT STUDY DECOMPOSE (2026-08-26T15:00Z, ORCH, plan v5.4): docs/STUDY-grok-bot-018.md distilled into TASK-065..071, ALL priority:low post-MVP backlog so the dispatcher cannot claim them ahead of the demo lane (054/055 + 058/059 -> 060). 065 approvals generation+epoch binding (CX, protected, after 063), 066 broker construction-time policy completeness + call-time re-check (GB, protected, after 055), 067 broker describe-or-deny + model-directed denials (GB, protected, after 066), 068 connectors SWR enumeration cache (GB, after 054), 069 shared error registry (S5, unprotected, no deps), 070 CI publication-tree self-proof + negative-control greps (CX, protected, no deps), 071 harness-factory decorator seam (CX, protected, after 055). Territories verified disjoint from all active lanes; protected-path assignments respect the different-model rule (no S5 on broker/approvals/harness-factory/infra-ci)."
 ---
 
 # Project Plan
@@ -1955,3 +1955,183 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-08-25T06:30:00Z
+
+### TASK-065
+**Title:** packages/approvals — bind approvals to process generation + user-context epoch (restart/redirect invalidation) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 1; Directive §4 N8; OIK-022/OIK-023; docs/decisions/ADR-004-approval-render-provenance.md
+**Owned_Paths:** infra/postgres/migrations/002_approval_binding.up.sql, infra/postgres/migrations/002_approval_binding.down.sql, packages/approvals/src/binding.ts, packages/approvals/src/binding.test.ts, packages/approvals/src/store.ts, packages/approvals/src/consume.ts, packages/approvals/src/index.ts
+**Depends_On:** TASK-063
+**Description:** **GB or CX only, NEVER S5** (protected path; different-model review). Post-MVP hardening from the Grok Bot study: an approval nonce alone survives two events that should void it — a control-plane restart and a user redirect. Grok Bot binds every approval to a `hostGeneration` (uuid minted at process start) and a `userMessageEpoch` (bumped on every new operator instruction), checked at redemption alongside the nonce (study §Tier 1.1; their `sand-auto-review.ts` resolution guard). Port that: (1) migration 002 adds nullable `control_plane_generation uuid` and `user_context_epoch bigint` columns to `approvals` — additive, no rewrite of existing rows, down migration provided. (2) `issueApproval` records both when the issuer supplies them. (3) The atomic consume SQL gains `AND (control_plane_generation IS NULL OR control_plane_generation=$n) AND (user_context_epoch IS NULL OR user_context_epoch=$m)` — **still ONE statement, row count 1 or no consume (N8); NULL columns mean "unbound" so every existing caller and row keeps working unchanged**. (4) A `bumpUserContextEpoch`-style helper is NOT this task — epoch storage/bump lives with the caller (worker/control-api, later task); here you only accept and enforce the values. Do not weaken any existing guard; existing approvals tests stay byte-identical and green (TASK-062/064 precedent).
+**Acceptance_Criteria:**
+- [ ] Migration 002 additive + reversible; existing rows valid with NULL binding columns; apply/reapply idempotent (OIK-012 precedent)
+- [ ] Consume with a stale generation or stale epoch affects ZERO rows — tested per column against a live DB (N8; study §Tier 1.1)
+- [ ] Unbound (NULL) approvals consume exactly as before — full existing suite byte-identical and green
+- [ ] Consume remains ONE atomic statement — MUTATION-PROVEN: dropping the generation guard turns a test RED
+- [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061/064 precedent)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-066
+**Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 4 and 6; ADR-001; ADR-005 (liveness); Build Handover §4.2 (unregistered ⇒ deny)
+**Owned_Paths:** packages/broker/src/registry.ts, packages/broker/src/registry.test.ts, packages/broker/src/recheck.ts, packages/broker/src/recheck.test.ts, packages/broker/src/index.ts
+**Depends_On:** TASK-055
+**Description:** **GB or CX only, NEVER S5** (protected path). Two Grok Bot patterns that convert silent gating holes into loud failures. (1) **Construction-time completeness** (study §Tier 1.4; their `serveEdge` throws on any contract method without a handler): add a broker policy registry that, given the set of tool names a harness will mount, requires every name to map to a policy entry — constructing the broker with an unmapped tool throws a typed `PolicyMissingError` naming the tool. "We forgot to gate the new tool" becomes a startup crash, not a fail-open hole; the throwing path IS the ADR-005 liveness assertion. (2) **Call-time re-check** (study §Tier 1.6; their `executeTool` re-checks the disabled map at invocation, not just enumeration): the PreToolUse decision path re-validates the called tool against the derived allowedTools/manifest map at every call, assuming the model may hold a stale tool list — an enumeration-time filter alone is not enforcement. Both are additive to the existing L1 decision path — do not re-route or weaken it; L1 remains the enforcement point (ADR-001). If wiring requires touching composeHarness (harness-factory, outside Owned_Paths), BLOCK with OWNERSHIP_CONFLICT rather than reach in.
+**Acceptance_Criteria:**
+- [ ] Broker construction with an unmapped tool name throws `PolicyMissingError` naming the tool — this test is the liveness assertion (ADR-005; study §Tier 1.4)
+- [ ] Call-time re-check denies a tool absent from the manifest map even when it appears in the mounted tool list — tested (study §Tier 1.6)
+- [ ] Existing L1 decision path unchanged — existing broker tests byte-identical and green
+- [ ] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-067
+**Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 2 and 5; Directive §4 N3 (fail closed); ADR-004 (render provenance)
+**Owned_Paths:** packages/broker/src/describe.ts, packages/broker/src/describe.test.ts, packages/broker/src/decision.ts, packages/broker/src/decision.test.ts
+**Depends_On:** TASK-066
+**Description:** **GB or CX only, NEVER S5** (protected path). Two adoptions from the Grok Bot permission machinery. (1) **Undescribable ⇒ denied** (study §Tier 1.2): any tool call the broker cannot render into a human-readable `{action, target}` via a registered describer is refused when the decision tier requires human approval — *"if we cannot render it to a human, we cannot ask about it, therefore we do not run it."* Unknown tool shapes return undefined from the describer and undefined MUST deny, and an oversized target (>10,000 chars) is refused as unpresentable. This composes with ADR-004: the stored render for an approval comes from this same describe step, so what the operator sees is what the digest binds. (2) **Model-directed denials** (study §Tier 1.5): extend the deny decision shape with `{code, humanReason, modelGuidance}` where `modelGuidance` tells the calling agent what happened, that retrying is futile, and what to do instead (their twelve `SAND_LOCAL_TOOLS_*` messages are the reference) — a denial without guidance burns agent turns on retries. Additive: existing allow/deny semantics unchanged; existing tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] A tool call with no registered describer is DENIED on any approval-requiring tier — fail-closed default tested (study §Tier 1.2; N3)
+- [ ] Target >10,000 chars refused as unpresentable, tested
+- [ ] Deny decisions carry `{code, humanReason, modelGuidance}`; guidance strings state do-not-retry and an alternative, asserted for at least the undescribable and allowlist-miss codes
+- [ ] MUTATION-PROVEN: making undescribable fall through to allow turns a test RED
+- [ ] Existing broker tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-068
+**Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tools-discovery pattern); WBS OIK-049; TASK-054 (live enumeration)
+**Owned_Paths:** packages/connectors/src/discovery-cache/**, packages/connectors/test/discovery-cache.test.ts
+**Depends_On:** TASK-054
+**Description:** Grok Bot's `tools-discovery.ts` is the reference design (study §Tier 2): cache key = the sorted server-name set joined on a separator (so any change of mounted servers is a different key), entries record both requested and resolved key (a resolution that raced a config change can't be misattributed), TTL'd, with **stale-while-revalidate** — on refresh failure, stale tools are served and immediately re-fetched — and a `getToolsForTurnStart()` entry point that NEVER blocks a run start (returns cached-or-empty and kicks a background refresh). Build that cache in front of TASK-054's live `listTools` adapter. Partial-failure policy: failure of one server's enumeration degrades that server only; failure of the only source is an error, not an empty success. **The cache feeds enumeration/reporting only — allowedTools derivation and the broker's call-time re-check (TASK-066) must keep consuming the manifest map, never a cached live listing; state that layering in your work log.** Injected clock and transport for tests; no live credentials needed (fake MCP transport per TASK-054's offline half).
+**Acceptance_Criteria:**
+- [ ] Cache keyed by sorted server-set; changing the mounted set is a distinct key, tested
+- [ ] Stale-while-revalidate: refresh failure serves stale AND schedules re-fetch, tested with injected clock
+- [ ] `getToolsForTurnStart` never blocks: cold start returns empty + kicks refresh, tested
+- [ ] One-server failure degrades that server only; sole-source failure errors — both tested
+- [ ] Empty/failed live listing never widens or feeds the allowlist path, asserted
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-069
+**Title:** packages/shared — closed error registry with payload allowlist
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (error registry); Directive §4 N4 (no credentials in logs/audit)
+**Owned_Paths:** packages/shared/src/errors/**, packages/shared/test/errors.test.ts
+**Depends_On:** —
+**Description:** From Grok Bot's `shared/errors/registry.ts` (study §Tier 2): a closed registry of error codes, each declaring `{code, domain, retryable, summary, payload: string[]}`, with a single emit-boundary function that converts any error into loggable/audit-safe tags. Fail-closed rules: an UNREGISTERED error maps to the generic code with its payload dropped entirely; a registered error emits ONLY the fields its definition declares, and string values only when they match a bounded safe charset (`/^[0-9A-Za-z._|:-]{1,64}$/` per the reference) — everything else is dropped, never truncated-and-kept. This solves three problems at once: PII/credential leakage into audit payloads (N4), unbounded metric label cardinality, and retryability decisions scattered across catch blocks. Generate typed constructors from the registry so the taxonomy is the only way to mint a registered error. Seed the registry with the error families that already exist in the codebase (survey broker/approvals/harness-factory/audit test failures for names — read-only survey; do not modify other packages). Zero runtime dependencies (matches packages/shared's existing constraint). Adoption by other packages is explicitly NOT this task — later tasks migrate callers.
+**Acceptance_Criteria:**
+- [ ] Unregistered error → generic code, payload dropped entirely, tested
+- [ ] Registered error emits only declared fields; out-of-charset and oversized strings dropped, tested
+- [ ] `retryable` readable from the definition; constructors typed per declared payload
+- [ ] A test proves a credential-shaped string in an undeclared field never reaches the emitted tags (N4)
+- [ ] Zero runtime dependencies added
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-070
+**Title:** infra/ci — publication-tree self-proof + negative-control greps ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Useful test-harness tricks + §Anti-patterns item 4; Directive §4 N2 (bypass ban), N4; ADR-005
+**Owned_Paths:** infra/ci/checks/publication-tree.sh, infra/ci/checks/negative-controls.sh, infra/ci/workflows/**
+**Depends_On:** —
+**Description:** **GB or CX only, NEVER S5** (protected path). Two cheap CI controls the study flagged as the exact discipline Grok Bot's otherwise-rigorous repo lacked — its best verification scripts never ran in CI (study §Anti-patterns 4). (1) **Publication-tree self-proof** (~40 lines, their `verify-publication-tree.mjs`): `git archive HEAD` → extract to scratch → `git init && git add --all` → `write-tree` must equal `HEAD^{tree}`; on mismatch, print the omitted/unexpected file lists. Catches the whole class of "a .gitignore rule silently swallowed real source in a fresh clone." (2) **Negative-control greps** extending the existing bypass-mode grep (N2): assert the ABSENCE of forbidden strings where they must never appear — real provider API key env names (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) in test fixtures, non-`.invalid`/non-reserved live hostnames in fixtures (RFC 6761 discipline the study confirmed), and `bypassPermissions`/`acceptEdits` (keep the existing check; do not weaken it — additive only). Each check MUST come with its own liveness proof per ADR-005: a way to run it against a deliberately-bad fixture input that exits non-zero, recorded in Test_Evidence — a grep that can never fire is an inert control. Wire both into the existing CI workflow as required steps.
+**Acceptance_Criteria:**
+- [ ] Publication-tree check passes on current HEAD and FAILS (demonstrated) when a tracked-file-ignoring .gitignore rule is planted locally — evidence recorded, change reverted
+- [ ] Negative-control grep fails (demonstrated) on a planted fixture containing a real provider key name — evidence recorded, change reverted
+- [ ] Existing bypass-mode grep untouched or strictly strengthened — verified by diff
+- [ ] Both checks wired as required CI steps
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
+
+### TASK-071
+**Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** low
+**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
+**Owned_Paths:** packages/harness-factory/src/decorators/**, packages/harness-factory/test/decorators.test.ts
+**Depends_On:** TASK-055
+**Description:** **GB or CX only, NEVER S5** (protected path). Port Grok Bot's `turn-toolset.ts` decorator chain (study §Tier 2) as the harness-factory's enforcement seam, so per-call obligations are structural rather than per-tool discipline: (1) `withApprovalScope` — binds `{runId, toolCallId, approvalNonce?}` into the call context (AsyncLocalStorage, not a threaded parameter, so nested/indirect calls inherit it and a tool cannot "forget" to pass it) and retires/releases the scope in a `finally` — **unconditionally, including on throw** — which is where single-use approval hygiene lives on the client side (the atomic SQL consume in packages/approvals remains the enforcement point, N8; state that layering in the work log). (2) `withToolTimeout` — per-tool-name budget via race, timer always cleared. (3) `withMandatoryCallId` — a tool invocation with no bound toolCallId THROWS (their `withRecordedToolCallNames`): call identity is mandatory for the audit trail, never best-effort. Decorators compose over the existing tool shape; composeHarness applies them to every mounted tool — a tool reaching the model undecorated must be impossible by construction, asserted. Additive; existing harness-factory tests byte-identical.
+**Acceptance_Criteria:**
+- [ ] Scope available to nested calls without parameter threading; released in finally even when the tool throws — both tested
+- [ ] Missing toolCallId ⇒ typed throw, tested
+- [ ] Timeout fires per tool name and clears its timer on success, tested with injected clock
+- [ ] composeHarness applies the chain to every mounted tool — MUTATION-PROVEN: mounting one undecorated tool turns a test RED
+- [ ] Existing harness-factory tests byte-identical and green
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T15:00:00Z
