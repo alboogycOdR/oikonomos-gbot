@@ -26,6 +26,8 @@ export interface ApprovalStore {
   getByNonce(nonce: string): Promise<Approval | null>;
   consume(nonce: string): Promise<ConsumeApprovalResult>;
   invalidate(nonce: string): Promise<ConsumeApprovalResult>;
+  /** Optional: TASK-064 pending→invalidated transition for approval edits. */
+  invalidatePending?(nonce: string): Promise<ConsumeApprovalResult>;
   expirePending(scope?: ExpirePendingScope): Promise<number>;
   /**
    * Optional: TASK-062 decision transitions. Existing fakes stay valid;
@@ -38,6 +40,14 @@ export interface ApprovalStore {
 /** Pinned OIK-023 statement — granted + unused + digest already compared in-process. */
 export const INVALIDATE_APPROVAL_SQL = `UPDATE approvals SET status='invalidated'
 WHERE nonce=$1 AND status='granted' AND consumed_at IS NULL`;
+
+/**
+ * Pinned TASK-064 edit statement. This is deliberately separate from the
+ * OIK-023 granted-path invalidation above: editing voids an un-decided
+ * approval, while a digest mismatch voids an already-granted approval.
+ */
+export const INVALIDATE_PENDING_APPROVAL_SQL = `UPDATE approvals SET status='invalidated'
+WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL`;
 
 /** Pinned OIK-024 statement — only pending rows whose expiry has elapsed. */
 export const EXPIRE_PENDING_SQL = `UPDATE approvals SET status='expired'
@@ -174,6 +184,28 @@ async function invalidateApproval(
   });
 }
 
+async function invalidatePendingApproval(
+  options: DatabaseOptions,
+  nonce: string,
+): Promise<ConsumeApprovalResult> {
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ApprovalRow>(
+      `${INVALIDATE_PENDING_APPROVAL_SQL} RETURNING ${APPROVAL_COLUMNS}`,
+      [nonce],
+    );
+    const rowCount = result.rowCount ?? 0;
+    if (rowCount === 1 && result.rows[0] !== undefined) {
+      return { rowCount: 1, approval: toApproval(result.rows[0]) };
+    }
+    if (rowCount > 1) {
+      throw new Error(
+        `invalidatePendingApproval matched ${String(rowCount)} rows for one nonce; expected 0 or 1.`,
+      );
+    }
+    return { rowCount: 0, approval: null };
+  });
+}
+
 async function runGuardedDecision(
   options: DatabaseOptions,
   sql: string,
@@ -235,6 +267,7 @@ export function createDatabaseStore(options: DatabaseOptions): ApprovalStore {
     getByNonce: (nonce) => getApprovalByNonce(options, nonce),
     consume: (nonce) => consumeApproval(options, nonce),
     invalidate: (nonce) => invalidateApproval(options, nonce),
+    invalidatePending: (nonce) => invalidatePendingApproval(options, nonce),
     expirePending: (scope) => expirePendingApprovals(options, scope),
     grant: (nonce, decidedBy) => grantPendingApproval(options, nonce, decidedBy),
     reject: (nonce, decidedBy) => rejectPendingApproval(options, nonce, decidedBy),
