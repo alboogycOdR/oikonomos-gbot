@@ -49,6 +49,43 @@ export interface ApprovalSummary {
   readonly capabilityId: string;
   readonly actionRender: string;
   readonly destination: string | null;
+  /** Bearer secret returned by control-api; never place this in Telegram callback data. */
+  readonly nonce?: string;
+}
+
+/**
+ * The edit endpoint returns an issuance wait signal, rather than another
+ * database-backed pending-approval summary. It still contains everything the
+ * inline surface needs to show and act on the replacement safely.
+ */
+export interface ReplacementApproval {
+  readonly approvalId: string;
+  readonly actionRender: string;
+  readonly destination: string;
+  readonly nonce: string;
+  readonly status: "pending";
+}
+
+export type ApprovalDecision = "granted" | "rejected";
+
+export interface ApprovalDecisionResult {
+  readonly decided: boolean;
+}
+
+/** Replacement action collected by the Telegram runtime's edit interaction. */
+export interface EditedApprovalRequest {
+  readonly runId: string;
+  readonly capabilityId: string;
+  readonly toolName: string;
+  readonly input: unknown;
+  readonly destination: string;
+  readonly tenantId?: string;
+  readonly expiresAt?: string;
+}
+
+export interface EditApprovalResult {
+  readonly edited: boolean;
+  readonly replacement?: ReplacementApproval;
 }
 
 /** A port for the OIK-084 HTTP boundary; it is never a database port. */
@@ -56,6 +93,8 @@ export interface ControlApiClient {
   createTask(input: NewTaskInput): Promise<TaskSummary>;
   listRuns(): Promise<readonly RunSummary[]>;
   listPendingApprovals(): Promise<readonly ApprovalSummary[]>;
+  decideApproval(nonce: string, decision: ApprovalDecision, decidedBy: string): Promise<ApprovalDecisionResult>;
+  editApproval(nonce: string, request: EditedApprovalRequest): Promise<EditApprovalResult>;
 }
 
 export interface FetchResponse {
@@ -90,6 +129,20 @@ export function createControlApiHttpClient(baseUrl: string, fetchImpl: FetchLike
     },
     async listPendingApprovals() {
       return request<ApprovalSummary[]>(fetchImpl, `${normalizedBaseUrl}/approvals`);
+    },
+    async decideApproval(nonce, decision, decidedBy) {
+      return approvalRequest<ApprovalDecisionResult>(fetchImpl, `${normalizedBaseUrl}/approvals/${encodeURIComponent(nonce)}/decide`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision, decidedBy }),
+      });
+    },
+    async editApproval(nonce, editedRequest) {
+      return approvalRequest<EditApprovalResult>(fetchImpl, `${normalizedBaseUrl}/approvals/${encodeURIComponent(nonce)}/edit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(editedRequest),
+      });
     },
   };
 }
@@ -174,6 +227,22 @@ async function request<T>(
   init?: { method?: string; headers?: Record<string, string>; body?: string },
 ): Promise<T> {
   const response = await fetchImpl(url, init);
+  if (!response.ok) {
+    throw new Error(`control API request failed with status ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+/** A 409 means the nonce was already resolved, never a transport failure. */
+async function approvalRequest<T extends { readonly decided?: boolean; readonly edited?: boolean }>(
+  fetchImpl: FetchLike,
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string },
+): Promise<T> {
+  const response = await fetchImpl(url, init);
+  if (response.status === 409) {
+    return (await response.json()) as T;
+  }
   if (!response.ok) {
     throw new Error(`control API request failed with status ${response.status}`);
   }
