@@ -1,5 +1,7 @@
 import { escapeMarkdownV2 } from "./formatting.js";
 
+export * from "./approvals/index.js";
+
 /**
  * Telegram command surface for OIK-085.
  *

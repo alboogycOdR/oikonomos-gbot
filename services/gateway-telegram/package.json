@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./approvals": {
+      "types": "./dist/approvals/index.d.ts",
+      "import": "./dist/approvals/index.js"
     }
   },
   "main": "./dist/index.js",
