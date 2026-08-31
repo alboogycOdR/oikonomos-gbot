@@ -1786,7 +1786,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** WBS OIK-087 ("Screenshots/diffs delivered with the approval request"); Directive §5 DoD Evidenced; Directive §4 N4
@@ -1798,16 +1798,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Long content truncated with a visible marker, never silently — tested (Directive §5 Evidenced)
 - [ ] Redaction reuses packages/audit's implementation; no second redaction implementation (N4), asserted
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-059-cx
+**Started_At:** 2026-08-31T22:35:45Z
 **Progress_Notes:**
 - [2026-08-27T10:30:00Z] [ORCH] READY — TASK-058 approved and merged first-pass; the Depends_On chain is satisfied. Note for the builder: TASK-058's in-process approval-handle Map is never pruned after a decision; add cleanup while wiring evidence delivery if it falls inside your territory, otherwise flag it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-27T10:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T22:35:45Z
 
 ### TASK-060
 **Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
