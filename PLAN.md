@@ -2159,7 +2159,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Full extraction disposition + §Tier 2 (deferred-bundle, mandatory-bindings); CLAUDE.md Budget (per-routine budgets from week 5)
@@ -2167,20 +2167,20 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** The existing ProviderEvent stream already normalizes usage + costUsd across Claude Code / Codex / Grok, so the study's deferred-bundle pattern is largely built. Three deltas remain. (1) **Budget hook**: a `BudgetSink` port on the provider interface — every completed turn reports `{provider, model, costUsd, tokens}` to an injected sink BEFORE the result is surfaced, so the week-5 per-routine budget broker has a single interception point rather than N provider-specific ones; a throwing sink fails the turn (fail closed — an unaccounted turn must not succeed silently). (2) **Registration completeness** (their `assertProductionLocalExecRuntime`, study §Tier 2 item 20): a provider registry that validates at registration time that every declared capability of the provider contract is implemented — a partially-implemented provider throws a typed error enumerating the missing members at startup, never failing on first use. (3) **Namespaced metadata**: provider-specific extras travel under a provider-keyed namespace (`{claude: {sessionRef}}`, `{codex: {responseId}}`) instead of widening the shared type — additive type change only. Do not modify the three existing provider implementations beyond wiring; existing tests byte-identical.
 **Acceptance_Criteria:**
-- [ ] Budget sink invoked exactly once per completed turn with cost+tokens; a throwing sink fails the turn — both tested per provider via injected fakes
-- [ ] Registering a provider missing a contract member throws at registration naming the member, tested
-- [ ] Provider extras only reachable via the provider-keyed namespace; shared type unchanged, typecheck-asserted
-- [ ] Existing agent-providers tests byte-identical and green
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-072-s5
+- [x] Budget sink invoked exactly once per completed turn with cost+tokens; a throwing sink fails the turn — both tested per provider via injected fakes
+- [x] Registering a provider missing a contract member throws at registration naming the member, tested
+- [x] Provider extras only reachable via the provider-keyed namespace; shared type unchanged, typecheck-asserted
+- [x] Existing agent-providers tests byte-identical and green
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-072-s5 (merged, deleted)
 **Started_At:** 2026-08-31T21:39:50Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/agent-providers/src/{budget,registration,metadata,index}.ts, budget.test.ts, registration.test.ts, dossiers/TASK-072.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). agent-providers: 7 files/63 tests (budget=7, registration=8, metadata in-source=3 via includeSource, plus 4 pre-existing byte-identical). tsc --noEmit clean.
+**Review_Findings:** APPROVED first pass (2026-08-31, ORCH via independent subagent). Territory clean, exactly the 6 Owned_Paths files. Metadata tests confirmed legitimate (in-source `if (import.meta.vitest)`, vitest.config.ts includeSource — not a missing-test gap). Provider implementations confirmed untouched. Mutation test (swallowed the sink's throw) reddened the 2 relevant tests, confirming fail-closed behavior is load-bearing. One process finding, non-blocking: the dossier was written locally but not committed at handoff — added to the branch before merge so the audit trail is complete; builder should `git add` dossiers before ending a session going forward.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T21:39:50Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T00:25:00Z
 
 ### TASK-073
 **Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
