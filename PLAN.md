@@ -2159,7 +2159,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Full extraction disposition + §Tier 2 (deferred-bundle, mandatory-bindings); CLAUDE.md Budget (per-routine budgets from week 5)
@@ -2172,15 +2172,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Provider extras only reachable via the provider-keyed namespace; shared type unchanged, typecheck-asserted
 - [ ] Existing agent-providers tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-072-s5
+**Started_At:** 2026-08-31T21:39:50Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T21:39:50Z
 
 ### TASK-073
 **Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
