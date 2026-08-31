@@ -2210,7 +2210,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-074
 **Title:** packages/shared — named scheduling policies + canonical-digest fixture pin
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (scheduling policies) + §Tier 1 item 7 (digest liveness); WBS OIK-017/018
@@ -2218,20 +2218,20 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** Two shared-package hardenings. (1) **Scheduling policies** (their `internal/scheduling.ts`): `DeadlinePolicy`, `RetryPolicy`, `PollingPolicy`, `IdleWatchdogPolicy`, `DebouncePolicy` — each takes an injected `Clock` (deterministic tests, no fake-timer globals), validates its options in the constructor (throw RangeError eagerly), carries a mandatory non-empty `name` so every timeout error is attributable (`DeadlineExceededError.policyName`), and `unref()`s its timers. Zero runtime dependencies (shared's standing constraint). Adoption by other packages is NOT this task. (2) **Digest fixture pin**: `packages/shared/test` proves key-order insensitivity but contains NO hard-coded digest — a canonicalization regression would today be silently re-baselined by re-running the suite. Add `digestPin.test.ts` asserting `actionDigest(<fixed fixture>)` equals a literal hex string computed once and committed, plus the same for `canonicalJson` byte output, covering the README edge cases (-0, unicode, nested, null-vs-absent). **Do not modify canonicalJson.ts or actionDigest.ts** — if the pin exposes a discrepancy against the README spec, that is a SPEC_AMBIGUITY block, not a fix-in-place (N10: this implementation is platform-wide law; changing its bytes is an ORCH decision).
 **Acceptance_Criteria:**
-- [ ] Five policies implemented with injected Clock; constructor option validation tested per policy; timeout errors carry the policy name
-- [ ] Zero runtime dependencies added; all timers unref'd
-- [ ] Literal-hex digest pins committed for actionDigest and canonicalJson across the README edge-case fixtures — MUTATION-PROVEN: perturbing key sort order in a test-local copy yields a different digest than the pin
-- [ ] canonicalJson.ts and actionDigest.ts byte-identical to master
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-074-s5
+- [x] Five policies implemented with injected Clock; constructor option validation tested per policy; timeout errors carry the policy name
+- [x] Zero runtime dependencies added; all timers unref'd
+- [x] Literal-hex digest pins committed for actionDigest and canonicalJson across the README edge-case fixtures — MUTATION-PROVEN: perturbing key sort order in a test-local copy yields a different digest than the pin
+- [x] canonicalJson.ts and actionDigest.ts byte-identical to master
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-074-s5 (merged, deleted)
 **Started_At:** 2026-08-31T22:06:17Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/shared/src/scheduling/index.ts, src/index.ts, test/{scheduling,digestPin}.test.ts, dossiers/TASK-074.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). scheduling.test.ts 20 tests, digestPin.test.ts 9 tests, all pass. canonicalJson.ts/actionDigest.ts confirmed byte-identical to master (empty diff).
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent). All 5 policies use genuine injected-Clock timers (no hidden Date.now()/setTimeout bypass), every timer call site .unref()'d, constructors throw RangeError eagerly. Digest pins are literal hex, non-vacuous — mutation test (removed .sort() from the real canonicalJson.ts) reddened 3 tests live, confirmed sort-order-dependent, reverted clean. Zero package.json diff. Non-blocking reporting-accuracy finding: builder's Test_Evidence claimed a pre-existing harness-factory/corepack test failure "confirmed unrelated"; this did NOT reproduce in the reviewer's independent run — full suite was clean throughout. Doesn't block approval (task's own ACs require the suite green, which it is) but flagged so this claim isn't cited as precedent later — worth a word with the builder about not reporting a failure it can't reproduce/didn't actually hit as "confirmed pre-existing."
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T22:06:17Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T00:55:00Z
 
 ### TASK-075
 **Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
