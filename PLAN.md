@@ -2210,7 +2210,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-074
 **Title:** packages/shared — named scheduling policies + canonical-digest fixture pin
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (scheduling policies) + §Tier 1 item 7 (digest liveness); WBS OIK-017/018
@@ -2223,15 +2223,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Literal-hex digest pins committed for actionDigest and canonicalJson across the README edge-case fixtures — MUTATION-PROVEN: perturbing key sort order in a test-local copy yields a different digest than the pin
 - [ ] canonicalJson.ts and actionDigest.ts byte-identical to master
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-074-s5
+**Started_At:** 2026-08-31T22:06:17Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T22:06:17Z
 
 ### TASK-075
 **Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
