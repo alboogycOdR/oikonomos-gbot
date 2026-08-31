@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { registerTelegramApprovals as registerExportedTelegramApprovals } from "@oikonomos/gateway-telegram/approvals";
 import {
   registerTelegramApprovals,
   type TelegramApprovalCallback,
@@ -41,8 +42,8 @@ class FakeTelegram implements TelegramApprovalPort {
     return this.editRequest;
   }
 
-  async tap(data: string, userId = "42"): Promise<void> {
-    await this.handler?.({ callbackId: "callback-1", chatId: 7, userId, data });
+  async tap(data: string, chatId = 7, userId = "42"): Promise<void> {
+    await this.handler?.({ callbackId: "callback-1", chatId, userId, data });
   }
 }
 
@@ -94,6 +95,10 @@ function callbackData(telegram: FakeTelegram, button: "Approve" | "Edit" | "Reje
 }
 
 describe("Telegram approval inline keyboard (OIK-086)", () => {
+  it("exports the approvals surface through the package subpath", () => {
+    expect(registerExportedTelegramApprovals).toBeTypeOf("function");
+  });
+
   it("renders the stored approval render and gives each action an opaque callback handle", async () => {
     const telegram = new FakeTelegram();
     const controlApi = fakeControlApi();
@@ -122,6 +127,7 @@ describe("Telegram approval inline keyboard (OIK-086)", () => {
     await telegram.tap(callbackData(telegram, "Approve"));
     await telegram.tap(callbackData(telegram, "Reject"));
 
+    // Load-bearing N8 proof: the gateway delegates every decision attempt to control-api.
     expect(controlApi.calls).toEqual([
       `decide:${OLD_NONCE}:granted`,
       `decide:${OLD_NONCE}:granted`,
@@ -157,11 +163,40 @@ describe("Telegram approval inline keyboard (OIK-086)", () => {
     ]);
   });
 
-  it("fails if local nonce-consumption logic is added to the gateway", async () => {
-    const sourcePath = fileURLToPath(new URL("../src/approvals/index.ts", import.meta.url));
-    const source = await readFile(sourcePath, "utf8");
-    expect(source).not.toMatch(/\b(?:consume|verifyAndConsume|consumeApproval)\b/);
-    expect(source).not.toMatch(/@oikonomos\/(?:approvals|db)/);
+  it("refuses callbacks from unauthorized chats without calling control-api", async () => {
+    const telegram = new FakeTelegram();
+    const controlApi = fakeControlApi();
+    const surface = registerTelegramApprovals({ telegram, controlApi, allowedChatIds: new Set([7]) });
+    await surface.publishPendingApprovals(7);
+
+    await telegram.tap(callbackData(telegram, "Approve"), 8);
+
+    expect(controlApi.calls).toEqual([]);
+    expect(telegram.answers).toEqual(["Unauthorized chat."]);
+  });
+
+  it("refuses a callback handle from a different authorized chat without calling control-api", async () => {
+    const telegram = new FakeTelegram();
+    const controlApi = fakeControlApi();
+    const surface = registerTelegramApprovals({ telegram, controlApi, allowedChatIds: new Set([7, 8]) });
+    await surface.publishPendingApprovals(7);
+
+    await telegram.tap(callbackData(telegram, "Approve"), 8);
+
+    expect(controlApi.calls).toEqual([]);
+    expect(telegram.answers).toEqual(["This approval request is no longer available."]);
+  });
+
+  it("guards against local nonce consumption and database imports in all gateway entry points", async () => {
+    const sourcePaths = [
+      fileURLToPath(new URL("../src/approvals/index.ts", import.meta.url)),
+      fileURLToPath(new URL("../src/index.ts", import.meta.url)),
+    ];
+    const sources = await Promise.all(sourcePaths.map((sourcePath) => readFile(sourcePath, "utf8")));
+    for (const source of sources) {
+      expect(source).not.toMatch(/\b(?:consume|verifyAndConsume|consumeApproval)\b/);
+      expect(source).not.toMatch(/@oikonomos\/(?:approvals|db)/);
+    }
   });
 
   it("delegates decision and edit HTTP calls without interpreting the nonce", async () => {

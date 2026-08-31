@@ -23,6 +23,11 @@ export interface InlineKeyboardButton {
 }
 
 export interface TelegramApprovalPort {
+  /**
+   * Sends the approval as plain text with no parse_mode, because actionRender
+   * includes agent-controlled canonical JSON and ADR-004 requires operators
+   * to see exactly what will happen rather than interpreted Markdown or HTML.
+   */
   sendApprovalMessage(
     chatId: number,
     text: string,
@@ -59,9 +64,11 @@ const CALLBACK_PREFIX = "approval";
 export function registerTelegramApprovals(options: TelegramApprovalOptions): {
   publishPendingApprovals(chatId: number): Promise<void>;
 } {
+  // TODO(TASK-???): Bound handle retention and invalidate stale keyboards after an edit or decision.
   const handles = new Map<string, ApprovalHandle>();
 
   options.telegram.onApprovalCallback(async (callback) => {
+    // TODO(TASK-???): Bind approvals to an authorized Telegram user, not only an allowed chat.
     if (!options.allowedChatIds.has(callback.chatId)) {
       await options.telegram.answerApprovalCallback(callback.callbackId, "Unauthorized chat.");
       return;
@@ -87,11 +94,13 @@ export function registerTelegramApprovals(options: TelegramApprovalOptions): {
 
       const decision: ApprovalDecision = parsed.action === "approve" ? "granted" : "rejected";
       const result = await options.controlApi.decideApproval(handle.nonce, decision, `telegram:user:${callback.userId}`);
+      // TODO(TASK-???): Remove or disable the inline keyboard once its decision is resolved.
       await options.telegram.answerApprovalCallback(
         callback.callbackId,
         result.decided ? (decision === "granted" ? "Approved." : "Rejected.") : "Already decided or no longer valid.",
       );
     } catch (error) {
+      // TODO(TASK-???): Redact approval nonces from callback-failure logs.
       console.error("[gateway-telegram] approval callback failed", error);
       await options.telegram.answerApprovalCallback(callback.callbackId, "Approval action failed. Please try again.");
     }
@@ -103,10 +112,12 @@ export function registerTelegramApprovals(options: TelegramApprovalOptions): {
         throw new Error("Unauthorized chat.");
       }
       const approvals = await options.controlApi.listPendingApprovals();
+      // TODO(TASK-???): Isolate per-approval failures so one bad handle does not abort this publish loop.
       for (const approval of approvals) {
         const nonce = requireNonce(approval);
         const handle = randomUUID();
         handles.set(handle, { chatId, nonce, approval });
+        // TODO(TASK-???): Handle Telegram's 4096-character message limit before sending actionRender.
         await options.telegram.sendApprovalMessage(chatId, approval.actionRender, approvalKeyboard(handle));
       }
     },
