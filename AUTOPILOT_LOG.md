@@ -1,3 +1,4 @@
 - [2026-08-29T18:14:50Z] SESSION_END unit=ORCH plan={done:58 pending:24 blocked:1}
 - 2026-08-31T21:05Z [AUTOPILOT] wave start: CX claimed TASK-082 (critical), S5 claimed TASK-069. GB idle (blocked, Gmail MCP chain). Plan: CX chain 082->059->078->081; S5 chain 069->074->075->077->072; GB reassigned a low-priority CX task once idle capacity confirmed stable.
 - 2026-08-31T21:15Z [ORCH] Gmail MCP: user lacks Basileia Cloud Console access; brief drafted for Alister (docs/runbooks/gmail-mcp-provisioning.md is the source). TASK-054/055 remain blocked pending external action, no change to autopilot wave.
+- 2026-08-31T21:40Z [ORCH] TASK-082 first dispatch was a TOOLING_FAILURE not real work: Codex CLI 0.141.0 rejected model gpt-5.6-terra; .done marker/control block was the prompt's placeholder template, no branch created. Root-caused and fixed: codex update -> 0.151.0, verified live. Reset TASK-082 claimed->pending. Redispatching CX.
