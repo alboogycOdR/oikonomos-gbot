@@ -1786,7 +1786,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** WBS OIK-087 ("Screenshots/diffs delivered with the approval request"); Directive §5 DoD Evidenced; Directive §4 N4
@@ -1799,7 +1799,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Redaction reuses packages/audit's implementation; no second redaction implementation (N4), asserted
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-059-cx
-**Started_At:** 2026-08-31T22:35:45Z
+**Started_At:** 2026-08-31T22:58:29Z
 **Progress_Notes:**
 - [2026-08-27T10:30:00Z] [ORCH] READY — TASK-058 approved and merged first-pass; the Depends_On chain is satisfied. Note for the builder: TASK-058's in-process approval-handle Map is never pruned after a decision; add cleanup while wiring evidence delivery if it falls inside your territory, otherwise flag it.
 - [2026-09-01T01:00:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT — legitimate, verified against source, not just the builder's claim). Three real gaps, all confirmed: (1) `ControlApiClient` in services/gateway-telegram/src/index.ts has no evidence-fetch method, though control-api itself already serves `/runs/:id/evidence` (delivered by TASK-056) — the client-side method is simply missing. (2) `registerTelegramApprovals` in approvals/index.ts is the only caller of `sendApprovalMessage` (two call sites) and must invoke the evidence renderer before sending — that file is where the wiring has to land. (3) `packages/audit/src/index.ts` deliberately does NOT re-export `redactPayload` (a source comment cites `persistence-surface.test.ts`'s append-only export-list pin as the reason) — TASK-059 cannot "reuse packages/audit's implementation" per its own AC without a supported export existing. Re-carved: added services/gateway-telegram/src/index.ts, services/gateway-telegram/src/approvals/index.ts, and packages/audit/src/index.ts to Owned_Paths. No live conflict: TASK-058/082 (prior owners of approvals/index.ts) are both done and merged. TASK-077 (S5, pending, also touches packages/audit/src/index.ts) given `Depends_On: TASK-059` to sequence it after rather than collide — its own description already anticipated this ("N4; TASK-059's rule"). Builder must add the new audit export carefully: additive only, do not touch persistence-surface.test.ts's pinned list logic itself (that test exists to prevent exactly this kind of accidental widening — add a new named export for the redaction function specifically, don't loosen the pin). Reset claimed->pending, resuming CX on the same branch task/TASK-059-cx.
@@ -1807,8 +1807,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T01:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T22:58:29Z
 
 ### TASK-060
 **Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
