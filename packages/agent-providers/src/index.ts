@@ -49,3 +49,27 @@ export {
   type GrokProviderOptions,
   type GrokSandboxProfile,
 } from "./providers/index.js";
+
+export {
+  BudgetSinkError,
+  withBudgetSink,
+  type BudgetReport,
+  type BudgetSink,
+} from "./budget.js";
+
+export {
+  IncompleteProviderError,
+  ValidatingProviderRegistry,
+  assertProviderComplete,
+  type CandidateProvider,
+} from "./registration.js";
+
+export {
+  extrasFor,
+  withProviderExtras,
+  type ClaudeCodeProviderExtras,
+  type CodexProviderExtras,
+  type GrokProviderExtras,
+  type NamespacedProviderExtras,
+  type ProviderExtrasMap,
+} from "./metadata.js";
