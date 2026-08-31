@@ -2430,7 +2430,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-082
 **Title:** Telegram approvals — authorization test coverage + package export (post-merge fix for TASK-058)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086; Directive §4 N8; CLAUDE.md control-liveness ("every mechanical control ships a liveness assertion... reviewers reject its absence like a missing test"); docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-004-approval-render-provenance.md
@@ -2448,12 +2448,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The six deferred findings each have a one-line `// TODO(TASK-???): ...` at their site (no new task numbers required — just make them findable, not silently dropped)
 - [ ] Existing 60 tests stay green; no pre-existing assertion weakened
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-082-cx
+**Started_At:** 2026-08-31T21:04:53Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-27T10:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T21:04:53Z
