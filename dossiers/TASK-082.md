@@ -1,0 +1,6 @@
+# TASK-082 — CX Work Log
+
+## Work Log
+
+- [2026-08-31T19:52:00Z] [CX] Read AGENTS.md, CODEX_BRIEFING.md, TASK-082's live PLAN.md block, WBS OIK-086, CLAUDE.md control-liveness requirement, ADR-005, and ADR-004. Preflight output: `[preflight] TASK-082 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE`; `3 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.`; `FILE services/gateway-telegram/src/approvals/index.ts -> exists, 168 line(s), 6323 bytes`; `FILE services/gateway-telegram/src/index.ts -> exists, 250 line(s), 9156 bytes`; `FILE services/gateway-telegram/test/approvals.test.ts -> exists, 194 line(s), 8516 bytes`.
+- [2026-08-31T19:52:00Z] [CX] BLOCKED — OWNERSHIP_CONFLICT: TASK-082 requires `@oikonomos/gateway-telegram/approvals` to resolve from outside the package. The live `services/gateway-telegram/package.json` has an `exports` map containing only `"."`; Node's package exports encapsulation rejects unlisted `./approvals`, irrespective of adding the required `export * from "./approvals/index.js";` to the owned `src/index.ts`. Adding `"./approvals"` to that package exports map is necessary, but `services/gateway-telegram/package.json` is outside the declared Owned_Paths. No owned source or test files were changed.
