@@ -2077,7 +2077,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-069
 **Title:** packages/shared — closed error registry with payload allowlist
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (error registry); Directive §4 N4 (no credentials in logs/audit)
@@ -2091,15 +2091,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A test proves a credential-shaped string in an undeclared field never reaches the emitted tags (N4)
 - [ ] Zero runtime dependencies added
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-069-s5
+**Started_At:** 2026-08-31T21:05:09Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T21:05:09Z
 
 ### TASK-070
 **Title:** infra/ci — publication-tree self-proof + negative-control greps ⚑ protected
