@@ -2235,7 +2235,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-075
 **Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (nonce ledger with input-digest binding); Directive §4 N8 spirit; OIK-014 (typed query layer)
@@ -2249,15 +2249,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Digest computed exclusively via @oikonomos/shared — asserted (no crypto import in this module)
 - [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-061 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-075-s5
+**Started_At:** 2026-08-31T22:36:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-08-31T22:36:30Z
 
 ### TASK-076
 **Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
