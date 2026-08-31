@@ -2430,7 +2430,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-082
 **Title:** Telegram approvals — authorization test coverage + package export (post-merge fix for TASK-058)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-086; Directive §4 N8; CLAUDE.md control-liveness ("every mechanical control ships a liveness assertion... reviewers reject its absence like a missing test"); docs/decisions/ADR-005-control-liveness.md; docs/decisions/ADR-004-approval-render-provenance.md
@@ -2453,9 +2453,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-08-31T21:40:00Z] [ORCH] Reset claimed->pending: dispatch never produced real work. Codex CLI 0.141.0 rejected model `gpt-5.6-terra` ("requires a newer version of Codex"); the .done marker's control block was the prompt's own placeholder text, not the builder's output, and no branch/commit was ever created. Not a rework cycle (no work exists to send back). Fixed the root cause: `codex update` -> CLI 0.151.0, verified live with the pinned model. Redispatching CX clean.
 - [2026-08-31T23:50:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT): CX correctly blocked before writing code — the exports-map fix (AC4) requires editing services/gateway-telegram/package.json, which was missing from Owned_Paths (a real decompose gap, not a builder error; branch carried only a 6-line dossier note recording the block, no work lost). Re-carved territory: package.json added to Owned_Paths above. No other active/pending task touches that file (TASK-059 owns src/evidence/** + test/evidence.test.ts only — disjoint). Reset claimed->pending, resuming CX on the same branch task/TASK-082-cx.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-01T00:15:00Z] [ORCH] TOOLING_FAILURE (infra, not builder): CX's worktree had no node_modules (worktrees don't inherit them from the main checkout) so it could not run pnpm test/lint/canaries — commit 871cdeb was real work, correctly reported blocked rather than fake a pass. Fixed: `pnpm install` in the worktree (5.2s via shared store).
+- [2026-09-01T00:30:00Z] [ORCH] REWORK, round 1 (independent adversarial verification, opus-tier). 9/10 ACs PASS with direct evidence, including the critical mutation-proof requirement (AC3): removing the allowedChatIds check and separately the cross-chat handle-binding check each reddened their respective test, confirmed by the reviewer's own two mutations, both reverted clean. ONE failing AC: **AC4** — package.json exports `./approvals` correctly, but no test actually resolves the package specifier `@oikonomos/gateway-telegram/approvals`; the test file only imports the relative path `../src/approvals/index.js`. The task's own dossier admits this was checked manually via `import.meta.resolve(...)` during development and never captured as a test — exactly the "not just a source-text/manual read" failure the AC text explicitly forbids, and the same class of gap (module unreachable from outside the package) TASK-082 exists to close. Fix: add a real test that imports `@oikonomos/gateway-telegram/approvals` as a bare package specifier (not a relative path) and asserts `registerTelegramApprovals` is defined/callable from it. Everything else (AC1/2/3/5/6/7/8/9/10) stands — do not touch working code to "fix" AC4, this is additive (one new test, possibly a `types` condition in the exports map if TS resolution needs it).
+**Artifacts:** services/gateway-telegram/src/{approvals/index.ts,index.ts}, test/approvals.test.ts, package.json, dossiers/TASK-082.md (commit 871cdeb)
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 after `pnpm -r build` (independently re-run); gateway-telegram 62/62 tests. Mutation-proof independently reproduced for AC1+AC2's authorization checks.
+**Review_Findings:** REWORK round 1 — AC4 unproven by test (see Progress_Notes above for full detail). Not a territory or process violation; single precise fix required.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T22:01:51Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T00:30:00Z
