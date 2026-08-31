@@ -2236,7 +2236,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-075
 **Title:** packages/db — intake idempotency ledger: nonce + input-digest binding (db primitive)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (nonce ledger with input-digest binding); Directive §4 N8 spirit; OIK-014 (typed query layer)
@@ -2244,21 +2244,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** Task intake (Telegram `/task`, future surfaces) currently has no replay protection: a retried webhook or double-tapped message creates two tasks. Grok Bot's prompt-acceptance ledger (study §Tier 2) is the reference: (1) migration 003 creates `intake_nonces(tenant_id, client_nonce, input_digest, status, task_id, created_at)` with a UNIQUE index on `(tenant_id, client_nonce)`. (2) `admitIntake(tenantId, nonce, inputDigest)` — one atomic INSERT … ON CONFLICT returning `dispatch` (new) or `duplicate` (replay, with the original task_id); **the same nonce arriving with a DIFFERENT input_digest is a typed error, never a silent dedupe** — identical-looking retries are safe, content-swapped ones are an attack or a bug and must surface. Digest via `packages/shared` actionDigest/canonicalJson ONLY (N10 — no local hashing). (3) Tri-state `lookupIntake` — `found | not-found`; include the study's `unknown-durability` distinction only if an eviction policy is added (it is not, in v1 — rows are kept; note that in the work log). A replayed nonce whose original was rejected replays the rejection. **db primitive only** — control-api/gateway wiring is a follow-up after TASK-063 lands (their territory is otherwise occupied); barrel export deferred to that wiring task to keep index.ts out of this territory.
 **Acceptance_Criteria:**
-- [ ] Migration additive + reversible; UNIQUE (tenant_id, client_nonce) enforced, tested against live pg16
-- [ ] `admitIntake` is one atomic statement; concurrent same-nonce calls yield exactly one `dispatch`, rest `duplicate` — tested
-- [ ] Same nonce + different digest ⇒ typed error, never a duplicate result, tested
-- [ ] Digest computed exclusively via @oikonomos/shared — asserted (no crypto import in this module)
-- [ ] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-061 precedent)
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-075-s5
+- [x] Migration additive + reversible; UNIQUE (tenant_id, client_nonce) enforced, tested against live pg16
+- [x] `admitIntake` is one atomic statement; concurrent same-nonce calls yield exactly one `dispatch`, rest `duplicate` — tested
+- [x] Same nonce + different digest ⇒ typed error, never a duplicate result, tested
+- [x] Digest computed exclusively via @oikonomos/shared — asserted (no crypto import in this module)
+- [x] DB-gated legs actually RUN green locally and recorded in Test_Evidence (TASK-061 precedent)
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-075-s5 (merged, deleted)
 **Started_At:** 2026-08-31T22:36:30Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** infra/postgres/migrations/003_intake_nonces.{up,down}.sql, packages/db/src/intakeNonces.ts, intakeNonces.test.ts, dossiers/TASK-075.md
+**Test_Evidence:** Independently re-run: pnpm --filter @oikonomos/db test (DATABASE_URL against live local pg16) 7 intakeNonces tests + 4 no-DB validation tests green. Full pnpm -r test/lint/canaries exit 0. Migration applied up->down->up live by the reviewer, schema verified via \d, no orphans on down.
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent). admitIntake confirmed as one atomic `INSERT...ON CONFLICT(tenant_id,client_nonce) DO NOTHING RETURNING`; real 8-way concurrent Promise.all race against the live DB (not mocked) yielded exactly 1 dispatch/7 duplicates. Mutation test (changed ON CONFLICT DO NOTHING to DO UPDATE, breaking single-winner atomicity) reddened 4 tests including the race test and a source-pin, reverted clean. No crypto import in the module, zero new packages/db deps. Territory clean, exactly the 4 Owned_Paths files. Merged.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T22:36:30Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T01:20:00Z
 
 ### TASK-076
 **Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
