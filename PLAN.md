@@ -1786,11 +1786,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** WBS OIK-087 ("Screenshots/diffs delivered with the approval request"); Directive §5 DoD Evidenced; Directive §4 N4
-**Owned_Paths:** services/gateway-telegram/src/evidence/**, services/gateway-telegram/test/evidence.test.ts
+**Owned_Paths:** services/gateway-telegram/src/evidence/**, services/gateway-telegram/test/evidence.test.ts, services/gateway-telegram/src/index.ts, services/gateway-telegram/src/approvals/index.ts, packages/audit/src/index.ts
 **Depends_On:** TASK-058
 **Description:** Attach the evidence an operator needs to decide: for an email draft, the actual draft body and recipient; generally, the artifact URIs the PostToolUse hook recorded. Fetch via control-api's evidence endpoint (TASK-056) — never from the DB or the filesystem directly (OIK-084). Truncate long bodies for Telegram's limits with an explicit "truncated" marker — **never silently**; a silently truncated draft means the operator approves something they did not fully see, which defeats the purpose of the approval. Redact anything matching the audit redaction patterns before sending (N4) — reuse `packages/audit`'s redaction rather than writing a second one.
 **Acceptance_Criteria:**
@@ -1802,12 +1802,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-31T22:35:45Z
 **Progress_Notes:**
 - [2026-08-27T10:30:00Z] [ORCH] READY — TASK-058 approved and merged first-pass; the Depends_On chain is satisfied. Note for the builder: TASK-058's in-process approval-handle Map is never pruned after a decision; add cleanup while wiring evidence delivery if it falls inside your territory, otherwise flag it.
+- [2026-09-01T01:00:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT — legitimate, verified against source, not just the builder's claim). Three real gaps, all confirmed: (1) `ControlApiClient` in services/gateway-telegram/src/index.ts has no evidence-fetch method, though control-api itself already serves `/runs/:id/evidence` (delivered by TASK-056) — the client-side method is simply missing. (2) `registerTelegramApprovals` in approvals/index.ts is the only caller of `sendApprovalMessage` (two call sites) and must invoke the evidence renderer before sending — that file is where the wiring has to land. (3) `packages/audit/src/index.ts` deliberately does NOT re-export `redactPayload` (a source comment cites `persistence-surface.test.ts`'s append-only export-list pin as the reason) — TASK-059 cannot "reuse packages/audit's implementation" per its own AC without a supported export existing. Re-carved: added services/gateway-telegram/src/index.ts, services/gateway-telegram/src/approvals/index.ts, and packages/audit/src/index.ts to Owned_Paths. No live conflict: TASK-058/082 (prior owners of approvals/index.ts) are both done and merged. TASK-077 (S5, pending, also touches packages/audit/src/index.ts) given `Depends_On: TASK-059` to sequence it after rather than collide — its own description already anticipated this ("N4; TASK-059's rule"). Builder must add the new audit export carefully: additive only, do not touch persistence-surface.test.ts's pinned list logic itself (that test exists to prevent exactly this kind of accidental widening — add a new named export for the redaction function specifically, don't loosen the pin). Reset claimed->pending, resuming CX on the same branch task/TASK-059-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T22:35:45Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T01:00:00Z
 
 ### TASK-060
 **Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
@@ -2294,7 +2295,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (audit dual-sink); OIK-013 (append-only); Directive §4 N4
 **Owned_Paths:** packages/audit/src/outbox.ts, packages/audit/src/outbox.test.ts, packages/audit/src/format.ts, packages/audit/src/format.test.ts, packages/audit/src/index.ts
-**Depends_On:** —
+**Depends_On:** TASK-059
 **Description:** Delivery hardening from Grok Bot's `action-audit-service.ts` (study §Tier 2), for audit events bound to a remote/secondary sink (future dashboard push, Telegram evidence). (1) **Capped persistent outbox**: undelivered events queue durably (a DB-backed `audit_outbox` is NOT wanted — reuse the append-only `audit_events` table with a delivery-cursor row instead, keeping one source of truth; if that proves incompatible with OIK-013's no-UPDATE rule for cursor storage, store the cursor in `kv`-style state, and BLOCK with SPEC_AMBIGUITY only if neither fits). Cap the in-memory batch; oldest-dropped ONLY with an explicit dropped-count event emitted — never silent loss. (2) **Backoff honouring `Retry-After`** on sink rate-limits, via injected clock. (3) **Exhaustive-union formatter**: one function mapping every audit action kind to its serialized line, written so adding a kind is a COMPILE error until its format exists (their `localAuditJsonlLine` switch-with-never). Redaction stays `redact.ts`'s job — call it, never reimplement (N4; TASK-059's rule). Local append-path behaviour unchanged; existing tests byte-identical.
 **Acceptance_Criteria:**
 - [ ] Sink failure ⇒ events retained and redelivered after recovery; delivery order preserved — tested with injected failing sink
