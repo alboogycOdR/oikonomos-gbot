@@ -2077,7 +2077,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-069
 **Title:** packages/shared — closed error registry with payload allowlist
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (error registry); Directive §4 N4 (no credentials in logs/audit)
@@ -2085,21 +2085,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** From Grok Bot's `shared/errors/registry.ts` (study §Tier 2): a closed registry of error codes, each declaring `{code, domain, retryable, summary, payload: string[]}`, with a single emit-boundary function that converts any error into loggable/audit-safe tags. Fail-closed rules: an UNREGISTERED error maps to the generic code with its payload dropped entirely; a registered error emits ONLY the fields its definition declares, and string values only when they match a bounded safe charset (`/^[0-9A-Za-z._|:-]{1,64}$/` per the reference) — everything else is dropped, never truncated-and-kept. This solves three problems at once: PII/credential leakage into audit payloads (N4), unbounded metric label cardinality, and retryability decisions scattered across catch blocks. Generate typed constructors from the registry so the taxonomy is the only way to mint a registered error. Seed the registry with the error families that already exist in the codebase (survey broker/approvals/harness-factory/audit test failures for names — read-only survey; do not modify other packages). Zero runtime dependencies (matches packages/shared's existing constraint). Adoption by other packages is explicitly NOT this task — later tasks migrate callers.
 **Acceptance_Criteria:**
-- [ ] Unregistered error → generic code, payload dropped entirely, tested
-- [ ] Registered error emits only declared fields; out-of-charset and oversized strings dropped, tested
-- [ ] `retryable` readable from the definition; constructors typed per declared payload
-- [ ] A test proves a credential-shaped string in an undeclared field never reaches the emitted tags (N4)
-- [ ] Zero runtime dependencies added
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-069-s5
+- [x] Unregistered error → generic code, payload dropped entirely, tested
+- [x] Registered error emits only declared fields; out-of-charset and oversized strings dropped, tested
+- [x] `retryable` readable from the definition; constructors typed per declared payload
+- [x] A test proves a credential-shaped string in an undeclared field never reaches the emitted tags (N4)
+- [x] Zero runtime dependencies added
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-069-s5 (merged, deleted)
 **Started_At:** 2026-08-31T21:05:09Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/shared/src/errors/{index,registry,seeds}.ts, packages/shared/test/errors.test.ts, dossiers/TASK-069.md
+**Test_Evidence:** pnpm --filter @oikonomos/shared test: 53/53. Full pnpm -r test, pnpm lint, pnpm canaries all exit 0 (independently re-run by reviewer, not just claimed).
+**Review_Findings:** APPROVED first pass (2026-08-31, ORCH via independent subagent verification). All 6 ACs verified with direct code+test evidence, not summary trust. Mutation test on the charset/oversized-drop filter reddened 3 tests as expected, confirming those assertions are load-bearing. Zero package.json diff confirms no new runtime deps. Test fixtures use obviously-fake placeholder strings for the N4 credential-leak proof (repo's own secret-scan hook flagged two earlier drafts per the dossier; final fixtures clean).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-08-31T21:05:09Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-31T21:50:00Z
 
 ### TASK-070
 **Title:** infra/ci — publication-tree self-proof + negative-control greps ⚑ protected
