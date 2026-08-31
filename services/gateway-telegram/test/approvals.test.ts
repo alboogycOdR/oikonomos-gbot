@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { registerTelegramApprovals as registerExportedTelegramApprovals } from "@oikonomos/gateway-telegram/approvals";
 import {
   registerTelegramApprovals,
   type TelegramApprovalCallback,
@@ -94,6 +95,10 @@ function callbackData(telegram: FakeTelegram, button: "Approve" | "Edit" | "Reje
 }
 
 describe("Telegram approval inline keyboard (OIK-086)", () => {
+  it("exports the approvals surface through the package subpath", () => {
+    expect(registerExportedTelegramApprovals).toBeTypeOf("function");
+  });
+
   it("renders the stored approval render and gives each action an opaque callback handle", async () => {
     const telegram = new FakeTelegram();
     const controlApi = fakeControlApi();
