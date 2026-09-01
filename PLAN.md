@@ -2618,7 +2618,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-087
 **Title:** packages/broker — enforcement gate in the decision path ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1, §5.4, §9 OIK-203; docs/decisions/ADR-001-broker-enforcement-point.md; ADR-010 §3
@@ -2633,15 +2633,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] LIVENESS: a canary in which the enforcement gate is bypassed makes a previously-parking payment action execute — proving the gate is on the real path and not a decorative call
 - [ ] No canUseTool-only enforcement introduced; `bypassPermissions`/`acceptEdits` absent (CI grep still clean)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-087-cx
+**Started_At:** 2026-09-01T20:21:19Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T20:21:19Z
 
 ### TASK-088
 **Title:** packages/broker — D3 sealed-secret path guard (N13 enforcement + detection) ⚑ protected
