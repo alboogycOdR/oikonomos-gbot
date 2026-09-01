@@ -2782,7 +2782,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-093
 **Title:** packages/broker — wire secretPathGuard into the real PreToolUse decision path ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13); docs/decisions/ADR-010 §6 (stricter than Grok Bot on browser-session credentials); TASK-088's Review_Findings (this task is TASK-088's own recommended follow-up, same relationship as TASK-087 was to TASK-073)
@@ -2790,19 +2790,19 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-088
 **Description:** **CX only, NEVER S5** (protected path). TASK-088 shipped `secretPathGuard.ts` as a standalone, fully-tested module with its own liveness assertion proven via a pipeline assembled inside its own test file — deliberately not wired into the real `handlePreToolUse`/`decidePreToolUse` path, matching the TASK-073→TASK-087 precedent. This task closes that gap: call `guardSecretPath` (or equivalent) from the real decision path in `index.ts`, positioned ABOVE the six-rank enforcement resolver from TASK-087 (E5 of the fixed floor is rank 2, above require-approval/refusal-memory/grant-ceiling/autonomous — see PLAN.md TASK-086's Owned_Paths description and Addendum F §5.4) so a D3 path match denies unconditionally regardless of what the resolver would otherwise return. Do not duplicate secretPathGuard's own logic — call it. Do not weaken or bypass the existing ADR-001 fail-closed map or TASK-087's resolver wiring; this is an additional gate, not a replacement.
 **Acceptance_Criteria:**
-- [ ] A tool call resolving to a D3 path is denied by the REAL PreToolUse path even when the six-rank resolver would otherwise return autonomous, tested end-to-end through index.ts (not just the standalone module)
-- [ ] The secret-path denial's distinct audit event type (from TASK-088) reaches the real audit path unchanged
-- [ ] LIVENESS: removing the guard call from index.ts makes a previously-denied D3 read execute — proving the wiring itself, not just the module, is load-bearing (mirrors TASK-087's liveness canary pattern)
-- [ ] Broker unreachable/timeout/malformed still denies via the EXISTING fail-closed map — unchanged code path, not duplicated (ADR-001)
-- [ ] TASK-087's six-rank resolver wiring and TASK-073's refusal-memory consult are unchanged in behavior — full existing broker test suite green with zero modifications to pre-existing tests
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-093-cx
+- [x] A tool call resolving to a D3 path is denied by the REAL PreToolUse path even when the six-rank resolver would otherwise return autonomous, tested end-to-end through index.ts (not just the standalone module)
+- [x] The secret-path denial's distinct audit event type (from TASK-088) reaches the real audit path unchanged
+- [x] LIVENESS: removing the guard call from index.ts makes a previously-denied D3 read execute — proving the wiring itself, not just the module, is load-bearing (mirrors TASK-087's liveness canary pattern)
+- [x] Broker unreachable/timeout/malformed still denies via the EXISTING fail-closed map — unchanged code path, not duplicated (ADR-001)
+- [x] TASK-087's six-rank resolver wiring and TASK-073's refusal-memory consult are unchanged in behavior — full existing broker test suite green with zero modifications to pre-existing tests
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-093-cx (merged, deleted)
 **Started_At:** 2026-09-02T00:15:00Z
 **Progress_Notes:**
 - [2026-09-02T00:20:00Z] [ORCH] SYNC_MISMATCH triage (protocol §7) — dispatch left the worktree detached at the claim commit without ever creating task/TASK-093-cx, same dispatch-side gap already hit once on TASK-088 (2nd occurrence this session, confirms the retro item logged then: dispatch.ps1 should assert/create the target branch as part of dispatch, not leave it implicit). FIXED directly by ORCH (`git checkout -b task/TASK-093-cx` in wt-codex-GROKBOT-CLONE). Not a builder error, not counted as any kind of round. Redispatching CX same branch.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/broker/src/{index.ts,index.test.ts} (additive diff), dossiers/TASK-093.md
+**Test_Evidence:** broker 106/106. pnpm -r test/lint/canaries all exit 0 independently re-run (canaries 15/15). Reviewer's own runtime mutation (disabling the guard's deny branch) reddened 3 tests incl. the shipped liveness test, reverted clean.
+**Review_Findings:** APPROVED (protected path, adversarial review by a different model — CX/Codex authored, Claude reviewed). Territory clean (2 Owned_Paths files + dossier). D3-over-resolver precedence confirmed structurally: guardSecretPath checked and denies BEFORE capability lookup/role-grant lookup/resolveEnforcementGate — test asserts getCapability is never called on a D3 path, proving the resolver's rank machinery is bypassed entirely for D3. Distinct secret_path_attempt audit event confirmed to reach the real audit path unchanged and target-free (JSON.stringify assertion). MOST IMPORTANT CHECK: fail-closed confirmed NOT duplicated — guardSecretPath is a pure synchronous function that internally catches its own decode exceptions, cannot throw into decidePreToolUse's outer catch, so it adds no new fail-closed branch; the one pre-existing ADR-001 catch/map is untouched by the diff. TASK-087 resolver call and TASK-073 refusal-memory consult confirmed unchanged (diff purely additive, only the guard block inserted). LIVENESS reproduced independently via a real runtime mutation (not just reading the shipped test) — 3 tests went RED, reverted clean. index.test.ts diff confirmed purely additive (0 deletions), no pre-existing test modified. Full pnpm -r test/lint/canaries independently re-run, exit 0. One non-blocking style note: the shipped in-repo liveness test is a source-grep+behavioral combo rather than a true runtime-mutation canary like TASK-087's — the reviewer independently reproduced the real mutation-based proof themselves per protocol, so this is a style observation, not rework. Merged. **This closes the Addendum F D3 sealed-secret enforcement chain (TASK-088→TASK-093) — the strictest control in ADR-010's stricter-than-Grok-Bot commitment is now live in production code.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T00:15:00Z
+**Updated_At:** 2026-09-02T00:50:00Z
