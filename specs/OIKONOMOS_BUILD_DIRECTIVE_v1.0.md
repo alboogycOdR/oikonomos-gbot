@@ -65,4 +65,4 @@ OIK-039 / CAN-02: add a bare-name `allowedTools` entry for a Tier-3 tool and pro
 
 ## §7 Conflict handling
 
-If two source documents disagree and no ADR covers it, HALT that task (`Status: blocked`, `Blocked_Reason: SPEC_AMBIGUITY`) and raise an ADR request to Alister. Do not choose between them.
+If two source documents materially disagree and no ADR covers it, HALT that task (`Status: blocked`, `Blocked_Reason: SPEC_AMBIGUITY`) and escalate to ORCH. Do not choose between them. ORCH resolves the conflict per CLAUDE.md "Document precedence" — by updating the lower-precedence document, or by recording an ADR only when the decision needs durable rationale (material architectural, security, data-model, or cross-cutting policy changes). Feature work that extends the product without contradicting an existing decision needs no ADR.

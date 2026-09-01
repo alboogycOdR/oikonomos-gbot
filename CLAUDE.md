@@ -27,12 +27,12 @@ AI teammate control plane for Basileia Technologies. TypeScript, Node 22, pnpm w
 - Strict TypeScript. No `any` in protected packages. `packages/policy` has zero I/O imports (lint-enforced).
 - All harness invocations go through `packages/harness-factory`. Direct `query()` calls elsewhere fail lint.
 - Canonical JSON + digest has exactly one implementation, in `packages/shared`.
-- Markdown for all docs. ADR for every decision that conflicts with an existing document.
+- Markdown for all docs. ADRs are required only for material architectural, security, data-model, or cross-cutting policy changes. Feature work that extends the product without contradicting an existing decision may proceed from an approved task/spec.
 - **Every mechanical control ships a liveness assertion** — a check that fails when the control is *inert*, separate from the check that it behaves correctly when it runs. Key it on evidence the control emits by doing its job, never on config being present or a file's mtime. Reviewers reject its absence like a missing test. Seven controls were found configured-but-inert in one day; see `docs/decisions/ADR-005-control-liveness.md`.
 
 ## Document precedence
 
-ADRs > Build Handover Package v1.0 > Gap Closure Plan v0.2 > Synthesis Spec v0.1. If two documents disagree and no ADR covers it, stop and write an ADR.
+ADRs > Build Handover Package v1.0 > Gap Closure Plan v0.2 > Synthesis Spec v0.1. If authoritative documents materially conflict, ORCH resolves the conflict by updating the lower-precedence document or recording an ADR when the decision needs durable rationale.
 
 ## Budget
 

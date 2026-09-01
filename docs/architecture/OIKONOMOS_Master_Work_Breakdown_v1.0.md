@@ -19,7 +19,7 @@
 3. **Parallelise freely within a gate.** The dependency graph (§3) is the authority on what can run concurrently. Tracks A (governance) and B (capability) are designed to run in parallel.
 4. **Every ticket must satisfy the Definition of Done (§6)** before closure, plus its own acceptance criteria.
 5. **Protected-path tickets require adversarial review by a different model than the author** (§6.3). This is a scheduling constraint: allocate a second agent/model, not a second pass by the same one.
-6. **Any conflict between documents that no ADR covers halts the ticket** and raises an ADR (see precedence, §2.3).
+6. **Any material conflict between documents that no ADR covers halts the ticket** and is escalated to ORCH, who resolves it by updating the lower-precedence document or recording an ADR when durable rationale is needed (see precedence, §2.3; CLAUDE.md "Document precedence", amended 2026-09-01). Non-conflicting feature extension does not require an ADR.
 
 ---
 

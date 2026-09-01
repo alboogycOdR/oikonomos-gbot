@@ -38,7 +38,7 @@ Precedence, highest first. Where documents conflict, higher wins.
 | 4 | **Platform Synthesis Spec v0.1** | Schema, risk tiers, approval binding, capability broker design, security posture, harvest lists | **Its §6 five-phase roadmap is SUPERSEDED** by v0.2's two-track model. Its §5.2 `canUseTool` wiring is **SUPERSEDED** by ADR-001. Everything else stands. |
 | 5 | Original research document | Background rationale only | Not a build instruction |
 
-**Rule for the team:** if two documents disagree and no ADR covers it, stop and raise an ADR. Do not pick one.
+**Rule for the team:** if two documents materially disagree and no ADR covers it, do not pick one — escalate to ORCH, who resolves it by updating the lower-precedence document or recording an ADR when the decision needs durable rationale (per CLAUDE.md "Document precedence", amended 2026-09-01). Feature work that does not contradict an existing decision proceeds from its approved task/spec without an ADR.
 
 ---
 
