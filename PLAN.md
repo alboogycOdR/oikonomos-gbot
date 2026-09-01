@@ -2067,7 +2067,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-067
 **Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 2 and 5; Directive §4 N3 (fail closed); ADR-004 (render provenance)
@@ -2075,21 +2075,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-066
 **Description:** **GB or CX only, NEVER S5** (protected path). Two adoptions from the Grok Bot permission machinery. (1) **Undescribable ⇒ denied** (study §Tier 1.2): any tool call the broker cannot render into a human-readable `{action, target}` via a registered describer is refused when the decision tier requires human approval — *"if we cannot render it to a human, we cannot ask about it, therefore we do not run it."* Unknown tool shapes return undefined from the describer and undefined MUST deny, and an oversized target (>10,000 chars) is refused as unpresentable. This composes with ADR-004: the stored render for an approval comes from this same describe step, so what the operator sees is what the digest binds. (2) **Model-directed denials** (study §Tier 1.5): extend the deny decision shape with `{code, humanReason, modelGuidance}` where `modelGuidance` tells the calling agent what happened, that retrying is futile, and what to do instead (their twelve `SAND_LOCAL_TOOLS_*` messages are the reference) — a denial without guidance burns agent turns on retries. Additive: existing allow/deny semantics unchanged; existing tests byte-identical.
 **Acceptance_Criteria:**
-- [ ] A tool call with no registered describer is DENIED on any approval-requiring tier — fail-closed default tested (study §Tier 1.2; N3)
-- [ ] Target >10,000 chars refused as unpresentable, tested
-- [ ] Deny decisions carry `{code, humanReason, modelGuidance}`; guidance strings state do-not-retry and an alternative, asserted for at least the undescribable and allowlist-miss codes
-- [ ] MUTATION-PROVEN: making undescribable fall through to allow turns a test RED
-- [ ] Existing broker tests byte-identical and green
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-067-gb
+- [x] A tool call with no registered describer is DENIED on any approval-requiring tier — fail-closed default tested (study §Tier 1.2; N3)
+- [x] Target >10,000 chars refused as unpresentable, tested
+- [x] Deny decisions carry `{code, humanReason, modelGuidance}`; guidance strings state do-not-retry and an alternative, asserted for at least the undescribable and allowlist-miss codes
+- [x] MUTATION-PROVEN: making undescribable fall through to allow turns a test RED
+- [x] Existing broker tests byte-identical and green
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-067-gb (merged, deleted)
 **Started_At:** 2026-09-01T12:37:29Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/broker/src/{describe.ts,describe.test.ts,decision.ts,decision.test.ts}, dossiers/TASK-067.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). broker 72/72 (28 L1 + 8 registry + 9 recheck + 8 decision + 19 describe). typecheck clean.
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent, protected-path adversarial review). Undescribable tool calls genuinely deny (no allow fallthrough), oversized target boundary (10,000 chars) tested both sides. Deny decisions carry the full {code, humanReason, modelGuidance} shape, frozen objects; all 12 codes carry a do-not-retry + alternative discipline, not just the 2 required. Mutation-proven: reviewer flipped the undescribable branch to allow, 5 tests went genuinely red (behavioral, not source-text). ADR-004 composition: describe.ts's output shape confirmed compatible with packages/approvals' render provenance for future wiring, though full reconciliation (two independent render mechanisms) is correctly left as future work, not this task's scope. index.ts wiring correctly and deliberately excluded per Owned_Paths (not a gap, unlike TASK-066's earlier miss — this task's ACs are scoped to the primitives standing alone). 28 pre-existing L1 tests confirmed byte-identical. Merged. Unlocks TASK-073.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T12:37:29Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T17:20:00Z
 
 ### TASK-068
 **Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
