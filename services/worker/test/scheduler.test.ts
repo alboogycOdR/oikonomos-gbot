@@ -23,7 +23,7 @@ const flush = async (): Promise<void> => { await Promise.resolve(); await Promis
 describe("TASK-076 role scheduler", () => {
   it("serializes a role and lets a failed run release its lane", async () => {
     const clock = new FakeClock();
-    const scheduler = new RoleRunScheduler({ clock, wallClockBudgetMs: 1000, audit: () => undefined });
+    const scheduler = new RoleRunScheduler({ clock, wallClockBudgetMs: 1000, maxConcurrentRuns: 2, audit: () => undefined });
     const first = deferred();
     const started: string[] = [];
     scheduler.schedule({ runId: "one", roleId: "role-a", lane: "agent", run: async () => { started.push("one"); await first.promise; throw new Error("expected"); } });
