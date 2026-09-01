@@ -2530,7 +2530,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-084
 **Title:** packages/db + migration 004 — role identity, routines, messages, require-approval rules (D0 schema)
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.1 (F4 roles table), §3.4 (F7 role_routines), §3.5 (F8 role_messages), §5.4 (F15 require_approval_rules), §9 OIK-200; docs/decisions/ADR-010 §2.2
@@ -2552,10 +2552,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-01T20:20:00Z] [ORCH] REWORK round 1 (independent verification, live migration testing). 8/9 checks PASS with hard evidence: role_grants/tasks FKs live-tested with a real rejected insert, backfill guard confirmed via live post-migration query (inbox-triage row present, active), routines/role_messages/require_approval_rules schemas confirmed matching Addendum F §3.4/§3.5/§5.4 exactly, N12 liveness assertion confirmed real (source-scan, not config-presence), migrations 001-003 confirmed byte-identical, full pnpm -r test/lint/canaries green (db 107/107; one evals/harness CAN-03 timeout on the first parallel run was reproduced as a pre-existing flake, not a regression — passed clean standalone and in canaries twice). ONE FAILING CHECK: the migration's `ALTER TABLE ... ADD CONSTRAINT` statements (the two FK additions) are not idempotent-safe — reviewer ran up->down->up->up live and the second consecutive `up` threw `constraint "role_grants_role_id_fkey" already exists` (exit 3). The `CREATE TABLE IF NOT EXISTS` statements are correctly guarded; the two trailing `ALTER TABLE ADD CONSTRAINT` statements are not. DB state was left consistent (no data lost), but the script itself isn't safely re-runnable — an operator re-applying `up` after a partial failure, or any idempotent-apply tooling, would break. Fix: wrap each `ALTER TABLE ... ADD CONSTRAINT` in a `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` guard (or equivalent `IF NOT EXISTS`-style check against `pg_constraint`), matching the idempotency pattern already used elsewhere in this migration for the table creates. Do not touch anything else — the AC as literally written (up->down->up) already passes; this closes a real but narrower gap the AC didn't fully specify. Reset claimed->pending, resuming S5 same branch.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** REWORK round 1 — migration ALTER TABLE ADD CONSTRAINT statements not idempotent on a repeat `up`; 8/9 other checks pass with live evidence. Precise fix specified above.
+- [2026-09-01T20:35:00Z] [ORCH] RESUME-STATE PROCESS GAP (matches the documented TASK-061/063/077 defect class). S5's resumed session reported "resumed from PreCompact checkpoint... no new code changes this session" and returned needs_review with the IDENTICAL commits (6ec59c0, d601ee2) — verified via `git log master..task/TASK-084-s5` and by reading the actual migration file on the branch: the two `ALTER TABLE ... ADD CONSTRAINT` statements at the bottom of `004_roles_routines_rules.up.sql` are byte-identical to round 1, still unguarded. The rework fix above was never attempted, likely because a mid-session context compaction lost it before the checkpoint was written. NOT scored as a 2nd real rework round — nothing was tried, so nothing to judge. **EXPLICIT INSTRUCTION FOR THE NEXT SESSION ON THIS BRANCH: everything else in this migration and the query layer is already correct and complete — do NOT touch anything except the two `ALTER TABLE ... ADD CONSTRAINT` statements at the bottom of `infra/postgres/migrations/004_roles_routines_rules.up.sql`. Wrap EACH of the two in a `DO $$ BEGIN ... ADD CONSTRAINT ...; EXCEPTION WHEN duplicate_object THEN NULL; END $$;` block so a second consecutive `up` run does not throw. Then re-run up->down->up->up live against the local Postgres yourself to confirm, and re-run the full gate suite.** Redispatching S5 same branch with this instruction now literally the newest Progress_Note.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** REWORK round 1 — migration ALTER TABLE ADD CONSTRAINT statements not idempotent on a repeat `up`; 8/9 other checks pass with live evidence. Precise fix specified above. Round-2 resume did not apply the fix at all (process gap, not a rework judgment).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T20:17:40Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:35:00Z
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
