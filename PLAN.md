@@ -2175,7 +2175,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-071
 **Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
@@ -2189,15 +2189,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] composeHarness applies the chain to every mounted tool — MUTATION-PROVEN: mounting one undecorated tool turns a test RED
 - [ ] Existing harness-factory tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-071-cx
+**Started_At:** 2026-09-01T12:11:49Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T12:11:49Z
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
