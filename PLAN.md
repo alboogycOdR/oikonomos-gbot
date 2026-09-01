@@ -1978,7 +1978,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-065
 **Title:** packages/approvals — bind approvals to process generation + user-context epoch (restart/redirect invalidation) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 1; Directive §4 N8; OIK-022/OIK-023; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1993,7 +1993,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061/064 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-065-cx
-**Started_At:** 2026-09-01T04:26:11Z
+**Started_At:** 2026-09-01T04:54:29Z
 **Progress_Notes:**
 - [2026-09-01T06:25:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT, verified against source not just the builder's claim). Real gap: the actual persisted `NewApproval`/`Approval` types and the atomic consume/insert SQL live in `packages/db/src/approvals.ts` (packages/approvals' store.ts only wraps `@oikonomos/db`'s exports — confirmed by reading the import list), so the new binding columns cannot be threaded through without touching packages/db too. `issueApproval` itself — the function the task's own description names as needing to "record both" — lives in `packages/approvals/src/issue.ts`, which was omitted from Owned_Paths (an oversight in decomposition, not scope creep: the description explicitly requires editing it). Located the real test files (`packages/approvals/test/issue.test.ts`, `issue.integration.test.ts`, `packages/db/test/approvals.integration.test.ts`) — none were in Owned_Paths either. Widened to include all five. No live conflict: nothing else active touches packages/db/src/approvals.ts or packages/approvals/src/issue.ts. This crosses a package boundary (approvals -> db) but is a single coherent gap serving one feature, not a repeating pattern (TASK-065's first block) — handled directly per the standing threshold (escalate on a *repeated* pattern, not a first legitimate gap). Reset claimed->pending, resuming CX same branch.
 - [2026-09-01T06:55:00Z] [ORCH] TRIAGE round 2, verified against source (2nd gap for this task — still handled directly, escalation threshold is 3+). Real substantive work committed (45ff472: migration, binding.ts, issue.ts propagation, atomic consume guards, DB-gated coverage). Two more gaps, both confirmed: (1) `packages/approvals/test/consume-sql.test.ts` pins `CONSUME_APPROVAL_SQL`'s EXACT statement text byte-for-byte (an N8 control-liveness pin) — this task's entire point is adding a new WHERE clause to that statement, so the pin necessarily needs updating to the new text; expected, not scope creep. (2) `packages/approvals/src/editApproval.ts` performs its OWN raw `client.query` INSERT for the replacement row on an approval edit (confirmed: does not go through packages/db's shared insertApproval helper) — left as-is, a replacement approval would silently lose its generation/epoch binding on every edit, defeating the entire feature's purpose. Widened Owned_Paths to include all three (consume-sql.test.ts, editApproval.ts, editApproval.test.ts). Reset claimed->pending, resuming CX same branch.
@@ -2001,8 +2001,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T06:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T04:54:29Z
 
 ### TASK-066
 **Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
