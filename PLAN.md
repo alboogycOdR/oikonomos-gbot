@@ -2067,7 +2067,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-067
 **Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 2 and 5; Directive §4 N3 (fail closed); ADR-004 (render provenance)
@@ -2081,15 +2081,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] MUTATION-PROVEN: making undescribable fall through to allow turns a test RED
 - [ ] Existing broker tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-067-gb
+**Started_At:** 2026-09-01T12:37:29Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T12:37:29Z
 
 ### TASK-068
 **Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
