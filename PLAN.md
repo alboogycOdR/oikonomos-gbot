@@ -2757,7 +2757,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-092
 **Title:** packages/connectors — durable tenant session pool: create/destroy becomes acquire/release
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.2 (F10), §6.2, §9 OIK-208; docs/decisions/ADR-010 §4 (signed in once, available thereafter); docs/research/grok-bot-live-probe-2026-09-01.md Q11
@@ -2771,15 +2771,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] LIVENESS — N4: a test asserts no token or secret value appears in any tool schema, tool result, log line or audit payload emitted by the pool, and fails if one is introduced
 - [ ] `manifest/**`, `enumeration/**`, `discovery-cache/**` and `mcp/**` byte-identical to master — asserted by diff in the work log
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-092-s5
+**Started_At:** 2026-09-02T01:25:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-02T01:25:00Z
 
 ### TASK-093
 **Title:** packages/broker — wire secretPathGuard into the real PreToolUse decision path ⚑ protected
