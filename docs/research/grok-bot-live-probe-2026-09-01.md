@@ -135,7 +135,87 @@ Safety/policy still overrides the description. Duplicate-Bot copies profile/rout
 learned memory.
 
 ## Batch 3 — autonomy boundary
-_(pending)_
+
+**Headline (instance's own words):** there is **no single "always ask before send/delete/spend/post"
+switch from xAI**. There are **stacked gates**, several of which are the model's own policy +
+Auto-review (model-based), not a hard ACL. FAQ: "depends on the tool, the risk, and — when
+enforcement is enabled — your Auto-review rules."
+
+### Q7 — when does it stop and ask (the four probe cases)
+
+| Action | Hard stop? | What actually happens |
+|---|---|---|
+| Send email | **Not guaranteed** | Docs *recommend* a Require Approval rule + "don't send" in the Bot description. Without that, a connected mail plugin or signed-in browser can send if Auto-review lets it through. The Bot is instructed to treat send as needing explicit confirmation — **behavioral, not a kernel deny**. |
+| Delete a file | **Not on the cloud box** | Can `rm` under `/workspace`/home with no human card unless Auto-review flags it. The user's local Mac/Windows is different: local-execution default is **ask every time**. Deleting a *Bot* is sidebar-only (user, not the Bot). |
+| Spend money | **Yes, for Stripe Link** | Goes through `request_virtual_card`; nothing created unless the user authorizes that merchant/total. Browser checkout hands the user the box for payment. |
+| Post publicly | **Not a platform lock** | Same as send: description + Auto-review + "don't post without confirmation." Some Slack/email connectors send as an app, some as the user. A browser post can still happen if review doesn't stop it. |
+
+### Full inventory of pause points (beyond login/2FA/CAPTCHA/payment)
+
+- **A. Human-only desktop (takeover / `request_box_help`)** — passwords, passkeys, 2FA, CAPTCHA,
+  payment, SSO, identity checks, "site requires a human." Bot must not type those. A secure
+  **secret-request card** for connector tokens (masked, not in transcript, not shown to the model).
+- **B. Auto-review cards (product)** — runs on the Bot's Shell / computer-use / MCP / routine-write /
+  Cloud Agent **before** execution. User only sees it if it **blocks**: Allow once / Deny; desktop
+  "Always allow" can save a matching rule. **Require Approval beats Always Allow.** It is
+  **model-based, not a parser**. After a Deny (or expired scheduled card): *that action is the answer —
+  no retrying a quieter variant.* One card at a time. Interrupted-by-update ≠ deny; the Bot re-raises.
+- **C. Chat question widgets (model policy)** — the Bot *should* widget (not prose-ask) for:
+  consequential/destructive go/no-go; true ambiguity; facts only the user knows. Includes
+  install/uninstall/restart/auth a plugin; create/change a routine; fan-out to several Bots;
+  send/post/pay/delete/modify-calendar when hard to undo. Dismissed widget = decline, no re-ask.
+- **D. Local computer** — three-state (always require / always allow / never), default **ask every
+  time**. Separate from cloud-box policy. Org admins can cap it.
+- **E. Other product cards** — plugin connect/auth; two-click Update/Reset computer; Cloud Agent
+  launch; Stripe virtual card; OS permission dialogs (Bot just attempts, OS asks).
+- **F. NOT required to stop for** — reads, drafts, web research, writing files on its computer,
+  messaging one teammate when it serves the task, most connector reads. Job description does not
+  pause it.
+- **G. Safety refusals (not "ask")** — refuses some classes outright (exfil, exploits, CSAM, etc.).
+
+Docs' "prefer a boundary" list, **advisory unless the user encodes it**: send/invite, publish,
+purchase/transfer, delete/overwrite, change permissions, production changes, accept legal terms.
+
+### Q8 — can the boundary be configured?
+
+**Partially. Not a full "never do Y" matrix from xAI.**
+
+1. **Auto-review** — `Require Approval` / `Always Allow`, natural-language, narrow (e.g. "Require
+   approval before sending any external email"). Personal rules live on **that desktop** and sync to
+   **its** Grok Bot computer; another install can miss them.
+2. **Local execution** — three-state.
+3. **Bot description** — standing "never send without approval." Advisory, not an enforcer.
+4. **Per-task instruction** — strongest for one job.
+5. **Plugins** — don't connect / disable tools / team MCP allowlist. Least privilege.
+6. **Connectors vs browser** — OAuth stays off the box; browser sessions are the leaky path.
+7. **Routines** — pause/delete.
+8. **Hide/delete Bot**, sign out, revoke connector.
+
+No per-Bot "never send email" toggle visible in `settings.json` (only `notifyOnAgentUpdates`). No
+"never delete files on the box" setting.
+
+### Q9 — after a refusal
+
+| Refusal | Behavior | Duration |
+|---|---|---|
+| Deny on Auto-review card | Stop that action, no rephrase-to-sneak; safer path or ask. | **That attempt** — not a permanent ACL. Does not auto-write "user refused X" to memory unless it's a stated standing preference. Next turn can try a different action; same action again if later asked. |
+| Expired routine approval card | Same as deny for that run. | That fire. |
+| Dismissed widget | Treat as decline; don't re-ask. | Rest of that decision; fallback not needing it still allowed. |
+| "Stop now" | End current work. Does **not** undo completed side effects. | That turn/task. |
+| "Never do Y" | Should store in memory/description if durable. **Still not a kernel block** unless a Require Approval rule is also added. | Conversation if only heard; permanent-for-this-Bot if written to memory/profile. |
+| Always allow | Saves a matching Auto-review allow rule (loses to Require, loses to other review reasons). | Until removed. |
+
+Approval does not undo work already done.
+
+### Instance's own guidance for our tier map (verbatim in substance)
+Treat product **Auto-review + local-execution + Stripe/secret/takeover as enforced**; treat the Bot's
+widgets, description, and "ask before send/delete/post" as **policy-tier** — high compliance, but
+bypassable if the model errs or if the browser path isn't classified. For send/delete/spend/post to be
+real stops, put Require Approval rules in Auto-review and keep those actions off connected write
+tools until the rule exists.
+
+Sources cited: docs.x.ai/grok-bot/approvals-security-and-privacy, /faq, /settings-and-notifications,
+/troubleshooting, plus the Bot's live instructions.
 
 ## Batch 4 — connector/session sharing
 _(pending)_
