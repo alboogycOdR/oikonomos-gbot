@@ -1,3 +1,7 @@
+import { resolveEffectiveTier } from "./ceiling.js";
+
+export { resolveEffectiveTier } from "./ceiling.js";
+
 /** Ordered from least to most restrictive. */
 export const riskTiers = [
   "T0_observe",
@@ -14,11 +18,12 @@ export interface CapabilityTier {
   toolName: string;
   defaultTier: RiskTier;
 }
-
 export interface ResolveCapabilityTierInput {
   toolName: string;
   capabilities: readonly CapabilityTier[];
   roleGrantOverride?: RiskTier;
+  /** Optional organisation policy that may only make the resolved tier stricter. */
+  ceiling?: RiskTier;
 }
 
 export type CapabilityTierResolution =
@@ -61,23 +66,6 @@ export interface EvaluateDomainConstraintInput {
 }
 
 /**
- * Returns the more restrictive of the capability default and role override.
- * Callers supply all data, keeping policy resolution free of I/O.
- */
-export function resolveEffectiveTier(
-  defaultTier: RiskTier,
-  roleGrantOverride: RiskTier | undefined,
-): RiskTier {
-  if (roleGrantOverride === undefined) {
-    return defaultTier;
-  }
-
-  return tierRank(roleGrantOverride) > tierRank(defaultTier)
-    ? roleGrantOverride
-    : defaultTier;
-}
-
-/**
  * Resolves a registered tool's tier and fails closed for unknown tool names.
  * The denial reason is stable for inclusion in an audit event.
  */
@@ -94,7 +82,10 @@ export function resolveCapabilityTier(
 
   return {
     decision: "allow",
-    tier: resolveEffectiveTier(capability.defaultTier, input.roleGrantOverride),
+    tier: resolveEffectiveTier(
+      resolveEffectiveTier(capability.defaultTier, input.roleGrantOverride),
+      input.ceiling,
+    ),
   };
 }
 
@@ -137,8 +128,4 @@ export function evaluateDomainConstraint(
   }
 
   return { decision: "deny", reason: "constraint.domains" };
-}
-
-function tierRank(tier: RiskTier): number {
-  return riskTiers.indexOf(tier);
 }
