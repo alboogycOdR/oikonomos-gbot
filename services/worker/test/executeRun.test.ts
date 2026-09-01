@@ -5,13 +5,21 @@ import { CodexProvider, GrokProvider } from "@oikonomos/agent-providers";
 import { L2_PERMISSION_MODE } from "@oikonomos/harness-factory";
 import { describe, expect, it } from "vitest";
 
-import { executeTaskRun, WorkerExecutionError } from "../src/executeRun.js";
+import { executeTaskRun, toScopedAllowedTool, WorkerExecutionError } from "../src/executeRun.js";
 import { createGatedSubprocessProviders } from "../src/subprocessProviders.js";
 
 import {
   createCompletionSink,
   createDecisionLog,
+  createFakeGmailMcp,
+  createGmailBrokerDeps,
+  createInboxTriageQueryFn,
   createWorkerBrokerDeps,
+  GMAIL_DRAFT_TOOL,
+  GMAIL_LIST_TOOL,
+  GMAIL_SEND_TOOL,
+  gmailConnectorContext,
+  gmailDerivedAllowedTools,
   workerQueryFn,
   workerRun,
 } from "./fixtures.js";
@@ -88,5 +96,37 @@ describe("executeTaskRun — production caller", () => {
         park: { park: undefined as never },
       }),
     ).rejects.toBeInstanceOf(WorkerExecutionError);
+  });
+
+  it("accepts connector context and scopes derived MCP names for L2", async () => {
+    expect(toScopedAllowedTool(GMAIL_LIST_TOOL)).toBe(`${GMAIL_LIST_TOOL}(*)`);
+    expect(gmailDerivedAllowedTools).not.toContain(GMAIL_SEND_TOOL);
+
+    const audit = createDecisionLog();
+    const fake = createFakeGmailMcp();
+    const capture: { mcpServers?: unknown } = {};
+    const result = await executeTaskRun({
+      prompt: "triage inbox",
+      run: workerRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createGmailBrokerDeps(audit),
+      auditSink: createCompletionSink(),
+      queryFn: createInboxTriageQueryFn({ fake, capture }),
+      connector: gmailConnectorContext(),
+    });
+
+    expect(result.connector).toEqual({ connectorId: "gmail", mcpServerNames: ["gmail"] });
+    expect(result.runtime.harness.config.allowedTools).toEqual([
+      "Read(src/**)",
+      `${GMAIL_LIST_TOOL}(*)`,
+      `${GMAIL_DRAFT_TOOL}(*)`,
+    ]);
+    expect(Object.keys((capture.mcpServers as object) ?? {})).toEqual(["gmail"]);
+  });
+
+  it("passes mcpServers into composeHarness and nowhere else", () => {
+    expect(executeSource).toContain("mcpServers: input.connector?.mcpServers");
+    expect(executeSource).toContain("composeHarness");
+    expect(executeSource).not.toContain("attachMcpServersToQuery");
   });
 });
