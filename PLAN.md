@@ -1671,7 +1671,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-083
 **Title:** packages/connectors — headless OAuth token acquisition for the Gmail MCP server (unblocks TASK-055's live half)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** docs/runbooks/gmail-mcp-provisioning.md §3 (headless token presentation); WBS OIK-049; Directive §4 N4 (no credentials in logs/prompts/fixtures, ever)
@@ -1686,15 +1686,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No credential or token value appears in any log line, error message, or test fixture (N4) — asserted
 - [ ] If `OIK_SECRET_GMAIL_OAUTH_REFRESH_TOKEN` is provisioned: re-run live enumeration authenticated, record in Test_Evidence whether `send_message`/`reply`/`forward` now appear in the live report (expected: yes, unmapped, still denied)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-083-gb
+**Started_At:** 2026-09-01T10:15:48Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T14:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T10:15:48Z
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
