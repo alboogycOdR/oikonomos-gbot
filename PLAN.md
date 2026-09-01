@@ -2664,7 +2664,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-088-cx
 **Started_At:** 2026-09-01T23:25:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T23:35:00Z] [ORCH] BLOCKED triage (protocol §7). Two reported issues: (1) SYNC_MISMATCH — worktree was left detached at master tip with branch task/TASK-088-cx never created; FIXED directly by ORCH (`git checkout -b task/TASK-088-cx` in wt-codex-GROKBOT-CLONE). (2) OWNERSHIP_CONFLICT claim re: packages/broker/src/index.ts — this is NOT a real gap, do not widen Owned_Paths. Precedent: TASK-073 (refusal memory) shipped exactly this way — a standalone, fully-tested module with its own liveness assertion proven via a locally-assembled pipeline inside its own test file, deliberately left unwired from the real packages/broker/src/index.ts decision path, with wiring done later by a dedicated task (TASK-087) that owned index.ts outright. TASK-088 follows the identical pattern: build `secretPathGuard.ts` + its liveness test using a guard function called directly / composed into a small pipeline constructed INSIDE the test file itself (not the real broker) — the AC's "disabling the guard makes a cookie-store read succeed in the test harness" is written exactly to allow this, it says "in the test harness," not "in production." Real wiring into the live PreToolUse path is real follow-up work belonging to a new task, not TASK-088 — ORCH will cut that task once this one is done. Resume same branch, no territory change.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
