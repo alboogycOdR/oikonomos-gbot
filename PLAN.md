@@ -2530,7 +2530,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-084
 **Title:** packages/db + migration 004 — role identity, routines, messages, require-approval rules (D0 schema)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.1 (F4 roles table), §3.4 (F7 role_routines), §3.5 (F8 role_messages), §5.4 (F15 require_approval_rules), §9 OIK-200; docs/decisions/ADR-010 §2.2
@@ -2547,15 +2547,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] LIVENESS: a test asserts no exported db helper reads `roles.description` in an authorization path — N12 (a source-level assertion is acceptable here and must fail if such a read is added)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-084-s5
-**Started_At:** 2026-09-01T19:44:59Z
+**Started_At:** 2026-09-01T20:17:40Z
 **Progress_Notes:**
 - [2026-09-01T20:20:00Z] [ORCH] REWORK round 1 (independent verification, live migration testing). 8/9 checks PASS with hard evidence: role_grants/tasks FKs live-tested with a real rejected insert, backfill guard confirmed via live post-migration query (inbox-triage row present, active), routines/role_messages/require_approval_rules schemas confirmed matching Addendum F §3.4/§3.5/§5.4 exactly, N12 liveness assertion confirmed real (source-scan, not config-presence), migrations 001-003 confirmed byte-identical, full pnpm -r test/lint/canaries green (db 107/107; one evals/harness CAN-03 timeout on the first parallel run was reproduced as a pre-existing flake, not a regression — passed clean standalone and in canaries twice). ONE FAILING CHECK: the migration's `ALTER TABLE ... ADD CONSTRAINT` statements (the two FK additions) are not idempotent-safe — reviewer ran up->down->up->up live and the second consecutive `up` threw `constraint "role_grants_role_id_fkey" already exists` (exit 3). The `CREATE TABLE IF NOT EXISTS` statements are correctly guarded; the two trailing `ALTER TABLE ADD CONSTRAINT` statements are not. DB state was left consistent (no data lost), but the script itself isn't safely re-runnable — an operator re-applying `up` after a partial failure, or any idempotent-apply tooling, would break. Fix: wrap each `ALTER TABLE ... ADD CONSTRAINT` in a `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` guard (or equivalent `IF NOT EXISTS`-style check against `pg_constraint`), matching the idempotency pattern already used elsewhere in this migration for the table creates. Do not touch anything else — the AC as literally written (up->down->up) already passes; this closes a real but narrower gap the AC didn't fully specify. Reset claimed->pending, resuming S5 same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** REWORK round 1 — migration ALTER TABLE ADD CONSTRAINT statements not idempotent on a repeat `up`; 8/9 other checks pass with live evidence. Precise fix specified above.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T20:17:40Z
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
