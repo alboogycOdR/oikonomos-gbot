@@ -14,6 +14,28 @@ import {
   type PreToolUseHookPort,
   type PreToolUsePortDecision,
 } from "./index.js";
+import {
+  decorateTool,
+  withApprovalScope,
+  withMandatoryCallId,
+  withToolTimeout,
+  type MountedTool,
+} from "./decorators/index.js";
+
+export {
+  currentApprovalScope,
+  decorateTool,
+  MissingToolCallIdError,
+  ToolTimeoutError,
+  withApprovalScope,
+  withMandatoryCallId,
+  withToolTimeout,
+  type ApprovalScope,
+  type MountedTool,
+  type TimerClock,
+  type ToolCallContext,
+  type ToolDecorator,
+} from "./decorators/index.js";
 import { attachMcpServersToQuery, resolveMcpServers, type McpServers } from "./mcp/index.js";
 
 export {
@@ -153,6 +175,13 @@ export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unkno
    * reads env and never logs the record (N4).
    */
   mcpServers?: McpServers;
+  /**
+   * First-party tools mounted by this composition root. Every item is wrapped
+   * with the mandatory identity, approval-scope, and timeout decorators.
+   */
+  mountedTools?: readonly MountedTool[];
+  /** Millisecond budgets keyed by mounted tool name. An omitted name has no timeout. */
+  toolTimeoutMsByName?: Readonly<Record<string, number>>;
 }
 
 export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
@@ -162,6 +191,7 @@ export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
     readonly codex?: TCodex;
     readonly grok?: TGrok;
   };
+  readonly mountedTools: readonly MountedTool[];
 }
 
 const FAIL_CLOSED_REASONS = new Set([
@@ -276,7 +306,17 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     });
   }
 
-  return { harness, broker, providers };
+  const mountedTools = (options.mountedTools ?? []).map((tool) =>
+    decorateTool(tool, [
+      withMandatoryCallId(),
+      withToolTimeout({
+        timeoutMsForTool: (toolName) => options.toolTimeoutMsByName?.[toolName],
+      }),
+      withApprovalScope({ runId: options.run.runId }),
+    ]),
+  );
+
+  return { harness, broker, providers, mountedTools };
 }
 
 function resolveBroker<TDeps>(options: ComposeOptions<TDeps>): BrokerHttpPort {
