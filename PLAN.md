@@ -2294,7 +2294,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-077
 **Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (audit dual-sink); OIK-013 (append-only); Directive §4 N4
@@ -2309,15 +2309,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] All outbound content passes through the existing redact.ts — asserted, no second redaction implementation (N4)
 - [ ] Existing audit tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-077-s5
+**Started_At:** 2026-09-01T04:06:38Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T04:06:38Z
 
 ### TASK-078
 **Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
