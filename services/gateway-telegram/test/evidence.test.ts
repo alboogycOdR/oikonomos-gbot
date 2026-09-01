@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 import { redactPayload } from "@oikonomos/audit";
 import { registerTelegramApprovals, type TelegramApprovalPort } from "../src/approvals/index.js";
 import { renderApprovalEvidence, truncateForTelegram } from "../src/evidence/index.js";
-import type { ApprovalSummary, ControlApiClient, EditedApprovalRequest, ReplacementApproval, RunEvidence } from "../src/index.js";
+import {
+  createControlApiHttpClient,
+  type ApprovalSummary,
+  type ControlApiClient,
+  type EditedApprovalRequest,
+  type ReplacementApproval,
+  type RunEvidence,
+} from "../src/index.js";
 
 const fakeApiKey = ["sk", "-PLACEHOLDER_FAKE_NOT_A_REAL_SECRET_KEY"].join("");
 
@@ -48,6 +55,17 @@ describe("Telegram approval evidence (OIK-087)", () => {
 
     expect(calls).toEqual(["run-1"]);
     expect(sent[0]).toContain("evidence://run/screenshot");
+  });
+
+  it("uses the control-api evidence endpoint with an encoded run ID", async () => {
+    const urls: string[] = [];
+    const client = createControlApiHttpClient("https://control.example.test", async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => [evidence()] };
+    });
+
+    await expect(client.getRunEvidence("run/with space")).resolves.toEqual([evidence()]);
+    expect(urls).toEqual(["https://control.example.test/runs/run%2Fwith%20space/evidence"]);
   });
 
   it("shows the draft render, recipient/body evidence, and PostToolUse artifact URIs", () => {

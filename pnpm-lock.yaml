@@ -295,6 +295,10 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(yaml@2.9.0)
 
   services/gateway-telegram:
+    dependencies:
+      '@oikonomos/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
     devDependencies:
       '@types/node':
         specifier: ^22.17.0

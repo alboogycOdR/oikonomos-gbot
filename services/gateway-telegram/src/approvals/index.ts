@@ -170,7 +170,7 @@ async function renderApprovalWithEvidence(
 ): Promise<string> {
   // Legacy/malformed test doubles may lack a run ID. The live control-api
   // contract always supplies one for an approval, and that path must fetch.
-  if (runId === undefined) return renderApprovalEvidence(actionRender, []);
+  if (runId === undefined) return actionRender;
   return renderApprovalEvidence(actionRender, await controlApi.getRunEvidence(runId));
 }
 
