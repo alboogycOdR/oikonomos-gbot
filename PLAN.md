@@ -2236,7 +2236,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-073
 **Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 5 (refusal memory); Directive §4 N3, N8
@@ -2244,13 +2244,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-067
 **Description:** **GB or CX only, NEVER S5** (protected path). Grok Bot's densest control (study: their `local-tool-permission-controller.ts`): a denied action must STAY denied for the rest of that run — a retrying agent re-asking the human is a nagging vector and a budget burn. Implement per-run refusal memory in the broker decision path: (1) a denial records `(runId, tool, sha256(canonical target))`; a repeat of the same action in the same run is auto-denied with the TASK-067 `modelGuidance` stating it was already refused and a later permission change does not authorize it — without re-parking for approval. (2) **Bounded, failing closed**: cap entries per run (512 per the reference); on eviction, mark the run saturated and auto-deny everything further in it rather than silently forgetting refusals — forgetting fails open, saturation fails closed. (3) **Grant-widening is not retroactive**: a policy/tier change to auto-allow applies only to actions initiated after the change — record the change epoch and compare. Memory is in-process per run (no schema change); note in the work log that persistence across worker restarts is deliberately out of scope (a restart re-parks, which is safe — the failure direction is re-ASKING, not re-running).
 **Acceptance_Criteria:**
-- [ ] Same (tool, target) re-attempted in one run after denial ⇒ auto-denied, no second approval request issued — tested
-- [ ] Guidance on the repeat denial states already-refused + do-not-retry (TASK-067 shape), asserted
-- [ ] Saturation: overflowing the cap denies subsequent actions in that run — fail-closed eviction tested
-- [ ] Policy widened mid-run does not resurrect a previously denied action, tested
-- [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-073-cx
+- [x] Same (tool, target) re-attempted in one run after denial ⇒ auto-denied, no second approval request issued — tested
+- [x] Guidance on the repeat denial states already-refused + do-not-retry (TASK-067 shape), asserted
+- [x] Saturation: overflowing the cap denies subsequent actions in that run — fail-closed eviction tested
+- [x] Policy widened mid-run does not resurrect a previously denied action, tested
+- [x] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-073-cx (merged, deleted)
 **Started_At:** 2026-09-01T13:31:30Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, explicitly reaffirmed. ADR-010 §6 names this task by number: refusal memory stays per-attempt/per-run, matching Grok Bot's 'deny is the answer for that attempt, not a permanent ACL' semantics (probe Q9). Addendum F §5.4 consumes it at rank 4 of the precedence order exactly as built. No change to scope; CX resumes at the mutation-proof step as already noted below. TASK-087 depends on it.
@@ -2259,7 +2259,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-01T18:00:00Z] [ORCH] BUDGET EXHAUSTION, not a tooling crash or quality issue: GB's session ended with `API error (status 402 Payment Required): Grok Build usage balance exhausted` after 22 model calls / ~1.6M tokens on this one task, mid-way through the mutation-proof step ("I'll live-mutate the consult gate to prove the test goes red, then restore it" was the last logged intent). The work itself is real and was never committed — found `refusalMemory.ts`/`refusalMemory.test.ts`/dossier sitting untracked in the worktree, matching the log's own claim of "broker tests passed (84/84)" exactly when independently re-run (84/84, including 12 new refusal-memory tests). ORCH committed the work as-is to preserve it (commit 4a0371e) rather than lose it to a future worktree refresh. NOT YET REVIEWED — this is preservation, not approval; the mutation-proof AC's completion status is unknown (may be mid-flight when the balance ran out). Redispatching GB would hit the identical 402 error immediately (account-level balance exhaustion, not resolved by retrying) — escalating to the user rather than looping.
 **Artifacts:** packages/broker/src/{refusalMemory.ts,refusalMemory.test.ts} (uncommitted work preserved, not yet reviewed)
 **Test_Evidence:** pnpm --filter @oikonomos/broker test independently re-run by ORCH: 84/84 pass (incl. 12 new refusalMemory tests) — matches the log's claim.
-**Review_Findings:** —
+**Review_Findings:** APPROVED (2026-09-01, ORCH via independent Fable-5 subagent, protected-path review). All 6 ACs verified behaviorally. Two independent live mutations: bypassing the consult gate reddened 4 tests; replacing saturation with eviction reddened 2 (fail-closed confirmed). N10 respected (actionDigest from @oikonomos/shared, no local hash). Pre-existing broker tests byte-identical; pnpm -r test/lint/canaries exit 0, broker 84/84. Non-blocking notes: `initiations` map uncapped (per-run, not fail-open); one unreachable `??` fallback; module deliberately NOT wired into PreToolUse yet — inert in production until TASK-087 lands, which must ship its own liveness assertion. Journey: GB built it, ran out of Grok budget mid-mutation-proof; ORCH preserved the uncommitted work; CX finished the proof after a worktree sync fix. Merged. Unblocks TASK-087.
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-01T13:31:30Z
