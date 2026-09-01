@@ -231,7 +231,7 @@ integration("consumeApproval against compose Postgres", () => {
         clients.map((client) =>
           client.query<{ approval_id: string }>(
             `${CONSUME_APPROVAL_SQL} RETURNING approval_id`,
-            [inserted.nonce],
+            [inserted.nonce, null, null],
           ),
         ),
       );

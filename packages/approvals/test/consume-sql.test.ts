@@ -5,8 +5,15 @@ import { fileURLToPath } from "node:url";
 import { CONSUME_APPROVAL_SQL, consumeApproval } from "@oikonomos/db";
 import { describe, expect, it } from "vitest";
 
+// vitest.config.ts discovers source tests only through loaded modules. Keep the
+// TASK-065 binding suite in the normal package test invocation without adding
+// test-only code to the production entry point.
+import "../src/binding.test.js";
+
 const PINNED_STATEMENT = `UPDATE approvals SET status='consumed', consumed_at=now()
-WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL`;
+WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL
+  AND (control_plane_generation IS NULL OR control_plane_generation=$2::uuid)
+  AND (user_context_epoch IS NULL OR user_context_epoch=$3::bigint)`;
 
 const srcDir = fileURLToPath(new URL("../src", import.meta.url));
 const testDir = fileURLToPath(new URL(".", import.meta.url));

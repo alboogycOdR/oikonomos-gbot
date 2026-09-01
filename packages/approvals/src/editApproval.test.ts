@@ -225,7 +225,13 @@ if (import.meta.vitest) {
     it("invalidates the original and issues one pending replacement bound to the edited payload", async () => {
       const store = createDatabaseStore(options);
       const runId = await insertRun();
-      const original = await issueApproval(fixtureRequest(runId), { store });
+      const original = await issueApproval(
+        fixtureRequest(runId, {
+          controlPlaneGeneration: "11111111-2222-4333-8444-555555555555",
+          userContextEpoch: 41n,
+        }),
+        { store },
+      );
       const originalRow = await loadByNonce(original.nonce);
       expect(originalRow).not.toBeNull();
 
@@ -266,6 +272,8 @@ if (import.meta.vitest) {
       expect(newRow!.runId).toBe(originalRow!.runId);
       expect(newRow!.capabilityId).toBe(originalRow!.capabilityId);
       expect(newRow!.tenantId).toBe(originalRow!.tenantId);
+      expect(newRow!.controlPlaneGeneration).toBe(originalRow!.controlPlaneGeneration);
+      expect(newRow!.userContextEpoch).toBe(originalRow!.userContextEpoch);
     });
 
     it("refuses the old nonce via decide AND consume; replacement is the only pending row", async () => {

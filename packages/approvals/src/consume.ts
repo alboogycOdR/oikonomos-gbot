@@ -2,6 +2,7 @@ import type { Approval, DatabaseOptions } from "@oikonomos/db";
 import type { ActionDigestInput } from "@oikonomos/shared";
 
 import { bindActionDigest } from "./bind.js";
+import { normalizeApprovalBinding, type ApprovalBinding } from "./binding.js";
 import { createDatabaseStore, type ApprovalStore, type ConsumeApprovalResult } from "./store.js";
 
 const UUID_RE =
@@ -55,9 +56,11 @@ export async function verifyAndConsume(
   nonce: string,
   deps: ConsumeDependencies,
   action?: ActionDigestInput,
+  binding?: ApprovalBinding,
 ): Promise<VerifyAndConsumeResult> {
   const normalizedNonce = requireUuid(nonce, "nonce");
   const store = resolveStore(deps);
+  const normalizedBinding = normalizeApprovalBinding(binding);
 
   if (action !== undefined) {
     const expectedHex = bindActionDigest(action);
@@ -70,7 +73,7 @@ export async function verifyAndConsume(
     }
   }
 
-  const result: ConsumeApprovalResult = await store.consume(normalizedNonce);
+  const result: ConsumeApprovalResult = await store.consume(normalizedNonce, normalizedBinding);
 
   if (result.rowCount === 1 && result.approval !== null) {
     if (result.approval.status !== "consumed") {

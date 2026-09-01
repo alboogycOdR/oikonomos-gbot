@@ -1,5 +1,6 @@
 export { actionDigestToBytes, bindActionDigest } from "./bind.js";
 export type { ActionDigestInput, JsonValue } from "./bind.js";
+export { normalizeApprovalBinding, type ApprovalBinding } from "./binding.js";
 export {
   verifyAndConsume,
   type ConsumeDependencies,

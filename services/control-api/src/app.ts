@@ -87,12 +87,18 @@ const EDIT_APPROVAL_SCHEMA = {
 /**
  * Approvals carry `actionDigest` as a `Buffer`; JSON.stringify on a raw
  * Buffer produces `{ type: "Buffer", data: [...] }`, which is not a
- * useful wire format. Serialize it as base64 instead.
+ * useful wire format. `bigint` values cannot be JSON-serialized at all.
+ * Serialize the digest as base64 and the optional context epoch as a decimal
+ * string instead.
  */
 function serializeApproval(approval: Approval): Record<string, unknown> {
   return {
     ...approval,
     actionDigest: Buffer.from(approval.actionDigest).toString("base64"),
+    userContextEpoch:
+      approval.userContextEpoch === null || approval.userContextEpoch === undefined
+        ? null
+        : approval.userContextEpoch.toString(),
   };
 }
 

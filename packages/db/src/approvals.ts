@@ -22,6 +22,8 @@ export interface NewApproval {
   destination: string;
   nonce?: string;
   expiresAt: Date;
+  controlPlaneGeneration?: string;
+  userContextEpoch?: bigint;
 }
 
 export interface Approval {
@@ -39,6 +41,9 @@ export interface Approval {
   decidedBy: string | null;
   decidedAt: Date | null;
   consumedAt: Date | null;
+  /** Undefined is tolerated by legacy in-memory stores; database rows return null or a value. */
+  controlPlaneGeneration?: string | null;
+  userContextEpoch?: bigint | null;
 }
 
 interface ApprovalRow extends QueryResultRow {
@@ -56,6 +61,8 @@ interface ApprovalRow extends QueryResultRow {
   decided_by: string | null;
   decided_at: Date | null;
   consumed_at: Date | null;
+  control_plane_generation: string | null;
+  user_context_epoch: bigint | string | null;
 }
 
 const UUID_RE =
@@ -63,7 +70,8 @@ const UUID_RE =
 
 const approvalColumns = `approval_id, tenant_id, run_id, capability_id, action_digest,
        action_render, destination, nonce, status, requested_at, expires_at,
-       decided_by, decided_at, consumed_at`;
+       decided_by, decided_at, consumed_at, control_plane_generation,
+       user_context_epoch`;
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -86,6 +94,23 @@ function requireExpiresAt(value: Date): Date {
     throw new Error("expiresAt must be a valid Date.");
   }
   return value;
+}
+
+/** Optional context values required to redeem a bound approval. */
+export interface ApprovalConsumeBinding {
+  controlPlaneGeneration?: string;
+  userContextEpoch?: bigint;
+}
+
+function requireOptionalUuid(value: string | undefined, field: string): string | null {
+  return value === undefined ? null : requireUuid(value, field);
+}
+
+function requireOptionalEpoch(value: bigint | undefined): bigint | null {
+  if (value !== undefined && value < 0n) {
+    throw new Error("userContextEpoch must not be negative.");
+  }
+  return value ?? null;
 }
 
 function toDigestBuffer(digest: Uint8Array): Buffer {
@@ -111,6 +136,9 @@ function toApproval(row: ApprovalRow): Approval {
     decidedBy: row.decided_by,
     decidedAt: row.decided_at,
     consumedAt: row.consumed_at,
+    controlPlaneGeneration: row.control_plane_generation,
+    userContextEpoch:
+      row.user_context_epoch === null ? null : BigInt(row.user_context_epoch),
   };
 }
 
@@ -149,12 +177,17 @@ export async function insertApproval(
   const actionDigest = toDigestBuffer(approval.actionDigest);
   const nonce =
     approval.nonce === undefined ? null : requireUuid(approval.nonce, "nonce");
+  const controlPlaneGeneration = requireOptionalUuid(
+    approval.controlPlaneGeneration,
+    "controlPlaneGeneration",
+  );
+  const userContextEpoch = requireOptionalEpoch(approval.userContextEpoch);
 
   return withPool(options, async (pool) => {
     const result = await pool.query<ApprovalRow>(
       `INSERT INTO approvals (
          tenant_id, run_id, capability_id, action_digest, action_render,
-         destination, nonce, expires_at
+         destination, nonce, expires_at, control_plane_generation, user_context_epoch
        )
        VALUES (
          COALESCE($1, 'basileia'),
@@ -164,7 +197,9 @@ export async function insertApproval(
          $5,
          $6,
          COALESCE($7::uuid, gen_random_uuid()),
-         $8
+         $8,
+         $9,
+         $10
        )
        RETURNING ${approvalColumns}`,
       [
@@ -176,6 +211,8 @@ export async function insertApproval(
         destination,
         nonce,
         expiresAt,
+        controlPlaneGeneration,
+        userContextEpoch,
       ],
     );
 
@@ -210,7 +247,9 @@ export async function getApprovalByNonce(
  * it does not change which rows match or that the write is one statement.
  */
 export const CONSUME_APPROVAL_SQL = `UPDATE approvals SET status='consumed', consumed_at=now()
-WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL`;
+WHERE nonce=$1 AND status='granted' AND expires_at>now() AND consumed_at IS NULL
+  AND (control_plane_generation IS NULL OR control_plane_generation=$2::uuid)
+  AND (user_context_epoch IS NULL OR user_context_epoch=$3::bigint)`;
 
 export interface ConsumeApprovalResult {
   readonly rowCount: 0 | 1;
@@ -225,13 +264,19 @@ export interface ConsumeApprovalResult {
 export async function consumeApproval(
   options: DatabaseOptions,
   nonce: string,
+  binding: ApprovalConsumeBinding = {},
 ): Promise<ConsumeApprovalResult> {
   const normalizedNonce = requireUuid(nonce, "nonce");
+  const controlPlaneGeneration = requireOptionalUuid(
+    binding.controlPlaneGeneration,
+    "controlPlaneGeneration",
+  );
+  const userContextEpoch = requireOptionalEpoch(binding.userContextEpoch);
 
   return withPool(options, async (pool) => {
     const result = await pool.query<ApprovalRow>(
       `${CONSUME_APPROVAL_SQL} RETURNING ${approvalColumns}`,
-      [normalizedNonce],
+      [normalizedNonce, controlPlaneGeneration, userContextEpoch],
     );
     const rowCount = result.rowCount ?? 0;
     if (rowCount === 1 && result.rows[0] !== undefined) {
