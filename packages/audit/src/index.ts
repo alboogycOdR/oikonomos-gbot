@@ -18,6 +18,42 @@ export type { AuditEvent, DatabaseOptions, NewAuditEvent, RiskTier } from "@oiko
 export { redactPayload } from "./redact.js";
 
 /**
+ * Capped persistent outbox for audit events bound to a remote/secondary
+ * sink (future dashboard push, Telegram evidence) — retains undelivered
+ * events across sink failures, drops the oldest ONLY with an explicit
+ * dropped-count marker (never silently), and backs off on `Retry-After`
+ * via an injected {@link Clock} (TASK-077). Local append-path behaviour
+ * above (`recordAuditEvent`/`recordDecision`) is unchanged and unaffected.
+ */
+export {
+  AuditOutbox,
+  RetryAfterError,
+  systemClock,
+  type AuditSink,
+  type Clock,
+  type DroppedBatch,
+  type AuditOutboxOptions,
+  type FlushOptions,
+  type FlushResult,
+} from "./outbox.js";
+
+/**
+ * Exhaustive-union audit line formatter (TASK-077) — mapping every audit
+ * action kind to its serialized line, written so a new kind fails
+ * typecheck until its format branch exists. Passes every field through
+ * {@link redactPayload}; never a second redaction implementation (N4).
+ */
+export {
+  AUDIT_ACTION_KINDS,
+  UnknownAuditActionKindError,
+  toFormattableAuditEvent,
+  formatAuditLine,
+  formatAuditEventLine,
+  type AuditActionKind,
+  type FormattableAuditEvent,
+} from "./format.js";
+
+/**
  * Thrown when a write to `audit_events` fails for any reason. The original
  * failure is preserved on `cause`.
  *

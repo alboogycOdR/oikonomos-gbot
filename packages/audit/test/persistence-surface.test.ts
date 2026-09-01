@@ -20,7 +20,21 @@ describe("packages/audit persistence surface", () => {
     }
 
     expect(exportedNames.sort()).toEqual(
-      ["AuditWriteError", "recordAuditEvent", "recordDecision", "redactPayload", "toDecisionAuditEvent"].sort(),
+      [
+        "AuditWriteError",
+        "recordAuditEvent",
+        "recordDecision",
+        "redactPayload",
+        "toDecisionAuditEvent",
+        "AuditOutbox",
+        "RetryAfterError",
+        "systemClock",
+        "AUDIT_ACTION_KINDS",
+        "UnknownAuditActionKindError",
+        "toFormattableAuditEvent",
+        "formatAuditLine",
+        "formatAuditEventLine",
+      ].sort(),
     );
   });
 
