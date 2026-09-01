@@ -2676,7 +2676,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-089
 **Title:** infra/compose — the Office: durable environment, named volumes, durability canary
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §2.1 (F1), §2.2 (F2 durability tiers + canary), §2.3 (F3 lifecycle verbs), §4.3 layer 1, §9 OIK-205; CLAUDE.md control-liveness; docs/decisions/ADR-005-control-liveness.md
@@ -2684,22 +2684,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** The persistent office computer itself. A long-lived container per tenant (one today: `basileia`), with durable state on NAMED VOLUMES rather than in the image layer: `oikonomos-workspace` mounted at `/oikonomos` (holding `workspace/` and `roles/`, tier D1) and `oikonomos-secrets` (tier D3) which **must NOT be mounted into the agent/model container at all** — that omission is N13 layer 1 and is the strongest control in this design, so it is the thing the canary must prove. Everything in the image layer is D2 and explicitly disposable. Implement the four lifecycle verbs of Addendum F §2.3 as scripts under `infra/compose/office/`: provision, rebuild, recover, restore — rebuild/recover reattach D1+D3 to a fresh image; there is **no checkpoint/resume** (probe Q3), so in-flight work is cancelled, never suspended. **Liveness assertion, mandatory and the centre of this task:** a durability canary that writes a digest-bearing marker into D1 and into D2, runs a real rebuild, and asserts the D1 marker survives with an identical digest while the D2 marker is GONE. Asserting that the compose file lists a volume is exactly the inert-control failure ADR-005 exists for and will be rejected at review. A second assertion must run from inside the model container and prove the D3 mount is absent. Do not touch `docker-compose.local.yml` or `docker-compose.prod.yml`.
 **Acceptance_Criteria:**
-- [ ] One long-lived tenant container with `oikonomos-workspace` (D1) and `oikonomos-secrets` (D3) as named volumes; D3 is mounted only into the non-model service (Addendum F §2.2 table, §4.3 layer 1)
-- [ ] provision / rebuild / recover / restore scripts exist and each states, in its own output, which durability tiers it preserves and which it discards (F3)
-- [ ] LIVENESS — DURABILITY CANARY: after a real rebuild the D1 marker is present with an identical digest AND the D2 marker is absent; both halves asserted (F2 "keyed on evidence the volume mount emits by doing its job")
-- [ ] LIVENESS — D3 ABSENCE: an assertion executed from inside the model container proves the secrets path does not exist there (N13 layer 1)
-- [ ] restore is the only verb that can lose D1 writes and says so explicitly in its output and its README section (F3)
-- [ ] `docker-compose.local.yml` and `docker-compose.prod.yml` byte-identical to master
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-089-s5
+- [x] One long-lived tenant container with `oikonomos-workspace` (D1) and `oikonomos-secrets` (D3) as named volumes; D3 is mounted only into the non-model service (Addendum F §2.2 table, §4.3 layer 1)
+- [x] provision / rebuild / recover / restore scripts exist and each states, in its own output, which durability tiers it preserves and which it discards (F3)
+- [x] LIVENESS — DURABILITY CANARY: after a real rebuild the D1 marker is present with an identical digest AND the D2 marker is absent; both halves asserted (F2 "keyed on evidence the volume mount emits by doing its job")
+- [x] LIVENESS — D3 ABSENCE: an assertion executed from inside the model container proves the secrets path does not exist there (N13 layer 1)
+- [x] restore is the only verb that can lose D1 writes and says so explicitly in its output and its README section (F3)
+- [x] `docker-compose.local.yml` and `docker-compose.prod.yml` byte-identical to master
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-089-s5 (merged, deleted)
 **Started_At:** 2026-09-02T00:45:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** infra/compose/docker-compose.office.yml, infra/compose/office/{provision,rebuild,recover,restore,snapshot,durability-canary,test-office-lifecycle}.sh, infra/compose/office/README.md, dossiers/TASK-089.md
+**Test_Evidence:** Full lifecycle drill re-run live against real Docker Desktop by the reviewer (not the builder's claim): durability canary D1 digest-match/D2-absent/D3-absent(from office-model, pre AND post rebuild) all independently reproduced; recover drill confirmed D1 survival; snapshot/restore confirmed restore is the only data-losing verb, matching its own stdout+README claim. Zero leftover containers/volumes confirmed via pre/post `docker ps -a`/`docker volume ls` diff. pnpm -r test/lint/canaries all independently re-run, exit 0, canaries 15/17.
+**Review_Findings:** APPROVED. Territory clean (2 Owned_Paths globs + dossier; docker-compose.local.yml/prod.yml diff empty; zero packages/db files touched; PLAN.md/AUTOPILOT_LOG.md/REVIEW.md untouched). D3 confirmed structurally absent from office-model's volume list in the actual YAML (not just undocumented — actually not there), mounted only into office-browser. This is a real ADR-005-compliant liveness assertion: evidence emitted by the mount doing its job (a live digest match/mismatch and a from-inside-the-container presence check), not a config-presence check — exactly the standard ADR-005 was written to enforce. Merged. **The durability substrate ADR-010's entire persistent-role model depends on is now real and independently proven live, not just specified.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T00:45:00Z
+**Updated_At:** 2026-09-02T01:15:00Z
 
 ### TASK-090
 **Title:** services/workspace — shared workspace paths, durability-tier classification, handoff mailbox
