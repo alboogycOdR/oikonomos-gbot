@@ -1,44 +1,34 @@
 import type { ConnectorManifest } from "../manifest/schema.js";
-import { riskTiers } from "../manifest/schema.js";
+
+import type {
+  EnumerateToolsOptions,
+  EnumerationReport,
+  MappedTool,
+  StaleTool,
+  ToolEnumerator,
+} from "./types.js";
 
 export const UNOBSERVABLE_ZERO_TOOLS = "UNOBSERVABLE: zero tools enumerated";
 
-/** Injected MCP surface — tests supply a fake; no live MCP in this package. */
-export interface ToolEnumerator {
-  listTools(): Promise<readonly string[]>;
-}
-
-export interface MappedTool {
-  readonly toolName: string;
-  readonly capabilityId: string;
-  readonly defaultTier: (typeof riskTiers)[number];
-}
-
-export interface StaleTool {
-  readonly toolName: string;
-  readonly capabilityId: string;
-  readonly defaultTier: (typeof riskTiers)[number];
-}
-
-/**
- * Persistable OIK-049 report. `ok` is false when any exposed tool is unmapped
- * or the enumeration is unobservable. Stale manifest entries are warnings only.
- */
-export interface EnumerationReport {
-  readonly ok: boolean;
-  readonly connectorId: string;
-  readonly generatedAt: string;
-  readonly mapped: readonly MappedTool[];
-  readonly unmapped: readonly string[];
-  readonly stale: readonly StaleTool[];
-  readonly warnings: readonly string[];
-  readonly unobservable?: "zero_tools";
-  readonly message: string;
-}
-
-export interface EnumerateToolsOptions {
-  readonly now?: () => Date;
-}
+export type {
+  EnumerateToolsOptions,
+  EnumerationReport,
+  MappedTool,
+  StaleTool,
+  ToolEnumerator,
+} from "./types.js";
+export {
+  allowedToolsFor,
+  AllowedToolsError,
+  type AllowedToolsErrorCode,
+} from "./allowedTools.js";
+export { createHttpMcpToolEnumerator, type HttpMcpEnumeratorOptions } from "./httpListTools.js";
+export {
+  isFullyQualifiedMcpName,
+  qualifyMcpToolName,
+  containsWildcard,
+  isValidMcpServerName,
+} from "./mcpNames.js";
 
 function compareName(a: string, b: string): number {
   return a.localeCompare(b);
@@ -67,6 +57,9 @@ export async function enumerateTools(
     exposedRaw = await enumerator.listTools();
   } catch (error) {
     const detail = error instanceof Error ? error.message : "listTools failed";
+    const message = detail.startsWith("listTools failed")
+      ? detail
+      : `listTools failed: ${detail}`;
     return {
       ok: false,
       connectorId,
@@ -75,7 +68,7 @@ export async function enumerateTools(
       unmapped: [],
       stale: [],
       warnings: [],
-      message: `listTools failed: ${detail}`,
+      message,
     };
   }
 
