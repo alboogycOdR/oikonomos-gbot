@@ -2,6 +2,7 @@ import type { Approval, DatabaseOptions } from "@oikonomos/db";
 import type { JsonValue } from "@oikonomos/shared";
 
 import { actionDigestToBytes, bindActionDigest } from "./bind.js";
+import { normalizeApprovalBinding, type ApprovalBinding } from "./binding.js";
 import { generateNonce } from "./nonce.js";
 import { actionRender } from "./render.js";
 import { createDatabaseStore, type ApprovalStore } from "./store.js";
@@ -20,6 +21,8 @@ export interface IssueApprovalRequest {
   readonly destination: string;
   readonly tenantId?: string;
   readonly expiresAt?: Date;
+  readonly controlPlaneGeneration?: string;
+  readonly userContextEpoch?: bigint;
 }
 
 /**
@@ -110,6 +113,10 @@ export async function issueApproval(
   const expiresAt = resolveExpiresAt(request.expiresAt);
   const tenantId =
     request.tenantId === undefined ? undefined : requireNonEmpty(request.tenantId, "tenantId");
+  const binding = normalizeApprovalBinding({
+    controlPlaneGeneration: request.controlPlaneGeneration,
+    userContextEpoch: request.userContextEpoch,
+  });
 
   const action = {
     toolName,
@@ -130,6 +137,7 @@ export async function issueApproval(
     destination,
     nonce,
     expiresAt,
+    ...binding,
   });
 
   return toWaitSignal(persisted, actionDigestHex);

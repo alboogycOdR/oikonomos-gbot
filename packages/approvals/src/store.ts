@@ -12,6 +12,8 @@ import {
   type NewApproval,
 } from "@oikonomos/db";
 
+import type { ApprovalBinding } from "./binding.js";
+
 export type { ConsumeApprovalResult };
 
 /** Optional isolation for expirePending — production sweeper stays unscoped. */
@@ -24,7 +26,7 @@ export type ExpirePendingScope = { readonly runId: string };
 export interface ApprovalStore {
   insert(approval: NewApproval): Promise<Approval>;
   getByNonce(nonce: string): Promise<Approval | null>;
-  consume(nonce: string): Promise<ConsumeApprovalResult>;
+  consume(nonce: string, binding?: ApprovalBinding): Promise<ConsumeApprovalResult>;
   invalidate(nonce: string): Promise<ConsumeApprovalResult>;
   /** Optional: TASK-064 pending→invalidated transition for approval edits. */
   invalidatePending?(nonce: string): Promise<ConsumeApprovalResult>;
@@ -319,7 +321,7 @@ export function createDatabaseStore(options: DatabaseOptions): ApprovalStore {
   return {
     insert: (approval) => insertApproval(options, approval),
     getByNonce: (nonce) => getApprovalByNonce(options, nonce),
-    consume: (nonce) => consumeApproval(options, nonce),
+    consume: (nonce, binding) => consumeApproval(options, nonce, binding),
     invalidate: (nonce) => invalidateApproval(options, nonce),
     invalidatePending: (nonce) => invalidatePendingApproval(options, nonce),
     expirePending: (scope) => expirePendingApprovals(options, scope),
