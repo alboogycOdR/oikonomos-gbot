@@ -2317,7 +2317,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-076
 **Title:** services/worker — role-keyed run serialization, lanes, routine firing, approval-aware idle
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.3, §3.4 (F7 routines), §9 OIK-209; docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
@@ -2325,28 +2325,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-055, TASK-084
 **Description:** **RESHAPED 2026-09-01 by Addendum F §6.3 — all four original properties below survive verbatim and are still correct; two things are added and one is re-keyed.** (a) **Re-key serialization from ad-hoc agent identity to `roles.role_id`** (TASK-084): the durable identity is now the thing that must not run twice concurrently. (b) **Routine firing** (Addendum F §3.4): `role_routines` rows are a source of queued tasks alongside intake; firing creates a task in the routine's lane and **does not resume anything** — there is no checkpoint/resume (probe Q3), so an interrupted run is cancelled and the next fire starts fresh, and a fire whose environment is down is recorded as `missed`, never queued for catch-up. Original scope follows unchanged. Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker). Four run-orchestration properties from the study: (1) **Per-agent serialization** — at most one active run per agent/routine identity, enforced by a promise-chain queue keyed on that identity, where one failed run does not poison the queue (their six-line `Map<agentId, Promise>` with self-deleting entries). (2) **Lanes** — `user | agent | background` priority lanes; user-initiated work preempts queued background work at dequeue time, never mid-run. (3) **Approval-aware idle** (study §Tier 2): the worker's health/idle signal distinguishes "busy running" from "busy only because every active run is parked awaiting a human approval" — the idle clock does NOT advance while merely awaiting approval, so a future drain/upgrade path can quiesce safely without cancelling human-blocked work; expose `{isBusy, busyOnlyAwaitingApproval, lastBusyAt}`. A watchdog interrupts a run exceeding a configurable wall-clock budget and records the interruption in the run's audit trail (never a silent kill). (4) **Priority interrupt, user lane protected** — added from the study's multi-agent section (docs/STUDY-grok-bot-018.md §Multi-agent coordination; verified at Grok Bot's `agent-to-agent-messaging.ts:125-140`, `scheduler.getActiveLane(agentId) === "user"` guard): a priority-flagged interrupt request for a given identity MUST preempt that identity's active `agent`- or `background`-lane run, and MUST NOT preempt an active `user`-lane run for that identity — check the active lane first, return without interrupting if it's `user`, otherwise interrupt and record `{reason, wasInFlight}` in the run's audit trail so a preempted run is distinguishable from one that finished normally. This is a request-time guard inside the SAME scheduler as (1)/(2)/(3), not a new module — do not build a separate priority-messaging feature, just the guarded-interrupt primitive the future multi-agent/OME work (WBS E10) will call. Injected clock throughout; no schema changes.
 **Acceptance_Criteria:**
-- [ ] Two runs for one `role_id` never execute concurrently; a failed run does not block the next — both tested (Addendum F §6.3 re-key)
-- [ ] A `role_routines` fire creates a task in the routine's lane, does NOT resume a cancelled run, and a fire with the environment down is recorded as `missed` rather than queued — tested (Addendum F §3.4)
-- [ ] User-lane task dequeued ahead of earlier-queued background tasks, tested
-- [ ] `busyOnlyAwaitingApproval` true and `lastBusyAt` frozen while the only active run is parked on approval, tested
-- [ ] Watchdog interruption reaches the run's audit trail, tested
-- [ ] A priority interrupt request against an identity in the `agent` or `background` lane preempts its active run and records `{reason, wasInFlight}` in the audit trail — tested
-- [ ] The SAME priority interrupt request against an identity in the `user` lane is a no-op — the active run continues untouched, tested
-- [ ] MUTATION-PROVEN: removing the serialization queue turns a concurrency test RED; removing the user-lane guard turns the no-op test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-076-cx
+- [x] Two runs for one `role_id` never execute concurrently; a failed run does not block the next — both tested (Addendum F §6.3 re-key)
+- [x] A `role_routines` fire creates a task in the routine's lane, does NOT resume a cancelled run, and a fire with the environment down is recorded as `missed` rather than queued — tested (Addendum F §3.4)
+- [x] User-lane task dequeued ahead of earlier-queued background tasks, tested
+- [x] `busyOnlyAwaitingApproval` true and `lastBusyAt` frozen while the only active run is parked on approval, tested
+- [x] Watchdog interruption reaches the run's audit trail, tested
+- [x] A priority interrupt request against an identity in the `agent` or `background` lane preempts its active run and records `{reason, wasInFlight}` in the audit trail — tested
+- [x] The SAME priority interrupt request against an identity in the `user` lane is a no-op — the active run continues untouched, tested
+- [x] MUTATION-PROVEN: removing the serialization queue turns a concurrency test RED; removing the user-lane guard turns the no-op test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-076-cx (merged, deleted)
 **Started_At:** 2026-09-02T00:55:00Z
 **Progress_Notes:**
 - [2026-09-02T00:55:00Z] [ORCH] Dependencies (TASK-055, TASK-084) both done; claiming and dispatching to CX per the reassignment note below.
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: RESHAPE, not superseded (title, spec refs, priority, Depends_On, description and two acceptance criteria updated above, 2026-09-01). ADR-010 §4 flagged this task as possibly reshaped by the pivot; Addendum F §6.3 finds all four original scheduler properties still correct, so the change is additive: serialization re-keyed to roles.role_id (TASK-084) and routine firing added (Addendum F §3.4). Priority raised low->high because the persistent-role model needs a scheduler that knows about roles. Owned_Paths unchanged; CX keeps single-owner worker territory.
 - [2026-09-01T19:00:00Z] [ORCH] REASSIGNED GB->CX (Alister's decision: Grok's weekly limit is reached, GB deactivated in autopilot.json, Codex is the only remaining protected-path-eligible builder). This knowingly overrides the single-owner note below — the rule's purpose was worker-territory continuity with TASK-055; CX now inherits that ownership going forward, and CX must still never share worker files with any other unit.
 - [2026-09-01T18:05:00Z] [ORCH] Considered reassigning to S5 (GB is budget-exhausted, see TASK-073) but reverted — this task's own description explicitly states "Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker)," a deliberate architectural-continuity rule, not a default. Staying GB-assigned; will not dispatch until GB's account balance is restored.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/scheduler/scheduler.ts, services/worker/test/scheduler.test.ts, dossiers/TASK-076.md
+**Test_Evidence:** worker scheduler 6/6, worker package 26/31 (5 DB-gated skips). Full pnpm -r test/lint/canaries independently re-run, exit 0. Both mutation proofs (serialization guard, user-lane short-circuit) reproduced independently by the reviewer.
+**Review_Findings:** APPROVED. Territory clean (2 files + dossier; no schema changes, no other package touched). All 7 ACs verified true directly: per-role_id serialization with non-poisoning failure cleanup, routine firing has zero checkpoint/resume machinery and correctly distinguishes missed-vs-queued, user-lane dequeue ordering, busyOnlyAwaitingApproval/lastBusyAt freeze verified with a fake clock, watchdog audits before any kill (never silent), priority interrupt checks the active lane FIRST so a user-lane run short-circuits before any abort call. MUTATION-PROVEN reproduced independently: removing the serialization guard and the user-lane short-circuit each reddened their respective test, both restored clean. Injected-clock convention confirmed used exclusively (zero raw Date.now()/new Date() in scheduler.ts). One informational flag (not rework): wt-codex worktree's services/workspace tests failed on a stale pg/@oikonomos symlink gap unrelated to this diff — fixed by ORCH post-merge (`pnpm install --frozen-lockfile` in wt-codex). Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T00:55:00Z
+**Updated_At:** 2026-09-02T01:20:00Z
 
 ### TASK-077
 **Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
