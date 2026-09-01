@@ -2175,7 +2175,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-071
 **Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
@@ -2190,15 +2190,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing harness-factory tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-071-cx
-**Started_At:** 2026-09-01T12:11:49Z
+**Started_At:** 2026-09-01T12:33:51Z
 **Progress_Notes:**
 - [2026-09-01T16:30:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT, verified against source, first gap for this task). Real gap: AC4 and the task's own description both explicitly require "composeHarness applies the chain to every mounted tool," but `packages/harness-factory/src/compose.ts` — the actual composition entry point (confirmed by reading it: it's where tool mounting happens) — was omitted from Owned_Paths. Widened to include it. No live conflict: TASK-055 (this task's only dependency) is done and merged; nothing else active touches compose.ts. Reset claimed->pending, resuming CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T16:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T12:33:51Z
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
