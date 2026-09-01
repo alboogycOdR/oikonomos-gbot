@@ -1,0 +1,6 @@
+# TASK-076 Dossier
+
+## Work Log
+
+- [2026-09-02T01:00:00Z] [CX] Resumed on `task/TASK-076-cx`; preflight output: `services/worker/src/scheduler/**` matched nothing (new territory), and `services/worker/test/scheduler.test.ts` is new with its parent test directory present. Implemented the initial role scheduler and focused test suite; next: typecheck and run scheduler tests, then correct any failures before full workspace gates.
+- [2026-09-02T01:30:00Z] [CX] Completed `RoleScheduler` and `fireRoutine`: role-keyed serialization, lane priority, approval-aware health, watchdog and guarded priority interruption, plus D0 routine-task/missed-fire ports. Focused worker suite: 29 passed, 1 DB-gated skip; typecheck passed. Live mutations proved liveness: removing the role-active queue guard reddened the serialization test; removing the user-lane guard reddened the no-op interrupt test; both restored. Full `pnpm -r test`, `pnpm lint`, and `pnpm canaries` exited 0. File-level diff contains only `services/worker/src/scheduler/scheduler.ts`, `services/worker/test/scheduler.test.ts`, and this dossier; no hook, decorator, fail-closed mapping, or permission-mode files were changed.
