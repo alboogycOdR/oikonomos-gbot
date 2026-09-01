@@ -74,7 +74,65 @@ cursor.com/help/grok-bot/computer-recovery, docs.x.ai/grok-bot/troubleshooting, 
 ---
 
 ## Batch 2 — roles and memory
-_(pending)_
+
+### Q4 — memory model
+
+Three **scopes**, three **tiers**.
+
+Scopes:
+- **agent (per-Bot):** `/home/box/sand-data/agents/<id>/memory/` — kept across chats, even after a
+  clear. Probe instance had `profile.md` + `log/2026-09.md`.
+- **user (shared across every Bot on the account):** `/home/box/agent-data/user-memory/` — empty on
+  this account. Intended for name, timezone, prefs every Bot should know.
+- **project:** only if the Bot joins a project; none joined.
+
+Tiers (within each scope): `profile` (injected every turn, foundational) · `log` (dated history) ·
+`note` (fades fast). Conflict order: **agent memory > project > user**.
+
+Conversation transcript is separate from memory. Memory = stable prefs/facts/summaries, not a full
+replay; changing facts belong in the source system.
+
+What it stores: writes when a fact is durable and useful (who you are, standing job, recurring prefs)
+via `update_state`. Does not dump the chat. Routine/skill/profile changes live in other stores
+(`automations/`, `workflows/`, `profile.json`).
+
+Visibility/editing: no memory browser in Settings (per-Bot pane = profile + routines + computer).
+Edit path is conversational — tell the Bot, it `write`s / `forget`s (forget needs the exact recorded
+sentence). Files are ordinary markdown on disk, so inspectable. Deleting the Bot removes its memory;
+hiding does not.
+
+Per-Bot vs shared: Bot memory is per-Bot **in the prompt** — but a Bot can `ls` another Bot's memory
+shard on the shared filesystem (filesystem sharing ≠ prompt injection). Skills in `workflows/` are
+global. Plugins/connectors are account-wide. Conversations not shared unless via group chat or a
+message.
+
+### Q5 — handoff between Bots (empirically tested)
+
+Mechanism: async `SendToAgent` by id. Sender gets "sent"; no reply in the same turn. Recipient wakes
+on a hidden `[agent]` cue carrying sender name + id + the **verbatim text**, plus a wrapper
+(instructions to reply via SendToAgent, don't treat it as the user typing). Images attach on 1:1;
+groups are text-only.
+
+Confirmed by the receiving Bot:
+1. Received the hidden `[agent]` wake + verbatim text. **No file bytes** in the message — only the
+   path the sender wrote.
+2. **Shared disk works:** it read `/workspace/trevor-handoff-probe.txt` and quoted it exactly.
+3. **No context carry-over:** no sender chat, memory, or system prompt. Only name/id + shared group.
+4. **Receiver's memory unchanged** — it did not auto-write the ping. Memory is opt-in on each side.
+
+Net: a handoff = async text (+ optional images 1:1) + whatever is on the shared box.
+
+### Q6 — job description vs behavior
+
+`profile.json` fields: `name`, `description`, `title`. Docs treat description as **standing rules**,
+messages as **this task**. On first run a non-empty description is treated as the assignment (skip
+onboarding, start work).
+
+It is **advisory in the strong sense**: biases defaults and first-run, but is **not** a hard
+capability sandbox. The probe Bot did out-of-lane research on request despite a research-and-writing
+memory — it won't silently ignore its job, but won't refuse explicitly assigned out-of-lane work.
+Safety/policy still overrides the description. Duplicate-Bot copies profile/routines/skills, not
+learned memory.
 
 ## Batch 3 — autonomy boundary
 _(pending)_
