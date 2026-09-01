@@ -2041,7 +2041,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-066
 **Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 4 and 6; ADR-001; ADR-005 (liveness); Build Handover §4.2 (unregistered ⇒ deny)
@@ -2055,15 +2055,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing L1 decision path unchanged — existing broker tests byte-identical and green
 - [ ] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-066-gb
+**Started_At:** 2026-09-01T12:12:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T12:12:01Z
 
 ### TASK-067
 **Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
