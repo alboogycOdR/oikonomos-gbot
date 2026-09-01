@@ -2782,7 +2782,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-093
 **Title:** packages/broker — wire secretPathGuard into the real PreToolUse decision path ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13); docs/decisions/ADR-010 §6 (stricter than Grok Bot on browser-session credentials); TASK-088's Review_Findings (this task is TASK-088's own recommended follow-up, same relationship as TASK-087 was to TASK-073)
@@ -2796,12 +2796,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Broker unreachable/timeout/malformed still denies via the EXISTING fail-closed map — unchanged code path, not duplicated (ADR-001)
 - [ ] TASK-087's six-rank resolver wiring and TASK-073's refusal-memory consult are unchanged in behavior — full existing broker test suite green with zero modifications to pre-existing tests
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-093-cx
+**Started_At:** 2026-09-02T00:15:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T00:10:00Z
+**Updated_At:** 2026-09-02T00:15:00Z
