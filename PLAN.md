@@ -2530,7 +2530,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-084
 **Title:** packages/db + migration 004 — role identity, routines, messages, require-approval rules (D0 schema)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.1 (F4 roles table), §3.4 (F7 role_routines), §3.5 (F8 role_messages), §5.4 (F15 require_approval_rules), §9 OIK-200; docs/decisions/ADR-010 §2.2
@@ -2546,15 +2546,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `profile_facts`, the `risk_tier` enum, and migrations 001–003 are byte-identical to master — asserted by diff in the work log
 - [ ] LIVENESS: a test asserts no exported db helper reads `roles.description` in an authorization path — N12 (a source-level assertion is acceptable here and must fail if such a read is added)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-084-s5
+**Started_At:** 2026-09-01T19:44:59Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T19:44:59Z
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
