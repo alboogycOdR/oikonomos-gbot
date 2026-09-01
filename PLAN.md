@@ -2228,8 +2228,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-073
 **Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
-**Status:** blocked
-**Assigned_To:** GB
+**Status:** in_progress
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 5 (refusal memory); Directive §4 N3, N8
 **Owned_Paths:** packages/broker/src/refusalMemory.ts, packages/broker/src/refusalMemory.test.ts
@@ -2242,14 +2242,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Policy widened mid-run does not resurrect a previously denied action, tested
 - [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-073-gb
+**Branch:** task/TASK-073-cx (renamed from -gb on reassignment; carries preserved commit 4a0371e)
 **Started_At:** 2026-09-01T13:31:30Z
 **Progress_Notes:**
 - [2026-09-01T18:00:00Z] [ORCH] BUDGET EXHAUSTION, not a tooling crash or quality issue: GB's session ended with `API error (status 402 Payment Required): Grok Build usage balance exhausted` after 22 model calls / ~1.6M tokens on this one task, mid-way through the mutation-proof step ("I'll live-mutate the consult gate to prove the test goes red, then restore it" was the last logged intent). The work itself is real and was never committed — found `refusalMemory.ts`/`refusalMemory.test.ts`/dossier sitting untracked in the worktree, matching the log's own claim of "broker tests passed (84/84)" exactly when independently re-run (84/84, including 12 new refusal-memory tests). ORCH committed the work as-is to preserve it (commit 4a0371e) rather than lose it to a future worktree refresh. NOT YET REVIEWED — this is preservation, not approval; the mutation-proof AC's completion status is unknown (may be mid-flight when the balance ran out). Redispatching GB would hit the identical 402 error immediately (account-level balance exhaustion, not resolved by retrying) — escalating to the user rather than looping.
 **Artifacts:** packages/broker/src/{refusalMemory.ts,refusalMemory.test.ts} (uncommitted work preserved, not yet reviewed)
 **Test_Evidence:** pnpm --filter @oikonomos/broker test independently re-run by ORCH: 84/84 pass (incl. 12 new refusalMemory tests) — matches the log's claim.
 **Review_Findings:** —
-**Blocked_Reason:** OTHER: GB (Grok Build) usage balance exhausted mid-session, 402 Payment Required. Redispatch will hit the same error until the account is topped up.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-01T13:31:30Z
 
@@ -2307,7 +2307,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-076
 **Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
 **Owned_Paths:** services/worker/src/scheduler/**, services/worker/test/scheduler.test.ts
@@ -2325,6 +2325,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-01T19:00:00Z] [ORCH] REASSIGNED GB->CX (Alister's decision: Grok's weekly limit is reached, GB deactivated in autopilot.json, Codex is the only remaining protected-path-eligible builder). This knowingly overrides the single-owner note below — the rule's purpose was worker-territory continuity with TASK-055; CX now inherits that ownership going forward, and CX must still never share worker files with any other unit.
 - [2026-09-01T18:05:00Z] [ORCH] Considered reassigning to S5 (GB is budget-exhausted, see TASK-073) but reverted — this task's own description explicitly states "Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker)," a deliberate architectural-continuity rule, not a default. Staying GB-assigned; will not dispatch until GB's account balance is restored.
 **Artifacts:** —
 **Test_Evidence:** —

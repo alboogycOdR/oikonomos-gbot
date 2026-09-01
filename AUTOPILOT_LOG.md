@@ -69,3 +69,4 @@ WHAT'S NEEDED TO CONTINUE:
 - (Separately, still open) a one-time browser OAuth consent for OIKONOMOS's own Gmail client to close TASK-083's deferred AC.
 
 Stopping the loop here. No further wakeup scheduled.
+- 2026-09-01T19:00Z [ORCH] Alister: Grok weekly limit reached — GB deactivated in autopilot.json (active: CX, S5). TASK-073 and TASK-076 reassigned GB->CX (073's branch renamed task/TASK-073-cx, still carrying the preserved refusal-memory commit; 073 set in_progress for CX to finish the mutation-proof step). TASK-076's single-owner note knowingly overridden — CX inherits worker continuity. Launching ADR-010 decompose pass headless on claude-opus-5.

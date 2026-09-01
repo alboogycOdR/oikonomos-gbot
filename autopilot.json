@@ -12,7 +12,6 @@
   "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version \u2014 verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
   "builders": {
     "active": [
-      "GB",
       "CX",
       "S5"
     ],
@@ -28,7 +27,8 @@
         "branch_suffix": "gb",
         "briefing": "briefings/GROK_BUILD_BRIEFING.md",
         "auto_loads_ambient_context": false,
-        "usage_provider": null
+        "usage_provider": null,
+        "_deactivated_note": "2026-09-01 (ORCH, Alister): Grok Build weekly usage limit reached; GB deactivated. CX (Codex) is the sole protected-path builder until re-enabled."
       },
       "CX": {
         "cli": "codex",
