@@ -14,6 +14,7 @@ const input = (overrides: Partial<ResolveEnforcementInput> = {}): ResolveEnforce
   target: { destination: "operator@example.test" },
   actionClasses: [],
   requireApprovalRules: [],
+  alwaysAllow: true,
   refusalMemoryHit: false,
   roleGrantCeilingExceeded: false,
   ...overrides,
@@ -84,7 +85,7 @@ describe("resolveEnforcement", () => {
     ).toMatchObject({ rank: 2 });
   });
 
-  it("promotes a normally autonomous action when Require Approval matches", () => {
+  it("makes Require Approval beat an Always Allow rule", () => {
     expect(
       resolveEnforcement(
         input({

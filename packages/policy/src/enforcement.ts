@@ -41,6 +41,11 @@ export interface ResolveEnforcementInput {
   /** Caller-derived classification from the capability declaration/manifest. */
   readonly actionClasses: readonly EnforcedActionClass[];
   readonly requireApprovalRules: readonly RequireApprovalRule[];
+  /**
+   * Existing permissive policy input. It is deliberately not consulted:
+   * Require Approval and the fixed floor always win over an allow rule.
+   */
+  readonly alwaysAllow: boolean;
   /** TASK-073's per-run, per-attempt result, passed through without mutation. */
   readonly refusalMemoryHit: boolean;
   /** Caller-derived result of comparing the resolved tier with the role ceiling. */
@@ -50,6 +55,7 @@ export interface ResolveEnforcementInput {
 /**
  * Resolves Addendum F §5.4's six-rank total order. Tiers are deliberately not
  * an input: tier remains a risk statement, not an approval switch (F12).
+ * `alwaysAllow` is likewise intentionally absent from the rank checks.
  */
 export function resolveEnforcement(input: ResolveEnforcementInput): EnforcementResolution {
   if (
