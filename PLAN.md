@@ -2175,11 +2175,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-071
 **Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
-**Owned_Paths:** packages/harness-factory/src/decorators/**, packages/harness-factory/test/decorators.test.ts
+**Owned_Paths:** packages/harness-factory/src/decorators/**, packages/harness-factory/test/decorators.test.ts, packages/harness-factory/src/compose.ts
 **Depends_On:** TASK-055
 **Description:** **GB or CX only, NEVER S5** (protected path). Port Grok Bot's `turn-toolset.ts` decorator chain (study §Tier 2) as the harness-factory's enforcement seam, so per-call obligations are structural rather than per-tool discipline: (1) `withApprovalScope` — binds `{runId, toolCallId, approvalNonce?}` into the call context (AsyncLocalStorage, not a threaded parameter, so nested/indirect calls inherit it and a tool cannot "forget" to pass it) and retires/releases the scope in a `finally` — **unconditionally, including on throw** — which is where single-use approval hygiene lives on the client side (the atomic SQL consume in packages/approvals remains the enforcement point, N8; state that layering in the work log). (2) `withToolTimeout` — per-tool-name budget via race, timer always cleared. (3) `withMandatoryCallId` — a tool invocation with no bound toolCallId THROWS (their `withRecordedToolCallNames`): call identity is mandatory for the audit trail, never best-effort. Decorators compose over the existing tool shape; composeHarness applies them to every mounted tool — a tool reaching the model undecorated must be impossible by construction, asserted. Additive; existing harness-factory tests byte-identical.
 **Acceptance_Criteria:**
@@ -2191,13 +2191,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-071-cx
 **Started_At:** 2026-09-01T12:11:49Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T16:30:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT, verified against source, first gap for this task). Real gap: AC4 and the task's own description both explicitly require "composeHarness applies the chain to every mounted tool," but `packages/harness-factory/src/compose.ts` — the actual composition entry point (confirmed by reading it: it's where tool mounting happens) — was omitted from Owned_Paths. Widened to include it. No live conflict: TASK-055 (this task's only dependency) is done and merged; nothing else active touches compose.ts. Reset claimed->pending, resuming CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T12:11:49Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T16:30:00Z
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
