@@ -1978,7 +1978,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-065
 **Title:** packages/approvals — bind approvals to process generation + user-context epoch (restart/redirect invalidation) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 1; Directive §4 N8; OIK-022/OIK-023; docs/decisions/ADR-004-approval-render-provenance.md
@@ -1992,15 +1992,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Consume remains ONE atomic statement — MUTATION-PROVEN: dropping the generation guard turns a test RED
 - [ ] DB-gated integration legs actually RUN green locally and are recorded in Test_Evidence (TASK-044/061/064 precedent)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-065-cx
+**Started_At:** 2026-09-01T04:06:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T04:06:11Z
 
 ### TASK-066
 **Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
