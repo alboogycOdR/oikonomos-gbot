@@ -153,3 +153,6 @@ Stopping the loop here. No further wakeup scheduled.
 ## 2026-09-02T01:30Z — post-TASK-089/076-merge gate re-verification
 - Independent subagent re-ran all 5 gates on master: frozen-lockfile clean, build 16/16, test 1004 passed/5 skipped/0 failed across 157 files, lint clean, canaries 17/17 (CAN-01..09). Confirms both merges landed clean with no cross-package regression.
 - Same benign gateway-telegram session-store JSON parse warning recurred (3rd time seen this session, always non-fatal) — carrying forward to the morning summary as a "worth a look, not blocking" item rather than re-logging each occurrence.
+
+## 2026-09-02T01:35Z — TASK-092 needs_review
+- TASK-092 (S5, packages/connectors durable session pool): ConnectorSessionPool implemented per builder — keyed by (tenant, connector) never role, mints on first acquire, transparent re-mint on expiry, release is a lease-decrement not a teardown, opaque handle (sessionId/tenantId/connectorId/mcpServers only). manifest/enumeration/discovery-cache/mcp untouched per builder. connectors sessions 8/8, typecheck clean, full pnpm -r test green. Independent review dispatched — security-sensitive despite not being formally protected (N4 credential-leak checks, tenant-vs-role scoping is the core property ADR-010's "signed in once, available thereafter" story depends on).
