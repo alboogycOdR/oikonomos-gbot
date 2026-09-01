@@ -8,6 +8,9 @@ import { type DecisionAuditEvent } from "@oikonomos/audit";
 import {
   resolveCapabilityTier,
   riskTiers,
+  type EnforcedActionClass,
+  type RequireApprovalRule,
+  type TargetValue,
   type CapabilityTier,
   type RiskTier,
 } from "@oikonomos/policy";
@@ -17,6 +20,8 @@ import {
   recheckAgainstManifest,
   type ManifestMap,
 } from "./recheck.js";
+import { resolveEnforcementGate } from "./enforcementGate.js";
+import { RefusalMemory } from "./refusalMemory.js";
 
 export const workspaceName = "broker";
 
@@ -54,6 +59,10 @@ export type PreToolUseResponse =
 
 export interface RegisteredCapability extends CapabilityTier {
   capabilityId: string;
+  /** Enables Addendum F enforcement for capabilities migrated to its map. */
+  enforcementEnabled?: boolean;
+  /** Fixed-floor classifications declared by the capability/manifest. */
+  enforcedActionClasses?: readonly EnforcedActionClass[];
 }
 
 /**
@@ -70,6 +79,10 @@ export interface BrokerDependencies {
   isCapabilitiesEnabled(): boolean | Promise<boolean>;
   getCapability(toolName: string): Promise<RegisteredCapability | null>;
   getRoleGrant(roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null>;
+  /** Persisted role/tenant rules, supplied by the OIK-200 query layer. */
+  getRequireApprovalRules?(request: PreToolUseRequest): Promise<readonly RequireApprovalRule[]>;
+  /** Per-run memory from TASK-073; a default is retained per composition. */
+  refusalMemory?: RefusalMemory;
   destinationFor(request: PreToolUseRequest): string;
   /** Real @oikonomos/approvals ports; do not substitute a locally-shaped API. */
   issueApproval: typeof issueApproval;
@@ -130,6 +143,17 @@ interface ReplayEntry {
  * expire after the ADR-007 L1-to-L3 replay window, and use safe LRU eviction.
  */
 const replayCaches = new WeakMap<BrokerDependencies, Map<string, ReplayEntry>>();
+const refusalMemories = new WeakMap<BrokerDependencies, RefusalMemory>();
+
+function refusalMemoryFor(dependencies: BrokerDependencies): RefusalMemory {
+  if (dependencies.refusalMemory !== undefined) return dependencies.refusalMemory;
+  let memory = refusalMemories.get(dependencies);
+  if (memory === undefined) {
+    memory = new RefusalMemory();
+    refusalMemories.set(dependencies, memory);
+  }
+  return memory;
+}
 
 function tierRank(tier: RiskTier): number {
   return riskTiers.indexOf(tier);
@@ -336,17 +360,6 @@ async function decidePreToolUse(
   if (!isRoleGrant(roleGrant)) {
     return deny(dependencies, request, "broker.malformed_response", capability.capabilityId, capability.defaultTier);
   }
-  // ADR-003: max_tier is a ceiling, not policy's floor-shaped override.
-  if (exceedsCeiling(capability.defaultTier, roleGrant.maxTier)) {
-    return deny(
-      dependencies,
-      request,
-      "role.tier_ceiling",
-      capability.capabilityId,
-      capability.defaultTier,
-    );
-  }
-
   const resolution = resolveCapabilityTier({
     toolName: request.toolName,
     capabilities: [capability],
@@ -356,15 +369,71 @@ async function decidePreToolUse(
   }
 
   const { tier } = resolution;
-  if (tier === "T4_irreversible") {
-    return deny(dependencies, request, "tier.irreversible", capability.capabilityId, tier);
-  }
-  if (tierRank(tier) < tierRank(APPROVAL_TIER)) {
+  // Legacy capability declarations have no enforcement classification yet.
+  // Preserve their established L1 behaviour until their registry entry opts
+  // into the Addendum F map; migrated entries always use the gate below.
+  if (capability.enforcementEnabled !== true) {
+    if (exceedsCeiling(capability.defaultTier, roleGrant.maxTier)) {
+      return deny(
+        dependencies,
+        request,
+        "role.tier_ceiling",
+        capability.capabilityId,
+        capability.defaultTier,
+      );
+    }
+    if (tier === "T4_irreversible") {
+      return deny(dependencies, request, "tier.irreversible", capability.capabilityId, tier);
+    }
+    if (tierRank(tier) < tierRank(APPROVAL_TIER)) {
+      return {
+        decision: "allow",
+        tier,
+        auditEventId: await audit(dependencies, request, {
+          verdict: "allow",
+          capability: capability.capabilityId,
+          tier,
+        }),
+      };
+    }
+    const destination = dependencies.destinationFor(request);
+    const action = actionFor(request, destination);
+    if (request.approvalNonce !== undefined) {
+      const consumed = await dependencies.verifyAndConsume(
+        request.approvalNonce,
+        dependencies.consumeDependencies,
+        action,
+      );
+      if (consumed.consumed) {
+        return {
+          decision: "allow",
+          tier,
+          auditEventId: await audit(dependencies, request, {
+            verdict: "allow",
+            capability: capability.capabilityId,
+            tier,
+          }),
+        };
+      }
+      return deny(dependencies, request, "approval.not_granted", capability.capabilityId, tier);
+    }
+    const pending = await dependencies.issueApproval(
+      {
+        runId: request.runId,
+        capabilityId: capability.capabilityId,
+        toolName: action.toolName,
+        input: action.input,
+        destination: action.destination,
+        tenantId: request.tenantId,
+      },
+      dependencies.issueApprovalDependencies,
+    );
     return {
-      decision: "allow",
-      tier,
+      decision: "deny",
+      reason: "approval_pending",
+      approvalId: pending.approvalId,
       auditEventId: await audit(dependencies, request, {
-        verdict: "allow",
+        verdict: "require_approval",
         capability: capability.capabilityId,
         tier,
       }),
@@ -373,6 +442,68 @@ async function decidePreToolUse(
 
   const destination = dependencies.destinationFor(request);
   const action = actionFor(request, destination);
+  const remembered = (dependencies.refusalMemory ?? refusalMemoryFor(dependencies)).consult({
+    runId: request.runId,
+    tool: request.toolName,
+    // TASK-073 keys the declared action target, not the approval's derived
+    // action object. Keep this identity byte-for-byte aligned with callers
+    // that recorded the original request before a later grant widening.
+    target: request.input as JsonValue,
+  });
+  // TASK-073 is consulted before an approval can be re-issued. This preserves
+  // its per-run "do not re-ask" contract even when the original action is a
+  // fixed-floor class that would otherwise park again at rank 2.
+  if (remembered.decision === "deny") {
+    return deny(dependencies, request, remembered.code, capability.capabilityId, tier);
+  }
+  const enforcement = resolveEnforcementGate({
+    capabilityId: capability.capabilityId,
+    target: request.input as Readonly<Record<string, TargetValue>>,
+    actionClasses: capability.enforcedActionClasses ?? [],
+    requireApprovalRules: await dependencies.getRequireApprovalRules?.(request) ?? [],
+    refusalMemoryHit: false,
+    // ADR-003's ceiling remains a restriction; it is now rank 5, not a deny.
+    roleGrantCeilingExceeded: exceedsCeiling(capability.defaultTier, roleGrant.maxTier),
+  });
+
+  if (enforcement.enforcementClass === "denied") {
+    return deny(dependencies, request, "refusal.abandoned", capability.capabilityId, tier);
+  }
+
+  if (enforcement.enforcementClass === "autonomous") {
+    return {
+      decision: "allow",
+      tier,
+      auditEventId: await audit(dependencies, request, {
+        verdict: "allow",
+        capability: capability.capabilityId,
+        tier,
+        payload: {
+          enforcementClass: enforcement.enforcementClass,
+          enforcementRank: enforcement.rank,
+        },
+      }),
+    };
+  }
+
+  if (capability.enforcedActionClasses?.includes("E2_auth_security_friction") === true) {
+    return {
+      decision: "deny",
+      reason: "human.takeover",
+      auditEventId: await audit(dependencies, request, {
+        verdict: "deny",
+        reason: "human.takeover",
+        capability: capability.capabilityId,
+        tier,
+        payload: {
+          enforcementClass: enforcement.enforcementClass,
+          enforcementRank: enforcement.rank,
+          takeover: true,
+        },
+      }),
+    };
+  }
+
   if (request.approvalNonce !== undefined) {
     const consumed = await dependencies.verifyAndConsume(
       request.approvalNonce,
@@ -387,6 +518,10 @@ async function decidePreToolUse(
           verdict: "allow",
           capability: capability.capabilityId,
           tier,
+          payload: {
+            enforcementClass: enforcement.enforcementClass,
+            enforcementRank: enforcement.rank,
+          },
         }),
       };
     }
@@ -413,6 +548,10 @@ async function decidePreToolUse(
       verdict: "require_approval",
       capability: capability.capabilityId,
       tier,
+      payload: {
+        enforcementClass: enforcement.enforcementClass,
+        enforcementRank: enforcement.rank,
+      },
     }),
   };
   } catch (error) {
