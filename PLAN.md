@@ -2702,7 +2702,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-090
 **Title:** services/workspace — shared workspace paths, durability-tier classification, handoff mailbox
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.1 (F9), §2.2 (tier classification), §3.5 (F8 handoff), §9 OIK-206; docs/research/grok-bot-live-probe-2026-09-01.md Q5
@@ -2710,22 +2710,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-084
 **Description:** `services/workspace` is a 13-line stub and becomes the single place that understands the Office filesystem. Three responsibilities. (1) **Path resolution** — resolve and normalise a workspace path against `/oikonomos/workspace` (shared) or `/oikonomos/roles/<role_id>` (convention only, NOT a boundary — a role may read another role's directory, and the API must not pretend otherwise, F9); reject any path escaping the workspace root after symlink and parent-segment normalisation. (2) **Durability-tier classification** — every path is classified D1/D2/D3 per Addendum F §2.2, so a caller writing to D2 can be told mechanically that the write will not survive a rebuild (N14). A D3 classification is an immediate refusal here as well as at the broker; defence in depth, not a substitute for TASK-088. (3) **Handoff mailbox** — the `send_to_role` primitive over TASK-084's `role_messages`: async (sender gets an acknowledgement, never a reply in the same turn), verbatim text plus sender identity, **workspace paths not file bytes** (probe Q5 confirmed the receiver reads the shared file itself), zero context carry-over, and NO implicit memory write on either side. State in the module docblock that a handoff carries no privilege: the receiving role acts under its own grants (F8, R13).
 **Acceptance_Criteria:**
-- [ ] Path resolution rejects traversal outside the workspace root including via symlink and encoded separators, tested
-- [ ] Every resolved path returns a durability tier; a D2 write is flagged non-durable to the caller and a D3 path is refused, tested (N14, F2)
-- [ ] Role directories are readable across roles — a test asserts role A CAN read role B's directory, documenting that this is intended and roles are not a boundary (F9)
-- [ ] `send_to_role` is async: the call returns an acknowledgement and no reply, and the message carries text + sender identity + workspace refs but no file bytes, tested (probe Q5 items 1–2)
-- [ ] Delivery writes nothing to either role's memory and carries no sender context, tested (probe Q5 items 3–4)
-- [ ] LIVENESS: removing the traversal guard turns an escape test RED; removing the tier classifier turns the non-durable-write test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-090-s5
+- [x] Path resolution rejects traversal outside the workspace root including via symlink and encoded separators, tested
+- [x] Every resolved path returns a durability tier; a D2 write is flagged non-durable to the caller and a D3 path is refused, tested (N14, F2)
+- [x] Role directories are readable across roles — a test asserts role A CAN read role B's directory, documenting that this is intended and roles are not a boundary (F9)
+- [x] `send_to_role` is async: the call returns an acknowledgement and no reply, and the message carries text + sender identity + workspace refs but no file bytes, tested (probe Q5 items 1–2)
+- [x] Delivery writes nothing to either role's memory and carries no sender context, tested (probe Q5 items 3–4)
+- [x] LIVENESS: removing the traversal guard turns an escape test RED; removing the tier classifier turns the non-durable-write test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-090-s5 (merged, deleted)
 **Started_At:** 2026-09-01T23:55:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/workspace/src/{paths,mailbox,index}.ts, services/workspace/test/mailbox.integration.test.ts, services/workspace/{package.json,vitest.config.ts}, dossiers/TASK-090.md
+**Test_Evidence:** workspace 29/29 (live integration against real Postgres, not skipped). pnpm -r test exit 0 across all 17 packages, pnpm lint clean, pnpm canaries 15/17 (2 pre-existing DB-gated skips). Both LIVENESS canaries independently reproduced by the reviewer (traversal-guard removal reddened 6 tests, tier-classifier neutering reddened 4).
+**Review_Findings:** APPROVED. Territory clean (6 Owned_Paths globs + dossier; PLAN.md/AUTOPILOT_LOG.md/REVIEW.md, migration 004, and packages/memory all confirmed untouched). Traversal guard (normalizeUnderRoot/assertContained) verified against `..`, percent-encoding, backslash separators, NUL bytes, AND an independently-constructed real-filesystem symlink escape (assertContained correctly rejects the resolved realpath) — noted as a non-blocking design observation that no current caller yet exercises the disk-touching realpath path, reasonable given scope. F9 non-boundary test confirmed to assert SUCCESS (role A reading role B's dir), not failure — correctly documents the intentional non-boundary. send_to_role confirmed to have no reply field structurally, no file-byte transport, no memory-write/context-carryover fields on SendToRoleInput. One legitimate cross-cutting gap (pnpm-lock.yaml sync for @oikonomos/db + pg/@types/pg, correctly outside Owned_Paths, error text confirmed live) resolved as ORCH merge wiring per the TASK-085 precedent — not sent back to S5. Full pnpm -r test/lint/canaries independently re-run post-merge. Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T23:55:00Z
+**Updated_At:** 2026-09-02T00:40:00Z
 
 ### TASK-091
 **Title:** packages/harness-factory — additive environment binding in ComposeOptions ⚑ protected
