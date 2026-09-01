@@ -106,11 +106,22 @@ ON CONFLICT (routine_id) DO NOTHING;
 -- The FKs the task exists to add. Any grant/task referencing a nonexistent
 -- role_id/routine_id at this point is a genuine data error, not a backfill
 -- case, and correctly fails the migration.
-ALTER TABLE role_grants
-  ADD CONSTRAINT role_grants_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(role_id);
+--
+-- Guarded (DO $$ ... EXCEPTION WHEN duplicate_object) so a repeated `up` run
+-- (e.g. an operator re-applying after a partial failure, or idempotent-apply
+-- tooling) does not throw "constraint already exists" — matches the
+-- idempotency the CREATE TABLE IF NOT EXISTS statements above already have.
+DO $$ BEGIN
+  ALTER TABLE role_grants
+    ADD CONSTRAINT role_grants_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(role_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE tasks
-  ADD CONSTRAINT tasks_routine_id_fkey FOREIGN KEY (routine_id) REFERENCES role_routines(routine_id);
+DO $$ BEGIN
+  ALTER TABLE tasks
+    ADD CONSTRAINT tasks_routine_id_fkey FOREIGN KEY (routine_id) REFERENCES role_routines(routine_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS role_routines_role_id_idx ON role_routines (role_id);
 CREATE INDEX IF NOT EXISTS role_messages_to_role_id_idx ON role_messages (to_role_id);
