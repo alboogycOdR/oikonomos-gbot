@@ -36,6 +36,16 @@ export {
   type StaleTool,
   type ToolEnumerator,
 } from "./enumeration/index.js";
+export {
+  createConnectorSessionPool,
+  ConnectorSessionPoolError,
+  type ConnectorSessionHandle,
+  type ConnectorSessionMinter,
+  type ConnectorSessionPool,
+  type ConnectorSessionPoolErrorCode,
+  type ConnectorSessionPoolOptions,
+  type MintConnectorSessionInput,
+} from "./sessions/index.js";
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
