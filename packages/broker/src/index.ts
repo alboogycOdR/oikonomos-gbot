@@ -22,6 +22,7 @@ import {
 } from "./recheck.js";
 import { resolveEnforcementGate } from "./enforcementGate.js";
 import { RefusalMemory } from "./refusalMemory.js";
+import { guardSecretPath } from "./secretPathGuard.js";
 
 export const workspaceName = "broker";
 
@@ -206,6 +207,7 @@ async function deny(
   reason: string,
   capability: string | null = null,
   tier: RiskTier | null = null,
+  payload?: Record<string, unknown>,
 ): Promise<PreToolUseResponse> {
   return {
     decision: "deny",
@@ -215,6 +217,7 @@ async function deny(
       reason,
       capability,
       tier,
+      payload,
     }),
   };
 }
@@ -278,10 +281,12 @@ export async function handlePreToolUse(
     replayCaches.set(dependencies, cache);
   }
   let key: string;
+  let destination: string;
   try {
     // Destination is part of the decision input, so it must be resolved
     // before the cache lookup — otherwise a payload swap reuses an allow.
-    key = replayKey(request, dependencies.destinationFor(request));
+    destination = dependencies.destinationFor(request);
+    key = replayKey(request, destination);
   } catch (error) {
     return failClosed(dependencies, request, failureReason(error));
   }
@@ -298,7 +303,7 @@ export async function handlePreToolUse(
     cache.delete(key);
   }
 
-  const decision = decidePreToolUse(request, dependencies);
+  const decision = decidePreToolUse(request, dependencies, destination);
   const entry: ReplayEntry = {
     response: decision,
     expiresAt: Date.now() + L1_TO_L3_REPLAY_WINDOW_MS,
@@ -322,10 +327,27 @@ export async function handlePreToolUse(
 async function decidePreToolUse(
   request: PreToolUseRequest,
   dependencies: BrokerDependencies,
+  destination: string,
 ): Promise<PreToolUseResponse> {
   try {
     if (!await dependencies.isCapabilitiesEnabled()) {
       return deny(dependencies, request, "capability.disabled");
+    }
+
+    // N13 is a fixed-floor gate. It deliberately precedes the six-rank
+    // resolver, so grants, allow rules, and autonomous resolution cannot
+    // make a D3 target executable. destinationFor is the real target
+    // resolver used by this PreToolUse path.
+    const secretPathDecision = guardSecretPath(destination);
+    if (secretPathDecision.decision === "deny") {
+      return deny(
+        dependencies,
+        request,
+        secretPathDecision.reason,
+        null,
+        null,
+        { ...secretPathDecision.auditEvent },
+      );
     }
 
     // Call-time re-check against the derived allowedTools/manifest map
@@ -396,7 +418,6 @@ async function decidePreToolUse(
         }),
       };
     }
-    const destination = dependencies.destinationFor(request);
     const action = actionFor(request, destination);
     if (request.approvalNonce !== undefined) {
       const consumed = await dependencies.verifyAndConsume(
@@ -440,7 +461,6 @@ async function decidePreToolUse(
     };
   }
 
-  const destination = dependencies.destinationFor(request);
   const action = actionFor(request, destination);
   const remembered = (dependencies.refusalMemory ?? refusalMemoryFor(dependencies)).consult({
     runId: request.runId,
