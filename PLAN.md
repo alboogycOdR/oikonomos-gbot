@@ -2391,7 +2391,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-079
 **Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (loopback bridge) + §Anti-patterns 2 (no regex destructiveness); ADR-001 (broker remains the enforcement point); Directive §4 N1
@@ -2399,23 +2399,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-072
 **Description:** When a routine runs on a CLI harness that cannot take inline tool definitions (Codex CLI, Grok Build), OIKONOMOS's connectors must reach it as an MCP server — and every call through that server is a broker interception point. Port Grok Bot's `routed-mcp-bridge.ts` (~88 lines, study §Tier 2): an in-process HTTP MCP server per run — `listen(0, "127.0.0.1")` (ephemeral port, loopback ONLY), a crypto-random capability path acting as the bearer (`/mcp/<randomUUID>`), request body cap (1 MiB), method+path allowlist (404 anything else), `tools/list` answering from a snapshot taken at mount, `tools/call` accepted only for snapshot names, torn down unconditionally in a `finally` when the run ends. **Every `tools/call` MUST pass through the injected broker decision port before reaching the real connector — the bridge is transport, the broker stays the enforcement point (ADR-001; N1)**; a broker deny returns an MCP error result carrying the TASK-067 modelGuidance, never a thrown 500. Tool annotations (readOnly/destructive) come from the connector manifest verbatim — **NEVER derived from names or descriptions** (study §Anti-patterns 2). Broker port is injected (no packages/broker import cycle); wiring composeHarness to actually mount the bridge is harness-factory territory — a follow-up, not this task.
 **Acceptance_Criteria:**
-- [ ] Server binds 127.0.0.1 on an ephemeral port; wrong path or method ⇒ 404; oversized body ⇒ 413 — all tested
-- [ ] Every tools/call invokes the injected broker port first — MUTATION-PROVEN: bypassing the broker for one call turns a test RED (N1)
-- [ ] Broker deny surfaces as an MCP error result with guidance text, not a transport error, tested
-- [ ] tools/call for a name outside the mount snapshot refused, tested
-- [ ] Annotations sourced from the manifest only; no name/description heuristic anywhere — asserted
-- [ ] Bridge closed after run end even when the run throws — tested
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-079-cx
+- [x] Server binds 127.0.0.1 on an ephemeral port; wrong path or method ⇒ 404; oversized body ⇒ 413 — all tested
+- [x] Every tools/call invokes the injected broker port first — MUTATION-PROVEN: bypassing the broker for one call turns a test RED (N1)
+- [x] Broker deny surfaces as an MCP error result with guidance text, not a transport error, tested
+- [x] tools/call for a name outside the mount snapshot refused, tested
+- [x] Annotations sourced from the manifest only; no name/description heuristic anywhere — asserted
+- [x] Bridge closed after run end even when the run throws — tested
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-079-cx (merged, deleted)
 **Started_At:** 2026-09-01T13:56:00Z
 **Progress_Notes:**
 - [2026-09-01T18:05:00Z] [ORCH] Reassigned GB->CX: GB's Grok Build account balance is exhausted (see TASK-073), and unlike TASK-076 this task carries no single-owner/GB-only restriction (no protected-path marker, no "GB per the seam rule" language) — packages/agent-providers has no ownership-continuity constraint from a prior task. Safe reassignment, dispatching CX.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/agent-providers/src/mcpBridge/{index.ts,mcpBridge.ts}, src/mcpBridge.test.ts, dossiers/TASK-079.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). agent-providers 69/69 (incl. 6 new bridge tests).
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent). Loopback+ephemeral-port binding confirmed literal (127.0.0.1, port 0), plus a defence-in-depth post-bind address check beyond the AC. Crypto-random capability path, 404/413 behavior all verified via real (unmocked) HTTP requests. Mount-time tool snapshot confirmed genuinely immutable (a tool added to the source array post-mount is proven excluded). MUTATION-PROVEN: reviewer removed the broker call and hardcoded an allow, 2 tests went red, reverted clean. Broker deny confirmed as a genuine MCP error result (HTTP 200, JSON-RPC isError:true), never a thrown 500. Annotations confirmed passed through verbatim (a deliberately misleading tool name/description was used to prove no heuristic derivation). Teardown-in-finally confirmed via a real throw-during-run + post-teardown connection-refused check. No @oikonomos/broker import (avoids the cycle as designed). Full pnpm -r test/lint/canaries independently re-run, exit 0. Merged.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T13:56:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T18:35:00Z
 
 ### TASK-080
 **Title:** packages/approvals — atomic editApproval: pending-invalidate + reissue in one transaction ⚑ protected
