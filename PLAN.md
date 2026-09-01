@@ -2242,9 +2242,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Policy widened mid-run does not resurrect a previously denied action, tested
 - [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-073-cx (renamed from -gb on reassignment; carries preserved commit 4a0371e)
+**Branch:** task/TASK-073-cx
 **Started_At:** 2026-09-01T13:31:30Z
 **Progress_Notes:**
+- [2026-09-01T19:00:00Z] [ORCH] Reassigned GB->CX (GB deactivated, Grok weekly limit). Branch renamed task/TASK-073-gb -> task/TASK-073-cx, preserving commit 4a0371e. CX resumes at the mutation-proof step (AC5) and full-gate run; do not rewrite the existing implementation.
 - [2026-09-01T18:00:00Z] [ORCH] BUDGET EXHAUSTION, not a tooling crash or quality issue: GB's session ended with `API error (status 402 Payment Required): Grok Build usage balance exhausted` after 22 model calls / ~1.6M tokens on this one task, mid-way through the mutation-proof step ("I'll live-mutate the consult gate to prove the test goes red, then restore it" was the last logged intent). The work itself is real and was never committed — found `refusalMemory.ts`/`refusalMemory.test.ts`/dossier sitting untracked in the worktree, matching the log's own claim of "broker tests passed (84/84)" exactly when independently re-run (84/84, including 12 new refusal-memory tests). ORCH committed the work as-is to preserve it (commit 4a0371e) rather than lose it to a future worktree refresh. NOT YET REVIEWED — this is preservation, not approval; the mutation-proof AC's completion status is unknown (may be mid-flight when the balance ran out). Redispatching GB would hit the identical 402 error immediately (account-level balance exhaustion, not resolved by retrying) — escalating to the user rather than looping.
 **Artifacts:** packages/broker/src/{refusalMemory.ts,refusalMemory.test.ts} (uncommitted work preserved, not yet reviewed)
 **Test_Evidence:** pnpm --filter @oikonomos/broker test independently re-run by ORCH: 84/84 pass (incl. 12 new refusalMemory tests) — matches the log's claim.
