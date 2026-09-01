@@ -2798,7 +2798,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-093-cx
 **Started_At:** 2026-09-02T00:15:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T00:20:00Z] [ORCH] SYNC_MISMATCH triage (protocol §7) — dispatch left the worktree detached at the claim commit without ever creating task/TASK-093-cx, same dispatch-side gap already hit once on TASK-088 (2nd occurrence this session, confirms the retro item logged then: dispatch.ps1 should assert/create the target branch as part of dispatch, not leave it implicit). FIXED directly by ORCH (`git checkout -b task/TASK-093-cx` in wt-codex-GROKBOT-CLONE). Not a builder error, not counted as any kind of round. Redispatching CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
