@@ -63,6 +63,8 @@ interface ApprovalRow {
   decided_by: string | null;
   decided_at: Date | null;
   consumed_at: Date | null;
+  control_plane_generation: string | null;
+  user_context_epoch: bigint | null;
 }
 
 function requireNonEmpty(value: string, field: string): string {
@@ -107,6 +109,8 @@ function toApproval(row: ApprovalRow): Approval {
     decidedBy: row.decided_by,
     decidedAt: row.decided_at,
     consumedAt: row.consumed_at,
+    controlPlaneGeneration: row.control_plane_generation,
+    userContextEpoch: row.user_context_epoch,
   };
 }
 
@@ -231,6 +235,8 @@ export async function editApproval(
           destination,
           replacementNonce,
           expiresAt,
+          invalidated.controlPlaneGeneration,
+          invalidated.userContextEpoch,
         ],
       );
       const insertedRow = inserted.rows[0];

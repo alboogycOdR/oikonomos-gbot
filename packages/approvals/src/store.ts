@@ -71,7 +71,8 @@ WHERE nonce=$1 AND status='pending' AND expires_at>now() AND consumed_at IS NULL
 
 export const APPROVAL_COLUMNS = `approval_id, tenant_id, run_id, capability_id, action_digest,
        action_render, destination, nonce, status, requested_at, expires_at,
-       decided_by, decided_at, consumed_at`;
+       decided_by, decided_at, consumed_at, control_plane_generation,
+       user_context_epoch`;
 
 /**
  * Replacement-row insert for editApproval. Mirrors packages/db insertApproval
@@ -79,7 +80,7 @@ export const APPROVAL_COLUMNS = `approval_id, tenant_id, run_id, capability_id, 
  */
 export const INSERT_APPROVAL_SQL = `INSERT INTO approvals (
          tenant_id, run_id, capability_id, action_digest, action_render,
-         destination, nonce, expires_at
+         destination, nonce, expires_at, control_plane_generation, user_context_epoch
        )
        VALUES (
          COALESCE($1, 'basileia'),
@@ -89,7 +90,9 @@ export const INSERT_APPROVAL_SQL = `INSERT INTO approvals (
          $5,
          $6,
          COALESCE($7::uuid, gen_random_uuid()),
-         $8
+         $8,
+         $9,
+         $10
        )`;
 
 interface ApprovalRow {
@@ -107,6 +110,8 @@ interface ApprovalRow {
   decided_by: string | null;
   decided_at: Date | null;
   consumed_at: Date | null;
+  control_plane_generation: string | null;
+  user_context_epoch: bigint | null;
 }
 
 interface PgResult<T extends object> {
@@ -215,6 +220,8 @@ function toApproval(row: ApprovalRow): Approval {
     decidedBy: row.decided_by,
     decidedAt: row.decided_at,
     consumedAt: row.consumed_at,
+    controlPlaneGeneration: row.control_plane_generation,
+    userContextEpoch: row.user_context_epoch,
   };
 }
 
