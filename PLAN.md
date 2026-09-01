@@ -1642,7 +1642,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-054
 **Title:** Live-server enumeration + allowedTools derivation from the manifest map
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-049; Build Handover §4.2 (unregistered ⇒ deny); ADR-001 L2 (explicit allowedTools, no bare names); docs/decisions/ADR-002-permission-bypass-ban-scope.md
@@ -1660,12 +1660,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-08-24T17:48:34Z
 **Progress_Notes:**
 - [2026-08-24T18:00:03Z] [SV:GB] Derivation + real HTTP MCP listTools adapter committed on task/TASK-054-gb; local mounted-server enumeration green. Live Gmail tools/list not run because OIK_SECRET_MCP_GMAIL_URL is unset (not faked).
+- [2026-09-01T13:10:00Z] [ORCH] Gmail provisioning progressed: user supplied real OAuth client ID/secret (Google Cloud project `basileia-oikonomos-gmail`), stored outside the repo (~/.oikonomos/gmail.env + Windows user env vars: OIK_SECRET_GMAIL_OAUTH_CLIENT_ID, OIK_SECRET_GMAIL_OAUTH_CLIENT_SECRET, OIK_SECRET_MCP_GMAIL_URL). Ran the runbook's §3 "interactive proof first" step live: user completed `/mcp` browser consent in THIS session (a Claude-Code-native MCP connector to the same backend, gmailmcp.googleapis.com — a different OAuth client than OIKONOMOS's own, but the same live tool surface), then ORCH ran a real `tools/list` against it. **CORRECTION TO docs/runbooks/gmail-mcp-provisioning.md AND docs/connectors/gmail.md: the "no send tool whatsoever" safety claim is FALSE for the real live server.** Actual tool list includes `send_message`, `reply`, `forward` (all send-capable) alongside `create_draft`, `search_threads`, `get_message`, `get_thread`, `list_drafts`, `list_labels`, plus mutating label/trash/spam tools (`label_message`, `unlabel_message`, `create_label`, `delete_label`, `update_label`, `trash_message`, `untrash_message`, `mark_message_spam`, `unmark_message_spam`, and thread-level equivalents), and `apply_sensitive_message_label`/`apply_sensitive_thread_label`. This means the runbook's "two independent layers before our tier map engages" claim (missing scope + no send tool) is down to ONE real layer at the server (the missing `gmail.send` scope, assuming it holds) — **OIKONOMOS's own allowlist/broker defence-in-depth (Handover §4.2 unregistered⇒deny, `email.send enabled:false`) is now the ONLY thing standing between a live mount and an actual send**, not a belt-and-braces backup as documented. TASK-054's own AC3/AC5 (enabled:false capabilities absent from the allowlist, mutation-proven) directly cover this, so the control is real — but the risk model needs correcting, and GB must explicitly verify `send_message`/`reply`/`forward` land unmapped-and-denied, not just that `email.send` isn't in the map by name (an unmapped tool naming mismatch would be exactly the CAN-02-class flaw this task exists to catch). NOT YET PROVEN: whether OIKONOMOS's own code (packages/connectors, using the newly-provisioned OIK_SECRET_GMAIL_OAUTH_CLIENT_ID/SECRET + OIK_SECRET_MCP_GMAIL_URL, headless) can actually acquire a token non-interactively — this session's proof used a different OAuth client (Anthropic's own claude.ai Gmail connector), not OIKONOMOS's. That is exactly the open question TASK-054's own text already flags ("if headless token presentation is not achievable, that is the trigger for the §Fallback decision — do not fake it"). Dispatching GB now with the credentials exported; if headless auth fails, expect a legitimate MISSING_DEPENDENCY or a fallback-decision escalation, not silent success.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: live MCP credentials not provisioned
-**Updated_By:** SV
-**Updated_At:** 2026-08-24T18:00:03Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T13:10:00Z
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
