@@ -2324,7 +2324,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T18:05:00Z] [ORCH] Considered reassigning to S5 (GB is budget-exhausted, see TASK-073) but reverted — this task's own description explicitly states "Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker)," a deliberate architectural-continuity rule, not a default. Staying GB-assigned; will not dispatch until GB's account balance is restored.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -2391,7 +2392,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-079
 **Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (loopback bridge) + §Anti-patterns 2 (no regex destructiveness); ADR-001 (broker remains the enforcement point); Directive §4 N1
 **Owned_Paths:** packages/agent-providers/src/mcpBridge/**, packages/agent-providers/src/mcpBridge.test.ts
@@ -2407,13 +2408,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T18:05:00Z] [ORCH] Reassigned GB->CX: GB's Grok Build account balance is exhausted (see TASK-073), and unlike TASK-076 this task carries no single-owner/GB-only restriction (no protected-path marker, no "GB per the seam rule" language) — packages/agent-providers has no ownership-continuity constraint from a prior task. Safe reassignment, dispatching CX.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_At:** 2026-09-01T18:05:00Z
 
 ### TASK-080
 **Title:** packages/approvals — atomic editApproval: pending-invalidate + reissue in one transaction ⚑ protected
