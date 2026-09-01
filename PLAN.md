@@ -2093,7 +2093,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-068
 **Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tools-discovery pattern); WBS OIK-049; TASK-054 (live enumeration)
@@ -2101,21 +2101,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-054
 **Description:** Grok Bot's `tools-discovery.ts` is the reference design (study §Tier 2): cache key = the sorted server-name set joined on a separator (so any change of mounted servers is a different key), entries record both requested and resolved key (a resolution that raced a config change can't be misattributed), TTL'd, with **stale-while-revalidate** — on refresh failure, stale tools are served and immediately re-fetched — and a `getToolsForTurnStart()` entry point that NEVER blocks a run start (returns cached-or-empty and kicks a background refresh). Build that cache in front of TASK-054's live `listTools` adapter. Partial-failure policy: failure of one server's enumeration degrades that server only; failure of the only source is an error, not an empty success. **The cache feeds enumeration/reporting only — allowedTools derivation and the broker's call-time re-check (TASK-066) must keep consuming the manifest map, never a cached live listing; state that layering in your work log.** Injected clock and transport for tests; no live credentials needed (fake MCP transport per TASK-054's offline half).
 **Acceptance_Criteria:**
-- [ ] Cache keyed by sorted server-set; changing the mounted set is a distinct key, tested
-- [ ] Stale-while-revalidate: refresh failure serves stale AND schedules re-fetch, tested with injected clock
-- [ ] `getToolsForTurnStart` never blocks: cold start returns empty + kicks refresh, tested
-- [ ] One-server failure degrades that server only; sole-source failure errors — both tested
-- [ ] Empty/failed live listing never widens or feeds the allowlist path, asserted
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-068-gb
+- [x] Cache keyed by sorted server-set; changing the mounted set is a distinct key, tested
+- [x] Stale-while-revalidate: refresh failure serves stale AND schedules re-fetch, tested with injected clock
+- [x] `getToolsForTurnStart` never blocks: cold start returns empty + kicks refresh, tested
+- [x] One-server failure degrades that server only; sole-source failure errors — both tested
+- [x] Empty/failed live listing never widens or feeds the allowlist path, asserted
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-068-gb (merged, deleted)
 **Started_At:** 2026-09-01T13:03:29Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/connectors/src/discovery-cache/{index,cache,key,types,errors}.ts, test/discovery-cache.test.ts, dossiers/TASK-068.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). discovery-cache 19/19, connectors overall 101/4.
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent, extra scrutiny on the safety-critical isolation property). Cache key genuinely sorted/deduped server-set; requested-vs-resolved key both recorded, verified with a real simulated mid-flight race. Stale-while-revalidate confirmed to genuinely serve stale on failure AND retry (not fail-forever), reproduced with the injected clock. getToolsForTurnStart confirmed structurally non-blocking (no await on the fetch itself). Partial-failure policy confirmed with real failing-transport scenarios, not type-only. ISOLATION FROM THE ALLOWLIST PATH CONFIRMED STRUCTURALLY: repo-wide grep found zero imports of discovery-cache from packages/broker/policy/harness-factory; a load-bearing DISCOVERY_CACHE_LAYER constant plus a source-regex test mechanically enforce no forbidden import ever lands. Single mutable cache slot (not a Map) means no unbounded memory growth. Full pnpm -r test/lint/canaries independently re-run, exit 0. Merged.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T13:03:29Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T17:50:00Z
 
 ### TASK-069
 **Title:** packages/shared — closed error registry with payload allowlist
