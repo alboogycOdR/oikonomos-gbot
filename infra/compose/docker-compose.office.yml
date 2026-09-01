@@ -1,0 +1,43 @@
+# The Office: one long-lived per-tenant container pair (model + browser/
+# connector), with durable state on named Docker volumes rather than in the
+# image layer. See specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §2 (F1/F2), §4.3
+# (F11). Lifecycle verbs (provision/rebuild/recover/restore) and the
+# durability canary live in infra/compose/office/.
+#
+# D1 (oikonomos-workspace) is mounted into BOTH services at /oikonomos:
+# /oikonomos/workspace is the shared workspace and /oikonomos/roles/<role_id>
+# is role-scoped working space (§4.1 F9) — neither is a security boundary.
+#
+# D3 (oikonomos-secrets) is mounted ONLY into office-browser (the non-model
+# connector/browser service, §4.3). office-model — the container the agent's
+# model-driven process actually runs in — has NO D3 mount at all: the path
+# does not exist in its filesystem namespace. That omission is layer 1 of
+# N13 and the strongest control in this design (§4.3 F11). Do not add it
+# "temporarily" — a path that does not exist cannot be read by a jailbreak,
+# a bug, or a determined agent.
+#
+# D2 (image layer, installed packages, /tmp, caches) lives in each service's
+# writable container layer, is never a named volume, and is explicitly
+# disposable — `rebuild`/`recover` recreate the container from the image and
+# discard it (§2.2 F2).
+services:
+  office-model:
+    image: alpine:3.20
+    container_name: ${OFFICE_PROJECT:-oikonomos-office-basileia}-model
+    command: ["sh", "-c", "tail -f /dev/null"]
+    volumes:
+      - oikonomos-workspace:/oikonomos
+    restart: unless-stopped
+
+  office-browser:
+    image: alpine:3.20
+    container_name: ${OFFICE_PROJECT:-oikonomos-office-basileia}-browser
+    command: ["sh", "-c", "tail -f /dev/null"]
+    volumes:
+      - oikonomos-workspace:/oikonomos
+      - oikonomos-secrets:/oikonomos-secrets
+    restart: unless-stopped
+
+volumes:
+  oikonomos-workspace:
+  oikonomos-secrets:
