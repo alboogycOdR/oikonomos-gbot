@@ -56,3 +56,32 @@ The practical implication: the broker, policy, approvals, and audit machinery bu
 2. Spec authoring / decompose pass on `claude-opus-5`, addressing the open questions in §4, producing the environment/role/session model as a real design (likely its own addendum-shaped document, given the size) before PLAN.md tasks are cut against it.
 3. Re-triage the current PLAN.md backlog against the new spec: keep, reshape, or supersede each pending item explicitly (no silent drops — matches this project's own "nothing dropped silently" convention already used for the Grok Bot study's disposition table).
 4. New tasks cut from the resulting spec, decomposed and dispatched under the normal protocol.
+
+---
+
+## 6. Amendment 2026-09-01 — the enforced line, decided
+
+Grounded in the live-instance probe recorded at `docs/research/grok-bot-live-probe-2026-09-01.md`
+(batch 3), the owner has decided the autonomy default: **match Grok Bot's enforced line.**
+
+**Enforced (hard stop, broker `PreToolUse` deny/park — ADR-001 mechanism unchanged):**
+- Spend / payment / purchase / transfer (Grok Bot's Stripe-virtual-card equivalent).
+- Auth/security friction: password, passkey, 2FA, CAPTCHA, SSO, identity check, "site requires a
+  human" — human takeover, never typed by the model (already CLAUDE.md non-negotiable #6).
+- Execution on the user's **local** machine — ask every time by default.
+- Secret handling: labelled secret-request, value never enters the transcript (N4).
+
+**Autonomous by default, tightenable by rule (policy tier — the Grok Bot "Auto-review Require
+Approval" equivalent):** send email, post publicly, delete/overwrite files on the shared environment,
+calendar/connector writes, routine creation, messaging one teammate. A per-role or per-tenant
+`Require Approval` rule promotes any of these to the enforced tier; that rule beats any `Always Allow`.
+
+**Where OIKONOMOS is deliberately stricter than Grok Bot:** browser-session credentials. Grok Bot's
+own instance admitted cookies on the shared box are readable files guarded by policy only. Under
+N4/N5 that is not acceptable — browser-profile secrets must be inaccessible to the model by
+construction (out-of-model storage or an enforced deny on those paths), not by instruction.
+
+**Consequence for the tier map:** T0–T2 collapse toward autonomous; approval parking is reserved for
+the enforced set above plus any role-configured Require Approval rules. Refusal memory (TASK-073)
+stays per-attempt/per-run, matching Grok Bot's "deny is the answer for that attempt, not a permanent
+ACL" semantics. This amendment is the input to the decompose pass in §5 step 2.
