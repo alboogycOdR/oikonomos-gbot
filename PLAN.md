@@ -2730,7 +2730,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-091
 **Title:** packages/harness-factory — additive environment binding in ComposeOptions ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.1, §6 preamble (persistence belongs to the substrate, not the harness object), §9 OIK-207; docs/decisions/ADR-010 §4 (migration path, not a rewrite); ADR-001
@@ -2745,15 +2745,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `composeHarness` remains per-run — a test asserts two runs produce two harnesses (F §6 substrate-not-harness)
 - [ ] Diff touches no hook, decorator, fail-closed mapping or permission-mode code — asserted in the work log with the file-level diff
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-091-cx
+**Started_At:** 2026-09-02T01:40:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-02T01:40:00Z
 
 ### TASK-092
 **Title:** packages/connectors — durable tenant session pool: create/destroy becomes acquire/release
