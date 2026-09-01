@@ -2675,7 +2675,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-089
 **Title:** infra/compose — the Office: durable environment, named volumes, durability canary
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §2.1 (F1), §2.2 (F2 durability tiers + canary), §2.3 (F3 lifecycle verbs), §4.3 layer 1, §9 OIK-205; CLAUDE.md control-liveness; docs/decisions/ADR-005-control-liveness.md
@@ -2690,15 +2690,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] restore is the only verb that can lose D1 writes and says so explicitly in its output and its README section (F3)
 - [ ] `docker-compose.local.yml` and `docker-compose.prod.yml` byte-identical to master
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-089-s5
+**Started_At:** 2026-09-02T00:45:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-02T00:45:00Z
 
 ### TASK-090
 **Title:** services/workspace — shared workspace paths, durability-tier classification, handoff mailbox
