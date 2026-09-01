@@ -42,3 +42,4 @@
 - 2026-09-01T16:34Z [AUTOPILOT] CX resume for TASK-071 confirmed alive. TASK-066 verification in flight.
 - 2026-09-01T16:57Z [AUTOPILOT] TASK-066 approved+merged first-pass. GB -> TASK-067 (broker describe-or-deny + model-directed denial guidance), confirmed alive. CX still working TASK-071 (harness-factory decorators, resumed with corrected territory), no done marker yet.
 - 2026-09-01T17:00Z [AUTOPILOT] TASK-067 (GB, broker describe-or-deny) and TASK-071 (CX, harness-factory decorators) both at needs_review, territory clean on both. TASK-067's exclusion of index.ts confirmed correct (matches Owned_Paths, no missing-file gap like 066 had). Dispatched independent verification for both in parallel.
+- 2026-09-01T17:25Z [AUTOPILOT] TASK-067 (broker describe-or-deny) and TASK-071 (harness-factory decorators) both approved+merged first-pass on code. GB -> TASK-068 (connectors enumeration cache), confirmed alive. CX has no remaining eligible task, correctly idle.
