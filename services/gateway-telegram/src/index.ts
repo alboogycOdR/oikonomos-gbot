@@ -48,11 +48,20 @@ export interface RunSummary {
 
 export interface ApprovalSummary {
   readonly approvalId: string;
+  /** Run identity used exclusively to retrieve evidence through control-api. */
+  readonly runId: string;
   readonly capabilityId: string;
   readonly actionRender: string;
   readonly destination: string | null;
   /** Bearer secret returned by control-api; never place this in Telegram callback data. */
   readonly nonce?: string;
+}
+
+export interface RunEvidence {
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly payload: Record<string, unknown>;
+  readonly evidenceUri: string | null;
 }
 
 /**
@@ -95,6 +104,7 @@ export interface ControlApiClient {
   createTask(input: NewTaskInput): Promise<TaskSummary>;
   listRuns(): Promise<readonly RunSummary[]>;
   listPendingApprovals(): Promise<readonly ApprovalSummary[]>;
+  getRunEvidence(runId: string): Promise<readonly RunEvidence[]>;
   decideApproval(nonce: string, decision: ApprovalDecision, decidedBy: string): Promise<ApprovalDecisionResult>;
   editApproval(nonce: string, request: EditedApprovalRequest): Promise<EditApprovalResult>;
 }
@@ -131,6 +141,9 @@ export function createControlApiHttpClient(baseUrl: string, fetchImpl: FetchLike
     },
     async listPendingApprovals() {
       return request<ApprovalSummary[]>(fetchImpl, `${normalizedBaseUrl}/approvals`);
+    },
+    async getRunEvidence(runId) {
+      return request<RunEvidence[]>(fetchImpl, `${normalizedBaseUrl}/runs/${encodeURIComponent(runId)}/evidence`);
     },
     async decideApproval(nonce, decision, decidedBy) {
       return approvalRequest<ApprovalDecisionResult>(fetchImpl, `${normalizedBaseUrl}/approvals/${encodeURIComponent(nonce)}/decide`, {

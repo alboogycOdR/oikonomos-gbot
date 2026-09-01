@@ -7,6 +7,7 @@ import type {
   EditedApprovalRequest,
   ReplacementApproval,
 } from "../index.js";
+import { renderApprovalEvidence } from "../evidence/index.js";
 
 export type ApprovalCallbackAction = "approve" | "edit" | "reject";
 
@@ -52,6 +53,7 @@ interface ApprovalHandle {
   readonly chatId: number;
   readonly nonce: string;
   readonly approval: ApprovalSummary | ReplacementApproval;
+  readonly runId: string | undefined;
 }
 
 const CALLBACK_PREFIX = "approval";
@@ -116,9 +118,12 @@ export function registerTelegramApprovals(options: TelegramApprovalOptions): {
       for (const approval of approvals) {
         const nonce = requireNonce(approval);
         const handle = randomUUID();
-        handles.set(handle, { chatId, nonce, approval });
-        // TODO(TASK-???): Handle Telegram's 4096-character message limit before sending actionRender.
-        await options.telegram.sendApprovalMessage(chatId, approval.actionRender, approvalKeyboard(handle));
+        handles.set(handle, { chatId, nonce, approval, runId: approval.runId });
+        await options.telegram.sendApprovalMessage(
+          chatId,
+          await renderApprovalWithEvidence(options.controlApi, approval.actionRender, approval.runId),
+          approvalKeyboard(handle),
+        );
       }
     },
   };
@@ -144,9 +149,29 @@ async function handleEdit(
 
   const replacementNonce = requireNonce(result.replacement);
   const replacementHandle = randomUUID();
-  handles.set(replacementHandle, { chatId: callback.chatId, nonce: replacementNonce, approval: result.replacement });
-  await options.telegram.sendApprovalMessage(callback.chatId, result.replacement.actionRender, approvalKeyboard(replacementHandle));
+  handles.set(replacementHandle, {
+    chatId: callback.chatId,
+    nonce: replacementNonce,
+    approval: result.replacement,
+    runId: handle.runId,
+  });
+  await options.telegram.sendApprovalMessage(
+    callback.chatId,
+    await renderApprovalWithEvidence(options.controlApi, result.replacement.actionRender, handle.runId),
+    approvalKeyboard(replacementHandle),
+  );
   await options.telegram.answerApprovalCallback(callback.callbackId, "Previous approval invalidated; replacement sent.");
+}
+
+async function renderApprovalWithEvidence(
+  controlApi: ControlApiClient,
+  actionRender: string,
+  runId: string | undefined,
+): Promise<string> {
+  // Legacy/malformed test doubles may lack a run ID. The live control-api
+  // contract always supplies one for an approval, and that path must fetch.
+  if (runId === undefined) return renderApprovalEvidence(actionRender, []);
+  return renderApprovalEvidence(actionRender, await controlApi.getRunEvidence(runId));
 }
 
 function approvalKeyboard(handle: string): readonly (readonly InlineKeyboardButton[])[] {
