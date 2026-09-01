@@ -1786,7 +1786,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-059
 **Title:** Telegram evidence delivery with the approval request (OIK-087)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** WBS OIK-087 ("Screenshots/diffs delivered with the approval request"); Directive §5 DoD Evidenced; Directive §4 N4
@@ -1794,11 +1794,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-058
 **Description:** Attach the evidence an operator needs to decide: for an email draft, the actual draft body and recipient; generally, the artifact URIs the PostToolUse hook recorded. Fetch via control-api's evidence endpoint (TASK-056) — never from the DB or the filesystem directly (OIK-084). Truncate long bodies for Telegram's limits with an explicit "truncated" marker — **never silently**; a silently truncated draft means the operator approves something they did not fully see, which defeats the purpose of the approval. Redact anything matching the audit redaction patterns before sending (N4) — reuse `packages/audit`'s redaction rather than writing a second one.
 **Acceptance_Criteria:**
-- [ ] Evidence fetched from control-api and rendered with the approval request (OIK-087)
-- [ ] Long content truncated with a visible marker, never silently — tested (Directive §5 Evidenced)
-- [ ] Redaction reuses packages/audit's implementation; no second redaction implementation (N4), asserted
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-059-cx
+- [x] Evidence fetched from control-api and rendered with the approval request (OIK-087)
+- [x] Long content truncated with a visible marker, never silently — tested (Directive §5 Evidenced)
+- [x] Redaction reuses packages/audit's implementation; no second redaction implementation (N4), asserted
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-059-cx (merged, deleted)
 **Started_At:** 2026-09-01T03:41:22Z
 **Progress_Notes:**
 - [2026-08-27T10:30:00Z] [ORCH] READY — TASK-058 approved and merged first-pass; the Depends_On chain is satisfied. Note for the builder: TASK-058's in-process approval-handle Map is never pruned after a decision; add cleanup while wiring evidence delivery if it falls inside your territory, otherwise flag it.
@@ -1806,12 +1806,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-01T01:15:00Z] [ORCH] TRIAGE round 2 (protocol §7, OWNERSHIP_CONFLICT — ORCH's own oversight, not the builder's). CX correctly blocked again: reusing @oikonomos/audit's redaction requires declaring it as a workspace dependency in services/gateway-telegram/package.json — gateway-telegram currently has ZERO runtime dependencies declared by design (a deliberate ports/injection constraint, confirmed by the file's empty `dependencies` section), so this is a real, necessary addition, not scope creep. package.json was missing from the round-1 re-carve — my error, fixed now. Branch carried only 2 dossier-note commits, no work lost. Reset claimed->pending, resuming CX same branch.
 - [2026-09-01T01:25:00Z] [ORCH] TRIAGE round 3, USER-CONFIRMED (3rd distinct territory gap on one task crossed the self-set escalation threshold — surfaced to the user rather than auto-patched a 4th time; user chose "widen and proceed"). CX correctly blocked again: `packages/audit/test/persistence-surface.test.ts` asserts audit's EXACT export list (`["AuditWriteError", "recordAuditEvent", "recordDecision", "toDecisionAuditEvent"]`) as a control-liveness guard against uncontrolled surface widening (OIK-013 append-only proof — verified the test's actual content, this is real, not a builder excuse). Adding a redaction export requires appending its name to that literal array; the test's other assertion (no update/delete/mutate/patch/remove-named export) is unaffected and stays intact — this is additive to the pinned list, not a loosening of the guard's actual protection. Owned_Paths widened to include the test file. Branch unchanged since round 2 (still just 2 dossier commits, no real work lost across all 3 rounds — CX has correctly refused to write unreachable/untestable code at every step rather than fake progress). Reset claimed->pending, resuming CX same branch. If a 4th gap surfaces, escalate again rather than assume this pattern will keep resolving cheaply.
 - [2026-09-01T01:40:00Z] [ORCH] TRIAGE round 4, USER-CONFIRMED (5th distinct gap; escalated per the round-3 commitment rather than silently widening again). REAL WORK NOW EXISTS: commit 4c75085 implements the full feature (control-api evidence fetch, audit redaction reuse, artifact rendering, visible truncation) — the four rounds of blocking were CX correctly refusing to ship untestable/unreachable code, not stalling. This round's block: `services/gateway-telegram/package.json` now declares `@oikonomos/audit: workspace:*`, and `pnpm-lock.yaml` needs syncing for it — the territory-precommit hook correctly rejected an attempt to commit the regenerated lockfile from outside Owned_Paths (fails closed by design, ADR-002 §5; the hook's own message directs re-carving, not a bypass, and there is no lockfile special-case in the mechanism — followed that rather than override the control). Ran `pnpm install` in the CX worktree (regenerated lockfile, clean 4-line diff, verified before staging). Owned_Paths widened to include pnpm-lock.yaml. Reset claimed->pending, resuming CX same branch to commit the lockfile sync and re-run gates.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-01T06:20:00Z] [ORCH] APPROVED first pass on code quality (independent adversarial verification, opus-tier) — the 5 dispatch rounds above were entirely territory/tooling friction, not rework; this was the FIRST time the actual code was reviewed. All 4 ACs pass with direct evidence. AC1: `renderApprovalWithEvidence` confirmed called before BOTH `sendApprovalMessage` sites (initial publish and edit/replacement path), evidence fetched via `controlApi.getRunEvidence(runId)` hitting `/runs/:id/evidence`, zero `@oikonomos/db` import (OIK-084 respected). AC2 (safety-critical): `truncateForTelegram` always appends a visible marker, including the degenerate case where the limit is smaller than the marker itself — mutation-proven: replacing the marker-append with a bare slice reddened the test. AC3: `redactPayload` now exported additively from packages/audit, persistence-surface.test.ts's exact-list assertion extended by exactly one name, its mutating-name-pattern check untouched; evidence/index.ts calls the real export, no second implementation — mutation-proven: bypassing the redact call leaked a fake API key into the rendered message, reddening the test. AC4: full pnpm -r test/lint/canaries independently re-run, exit 0 (gateway-telegram 68/68). TASK-058's pre-existing handle-Map pruning TODO correctly left untouched (out of scope, not silently dropped). Merged. Unlocks TASK-077 (S5) and closes another of TASK-060's three Depends_On (055 still Gmail-gated, 059/082 both done).
+**Artifacts:** services/gateway-telegram/src/evidence/index.ts (new), test/evidence.test.ts (new), src/{index.ts,approvals/index.ts}, package.json, packages/audit/src/index.ts, packages/audit/test/persistence-surface.test.ts, pnpm-lock.yaml, dossiers/TASK-059.md
+**Test_Evidence:** Independently re-run: pnpm -r test/lint/canaries all exit 0. gateway-telegram 68/68 tests. Both safety-critical properties (truncation marker, redaction reuse) mutation-proven by the reviewer, not just claimed.
+**Review_Findings:** 5 dispatch rounds total — 4 legitimate territory/tooling gaps (all verified against source before re-carving, not rubber-stamped; round 3 and round 4 explicitly escalated to and confirmed by the user per this session's self-set threshold), then APPROVED first-pass on the actual code once reviewed. See Progress_Notes for full detail of each round.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T03:41:22Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T06:20:00Z
 
 ### TASK-060
 **Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
