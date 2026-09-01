@@ -2331,7 +2331,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-078
 **Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (admin ceiling rank clamp); Directive §4 N2 (no bypass); ADR-001
@@ -2344,15 +2344,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A new enum member without a rank fails typecheck — demonstrated with a scratch member, reverted
 - [ ] Zero I/O imports preserved (lint), existing policy tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-078-cx
+**Started_At:** 2026-09-01T09:22:53Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T09:22:53Z
 
 ### TASK-079
 **Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
