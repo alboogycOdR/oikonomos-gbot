@@ -2228,7 +2228,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-073
 **Title:** packages/broker — refusal memory: denials stick per run, grants are not retroactive ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 5 (refusal memory); Directive §4 N3, N8
@@ -2242,15 +2242,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Policy widened mid-run does not resurrect a previously denied action, tested
 - [ ] MUTATION-PROVEN: disabling the memory (always re-ask) turns a test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-073-gb
+**Started_At:** 2026-09-01T13:31:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T13:31:30Z
 
 ### TASK-074
 **Title:** packages/shared — named scheduling policies + canonical-digest fixture pin
