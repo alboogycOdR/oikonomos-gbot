@@ -1714,13 +1714,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-055-gb
 **Started_At:** 2026-09-01T10:59:12Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T15:41:00Z] [ORCH] TOOLING_FAILURE, not a builder issue: the dispatched GB session died mid-planning (log stops after the initial read/inspect narration, ~11:00Z, no grok/node process alive by 11:41Z, no task/TASK-055-gb branch ever created, no .done marker). Same failure class as the earlier documented dispatch-kill vulnerability (2026-08-27), now apparently recurring for a GB/grok session specifically rather than the strict-mode blocking issue that was fixed. No work lost (nothing was committed). Redispatching GB fresh on the same claim.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T10:59:12Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T15:41:00Z
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
