@@ -2175,7 +2175,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-071
 **Title:** packages/harness-factory — tool-decorator enforcement seam (scope binding, finally-retire, mandatory identity) ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tool decorators); Directive §4 N8, N9; ADR-001
@@ -2183,22 +2183,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-055
 **Description:** **GB or CX only, NEVER S5** (protected path). Port Grok Bot's `turn-toolset.ts` decorator chain (study §Tier 2) as the harness-factory's enforcement seam, so per-call obligations are structural rather than per-tool discipline: (1) `withApprovalScope` — binds `{runId, toolCallId, approvalNonce?}` into the call context (AsyncLocalStorage, not a threaded parameter, so nested/indirect calls inherit it and a tool cannot "forget" to pass it) and retires/releases the scope in a `finally` — **unconditionally, including on throw** — which is where single-use approval hygiene lives on the client side (the atomic SQL consume in packages/approvals remains the enforcement point, N8; state that layering in the work log). (2) `withToolTimeout` — per-tool-name budget via race, timer always cleared. (3) `withMandatoryCallId` — a tool invocation with no bound toolCallId THROWS (their `withRecordedToolCallNames`): call identity is mandatory for the audit trail, never best-effort. Decorators compose over the existing tool shape; composeHarness applies them to every mounted tool — a tool reaching the model undecorated must be impossible by construction, asserted. Additive; existing harness-factory tests byte-identical.
 **Acceptance_Criteria:**
-- [ ] Scope available to nested calls without parameter threading; released in finally even when the tool throws — both tested
-- [ ] Missing toolCallId ⇒ typed throw, tested
-- [ ] Timeout fires per tool name and clears its timer on success, tested with injected clock
-- [ ] composeHarness applies the chain to every mounted tool — MUTATION-PROVEN: mounting one undecorated tool turns a test RED
-- [ ] Existing harness-factory tests byte-identical and green
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-071-cx
+- [x] Scope available to nested calls without parameter threading; released in finally even when the tool throws — both tested
+- [x] Missing toolCallId ⇒ typed throw, tested
+- [x] Timeout fires per tool name and clears its timer on success, tested with injected clock
+- [x] composeHarness applies the chain to every mounted tool — MUTATION-PROVEN: mounting one undecorated tool turns a test RED
+- [x] Existing harness-factory tests byte-identical and green
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-071-cx (merged, deleted)
 **Started_At:** 2026-09-01T12:33:51Z
 **Progress_Notes:**
 - [2026-09-01T16:30:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT, verified against source, first gap for this task). Real gap: AC4 and the task's own description both explicitly require "composeHarness applies the chain to every mounted tool," but `packages/harness-factory/src/compose.ts` — the actual composition entry point (confirmed by reading it: it's where tool mounting happens) — was omitted from Owned_Paths. Widened to include it. No live conflict: TASK-055 (this task's only dependency) is done and merged; nothing else active touches compose.ts. Reset claimed->pending, resuming CX same branch.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-01T17:25:00Z] [ORCH] APPROVED (independent adversarial verification, protected-path review). withApprovalScope genuinely uses AsyncLocalStorage (not a threaded param), and its finally-retire fires unconditionally including on a thrown tool call, tested directly. withMandatoryCallId throws MissingToolCallIdError before the tool ever executes when toolCallId is missing. withToolTimeout uses an injected clock, clears the timer on both branches (correct behavior; the timeout-branch clearTimeout assertion was flagged as slightly weaker proof than the success-branch one — non-blocking, behavior itself confirmed correct by code read). MUTATION-PROVEN AC independently reproduced: reviewer made compose.ts skip decoration for one mounted tool, the "decorates every mounted tool" test went red, reverted clean. Decorator composition order (mandatoryCallId outermost -> timeout -> approvalScope innermost) confirmed deliberate and correct — identity validated before a timer is armed, and per-invocation AsyncLocalStorage means a timeout race doesn't leak the scope. N8 hygiene correctly not duplicated (no SQL/consumption logic in this package). 28+85 pre-existing tests confirmed byte-identical. Full pnpm -r test/lint/canaries independently re-run, exit 0. Merged.
+**Artifacts:** packages/harness-factory/src/{decorators/index.ts,compose.ts}, test/decorators.test.ts, dossiers/TASK-071.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). harness-factory 85/85. Mutation-proof independently reproduced by the reviewer.
+**Review_Findings:** APPROVED, one round of legitimate territory triage (compose.ts, first gap) then first-pass code approval. See Progress_Notes for full detail.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T12:33:51Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T17:25:00Z
 
 ### TASK-072
 **Title:** packages/agent-providers — budget hook + registration completeness + namespaced provider metadata
