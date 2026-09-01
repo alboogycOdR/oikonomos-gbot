@@ -1,6 +1,14 @@
 import { resolveEffectiveTier } from "./ceiling.js";
 
 export { resolveEffectiveTier } from "./ceiling.js";
+export {
+  ApprovalResolution,
+  resolveApprovalRequest,
+  type ApprovalRequestDecision,
+  type ApprovalRequestResolution,
+  type ResolveApprovalRequestInput,
+  type StandingApprovalMode,
+} from "./approvalResolution.js";
 
 /** Ordered from least to most restrictive. */
 export const riskTiers = [
