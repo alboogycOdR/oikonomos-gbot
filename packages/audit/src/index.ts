@@ -10,12 +10,12 @@ import { redactPayload } from "./redact.js";
 
 export type { AuditEvent, DatabaseOptions, NewAuditEvent, RiskTier } from "@oikonomos/db";
 
-// Deliberately NOT re-exported: packages/audit/test/persistence-surface.test.ts
-// pins this package's exact runtime export list (TASK-011's append-only
-// proof — no export a caller could mistake for a mutating operation, and no
-// bypass around AuditWriteError). Redaction is wired into recordAuditEvent
-// below so every caller gets it automatically; tests that need the
-// pattern-matching internals import them directly from "./redact.js".
+/**
+ * Redacts secret-shaped values before they cross a trusted boundary. This is
+ * the single public N4 redaction implementation; presentation layers must
+ * reuse it rather than maintaining their own pattern set.
+ */
+export { redactPayload } from "./redact.js";
 
 /**
  * Thrown when a write to `audit_events` fails for any reason. The original
