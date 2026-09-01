@@ -1978,11 +1978,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-065
 **Title:** packages/approvals — bind approvals to process generation + user-context epoch (restart/redirect invalidation) ⚑ protected
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 item 1; Directive §4 N8; OIK-022/OIK-023; docs/decisions/ADR-004-approval-render-provenance.md
-**Owned_Paths:** infra/postgres/migrations/002_approval_binding.up.sql, infra/postgres/migrations/002_approval_binding.down.sql, packages/approvals/src/binding.ts, packages/approvals/src/binding.test.ts, packages/approvals/src/store.ts, packages/approvals/src/consume.ts, packages/approvals/src/index.ts
+**Owned_Paths:** infra/postgres/migrations/002_approval_binding.up.sql, infra/postgres/migrations/002_approval_binding.down.sql, packages/approvals/src/binding.ts, packages/approvals/src/binding.test.ts, packages/approvals/src/store.ts, packages/approvals/src/consume.ts, packages/approvals/src/index.ts, packages/approvals/src/issue.ts, packages/approvals/test/issue.test.ts, packages/approvals/test/issue.integration.test.ts, packages/db/src/approvals.ts, packages/db/test/approvals.integration.test.ts
 **Depends_On:** TASK-063
 **Description:** **GB or CX only, NEVER S5** (protected path; different-model review). Post-MVP hardening from the Grok Bot study: an approval nonce alone survives two events that should void it — a control-plane restart and a user redirect. Grok Bot binds every approval to a `hostGeneration` (uuid minted at process start) and a `userMessageEpoch` (bumped on every new operator instruction), checked at redemption alongside the nonce (study §Tier 1.1; their `sand-auto-review.ts` resolution guard). Port that: (1) migration 002 adds nullable `control_plane_generation uuid` and `user_context_epoch bigint` columns to `approvals` — additive, no rewrite of existing rows, down migration provided. (2) `issueApproval` records both when the issuer supplies them. (3) The atomic consume SQL gains `AND (control_plane_generation IS NULL OR control_plane_generation=$n) AND (user_context_epoch IS NULL OR user_context_epoch=$m)` — **still ONE statement, row count 1 or no consume (N8); NULL columns mean "unbound" so every existing caller and row keeps working unchanged**. (4) A `bumpUserContextEpoch`-style helper is NOT this task — epoch storage/bump lives with the caller (worker/control-api, later task); here you only accept and enforce the values. Do not weaken any existing guard; existing approvals tests stay byte-identical and green (TASK-062/064 precedent).
 **Acceptance_Criteria:**
@@ -1994,13 +1994,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-065-cx
 **Started_At:** 2026-09-01T04:06:11Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T06:25:00Z] [ORCH] TRIAGE (protocol §7, OWNERSHIP_CONFLICT, verified against source not just the builder's claim). Real gap: the actual persisted `NewApproval`/`Approval` types and the atomic consume/insert SQL live in `packages/db/src/approvals.ts` (packages/approvals' store.ts only wraps `@oikonomos/db`'s exports — confirmed by reading the import list), so the new binding columns cannot be threaded through without touching packages/db too. `issueApproval` itself — the function the task's own description names as needing to "record both" — lives in `packages/approvals/src/issue.ts`, which was omitted from Owned_Paths (an oversight in decomposition, not scope creep: the description explicitly requires editing it). Located the real test files (`packages/approvals/test/issue.test.ts`, `issue.integration.test.ts`, `packages/db/test/approvals.integration.test.ts`) — none were in Owned_Paths either. Widened to include all five. No live conflict: nothing else active touches packages/db/src/approvals.ts or packages/approvals/src/issue.ts. This crosses a package boundary (approvals -> db) but is a single coherent gap serving one feature, not a repeating pattern (TASK-065's first block) — handled directly per the standing threshold (escalate on a *repeated* pattern, not a first legitimate gap). Reset claimed->pending, resuming CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T04:06:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T06:25:00Z
 
 ### TASK-066
 **Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
