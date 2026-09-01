@@ -62,3 +62,43 @@ export {
   type TaskListPage,
   type TaskStatus,
 } from "./tasks.js";
+export {
+  createRole,
+  getRole,
+  listRoles,
+  roleStatuses,
+  type NewRole,
+  type Role,
+  type RoleListFilter,
+  type RoleStatus,
+} from "./roles.js";
+export {
+  createRoutine,
+  getRoutine,
+  listRoutines,
+  recordRoutineFire,
+  routineFireOutcomes,
+  routineLanes,
+  type NewRoutine,
+  type Routine,
+  type RoutineFireOutcome,
+  type RoutineLane,
+  type RoutineListFilter,
+} from "./routines.js";
+export {
+  getRoleMessage,
+  listRoleMessages,
+  markRoleMessageRead,
+  sendRoleMessage,
+  type NewRoleMessage,
+  type RoleMessage,
+  type RoleMessageListFilter,
+} from "./roleMessages.js";
+export {
+  createRequireApprovalRule,
+  getRequireApprovalRule,
+  listRequireApprovalRules,
+  type NewRequireApprovalRule,
+  type RequireApprovalRule,
+  type RequireApprovalRuleListFilter,
+} from "./requireApprovalRules.js";
