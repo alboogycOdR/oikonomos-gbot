@@ -2041,7 +2041,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-066
 **Title:** packages/broker — construction-time policy completeness + call-time allowlist re-check ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 1 items 4 and 6; ADR-001; ADR-005 (liveness); Build Handover §4.2 (unregistered ⇒ deny)
@@ -2049,21 +2049,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-055
 **Description:** **GB or CX only, NEVER S5** (protected path). Two Grok Bot patterns that convert silent gating holes into loud failures. (1) **Construction-time completeness** (study §Tier 1.4; their `serveEdge` throws on any contract method without a handler): add a broker policy registry that, given the set of tool names a harness will mount, requires every name to map to a policy entry — constructing the broker with an unmapped tool throws a typed `PolicyMissingError` naming the tool. "We forgot to gate the new tool" becomes a startup crash, not a fail-open hole; the throwing path IS the ADR-005 liveness assertion. (2) **Call-time re-check** (study §Tier 1.6; their `executeTool` re-checks the disabled map at invocation, not just enumeration): the PreToolUse decision path re-validates the called tool against the derived allowedTools/manifest map at every call, assuming the model may hold a stale tool list — an enumeration-time filter alone is not enforcement. Both are additive to the existing L1 decision path — do not re-route or weaken it; L1 remains the enforcement point (ADR-001). If wiring requires touching composeHarness (harness-factory, outside Owned_Paths), BLOCK with OWNERSHIP_CONFLICT rather than reach in.
 **Acceptance_Criteria:**
-- [ ] Broker construction with an unmapped tool name throws `PolicyMissingError` naming the tool — this test is the liveness assertion (ADR-005; study §Tier 1.4)
-- [ ] Call-time re-check denies a tool absent from the manifest map even when it appears in the mounted tool list — tested (study §Tier 1.6)
-- [ ] Bidirectional closure: a policy entry naming a tool that no manifest maps is surfaced as a stale-entry error at construction, tested (study §6.2 bidirectional inventory closure)
-- [ ] Existing L1 decision path unchanged — existing broker tests byte-identical and green
-- [ ] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-066-gb
+- [x] Broker construction with an unmapped tool name throws `PolicyMissingError` naming the tool — this test is the liveness assertion (ADR-005; study §Tier 1.4)
+- [x] Call-time re-check denies a tool absent from the manifest map even when it appears in the mounted tool list — tested (study §Tier 1.6)
+- [x] Bidirectional closure: a policy entry naming a tool that no manifest maps is surfaced as a stale-entry error at construction, tested (study §6.2 bidirectional inventory closure)
+- [x] Existing L1 decision path unchanged — existing broker tests byte-identical and green
+- [x] MUTATION-PROVEN: skipping the call-time re-check turns a stale-tool-list test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-066-gb (merged, deleted)
 **Started_At:** 2026-09-01T12:12:01Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/broker/src/{registry.ts,registry.test.ts,recheck.ts,recheck.test.ts,index.ts}, dossiers/TASK-066.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). broker 45/45 (28 pre-existing L1 + 8 registry + 9 recheck). typecheck clean.
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent, protected-path adversarial review). PolicyRegistry's constructor genuinely throws synchronously (PolicyMissingError/StalePolicyEntryError), not lazily. Call-time recheckAgainstManifest wired into decidePreToolUse, denies allowlist.miss independent of construction-time state, gated behind an optional dependency to keep existing tests byte-identical. Mutation-proven: reviewer disabled the recheck call, 2 tests went red (the mutation-proof test itself and a stale-tool-list deny test) — confirmed real behavioral coverage beyond the source-text pin. Existing 28 L1 tests confirmed byte-identical (zero diff). Correctly declined to touch harness-factory/composeHarness per the task's own explicit boundary. Merged. Unlocks TASK-067.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T12:12:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T16:55:00Z
 
 ### TASK-067
 **Title:** packages/broker — describe-or-deny + model-directed denial guidance ⚑ protected
