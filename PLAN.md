@@ -1698,7 +1698,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-038 (run lifecycle), OIK-125 (inbox-triage real sessions); Directive §5 DoD (Functional/Governed/Evidenced); ADR-005 liveness
@@ -1712,15 +1712,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] ADR-005 liveness extended to the MCP path and MUTATION-PROVEN: bypassing composeHarness for MCP calls turns the liveness assertion RED
 - [ ] Evidence: the run's audit trail answers what data, what actions, what was denied (Directive §5 Evidenced)
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-055-gb
+**Started_At:** 2026-09-01T10:59:12Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T10:59:12Z
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
