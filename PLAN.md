@@ -2093,7 +2093,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-068
 **Title:** packages/connectors — server-set-keyed enumeration cache with stale-while-revalidate
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (tools-discovery pattern); WBS OIK-049; TASK-054 (live enumeration)
@@ -2107,15 +2107,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] One-server failure degrades that server only; sole-source failure errors — both tested
 - [ ] Empty/failed live listing never widens or feeds the allowlist path, asserted
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-068-gb
+**Started_At:** 2026-09-01T13:03:29Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T15:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T13:03:29Z
 
 ### TASK-069
 **Title:** packages/shared — closed error registry with payload allowlist
