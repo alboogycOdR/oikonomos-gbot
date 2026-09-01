@@ -2586,7 +2586,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-086
 **Title:** packages/policy — EnforcementClass resolver + require-approval precedence ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1 (F12), §5.2 (F13 enforced floor), §5.3 (F14), §5.4 (F15 precedence table), §9 OIK-202; docs/decisions/ADR-010 §6; ADR-003 (tier resolution direction)
@@ -2602,15 +2602,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `resolveEffectiveTier`, `ceiling.ts` and the RiskTier type are byte-identical to master; zero I/O imports added (lint-enforced)
 - [ ] MUTATION-PROVEN: reordering ranks 2 and 3 turns a test RED; deleting any single E-class from the floor turns its liveness test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-086-cx
+**Started_At:** 2026-09-01T19:45:12Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T19:45:12Z
 
 ### TASK-087
 **Title:** packages/broker — enforcement gate in the decision path ⚑ protected
