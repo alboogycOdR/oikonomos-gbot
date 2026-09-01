@@ -2317,7 +2317,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-076
 **Title:** services/worker — role-keyed run serialization, lanes, routine firing, approval-aware idle
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.3, §3.4 (F7 routines), §9 OIK-209; docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
@@ -2334,9 +2334,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The SAME priority interrupt request against an identity in the `user` lane is a no-op — the active run continues untouched, tested
 - [ ] MUTATION-PROVEN: removing the serialization queue turns a concurrency test RED; removing the user-lane guard turns the no-op test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-076-cx
+**Started_At:** 2026-09-02T00:55:00Z
 **Progress_Notes:**
+- [2026-09-02T00:55:00Z] [ORCH] Dependencies (TASK-055, TASK-084) both done; claiming and dispatching to CX per the reassignment note below.
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: RESHAPE, not superseded (title, spec refs, priority, Depends_On, description and two acceptance criteria updated above, 2026-09-01). ADR-010 §4 flagged this task as possibly reshaped by the pivot; Addendum F §6.3 finds all four original scheduler properties still correct, so the change is additive: serialization re-keyed to roles.role_id (TASK-084) and routine firing added (Addendum F §3.4). Priority raised low->high because the persistent-role model needs a scheduler that knows about roles. Owned_Paths unchanged; CX keeps single-owner worker territory.
 - [2026-09-01T19:00:00Z] [ORCH] REASSIGNED GB->CX (Alister's decision: Grok's weekly limit is reached, GB deactivated in autopilot.json, Codex is the only remaining protected-path-eligible builder). This knowingly overrides the single-owner note below — the rule's purpose was worker-territory continuity with TASK-055; CX now inherits that ownership going forward, and CX must still never share worker files with any other unit.
 - [2026-09-01T18:05:00Z] [ORCH] Considered reassigning to S5 (GB is budget-exhausted, see TASK-073) but reverted — this task's own description explicitly states "Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker)," a deliberate architectural-continuity rule, not a default. Staying GB-assigned; will not dispatch until GB's account balance is restored.
@@ -2345,7 +2346,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-26T16:00:00Z
+**Updated_At:** 2026-09-02T00:55:00Z
 
 ### TASK-077
 **Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
