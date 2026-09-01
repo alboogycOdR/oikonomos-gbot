@@ -2702,7 +2702,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-090
 **Title:** services/workspace — shared workspace paths, durability-tier classification, handoff mailbox
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.1 (F9), §2.2 (tier classification), §3.5 (F8 handoff), §9 OIK-206; docs/research/grok-bot-live-probe-2026-09-01.md Q5
@@ -2717,15 +2717,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Delivery writes nothing to either role's memory and carries no sender context, tested (probe Q5 items 3–4)
 - [ ] LIVENESS: removing the traversal guard turns an escape test RED; removing the tier classifier turns the non-durable-write test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-090-s5
+**Started_At:** 2026-09-01T23:55:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-01T23:55:00Z
 
 ### TASK-091
 **Title:** packages/harness-factory — additive environment binding in ComposeOptions ⚑ protected
