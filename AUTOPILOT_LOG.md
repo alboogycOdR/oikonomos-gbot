@@ -113,3 +113,8 @@ Stopping the loop here. No further wakeup scheduled.
 ## 2026-09-01T23:58Z — post-TASK-085-merge master gate re-verification
 - Independent subagent re-ran all 5 gates directly on master post-merge+lockfile-sync: `pnpm install --frozen-lockfile` clean, `pnpm -r build` 16/16, `pnpm -r test` 705 passed/141 skipped/0 failed across all 16 workspaces, `pnpm lint` clean, `pnpm canaries` 15/15 (CAN-01..09). Confirms the merge landed clean with no cross-package regression (per this project's "always run the full recursive suite" standard).
 - Note: this run's packages/memory showed 13 passed/7 skipped (vs the reviewer's 20/20 live-DB run) — expected, this verification subagent ran without DATABASE_URL exported so DB-dependent memory tests self-skip; not a regression, consistent with every other DB-touching package in the same run showing partial skips for the same reason.
+
+## 2026-09-02T00:15Z — TASK-088 merged; TASK-093 cut and dispatched
+- TASK-088 (CX, D3 secret path guard) independent protected-path review by a different model: APPROVE, all 5 ACs verified true, LIVENESS reproduced independently, N4 confirmed no path leakage. Builder's reported 3 packages/db failures did not reproduce and were moot (zero packages/db files in diff). Merged to master (no lockfile changes).
+- Cut TASK-093 (CX, critical, protected) — the wiring follow-up for TASK-088, mirroring TASK-087's role for TASK-073: calls secretPathGuard from the real packages/broker/src/index.ts PreToolUse path, positioned above the six-rank resolver so a D3 match denies unconditionally. plan_version bumped to 6.1.
+- Claimed and dispatched: TASK-093 to CX (worktree refreshed to master tip first). TASK-090 (S5, services/workspace) still in flight, no done marker yet.
