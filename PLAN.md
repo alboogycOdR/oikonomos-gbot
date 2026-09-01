@@ -2530,7 +2530,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-084
 **Title:** packages/db + migration 004 — role identity, routines, messages, require-approval rules (D0 schema)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.1 (F4 roles table), §3.4 (F7 role_routines), §3.5 (F8 role_messages), §5.4 (F15 require_approval_rules), §9 OIK-200; docs/decisions/ADR-010 §2.2
@@ -2538,15 +2538,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** The D0 foundation of the ADR-010 pivot: a named role stops being free text and becomes a row. Migration 004 creates the four tables in Addendum F exactly as specified — `roles` (F4), `role_routines` (F7), `role_messages` (F8), `require_approval_rules` (F15) — plus a FOREIGN KEY from the EXISTING `role_grants.role_id` to `roles.role_id` and from the EXISTING `tasks.routine_id` to `role_routines.routine_id`. **Do not alter any existing column type, the `risk_tier` enum, or `profile_facts`** — profile_facts is TASK-085's territory and the enum is deliberately preserved (Addendum F §5.1 F12). The FK additions require a backfill guard: if existing `role_grants`/`tasks` rows reference role_ids or routine_ids with no row, the migration must insert the missing `roles` rows (status `active`, description empty) rather than fail — record what it backfilled in the work log. Typed query layer per OIK-014 house style, one module per table, colocated tests; barrel exports added to `packages/db/src/index.ts` (this task is the sole owner of that file this wave). Down migration drops only what 004 created. `roles.description` is stored but NO query helper may make an authorization decision from it (N12) — this is the first place that invariant lands.
 **Acceptance_Criteria:**
-- [ ] Migration 004 creates roles/role_routines/role_messages/require_approval_rules with the columns and defaults in Addendum F §3.1/§3.4/§3.5/§5.4, and 004.down reverses it cleanly (up-down-up leaves an identical schema, tested)
-- [ ] `role_grants.role_id` and `tasks.routine_id` FKs exist and a grant for a nonexistent role is rejected by the database, tested (F4 "a grant for a role that does not exist becomes impossible to insert")
-- [ ] Backfill guard: pre-existing rows referencing unknown role_ids are backfilled, not errored — tested against a fixture containing such a row
-- [ ] Typed CRUD + list for each of the four tables, with tenant_id scoping on every read, tested
-- [ ] `role_routines` fire bookkeeping records a missed fire distinctly from a queued one (Addendum F §3.4 "recorded as missed, never queued for catch-up")
-- [ ] `profile_facts`, the `risk_tier` enum, and migrations 001–003 are byte-identical to master — asserted by diff in the work log
-- [ ] LIVENESS: a test asserts no exported db helper reads `roles.description` in an authorization path — N12 (a source-level assertion is acceptable here and must fail if such a read is added)
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-084-s5
+- [x] Migration 004 creates roles/role_routines/role_messages/require_approval_rules with the columns and defaults in Addendum F §3.1/§3.4/§3.5/§5.4, and 004.down reverses it cleanly (up-down-up leaves an identical schema, tested)
+- [x] `role_grants.role_id` and `tasks.routine_id` FKs exist and a grant for a nonexistent role is rejected by the database, tested (F4 "a grant for a role that does not exist becomes impossible to insert")
+- [x] Backfill guard: pre-existing rows referencing unknown role_ids are backfilled, not errored — tested against a fixture containing such a row
+- [x] Typed CRUD + list for each of the four tables, with tenant_id scoping on every read, tested
+- [x] `role_routines` fire bookkeeping records a missed fire distinctly from a queued one (Addendum F §3.4 "recorded as missed, never queued for catch-up")
+- [x] `profile_facts`, the `risk_tier` enum, and migrations 001–003 are byte-identical to master — asserted by diff in the work log
+- [x] LIVENESS: a test asserts no exported db helper reads `roles.description` in an authorization path — N12 (a source-level assertion is acceptable here and must fail if such a read is added)
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-084-s5 (merged, deleted)
 **Started_At:** 2026-09-01T20:20:49Z
 **Progress_Notes:**
 - [2026-09-01T20:20:00Z] [ORCH] REWORK round 1 (independent verification, live migration testing). 8/9 checks PASS with hard evidence: role_grants/tasks FKs live-tested with a real rejected insert, backfill guard confirmed via live post-migration query (inbox-triage row present, active), routines/role_messages/require_approval_rules schemas confirmed matching Addendum F §3.4/§3.5/§5.4 exactly, N12 liveness assertion confirmed real (source-scan, not config-presence), migrations 001-003 confirmed byte-identical, full pnpm -r test/lint/canaries green (db 107/107; one evals/harness CAN-03 timeout on the first parallel run was reproduced as a pre-existing flake, not a regression — passed clean standalone and in canaries twice). ONE FAILING CHECK: the migration's `ALTER TABLE ... ADD CONSTRAINT` statements (the two FK additions) are not idempotent-safe — reviewer ran up->down->up->up live and the second consecutive `up` threw `constraint "role_grants_role_id_fkey" already exists` (exit 3). The `CREATE TABLE IF NOT EXISTS` statements are correctly guarded; the two trailing `ALTER TABLE ADD CONSTRAINT` statements are not. DB state was left consistent (no data lost), but the script itself isn't safely re-runnable — an operator re-applying `up` after a partial failure, or any idempotent-apply tooling, would break. Fix: wrap each `ALTER TABLE ... ADD CONSTRAINT` in a `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` guard (or equivalent `IF NOT EXISTS`-style check against `pg_constraint`), matching the idempotency pattern already used elsewhere in this migration for the table creates. Do not touch anything else — the AC as literally written (up->down->up) already passes; this closes a real but narrower gap the AC didn't fully specify. Reset claimed->pending, resuming S5 same branch.
@@ -2556,12 +2556,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** —
 **Test_Evidence:** —
 - [2026-09-01T22:45:00Z] [ORCH] SAME GAP A 3RD TIME — S5's resumed session again reported "no code changes needed" with the identical commits (verified via git log). This matches the exact TASK-077 precedent from earlier in this session (3 resume-gap occurrences on the same task). Per that precedent AND the user's explicit prior authorization ("ORCH writes the fix directly" — the standing resolution the last time this exact failure mode occurred), and given the user is unavailable overnight (checking in at 8am) so a blocking escalation would just stall the task till morning for a fix this narrow and well-specified: wrote it directly (commit 6d2e290 on task/TASK-084-s5), touching ONLY the two ALTER TABLE statements as scoped. Verified locally before committing: down->up->up (the exact repro case) now exits 0 with no error (previously threw at the 2nd up); db 107/107 and full pnpm -r test/lint/canaries all green. Sent for independent verification WITH EXPLICIT EXTRA SCRUTINY given the unusual authorship, matching the process used for TASK-077's ORCH-authored fix.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** REWORK round 1 — migration ALTER TABLE ADD CONSTRAINT statements not idempotent on a repeat `up`; 8/9 other checks pass with live evidence. Precise fix specified above. Rounds 2-3 resume did not apply the fix at all (process gap, not a rework judgment, matching the TASK-077 precedent). Fix ultimately written by ORCH.
+**Artifacts:** infra/postgres/migrations/004_roles_routines_rules.{up,down}.sql, packages/db/src/{roles,routines,roleMessages,requireApprovalRules,index}.ts + tests, dossiers/TASK-084.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run, twice). db 107/107. Live up→down→up→up re-run against real Postgres confirms idempotency fix; each FK constraint appears exactly once (\d role_grants / \d tasks). One transient CAN-03 timeout judged environmental, passed clean on retry.
+**Review_Findings:** REWORK round 1 — migration ALTER TABLE ADD CONSTRAINT statements not idempotent on a repeat `up`; 8/9 other checks pass with live evidence. Precise fix specified above. Rounds 2-3 resume did not apply the fix at all (process gap, not a rework judgment, matching the TASK-077 precedent). Fix ultimately written by ORCH directly (commit 6d2e290), per established precedent for a 3rd resume-state gap on the same task. Independent extra-scrutiny verification: APPROVE, all 6 checks pass with hard live evidence (diff scope, SQL correctness — narrow `duplicate_object` exception class not `WHEN OTHERS`, live idempotency re-run, round-1 checks still green, full gates, no protected-file leakage). Out-of-scope finding noted for follow-up, not a blocker: `revert.sh` has a pre-existing down-migration ordering bug unrelated to this diff.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:20:49Z
+**Updated_At:** 2026-09-01T23:20:00Z
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
@@ -2621,7 +2621,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-087
 **Title:** packages/broker — enforcement gate in the decision path ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1, §5.4, §9 OIK-203; docs/decisions/ADR-001-broker-enforcement-point.md; ADR-010 §3
@@ -2629,22 +2629,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-086, TASK-073
 **Description:** **CX only, NEVER S5** (protected path). Wire TASK-086's `resolveEnforcement` into the broker's decision path so the new autonomy default is what the `PreToolUse` hook actually enforces. Enforced yields the existing park-for-approval path (approvals stay nonce-bound and single-use, ADR-004 — unchanged) or, for E2, the human-takeover outcome; autonomous yields allow-and-audit. **ADR-001 is untouched**: the enforcement point stays the PreToolUse hook, `canUseTool` alone remains banned, and the fail-closed map for broker unreachable/timeout/malformed keeps its current behaviour — rank 1 of the precedence order must be satisfied BY that existing map, not by a second parallel one. Refusal memory (TASK-073) is consumed at rank 4 exactly as built; its per-run/per-attempt semantics are correct and must not be changed into a persistent ACL (ADR-010 §6, probe Q9). Every autonomous execution emits an audit event carrying the resolved class and the rank that decided it — an audit trail that cannot say WHY something was allowed is not a compensating control for broadened autonomy (Addendum F R22).
 **Acceptance_Criteria:**
-- [ ] An action resolving autonomous executes and emits an audit event naming both the EnforcementClass and the deciding rank, tested
-- [ ] An action resolving enforced parks with a nonce-bound single-use approval; E2 (auth friction) yields the takeover outcome and is never typed by the model, tested
-- [ ] Broker unreachable / timeout / malformed still deny via the EXISTING fail-closed map — asserted to be the same code path, not a duplicate (ADR-001 R3)
-- [ ] A denial already in refusal memory is auto-denied without issuing a second approval request, and a mid-run policy widening does not resurrect it — TASK-073 behaviour still green after this wiring
-- [ ] LIVENESS: a canary in which the enforcement gate is bypassed makes a previously-parking payment action execute — proving the gate is on the real path and not a decorative call
-- [ ] No canUseTool-only enforcement introduced; `bypassPermissions`/`acceptEdits` absent (CI grep still clean)
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-087-cx
+- [x] An action resolving autonomous executes and emits an audit event naming both the EnforcementClass and the deciding rank, tested
+- [x] An action resolving enforced parks with a nonce-bound single-use approval; E2 (auth friction) yields the takeover outcome and is never typed by the model, tested
+- [x] Broker unreachable / timeout / malformed still deny via the EXISTING fail-closed map — asserted to be the same code path, not a duplicate (ADR-001 R3)
+- [x] A denial already in refusal memory is auto-denied without issuing a second approval request, and a mid-run policy widening does not resurrect it — TASK-073 behaviour still green after this wiring
+- [x] LIVENESS: a canary in which the enforcement gate is bypassed makes a previously-parking payment action execute — proving the gate is on the real path and not a decorative call
+- [x] No canUseTool-only enforcement introduced; `bypassPermissions`/`acceptEdits` absent (CI grep still clean)
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-087-cx (merged, deleted)
 **Started_At:** 2026-09-01T20:21:19Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/broker/src/{enforcementGate.ts,enforcementGate.test.ts,index.ts}, dossiers/TASK-087.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). broker 93/93. banned-modes CI grep clean.
+**Review_Findings:** APPROVED (2026-09-01, ORCH via independent subagent, maximum-rigor protected-path + critical-priority review — this is the wiring that makes the entire ADR-010 enforcement pivot live). resolveEnforcement confirmed genuinely consulted for every decision, not decorative — reviewer mutated the call to a hardcoded autonomous result, 3 tests including the shipped liveness canary went red. Autonomous path confirmed to audit real resolved values (class+rank), not stubs. Enforced path confirmed to reuse the EXISTING ADR-004 approval mechanism (issueApproval/verifyAndConsume), not a new parallel one; E2 auth-friction confirmed to never call issueApproval and never construct a credential-bearing payload anywhere in the response. MOST IMPORTANT CHECK: fail-closed confirmed to be the SAME pre-existing ADR-001 code path, not duplicated — the new gate structurally cannot trigger its own fail-closed branch (hardcoded valid inputs at that call site), all transport/timeout/malformed failures still route through the one existing map. TASK-073 refusal memory files byte-identical to master, per-run/per-attempt semantics confirmed unchanged. LIVENESS canary independently reproduced via TWO separate bypass strategies (capability flag off, and disabling the gate call directly) — both correctly break the same way. No canUseTool-only enforcement, banned-modes grep clean. Full pnpm -r test/lint/canaries independently re-run, exit 0, broker 93/93. One non-blocking quality note: a defensive dead-code branch (enforcementClass==="denied" inside the gate call) is currently unreachable via the real decision path since refusal-memory hits are handled earlier — harmless, flagged for a future cleanup pass, not rework. Merged. **This is the point at which OIKONOMOS's autonomy default actually changed in production code, not just on paper.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T20:21:19Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T23:15:00Z
 
 ### TASK-088
 **Title:** packages/broker — D3 sealed-secret path guard (N13 enforcement + detection) ⚑ protected
