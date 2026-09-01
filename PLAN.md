@@ -1,8 +1,8 @@
 ---
-plan_version: 5.26
-last_updated: 2026-09-01T18:40:00Z
+plan_version: 6.0
+last_updated: 2026-09-01T20:15:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v5.0 - VERTICAL SLICE DECOMPOSED (2026-08-19T06:10Z, ORCH). E6 pipeline COMPLETE (043/044/045/046 merged) and Gmail onboarded draft-only (048; docs/connectors/gmail.md; G-CONN CLOSED pending Alister). Direction change on Alister request: STOP adding connectors, build the END-TO-END DEMO instead. Diagnosis behind it - zero connectors are actually LIVE: Gmail is a manifest + eval suite run against a FAKE queryFn, ComposeOptions has NO mcpServers surface at all, and control-api/gateway-telegram/workspace are 13-line stubs. TASK-052..060 close that. TWO DISJOINT LANES, each a chained day-of-work per Alister packaging request (queue depth, not giant tasks - a session-limit death then costs one sub-task, not the day; S5 hit exactly that on 048). GB RUNTIME LANE: 052 MCP mount in composeHarness (PROTECTED, foundational) -> 053 manifest->mcp config w/ secret refs -> 054 live enumeration + allowedTools derivation -> 055 worker end-to-end run. CX SURFACE LANE: 056 control-api (critical - every surface consumes it, not the DB) -> 057 telegram intake/status -> 058 approval inline-keyboard (THE MONEY SHOT) -> 059 evidence delivery. services/worker is the shared seam: SINGLE OWNER (GB, 055), CX never touches it. 060 is ORCH-executed demo wiring + runbook, demonstrate-not-assert. FIRST DISPATCH WAVE: TASK-052 (GB) + TASK-056 (CX), territories disjoint (packages/harness-factory vs services/control-api); STAGGER dispatches ~30s (finding #16). MODEL DISCIPLINE CHANGED: claude-fable-5 is no longer in the subscription - decompose and review both move to Opus; docs/MODEL_DISCIPLINE.md and autopilot.json updated so the unattended path cannot request a missing model. ESCALATION FOR ALISTER: TASK-054/055 need real Gmail MCP credentials provisioned out of band (OIK_SECRET_MCP_GMAIL_URL or equivalent) - both are written to complete their offline half and then BLOCK MISSING_DEPENDENCY rather than fake a live run. Deferred, do NOT dispatch: TASK-027. Backlog untouched: 049 Calendar, 050 Drive, 051 Composio spike, 047 open until all Wave-1 records exist. STATUS SCAN (2026-08-20T14:35Z, ORCH): TASK-052 CORRECTION (14:45Z): the prior scan flagged GB as possibly reaped because its dispatch log had not grown past Launching - THAT SIGNAL IS INVALID FOR GB. Grok buffers its entire session output and flushes only at exit, so an unchanged log size proves nothing about liveness (unlike CX/S5, which stream). GB was working the whole time and delivered TASK-052 at needs_review. Use branch commits or the control queue as the liveness signal for GB, never log growth. TASK-061 S5 claimed 2min ago, no branch yet (too early). TASK-056 pending behind 061/062; its branch task/TASK-056-s5 holds a 154-line gap-analysis dossier commit (783467b) - DO NOT DELETE that branch, it is the evidence for the ORCH spec error. TASK-062 pending/GB with no deps and critical priority, so GB will auto-claim it on next dispatch after 052 - the protected-path pinch point resolves itself by priority order, no manual assignment needed. CX still out (Codex usage limit, resets 2026-08-21T16:27 local). DISPATCH WAVE 2 (2026-08-22T10:00Z, ORCH): GB -> TASK-053 (manifest->MCP config, secret refs), CX -> TASK-057 (Telegram intake+status), staggered ~30s, both claims landed clean. Territories disjoint (packages/connectors/src/mcp/** vs services/gateway-telegram/src/**). Next in each chain: GB->054 (live enumeration, needs Gmail MCP creds for its live half or blocks MISSING_DEPENDENCY), CX->058 (approval keyboard, the money shot). DISPATCH WAVE 3 (2026-08-24T06:10Z, ORCH): CX -> TASK-058 (approval inline-keyboard, the demo centrepiece), GB -> TASK-054 (live enumeration + allowedTools derivation), staggered ~30s, both claims clean. Territories disjoint (services/gateway-telegram/src/approvals/** vs packages/connectors/src/enumeration/**). MVP CRITICAL PATH IS NOW 4 TASKS: 058 -> 059 (CX surface lane) and 054 -> 055 (GB runtime lane), converging on 060 (ORCH demo wiring + runbook). EXPECT TASK-054 TO PARTIALLY BLOCK: its derivation half can complete offline but the live-enumeration half needs Gmail MCP credentials (OIK_SECRET_MCP_GMAIL_URL) which are not provisioned - it is written to BLOCK MISSING_DEPENDENCY rather than fake a live run, and that is correct behaviour, not a failure. Alister owns provisioning: Google Cloud project + Gmail API + OAuth Desktop client, scopes gmail.readonly + gmail.compose ONLY (never gmail.send in Wave 1). Not on the MVP path and safe to leave pending: 027 (deferred by design), 047, 049, 050, 051. GROK-BOT STUDY DECOMPOSE (2026-08-26T15:00Z, ORCH, plan v5.4): docs/STUDY-grok-bot-018.md distilled into TASK-065..071, ALL priority:low post-MVP backlog so the dispatcher cannot claim them ahead of the demo lane (054/055 + 058/059 -> 060). 065 approvals generation+epoch binding (CX, protected, after 063), 066 broker construction-time policy completeness + call-time re-check (GB, protected, after 055), 067 broker describe-or-deny + model-directed denials (GB, protected, after 066), 068 connectors SWR enumeration cache (GB, after 054), 069 shared error registry (S5, unprotected, no deps), 070 CI publication-tree self-proof + negative-control greps (CX, protected, no deps), 071 harness-factory decorator seam (CX, protected, after 055). Territories verified disjoint from all active lanes; protected-path assignments respect the different-model rule (no S5 on broker/approvals/harness-factory/infra-ci). FULL EXTRACTION (2026-08-26T16:00Z, ORCH, plan v5.5, Alister request): every study pattern dispositioned in docs/STUDY-grok-bot-018.md §Full extraction disposition (TASK / COVERED / DEFER / CONVENTION / REJECT — nothing dropped silently). Added TASK-072..079, all priority:low post-MVP: 072 agent-providers budget hook + registration completeness (S5), 073 broker refusal memory (GB, protected, after 067), 074 shared scheduling policies + digest fixture pin (S5 — pin gap is real, no literal-hex digest pin exists today), 075 db intake idempotency ledger (S5, db primitive only; control-api wiring follows 063), 076 worker lanes + approval-aware idle (GB, after 055 — worker single-owner rule holds), 077 audit outbox hardening (S5), 078 policy tier-ceiling clamp (CX, protected), 079 loopback MCP bridge for CLI harnesses (GB, after 072). TASK-066 gained a bidirectional-closure AC. Explicit DEFERS with owners-when-wave-arrives recorded in the disposition table: secrets-labelled-request flow (secrets wave), process-identity binding + adopt-if-busy supervision (long-lived worker processes), Docker/sandbox hardening deltas (sandbox wave), pure-function Tier-0 routing + model catalog (budget wave, week 5). Backlog now 15 study tasks total (065-079); builder queues balanced GB=5/CX=4/S5=6 with protected paths never on S5. GMAIL PROVISIONING DECIDED (2026-08-26T16:30Z): official Google-hosted Gmail MCP server (gmailmcp.googleapis.com/mcp/v1) — scope-exact (readonly+compose), NO send tool on its surface at all; docs/runbooks/gmail-mcp-provisioning.md is the click-by-click; Alister executing now, will notify. Manifest tool-name reconciliation (list_messages/send_message vs live search_threads/get_message/label tools) is an ORCH decision at TASK-054 review — runbook §4. DISPATCH WAVE 4 (2026-08-26T16:35Z, ORCH): S5 -> TASK-063 (control-api edit/reissue, critical, unblocked by 064), CX -> auto-claim from {070 CI self-proof, 078 policy ceiling clamp} (both dep-free; 058 still gated on 063), staggered ~30s. GB idle by design: all GB-eligible tasks gated on 054 (Gmail creds, with Alister) or 055/067; GB resumes the moment creds land. WAVE 4 FALLOUT (2026-08-26T17:00Z): S5 blocked 063 AGAIN, rightly — no transactional composition in packages/approvals (withPool = fresh Pool per call, zero BEGIN/COMMIT; ORCH-verified). FIFTH producer-contract decompose error. TASK-080 added (GB, protected, critical): atomic editApproval on one BEGIN/COMMIT client; 063 reset pending behind it. CX 070 claim hit SYNC_MISMATCH (detached worktree, no branch) — ORCH created task/TASK-070-cx from master and will re-dispatch. REVIEW ROUND 1 RESULTS (2026-08-26T18:20Z, ORCH opus-4-8 adversarial): BOTH first submissions of the day sent to rework, both on real findings beyond a trust-the-tests read, neither a territory or process violation. TASK-080 (GB): transaction/atomicity work verified exemplary under two ORCH-run mutations (incl. one the source-pin missed and only the live behavioural test caught) — REWORK is one finding: editApproval never binds the replacement to the ORIGINAL's run_id/capability_id/tenant_id, a tier-laundering shape since capability_id drives broker policy and the ADR-004 digest doesn't cover it; ~8-line fix, added as an explicit new AC. TASK-070 (CX): all 5 stated ACs literally met and both controls independently reproduced firing on planted defects — REWORK is two findings: publication-tree dies with an opaque exit-2 instead of the mandated report when the swallowed file is executable (hits infra/ci/hooks/pre-commit itself), and the RFC 6761 allowlist false-positives on api.example.com with the shipped test PINNING that as correct. Both reset to in_progress with precise findings; both units resume on the same branch. Non-blocking follow-up candidates logged in Review_Findings for a later task: TASK-070's negative-controls fixture/hostname/env-name matching is narrow enough to be near-inert against this repo's real layout (1 of 11 planted leaks caught); new CI controls absent from infra/ci/run-local.mjs (outside this task's territory). TASK-070 CORRECTION (17:15Z): CX blocked OWNERSHIP_CONFLICT, rightly — my Owned_Paths named infra/ci/checks/ and infra/ci/workflows/ which DO NOT EXIST; real convention is flat infra/ci/<name>.mjs + test-<name>.mjs wired in .github/workflows/ci.yml. SIXTH decompose error (path assumption without ls). Owned_Paths corrected (incl. ci.yml, additive-steps-only constraint), reset pending, re-dispatching CX. STATUS SCAN (2026-08-26T20:30Z, ORCH): plan legal, 0 territory violations on any active branch. DRIFT FOUND: TASK-080 (GB) and TASK-070 (CX) have sat in_progress ~2h with rework findings recorded and ZERO commits since -- their redispatches were killed by a session interrupt earlier and never retried; not a builder problem, a dispatch-followup gap. TRIAGE: redispatch both now, no spec/re-sequence/re-assign needed, findings still valid. TASK-054 correctly blocked awaiting Alister's Gmail provisioning, no new info. TASK-063 correctly pending behind TASK-080 (working as designed). Stale checkpoint .devteam/CHECKPOINT.md (predates this session, 2026-08-25T18:42Z) read per its own resume procedure and deleted. Non-blocking cleanup debt noted, not actioned: 13 branches for done/superseded tasks never deleted post-merge; docs/STUDY-grok-bot-018.pdf generated but not yet committed. TASK-070 REWORK ROUND 2 (2026-08-26T20:45Z): CX fixed both required findings, APPROVED after independent scratch-repo reproduction + overshoot probing + mutation testing, merged. Not on critical path. TASK-080 REWORK ROUND 2 (2026-08-26T21:00Z): GB closed the identity-bind finding at the strong level (reviewer's own mutation confirmed all 3 fields, not just capability_id); APPROVED, merged. UNLOCKS TASK-063 (S5) — carried forward a new AC requiring the edit route to forward tenant_id (editApproval now hard-refuses omitted tenantId for non-basileia tenants). Both critical-path rework items now closed same-day. Found and fixed a misfiled Progress_Note (an earlier plan edit's string-match landed inside TASK-080's own Progress_Notes instead of this frontmatter) while closing out the task. TASK-063 REWORK (2026-08-26T21:30Z): S5's first submission was strong (every stated AC mutation-proven true) but review found expiresAt on the edit route is caller-supplied with zero bound validation — a past timestamp is silently accepted and bricks the approval (the exact invalidated-with-no-replacement hazard the task's own spec forbids), reachable through ordinary use, no attack needed. Sent back rather than merge-plus-ticket, consistent with today's bar on TASK-070/080. New explicit AC added, S5 redispatching. RESUME-STATE PROCESS GAP, SECOND OCCURRENCE (21:35Z): S5's resume session re-submitted the identical prior commit unchanged, claiming the rework finding needed no code — verified false at source, app.ts's expiresAt pass-through is untouched. Same defect class already on record from TASK-061 (2026-08-22): a resumed session checks only its own last Progress_Note and misses fresh content in Review_Findings above it. NOT scored as a review round; explicit resume instruction written directly into the task block quoting the exact line and exact fix. Worth a dispatch-prompt fix at the infra level so a third occurrence doesn't happen to a different unit — recorded here since that's outside this session's file scope. CORRECTION (21:40Z): the two identical resubmissions were ORCH's fault, not S5's — redispatched twice without merging master into the worktree first, so the resume instruction never reached S5's branch; that's a session-level dispatch-hygiene miss (I did remember this step for TASK-070/080 earlier the same wave and dropped it here), not a repeat of the TASK-061 defect class. Fixed by merging master into task/TASK-063-s5 and confirming the instruction is present before the third redispatch. TASK-063 APPROVED + MERGED, round 2 (2026-08-26T22:00Z): fix genuinely closed — reviewer's own live reproduction (independent throwaway Postgres, 12 direct DB probes) plus 3 mutations, including moving the validation to AFTER editApproval, which still reddened 4 tests via call-count/status assertions, proving the ordering is mechanically enforced. One residual (a ~40-50ms deliberate-targeting-only window) recorded non-blocking, does not meet round-1's own escalation bar. UNLOCKS TASK-058 (CX, Telegram approval inline-keyboard — the demo centerpiece) and TASK-065. Both surface-lane and runtime-lane critical-path items closed today except TASK-054/055, still gated on Alister's Gmail provisioning. DISPATCH WAVE 5 (2026-08-26T22:15Z, ORCH): infra fix first — scripts/worktree.ps1's 'create' action unconditionally targets master via `git worktree add $path master`, which fails whenever master is already checked out in the main repo (always true here) and the script swallows the failure, printing a false success; both grok/codex worktree directories were also left stale-unregistered (physically present sans node_modules cleanup, but absent from `git worktree list`) after their post-merge removals. Force-removed the stale directories and recreated both with `git worktree add --detach <path> master`, matching the existing wt-review-oikonomos pattern -- worth a real fix to worktree.ps1 at the infra level (detach instead of branch-checkout, or point at a placeholder branch) so this doesn't recur; noting here since it's outside this session's file scope same as the S5 resume-dispatch lesson earlier. CX -> TASK-058 (Telegram approval inline-keyboard, the demo centrepiece) -- its prior claim attempt was interrupted before any work landed (branch task/TASK-058-cx only carried the old SPEC_AMBIGUITY-era dossier commit from 08-24), redispatched clean. GB: nothing eligible -- entire remaining GB queue (066/067/068/073/076/079) is gated behind TASK-055, still blocked on TASK-054/Gmail provisioning; correctly idle, not a fault. CX's own backlog (065, 078) queues behind TASK-058. STATUS SCAN (2026-08-27T09:00Z, ORCH): plan legal, 0 territory violations. DRIFT: TASK-058 has now had THREE consecutive dispatch/redispatch attempts interrupted by session kills, all before any real approval-keyboard code landed -- branch task/TASK-058-cx carries only the original 08-24 SPEC_AMBIGUITY-era dossier commit plus merge-sync noise, diff vs master is a single 10-line dossier file. Not a builder-quality issue -- each kill hit before CX's session did substantive work. NOT auto-redispatching per the standing rule this session established (a kill reads as an intentional pause, not a retry signal) -- next action is Alister's call: redispatch CX when ready. TASK-054 unchanged, still correctly blocked awaiting Gmail provisioning (three days stale by timestamp, but the blocker is external, not a heartbeat problem -- no re-triage needed until Alister acts). GB idle, correctly -- entire remaining queue gated behind TASK-055/054. Non-blocking cleanup debt still outstanding, unchanged from prior scan: 13 stale done-task branches never deleted post-merge; docs/STUDY-grok-bot-018.pdf still uncommitted. ROOT CAUSE FOUND (2026-08-27T09:30Z, ORCH, Alister asked why): the three TASK-058 dispatch kills were NOT interruptions of intent -- scripts/dispatch.ps1's control.mode=strict branch (our actual configured mode) runs the builder CLI BLOCKING inside the same process the dispatching tool call spawned, unlike legacy mode's already-built detached-window launch, which exists specifically because 'when ORCH dispatches from a harness background job, the builder is a grandchild of that job, and when the harness reaps the job, the builder dies with it' (the script's own comment, referencing an earlier 2026-08-02 incident). Strict mode never got that protection. Workaround applied and verified working: launch dispatch.ps1 itself via Start-Process, fully detached, rather than a run_in_background tool call -- the dispatching call returns instantly and the whole session (including the blocking builder invocation inside it) runs outside any process tree that can be reaped. CX redispatched to TASK-058 this way (PID 24144), confirmed alive and resuming past the point of the earlier kills. Real fix -- extending detached-window launch to strict mode, with completion detected via a marker file rather than an inline blocking read -- recorded here as a candidate scripts/ hardening item, not applied mid-incident. Detail: memory/dispatch-strict-mode-kill-vulnerability.md (Claude Code user memory store). DETACHED-LAUNCH NOW THE STANDING RULE (2026-08-27T09:45Z, Alister: 'if this works, let this be the rule from now on'): fixed scripts/dispatch.ps1 itself rather than relying on a per-call ORCH workaround -- its control.mode=strict branch now generates a runner script and Start-Process-detaches it exactly like legacy mode already did, additionally performing strict mode's own log re-encode + control.py extraction INSIDE the detached runner (writing a .done marker) so dispatch.ps1 itself never blocks on the builder at all. Syntax-checked clean via the .NET PowerShell parser. TASK-058 (blocked with a legitimate 7th-occurrence Owned_Paths gap -- ApprovalSummary.nonce/decideApproval/editApproval belong in index.ts, outside the original territory) is the live test: Owned_Paths extended, redispatching CX through the fixed script now, no manual Start-Process wrapper needed. STATUS SCAN (2026-08-27T10:15Z, ORCH): plan legal, 0 territory violations. TASK-058 backfilled to needs_review (PLAN.md had drifted stale at in_progress -- supervisor tick lag, same pattern as prior scans; applied the real state from the .done marker/control block directly). TASK-058 diff clean: 4 files (index.ts, approvals/index.ts, approvals.test.ts, dossier), all inside the corrected Owned_Paths, no PLAN.md edits by CX. Gates green: 60/60 gateway tests, full recursive suite, lint, canaries. Adversarial review dispatched, focused on ADR-004 render provenance, N8 no-local-nonce-consumption (mutation-attempted), and N4 nonce-not-in-callback-data -- in flight, not yet returned. TASK-054 unchanged, still correctly blocked awaiting Alister's Gmail provisioning. GB idle, correctly. This is the first task to complete a FULL dispatch-to-done cycle entirely under the new detached-launch architecture (redispatched 05:35:09Z, unattended, self-reported via .done marker) -- confirms the fix holds for a real multi-hour session, not just the short verification run. ALISTER: CONCURRENT SESSION DETECTED (2026-08-27T10:45Z) -- TASK-058 was reviewed and merged by a DIFFERENT active Claude Code session on this same repo while this session's own adversarial review was still running; process list confirms multiple separate claude process trees alive simultaneously. Not destructive (git commits, not data loss) but a real coordination risk if it continues -- two ORCH-role sessions can both claim/merge/write PLAN.md concurrently. This session's review was more thorough and found two real gaps the other missed (both callback-path authorization checks on TASK-058 untested; the approvals module unexported and unreachable by TASK-059/060) -- not reverting, fixed forward as TASK-082 (critical), TASK-060 now depends on it. If you have a second Claude Code window/session open on oikonomos, please close it or let it finish before dispatching further from this one, to avoid a repeat collision on the next merge. GMAIL PROVISIONING STATUS (2026-08-31T21:15Z, ORCH): user does not have Basileia Google Cloud Console access; needs Alister to either execute docs/runbooks/gmail-mcp-provisioning.md himself or grant temporary access. Brief drafted and handed to user for forwarding. TASK-054/055 remain correctly blocked (MISSING_DEPENDENCY, external). AUTOPILOT WAVE STARTED same session: CX -> TASK-082 (critical), S5 -> TASK-069, GB idle (Gmail-gated). Chains: CX 082->059->078->081; S5 069->074->075->077->072. TASK-083 ADDED (2026-09-01T14:15Z, plan v5.26, user-confirmed): headless OAuth token acquisition for the Gmail MCP server, closing the gap TASK-054's review disclosed (headless calls reach the live server with no bearer token, so send_message/reply/forward denial was proven against a replayed fixture, not the true authenticated live surface). Assigned GB (natural continuation of TASK-054), Depends_On TASK-054 (done). TASK-055 now also Depends_On TASK-083. Refresh-token minting itself stays a human/ORCH interactive-consent step, explicitly out of this task's automation scope. STATUS SCAN (2026-09-01T15:56Z, ORCH): plan legal, 0 violations, 0 territory issues (no active branches to check besides GB's in-flight TASK-055, not yet branched). Counts: 70 done / 13 pending / 1 claimed (TASK-055) / 0 blocked. Notable this scan: TASK-055's first dispatch (10:59Z) silently died mid-planning - no branch, no commits, no .done marker, process confirmed gone via Win32_Process check ~40min later. Genuine tooling failure (GB/grok session crash), not a builder or quality issue; no work was lost. Redispatched clean at 11:44Z, THIS TIME explicitly verified process liveness (not just log-growth silence) both immediately after launch and again at this scan - confirmed alive both times (child pwsh.exe spawned mid-session proves real activity). Lesson applied going forward: for GB specifically, verify Win32_Process liveness before treating quiet as healthy, since simple absence-of-log-growth was insufficient this cycle to distinguish 'buffering' from 'dead'. CX and S5 correctly idle (S5 has no eligible pending task; CX's only remaining task TASK-071 depends on TASK-055). Gmail chain fully live as of this session: TASK-054 (enumeration+allowlist), TASK-083 (OAuth token provider, partial - offline half only, live-auth AC deferred pending a human consent step not yet done) both merged; TASK-055 (the actual end-to-end demo run) is GB's current work, dispatched at user's explicit go-ahead against the current unauthenticated Gmail surface."
+orchestrator_notes: "Plan v6.0 - ADR-010 PERSISTENT-OFFICE-COMPUTER DECOMPOSE (2026-09-01T20:15Z, ORCH, claude-opus-5). New spec: specs/OIKONOMOS_WBS_Addendum_F_v1.0.md answers all five ADR-010 §4 open questions - one durable environment per TENANT (not per role) as a long-lived container with named D0/D1/D2/D3 durability tiers; roles as D0 rows with three-scope/three-tier memory (agent>project>user) and routines; shared workspace with roles explicitly NOT a security boundary; the T0-T4 enum KEPT but decoupled from approval via an orthogonal EnforcementClass with a six-rank total precedence order and a FIXED enforced floor (spend / auth-friction / local execution / secret handling / D3 paths); and an additive reshape path that leaves TASK-052..083 intact. DISPOSITION of the 8 open tasks: KEEP 027/047/049/050/051/073, RESHAPE 060 (demo must park an enforced-floor action, not a send) and 076 (scheduler re-keyed to role_id + routine firing). Nothing dropped. NINE new tasks 084-092. BUILDER CONSTRAINT: GB is deactivated (Grok weekly limit), so protected paths (broker, policy, approvals, harness-factory, infra/ci) go to CX ONLY, never S5 - that is 086/087/088/091 plus in-flight 073, and CX also keeps single-owner worker territory (076). S5 takes the unprotected foundation: 084/085/089/090/092. FIRST DISPATCH WAVE: CX finishes TASK-073 (already in_progress, resume at the mutation-proof step) and S5 starts TASK-084 (D0 schema - it unblocks 086/090/076); territories disjoint (packages/broker vs packages/db+migrations). WAVE 2: CX TASK-086 (pure policy, no deps), S5 TASK-085 or TASK-092 (both dep-free). Do not dispatch 091 until 090 and 092 land. NOT DISPATCHED - planning only, per instruction."
 ---
 
 # Project Plan
@@ -897,7 +897,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] README §7 item 1 updated from "deferred" to the applied state, with the evidence
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP (deferral stands, trigger now nearer). Addendum F §6.4 keeps OpenSandbox for per-execution strong isolation launched FROM the Office; this task's own stated trigger was 'before the first real workload runs in a sandbox', and the persistent-environment wave brings that date forward. Still do-not-dispatch, but it is now a named prerequisite of the first Office-hosted Tier-3/Tier-4 execution, not an open-ended deferral.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1478,6 +1479,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. ADR-010 §4 makes connector work MORE valuable, not less; the scope-minimisation checklist is unaffected by the pivot. Still ORCH-executed, Assigned_To stays TBD.
 - [2026-08-19T05:25:00Z] [ORCH] docs/connectors/gmail.md written at TASK-048's review - all seven checklist items answered (ownership N5, scopes+justification, tier map with T3 rationale, disabled-until-G-CONN incl. the role_grant cross-product caveat, evals with both positive and negative verification, reversal paths, decision). First Wave-1 record complete; task stays open until Calendar and Drive have theirs.
 **Artifacts:** —
 **Test_Evidence:** —
@@ -1529,7 +1531,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. Calendar writes are in Addendum F §5.3's autonomous-by-default set, so the manifest's 'disabled until G-CONN' posture is now a G-CONN gate rather than a tier gate — no change to this task's acceptance criteria, but the reviewer should not read a T3 tier as implying an approval card (Addendum F §5.1).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1553,7 +1556,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. Same disposition as TASK-049. Drive sharing/permission changes remain the highest-risk capability in the manifest and remain a candidate for a per-role Require Approval rule (Addendum F §5.4) once roles exist.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1575,7 +1579,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No code, no dependency, no adoption — recommendation only
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged, still low. Addendum F §4.2 keeps OIKONOMOS's own server-side connector-session model, so a Composio recommendation is still a recommendation and still requires an ADR to adopt. If anything the N5/data-sovereignty question is sharper now: a hosted gateway holding a DURABLE session is a bigger exposure than one holding a per-run session.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1855,12 +1860,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-055, TASK-059, TASK-082
 **Description:** ORCH-executed — `docs/**` is outside builder territory. Once both lanes land, wire and demonstrate the full loop on real infrastructure: control-api up, Telegram gateway connected, worker running a governed inbox-triage against the live Gmail MCP server. Record the runbook: how to start it, how to trigger a run, what the approval looks like on the phone, how to stop/reverse. Capture the evidence trail for one complete run including a denied Tier-3 attempt. **This task is the demo Alister asked for; it closes only when the loop has actually been run end-to-end, not when the code exists** — demonstrate-not-assert, per the TASK-038 precedent. Assigned_To stays TBD so no builder claims it.
 **Acceptance_Criteria:**
-- [ ] Full loop demonstrated live: task in via Telegram → governed run → Tier-3 parks for approval → approve on phone → action completes → evidence retrievable (Directive §5 Functional/Governed/Evidenced)
-- [ ] A denied Tier-3 attempt captured in the same session's audit trail
+- [ ] Full loop demonstrated live: task in via Telegram → governed run → an **enforced-floor** action parks for approval → approve on phone → action completes → evidence retrievable (Directive §5 Functional/Governed/Evidenced; Addendum F §5.2)
+- [ ] The parking action is drawn from the enforced floor E1–E5, NOT a generic T3 send — under Addendum F §5.3 a send is autonomous by default, so demonstrating a parked send would be demonstrating a misconfiguration
+- [ ] The same run also shows an autonomous action executing without a card, with an audit event naming its EnforcementClass and deciding rank (Addendum F §5.4) — the pivot is only demonstrated if both halves are visible
+- [ ] A denied enforced-floor attempt captured in the same session's audit trail
 - [ ] Runbook records start, trigger, approve, stop/reverse (OIK-122)
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: RESHAPE (acceptance criteria rewritten above, 2026-09-01). The demo's approval moment must now be an enforced-floor action (Addendum F §5.2 E1-E5), not a generic Tier-3 send — under §5.3 a send is autonomous by default, so a parked send would demonstrate a misconfiguration rather than the architecture. Two criteria added: the parking action must come from the floor, and the same run must also show an autonomous action executing with an audit event naming its class and deciding rank. Territory, ownership (ORCH-executed) and Depends_On are unchanged.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -2245,6 +2253,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** task/TASK-073-cx
 **Started_At:** 2026-09-01T13:31:30Z
 **Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, explicitly reaffirmed. ADR-010 §6 names this task by number: refusal memory stays per-attempt/per-run, matching Grok Bot's 'deny is the answer for that attempt, not a permanent ACL' semantics (probe Q9). Addendum F §5.4 consumes it at rank 4 of the precedence order exactly as built. No change to scope; CX resumes at the mutation-proof step as already noted below. TASK-087 depends on it.
 - [2026-09-01T19:00:00Z] [ORCH] Reassigned GB->CX (GB deactivated, Grok weekly limit). Branch renamed task/TASK-073-gb -> task/TASK-073-cx, preserving commit 4a0371e. CX resumes at the mutation-proof step (AC5) and full-gate run; do not rewrite the existing implementation.
 - [2026-09-01T18:00:00Z] [ORCH] BUDGET EXHAUSTION, not a tooling crash or quality issue: GB's session ended with `API error (status 402 Payment Required): Grok Build usage balance exhausted` after 22 model calls / ~1.6M tokens on this one task, mid-way through the mutation-proof step ("I'll live-mutate the consult gate to prove the test goes red, then restore it" was the last logged intent). The work itself is real and was never committed — found `refusalMemory.ts`/`refusalMemory.test.ts`/dossier sitting untracked in the worktree, matching the log's own claim of "broker tests passed (84/84)" exactly when independently re-run (84/84, including 12 new refusal-memory tests). ORCH committed the work as-is to preserve it (commit 4a0371e) rather than lose it to a future worktree refresh. NOT YET REVIEWED — this is preservation, not approval; the mutation-proof AC's completion status is unknown (may be mid-flight when the balance ran out). Redispatching GB would hit the identical 402 error immediately (account-level balance exhaustion, not resolved by retrying) — escalating to the user rather than looping.
 **Artifacts:** packages/broker/src/{refusalMemory.ts,refusalMemory.test.ts} (uncommitted work preserved, not yet reviewed)
@@ -2306,16 +2315,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_At:** 2026-09-01T01:20:00Z
 
 ### TASK-076
-**Title:** services/worker — per-agent run serialization, lanes, approval-aware idle
+**Title:** services/worker — role-keyed run serialization, lanes, routine firing, approval-aware idle
 **Status:** pending
 **Assigned_To:** CX
-**Priority:** low
-**Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.3, §3.4 (F7 routines), §9 OIK-209; docs/STUDY-grok-bot-018.md §Tier 2 (lane scheduler; approval-aware health); WBS OIK-038 (run lifecycle)
 **Owned_Paths:** services/worker/src/scheduler/**, services/worker/test/scheduler.test.ts
-**Depends_On:** TASK-055
-**Description:** Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker). Four run-orchestration properties from the study: (1) **Per-agent serialization** — at most one active run per agent/routine identity, enforced by a promise-chain queue keyed on that identity, where one failed run does not poison the queue (their six-line `Map<agentId, Promise>` with self-deleting entries). (2) **Lanes** — `user | agent | background` priority lanes; user-initiated work preempts queued background work at dequeue time, never mid-run. (3) **Approval-aware idle** (study §Tier 2): the worker's health/idle signal distinguishes "busy running" from "busy only because every active run is parked awaiting a human approval" — the idle clock does NOT advance while merely awaiting approval, so a future drain/upgrade path can quiesce safely without cancelling human-blocked work; expose `{isBusy, busyOnlyAwaitingApproval, lastBusyAt}`. A watchdog interrupts a run exceeding a configurable wall-clock budget and records the interruption in the run's audit trail (never a silent kill). (4) **Priority interrupt, user lane protected** — added from the study's multi-agent section (docs/STUDY-grok-bot-018.md §Multi-agent coordination; verified at Grok Bot's `agent-to-agent-messaging.ts:125-140`, `scheduler.getActiveLane(agentId) === "user"` guard): a priority-flagged interrupt request for a given identity MUST preempt that identity's active `agent`- or `background`-lane run, and MUST NOT preempt an active `user`-lane run for that identity — check the active lane first, return without interrupting if it's `user`, otherwise interrupt and record `{reason, wasInFlight}` in the run's audit trail so a preempted run is distinguishable from one that finished normally. This is a request-time guard inside the SAME scheduler as (1)/(2)/(3), not a new module — do not build a separate priority-messaging feature, just the guarded-interrupt primitive the future multi-agent/OME work (WBS E10) will call. Injected clock throughout; no schema changes.
+**Depends_On:** TASK-055, TASK-084
+**Description:** **RESHAPED 2026-09-01 by Addendum F §6.3 — all four original properties below survive verbatim and are still correct; two things are added and one is re-keyed.** (a) **Re-key serialization from ad-hoc agent identity to `roles.role_id`** (TASK-084): the durable identity is now the thing that must not run twice concurrently. (b) **Routine firing** (Addendum F §3.4): `role_routines` rows are a source of queued tasks alongside intake; firing creates a task in the routine's lane and **does not resume anything** — there is no checkpoint/resume (probe Q3), so an interrupted run is cancelled and the next fire starts fresh, and a fire whose environment is down is recorded as `missed`, never queued for catch-up. Original scope follows unchanged. Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker). Four run-orchestration properties from the study: (1) **Per-agent serialization** — at most one active run per agent/routine identity, enforced by a promise-chain queue keyed on that identity, where one failed run does not poison the queue (their six-line `Map<agentId, Promise>` with self-deleting entries). (2) **Lanes** — `user | agent | background` priority lanes; user-initiated work preempts queued background work at dequeue time, never mid-run. (3) **Approval-aware idle** (study §Tier 2): the worker's health/idle signal distinguishes "busy running" from "busy only because every active run is parked awaiting a human approval" — the idle clock does NOT advance while merely awaiting approval, so a future drain/upgrade path can quiesce safely without cancelling human-blocked work; expose `{isBusy, busyOnlyAwaitingApproval, lastBusyAt}`. A watchdog interrupts a run exceeding a configurable wall-clock budget and records the interruption in the run's audit trail (never a silent kill). (4) **Priority interrupt, user lane protected** — added from the study's multi-agent section (docs/STUDY-grok-bot-018.md §Multi-agent coordination; verified at Grok Bot's `agent-to-agent-messaging.ts:125-140`, `scheduler.getActiveLane(agentId) === "user"` guard): a priority-flagged interrupt request for a given identity MUST preempt that identity's active `agent`- or `background`-lane run, and MUST NOT preempt an active `user`-lane run for that identity — check the active lane first, return without interrupting if it's `user`, otherwise interrupt and record `{reason, wasInFlight}` in the run's audit trail so a preempted run is distinguishable from one that finished normally. This is a request-time guard inside the SAME scheduler as (1)/(2)/(3), not a new module — do not build a separate priority-messaging feature, just the guarded-interrupt primitive the future multi-agent/OME work (WBS E10) will call. Injected clock throughout; no schema changes.
 **Acceptance_Criteria:**
-- [ ] Two runs for one agent identity never execute concurrently; a failed run does not block the next — both tested
+- [ ] Two runs for one `role_id` never execute concurrently; a failed run does not block the next — both tested (Addendum F §6.3 re-key)
+- [ ] A `role_routines` fire creates a task in the routine's lane, does NOT resume a cancelled run, and a fire with the environment down is recorded as `missed` rather than queued — tested (Addendum F §3.4)
 - [ ] User-lane task dequeued ahead of earlier-queued background tasks, tested
 - [ ] `busyOnlyAwaitingApproval` true and `lastBusyAt` frozen while the only active run is parked on approval, tested
 - [ ] Watchdog interruption reaches the run's audit trail, tested
@@ -2326,6 +2336,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: RESHAPE, not superseded (title, spec refs, priority, Depends_On, description and two acceptance criteria updated above, 2026-09-01). ADR-010 §4 flagged this task as possibly reshaped by the pivot; Addendum F §6.3 finds all four original scheduler properties still correct, so the change is additive: serialization re-keyed to roles.role_id (TASK-084) and routine firing added (Addendum F §3.4). Priority raised low->high because the persistent-role model needs a scheduler that knows about roles. Owned_Paths unchanged; CX keeps single-owner worker territory.
 - [2026-09-01T19:00:00Z] [ORCH] REASSIGNED GB->CX (Alister's decision: Grok's weekly limit is reached, GB deactivated in autopilot.json, Codex is the only remaining protected-path-eligible builder). This knowingly overrides the single-owner note below — the rule's purpose was worker-territory continuity with TASK-055; CX now inherits that ownership going forward, and CX must still never share worker files with any other unit.
 - [2026-09-01T18:05:00Z] [ORCH] Considered reassigning to S5 (GB is budget-exhausted, see TASK-073) but reverted — this task's own description explicitly states "Single-owner worker follow-up (GB per the TASK-055 seam rule; CX never touches worker)," a deliberate architectural-continuity rule, not a default. Staying GB-assigned; will not dispatch until GB's account balance is restored.
 **Artifacts:** —
@@ -2515,3 +2526,247 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-01T00:50:00Z
+
+### TASK-084
+**Title:** packages/db + migration 004 — role identity, routines, messages, require-approval rules (D0 schema)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.1 (F4 roles table), §3.4 (F7 role_routines), §3.5 (F8 role_messages), §5.4 (F15 require_approval_rules), §9 OIK-200; docs/decisions/ADR-010 §2.2
+**Owned_Paths:** infra/postgres/migrations/004_roles_routines_rules.up.sql, infra/postgres/migrations/004_roles_routines_rules.down.sql, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/routines.ts, packages/db/src/routines.test.ts, packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/requireApprovalRules.ts, packages/db/src/requireApprovalRules.test.ts, packages/db/src/index.ts
+**Depends_On:** —
+**Description:** The D0 foundation of the ADR-010 pivot: a named role stops being free text and becomes a row. Migration 004 creates the four tables in Addendum F exactly as specified — `roles` (F4), `role_routines` (F7), `role_messages` (F8), `require_approval_rules` (F15) — plus a FOREIGN KEY from the EXISTING `role_grants.role_id` to `roles.role_id` and from the EXISTING `tasks.routine_id` to `role_routines.routine_id`. **Do not alter any existing column type, the `risk_tier` enum, or `profile_facts`** — profile_facts is TASK-085's territory and the enum is deliberately preserved (Addendum F §5.1 F12). The FK additions require a backfill guard: if existing `role_grants`/`tasks` rows reference role_ids or routine_ids with no row, the migration must insert the missing `roles` rows (status `active`, description empty) rather than fail — record what it backfilled in the work log. Typed query layer per OIK-014 house style, one module per table, colocated tests; barrel exports added to `packages/db/src/index.ts` (this task is the sole owner of that file this wave). Down migration drops only what 004 created. `roles.description` is stored but NO query helper may make an authorization decision from it (N12) — this is the first place that invariant lands.
+**Acceptance_Criteria:**
+- [ ] Migration 004 creates roles/role_routines/role_messages/require_approval_rules with the columns and defaults in Addendum F §3.1/§3.4/§3.5/§5.4, and 004.down reverses it cleanly (up-down-up leaves an identical schema, tested)
+- [ ] `role_grants.role_id` and `tasks.routine_id` FKs exist and a grant for a nonexistent role is rejected by the database, tested (F4 "a grant for a role that does not exist becomes impossible to insert")
+- [ ] Backfill guard: pre-existing rows referencing unknown role_ids are backfilled, not errored — tested against a fixture containing such a row
+- [ ] Typed CRUD + list for each of the four tables, with tenant_id scoping on every read, tested
+- [ ] `role_routines` fire bookkeeping records a missed fire distinctly from a queued one (Addendum F §3.4 "recorded as missed, never queued for catch-up")
+- [ ] `profile_facts`, the `risk_tier` enum, and migrations 001–003 are byte-identical to master — asserted by diff in the work log
+- [ ] LIVENESS: a test asserts no exported db helper reads `roles.description` in an authorization path — N12 (a source-level assertion is acceptable here and must fail if such a read is added)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-085
+**Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.3 (F6), §9 OIK-201; docs/research/grok-bot-live-probe-2026-09-01.md Q4; CLAUDE.md non-negotiable 7 (ACL before similarity)
+**Owned_Paths:** infra/postgres/migrations/005_agent_memory.up.sql, infra/postgres/migrations/005_agent_memory.down.sql, packages/memory/src/**, packages/memory/package.json, packages/memory/vitest.config.ts
+**Depends_On:** —
+**Description:** `packages/memory` is a 13-line stub; this fills it. Migration 005 **extends the existing `profile_facts` table** (do not create a parallel store — F6 is explicit that four-fifths of the shape already exists): add `role_id text NULL`, `project_id text NULL`, `tier text NOT NULL DEFAULT 'profile'`, and widen the unique constraint to `(tenant_id, scope, role_id, project_id, key)` with a CHECK that role_id is non-null exactly when scope is `agent`. Then the store: three scopes (`agent | project | user`), three tiers (`profile | log | note`), and `resolve(key, ctx)` implementing the probe's conflict order **agent > project > user** as a pure function. The injection budget is the point of the tier split — the profile-tier reader is the only one intended for every-turn prefix injection; `log` is on-demand only; `note` defaults to a 7-day TTL via the existing `expires_at`. Writes are explicit and audited: **nothing is written to memory as a side effect** (probe Q5 confirmed the receiving Bot did not auto-write). Cross-role reads of another role's `agent`-scope memory must be impossible through the API — this is where OIKONOMOS is deliberately stricter than Grok Bot's shared-filesystem shard. Migration 004 (TASK-084) touches different tables; do not touch the four tables it creates, and do not touch `knowledge_chunks`.
+**Acceptance_Criteria:**
+- [ ] Migration 005 extends profile_facts with role_id/project_id/tier and the widened unique key; the CHECK rejects an agent-scope row with a null role_id, tested; 005.down reverses cleanly
+- [ ] `resolve()` returns the agent-scope value when all three scopes hold the same key, project when agent is absent, user when both are absent — all three cases tested (F6 "agent > project > user")
+- [ ] Only the profile tier is returned by the every-turn reader; a log row and a note row are excluded from it, tested (F6 "only the profile tier enters the prefix every turn")
+- [ ] Note rows carry a default TTL and an expired note is not returned, tested
+- [ ] A read for role A never returns role B's agent-scope rows — tested with both roles holding the same key (F6 "a role cannot read another role's agent-scope memory at all")
+- [ ] No API path writes memory implicitly: a read, a resolve and a failed write leave the store unchanged, tested
+- [ ] MUTATION-PROVEN: inverting the conflict order turns a resolve test RED; removing the scope filter turns the cross-role test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-086
+**Title:** packages/policy — EnforcementClass resolver + require-approval precedence ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1 (F12), §5.2 (F13 enforced floor), §5.3 (F14), §5.4 (F15 precedence table), §9 OIK-202; docs/decisions/ADR-010 §6; ADR-003 (tier resolution direction)
+**Owned_Paths:** packages/policy/src/enforcement.ts, packages/policy/src/enforcement.test.ts, packages/policy/src/requireApproval.ts, packages/policy/src/requireApproval.test.ts, packages/policy/src/index.ts
+**Depends_On:** —
+**Description:** **CX only, NEVER S5** (protected path). The tier map rework, as a pure function — `packages/policy` keeps its zero-I/O constraint, so rules arrive as data, never from a query. Add `EnforcementClass = "autonomous" | "enforced"` and `resolveEnforcement(input)` implementing Addendum F §5.4's SIX-RANK TOTAL ORDER exactly and in order: (1) fail-closed inputs — broker unreachable/timeout/malformed, undescribable action, unknown capability, yielding enforced; (2) enforced floor E1–E5 — spend/payment, auth-security friction, local-machine execution, secret handling, D3 path access, yielding enforced; (3) a matching require-approval rule, yielding enforced; (4) refusal-memory hit, yielding denied (pass-through — this module does not own refusal memory); (5) role_grants ceiling exceeded, yielding enforced; (6) otherwise autonomous. **`resolveEffectiveTier` and the `RiskTier` enum are NOT modified** (F12: the tier stays and stops implying approval) — this is a second, orthogonal output alongside the existing one. Rule matching is a deterministic predicate over capability_id plus a target predicate; **no model-based review, ever** (Addendum F §5.5). Rank 1 sits above rank 2 deliberately so an unclassifiable action can never be argued into rank 6. The floor is a floor: no rule input may move an E1–E5 action to autonomous.
+**Acceptance_Criteria:**
+- [ ] `resolveEnforcement` is exhaustively tested against all six ranks, including a case where a higher rank and a lower rank both match and the higher wins (F §5.4 "first match wins")
+- [ ] LIVENESS — FIXED FLOOR: with a maximally permissive allow-rule set, each of E1 (payment), E2 (2FA), E3 (local execution), E4 (secret handling), E5 (D3 path) still resolves enforced, tested one case each (F §5.2 "nothing can subtract from it")
+- [ ] Require Approval beats Always Allow: a rule promoting an autonomous action wins over any permissive input, tested (probe batch 3 item B)
+- [ ] Each §5.3 autonomous-by-default action (send email, post publicly, delete/overwrite, connector write, routine creation, message a teammate) resolves autonomous under a default configuration, tested
+- [ ] An unknown capability_id and an undescribable action both resolve enforced via rank 1, not rank 6, tested
+- [ ] `resolveEffectiveTier`, `ceiling.ts` and the RiskTier type are byte-identical to master; zero I/O imports added (lint-enforced)
+- [ ] MUTATION-PROVEN: reordering ranks 2 and 3 turns a test RED; deleting any single E-class from the floor turns its liveness test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-087
+**Title:** packages/broker — enforcement gate in the decision path ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1, §5.4, §9 OIK-203; docs/decisions/ADR-001-broker-enforcement-point.md; ADR-010 §3
+**Owned_Paths:** packages/broker/src/enforcementGate.ts, packages/broker/src/enforcementGate.test.ts, packages/broker/src/decision.ts, packages/broker/src/decision.test.ts, packages/broker/src/index.ts
+**Depends_On:** TASK-086, TASK-073
+**Description:** **CX only, NEVER S5** (protected path). Wire TASK-086's `resolveEnforcement` into the broker's decision path so the new autonomy default is what the `PreToolUse` hook actually enforces. Enforced yields the existing park-for-approval path (approvals stay nonce-bound and single-use, ADR-004 — unchanged) or, for E2, the human-takeover outcome; autonomous yields allow-and-audit. **ADR-001 is untouched**: the enforcement point stays the PreToolUse hook, `canUseTool` alone remains banned, and the fail-closed map for broker unreachable/timeout/malformed keeps its current behaviour — rank 1 of the precedence order must be satisfied BY that existing map, not by a second parallel one. Refusal memory (TASK-073) is consumed at rank 4 exactly as built; its per-run/per-attempt semantics are correct and must not be changed into a persistent ACL (ADR-010 §6, probe Q9). Every autonomous execution emits an audit event carrying the resolved class and the rank that decided it — an audit trail that cannot say WHY something was allowed is not a compensating control for broadened autonomy (Addendum F R22).
+**Acceptance_Criteria:**
+- [ ] An action resolving autonomous executes and emits an audit event naming both the EnforcementClass and the deciding rank, tested
+- [ ] An action resolving enforced parks with a nonce-bound single-use approval; E2 (auth friction) yields the takeover outcome and is never typed by the model, tested
+- [ ] Broker unreachable / timeout / malformed still deny via the EXISTING fail-closed map — asserted to be the same code path, not a duplicate (ADR-001 R3)
+- [ ] A denial already in refusal memory is auto-denied without issuing a second approval request, and a mid-run policy widening does not resurrect it — TASK-073 behaviour still green after this wiring
+- [ ] LIVENESS: a canary in which the enforcement gate is bypassed makes a previously-parking payment action execute — proving the gate is on the real path and not a decorative call
+- [ ] No canUseTool-only enforcement introduced; `bypassPermissions`/`acceptEdits` absent (CI grep still clean)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-088
+**Title:** packages/broker — D3 sealed-secret path guard (N13 enforcement + detection) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13), §2.2 (D3 tier), §9 OIK-204; docs/decisions/ADR-010 §6 (stricter than Grok Bot); docs/research/grok-bot-live-probe-2026-09-01.md Q11
+**Owned_Paths:** packages/broker/src/secretPathGuard.ts, packages/broker/src/secretPathGuard.test.ts
+**Depends_On:** TASK-087
+**Description:** **CX only, NEVER S5** (protected path). The probe recorded Grok Bot's own instance calling browser cookies on the shared box "the hole in 'model never holds secrets'" — readable files guarded by policy only, with cookie-persistence helper scripts sitting right there. ADR-010 §6 requires OIKONOMOS to be stricter by construction. TASK-089 provides layer 1 (the D3 volume is not mounted into the model's namespace at all); this task builds layers 2 and 3: a broker guard that denies ANY tool call whose resolved target matches a D3 path pattern — browser profile, cookie stores, connector token files, CLI credential directories — **regardless of tier, grant, or allow rule**, and emits a distinct audit event type for the attempt. Path matching resolves symlinks and parent-directory segments BEFORE matching; a guard that can be walked around with a `..` segment is not a guard. This is E5 of the enforced floor, so it is not promotable, demotable, or configurable away. Detection matters independently of prevention: an attempt to read a cookie store is a signal worth keeping even when layer 1 already made it impossible.
+**Acceptance_Criteria:**
+- [ ] Every D3 pattern in Addendum F §2.2 is denied regardless of tier, grant and allow rule, tested one case each
+- [ ] Traversal and symlink evasion (parent-directory segments, a symlink into the secrets volume, encoded separators) are denied — normalisation happens before matching, tested
+- [ ] A denied attempt emits its own audit event type, distinguishable from an ordinary tier denial, tested
+- [ ] LIVENESS: disabling the guard makes a cookie-store read succeed in the test harness — the guard is proven load-bearing, not merely present
+- [ ] No secret value, path content or byte ever reaches a log, an audit payload or a test fixture (N4), asserted
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-089
+**Title:** infra/compose — the Office: durable environment, named volumes, durability canary
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §2.1 (F1), §2.2 (F2 durability tiers + canary), §2.3 (F3 lifecycle verbs), §4.3 layer 1, §9 OIK-205; CLAUDE.md control-liveness; docs/decisions/ADR-005-control-liveness.md
+**Owned_Paths:** infra/compose/docker-compose.office.yml, infra/compose/office/**
+**Depends_On:** —
+**Description:** The persistent office computer itself. A long-lived container per tenant (one today: `basileia`), with durable state on NAMED VOLUMES rather than in the image layer: `oikonomos-workspace` mounted at `/oikonomos` (holding `workspace/` and `roles/`, tier D1) and `oikonomos-secrets` (tier D3) which **must NOT be mounted into the agent/model container at all** — that omission is N13 layer 1 and is the strongest control in this design, so it is the thing the canary must prove. Everything in the image layer is D2 and explicitly disposable. Implement the four lifecycle verbs of Addendum F §2.3 as scripts under `infra/compose/office/`: provision, rebuild, recover, restore — rebuild/recover reattach D1+D3 to a fresh image; there is **no checkpoint/resume** (probe Q3), so in-flight work is cancelled, never suspended. **Liveness assertion, mandatory and the centre of this task:** a durability canary that writes a digest-bearing marker into D1 and into D2, runs a real rebuild, and asserts the D1 marker survives with an identical digest while the D2 marker is GONE. Asserting that the compose file lists a volume is exactly the inert-control failure ADR-005 exists for and will be rejected at review. A second assertion must run from inside the model container and prove the D3 mount is absent. Do not touch `docker-compose.local.yml` or `docker-compose.prod.yml`.
+**Acceptance_Criteria:**
+- [ ] One long-lived tenant container with `oikonomos-workspace` (D1) and `oikonomos-secrets` (D3) as named volumes; D3 is mounted only into the non-model service (Addendum F §2.2 table, §4.3 layer 1)
+- [ ] provision / rebuild / recover / restore scripts exist and each states, in its own output, which durability tiers it preserves and which it discards (F3)
+- [ ] LIVENESS — DURABILITY CANARY: after a real rebuild the D1 marker is present with an identical digest AND the D2 marker is absent; both halves asserted (F2 "keyed on evidence the volume mount emits by doing its job")
+- [ ] LIVENESS — D3 ABSENCE: an assertion executed from inside the model container proves the secrets path does not exist there (N13 layer 1)
+- [ ] restore is the only verb that can lose D1 writes and says so explicitly in its output and its README section (F3)
+- [ ] `docker-compose.local.yml` and `docker-compose.prod.yml` byte-identical to master
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-090
+**Title:** services/workspace — shared workspace paths, durability-tier classification, handoff mailbox
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.1 (F9), §2.2 (tier classification), §3.5 (F8 handoff), §9 OIK-206; docs/research/grok-bot-live-probe-2026-09-01.md Q5
+**Owned_Paths:** services/workspace/src/**, services/workspace/test/**, services/workspace/package.json, services/workspace/vitest.config.ts
+**Depends_On:** TASK-084
+**Description:** `services/workspace` is a 13-line stub and becomes the single place that understands the Office filesystem. Three responsibilities. (1) **Path resolution** — resolve and normalise a workspace path against `/oikonomos/workspace` (shared) or `/oikonomos/roles/<role_id>` (convention only, NOT a boundary — a role may read another role's directory, and the API must not pretend otherwise, F9); reject any path escaping the workspace root after symlink and parent-segment normalisation. (2) **Durability-tier classification** — every path is classified D1/D2/D3 per Addendum F §2.2, so a caller writing to D2 can be told mechanically that the write will not survive a rebuild (N14). A D3 classification is an immediate refusal here as well as at the broker; defence in depth, not a substitute for TASK-088. (3) **Handoff mailbox** — the `send_to_role` primitive over TASK-084's `role_messages`: async (sender gets an acknowledgement, never a reply in the same turn), verbatim text plus sender identity, **workspace paths not file bytes** (probe Q5 confirmed the receiver reads the shared file itself), zero context carry-over, and NO implicit memory write on either side. State in the module docblock that a handoff carries no privilege: the receiving role acts under its own grants (F8, R13).
+**Acceptance_Criteria:**
+- [ ] Path resolution rejects traversal outside the workspace root including via symlink and encoded separators, tested
+- [ ] Every resolved path returns a durability tier; a D2 write is flagged non-durable to the caller and a D3 path is refused, tested (N14, F2)
+- [ ] Role directories are readable across roles — a test asserts role A CAN read role B's directory, documenting that this is intended and roles are not a boundary (F9)
+- [ ] `send_to_role` is async: the call returns an acknowledgement and no reply, and the message carries text + sender identity + workspace refs but no file bytes, tested (probe Q5 items 1–2)
+- [ ] Delivery writes nothing to either role's memory and carries no sender context, tested (probe Q5 items 3–4)
+- [ ] LIVENESS: removing the traversal guard turns an escape test RED; removing the tier classifier turns the non-durable-write test RED
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-091
+**Title:** packages/harness-factory — additive environment binding in ComposeOptions ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.1, §6 preamble (persistence belongs to the substrate, not the harness object), §9 OIK-207; docs/decisions/ADR-010 §4 (migration path, not a rewrite); ADR-001
+**Owned_Paths:** packages/harness-factory/src/environment.ts, packages/harness-factory/src/compose.ts, packages/harness-factory/src/index.ts, packages/harness-factory/test/environment.test.ts
+**Depends_On:** TASK-090, TASK-092
+**Description:** **CX only, NEVER S5** (protected path). The smallest possible change that makes a composed harness aware of the durable environment: ONE new optional field on `ComposeOptions` — `environment?: { workspaceRoot, roleId, roleDir, sessionPool? }` — and nothing else. Omitting it must yield today's behaviour exactly, which is why every existing test, canary and caller stays green without modification; that is the acceptance bar, not a nice-to-have. `mcpServers` continues to receive already-resolved strings, is never read from env and is never logged (N4/N9) — the TASK-092 pool resolves them, the contract does not change. The L1/L2/L3 layering, the `PreToolUse` seam, the fail-closed map and the mandatory tool decorators are UNTOUCHED (ADR-001). Do not make the harness itself long-lived: per Addendum F §6, the harness may still be composed per run — what became durable is the state it points at. A change that turns `composeHarness` into a persistent object is rework, not an alternative implementation.
+**Acceptance_Criteria:**
+- [ ] `ComposeOptions.environment` added as OPTIONAL; the full existing suite and all canaries pass with zero changes to existing tests (F §6.1 "omitting it yields exactly today's behaviour")
+- [ ] With environment supplied, the run's role identity and workspace root reach the composed runtime and appear in the run's audit identity, tested
+- [ ] `sessionPool` is consumed via TASK-092's acquire/release; no connector session is destroyed at run end, tested
+- [ ] `mcpServers` is still never logged and never read from env; the N4 assertion is still green
+- [ ] `composeHarness` remains per-run — a test asserts two runs produce two harnesses (F §6 substrate-not-harness)
+- [ ] Diff touches no hook, decorator, fail-closed mapping or permission-mode code — asserted in the work log with the file-level diff
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-092
+**Title:** packages/connectors — durable tenant session pool: create/destroy becomes acquire/release
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.2 (F10), §6.2, §9 OIK-208; docs/decisions/ADR-010 §4 (signed in once, available thereafter); docs/research/grok-bot-live-probe-2026-09-01.md Q11
+**Owned_Paths:** packages/connectors/src/sessions/**, packages/connectors/src/index.ts
+**Depends_On:** —
+**Description:** The single change that turns connector work from per-run into "signed in once, available thereafter" — the property ADR-010 §4 says connectors gain under this pivot. Add a tenant-scoped `ConnectorSessionPool`: `acquire(connectorId)` mints a session on first use and reuses it thereafter; `release()` returns it to the pool instead of tearing it down; an expired session is re-minted transparently on the next acquire. The pool sits UNDERNEATH the existing manifest, enumeration, discovery-cache and allowedTools code — **none of which is modified** (TASK-054/083 are done and working; ADR-010 requires reshape, not rewrite). The probe's Q11 contract is preserved exactly and is the security bar: OAuth stays server-side, the model receives an opaque session handle plus whatever identity metadata a tool returns, and **no token, refresh token or secret ever appears in a tool schema, a tool result, a log, or an audit payload** (N4). Sessions are scoped by tenant, never by role — roles share sessions by design (F1, F10), which is precisely why a role is not a security boundary. `manifests/**` is another task's territory; do not touch it.
+**Acceptance_Criteria:**
+- [ ] `acquire` mints on first call and returns the SAME session on the second, tested; `release` does not destroy it, tested (F10 acquire/release; ADR-010 "signed in once, available thereafter")
+- [ ] An expired session is re-minted transparently on the next acquire, tested
+- [ ] Two different roles on one tenant acquire the same session; two tenants never do — both tested (F10 "scoped by tenant, never by role")
+- [ ] LIVENESS — N4: a test asserts no token or secret value appears in any tool schema, tool result, log line or audit payload emitted by the pool, and fails if one is introduced
+- [ ] `manifest/**`, `enumeration/**`, `discovery-cache/**` and `mcp/**` byte-identical to master — asserted by diff in the work log
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
