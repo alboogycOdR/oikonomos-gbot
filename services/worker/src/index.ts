@@ -13,7 +13,11 @@ export {
 
 export {
   executeTaskRun,
+  toScopedAllowedTool,
   WorkerExecutionError,
+  type ConnectorContext,
+  type ConnectorManifestSlice,
+  type ConnectorMount,
   type ExecuteTaskRunInput,
   type ExecuteTaskRunResult,
 } from "./executeRun.js";

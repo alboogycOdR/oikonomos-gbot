@@ -5,16 +5,19 @@ import {
   type CompletionAuditSink,
   type ComposedRuntime,
   type L1RunIdentity,
+  type McpServers,
   type RunParkPort,
   type SubprocessProviderFactories,
 } from "@oikonomos/harness-factory/compose";
 
 /**
- * Production agent-invocation path (OIK-041 HIGH-2).
+ * Production agent-invocation path (OIK-041 HIGH-2 / TASK-055).
  *
  * Every worker-driven model call goes through `composeHarness` so L1/L2/L3
- * and PostToolUse are bound before `harness.query` runs. There is no
- * second construction path and no direct Agent SDK import (N9).
+ * and PostToolUse are bound before `harness.query` runs. Connector MCP
+ * servers are mounted only here, by passing already-resolved `mcpServers`
+ * into composeHarness (N9). There is no second construction path and no
+ * direct Agent SDK import.
  */
 
 export class WorkerExecutionError extends Error {
@@ -25,6 +28,39 @@ export class WorkerExecutionError extends Error {
     this.name = "WorkerExecutionError";
     this.code = code;
   }
+}
+
+/**
+ * Structural slice of a connector manifest. The worker does not import
+ * `@oikonomos/connectors` (package.json is outside this task's territory);
+ * callers pass the already-validated slice plus TASK-053/054 outputs.
+ */
+export interface ConnectorManifestSlice {
+  readonly connector_id: string;
+  readonly mcp_server: { readonly name: string };
+  readonly tools: readonly {
+    readonly tool_name: string;
+    readonly capability_id: string;
+    readonly default_tier: string;
+    readonly enabled?: boolean;
+  }[];
+}
+
+/**
+ * Optional connector context for a run: manifest identity, resolved MCP
+ * config (secrets already substituted), and the derived L2 allowlist
+ * (fully-qualified `mcp__<server>__<tool>` names from TASK-054).
+ */
+export interface ConnectorContext {
+  readonly manifest: ConnectorManifestSlice;
+  readonly mcpServers: McpServers;
+  readonly allowedTools: readonly string[];
+}
+
+/** Names only — never urls, headers, or other secret material (N4). */
+export interface ConnectorMount {
+  readonly connectorId: string;
+  readonly mcpServerNames: readonly string[];
 }
 
 export interface ExecuteTaskRunInput<TCodex = unknown, TGrok = unknown> {
@@ -41,26 +77,30 @@ export interface ExecuteTaskRunInput<TCodex = unknown, TGrok = unknown> {
     toolUseId: string;
     input: Record<string, unknown>;
   }) => string | undefined;
+  connector?: ConnectorContext;
 }
 
 export interface ExecuteTaskRunResult<TCodex = unknown, TGrok = unknown> {
   readonly events: readonly unknown[];
   readonly runtime: ComposedRuntime<TCodex, TGrok>;
+  readonly connector: ConnectorMount | undefined;
 }
 
 export async function executeTaskRun<TCodex = unknown, TGrok = unknown>(
   input: ExecuteTaskRunInput<TCodex, TGrok>,
 ): Promise<ExecuteTaskRunResult<TCodex, TGrok>> {
   assertExecuteInput(input);
+  const allowedTools = resolveAllowedTools(input);
 
   const runtime = composeHarness<BrokerDependencies, TCodex, TGrok>({
     run: input.run,
-    allowedTools: input.allowedTools,
+    allowedTools,
     auditSink: input.auditSink,
     park: input.park,
     queryFn: input.queryFn,
     subprocessProviders: input.subprocessProviders,
     approvalNonceFor: input.approvalNonceFor,
+    mcpServers: input.connector?.mcpServers,
     pretooluse: {
       handlePreToolUse,
       dependencies: input.brokerDependencies,
@@ -72,7 +112,71 @@ export async function executeTaskRun<TCodex = unknown, TGrok = unknown>(
     events.push(event);
   }
 
-  return { events, runtime };
+  return { events, runtime, connector: connectorMount(input.connector) };
+}
+
+function connectorMount(connector: ConnectorContext | undefined): ConnectorMount | undefined {
+  if (connector === undefined) {
+    return undefined;
+  }
+  return {
+    connectorId: connector.manifest.connector_id,
+    mcpServerNames: Object.freeze([...Object.keys(connector.mcpServers)]),
+  };
+}
+
+/**
+ * L2 requires scoped `Tool(spec)` form (ADR-001 R1). TASK-054's derived
+ * allowlist is fully-qualified `mcp__server__tool` names without a spec —
+ * wrap those here, at the sole composeHarness caller, rather than patching
+ * packages/**.
+ */
+export function toScopedAllowedTool(entry: string): string {
+  if (typeof entry !== "string" || entry.trim().length === 0) {
+    throw new WorkerExecutionError(
+      "connector allowedTools entries must be non-empty strings",
+      "INVALID_CONNECTOR",
+    );
+  }
+  const trimmed = entry.trim();
+  if (trimmed.includes("*") || trimmed.includes("?")) {
+    throw new WorkerExecutionError(
+      "connector allowedTools must not contain wildcards",
+      "INVALID_CONNECTOR",
+    );
+  }
+  if (trimmed.includes("(")) {
+    return trimmed;
+  }
+  return `${trimmed}(*)`;
+}
+
+function resolveAllowedTools<TCodex, TGrok>(
+  input: ExecuteTaskRunInput<TCodex, TGrok>,
+): readonly string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  const add = (entry: string): void => {
+    if (!seen.has(entry)) {
+      seen.add(entry);
+      merged.push(entry);
+    }
+  };
+  for (const entry of input.allowedTools) {
+    if (typeof entry !== "string" || entry.trim().length === 0) {
+      throw new WorkerExecutionError(
+        "allowedTools entries must be non-empty strings",
+        "INVALID_TOOLS",
+      );
+    }
+    add(entry);
+  }
+  if (input.connector !== undefined) {
+    for (const entry of input.connector.allowedTools) {
+      add(toScopedAllowedTool(entry));
+    }
+  }
+  return merged;
 }
 
 function assertExecuteInput<TCodex, TGrok>(
@@ -87,7 +191,13 @@ function assertExecuteInput<TCodex, TGrok>(
   if (!isRunIdentity(input.run)) {
     throw new WorkerExecutionError("executeTaskRun requires a complete run identity", "INVALID_RUN");
   }
-  if (!Array.isArray(input.allowedTools) || input.allowedTools.length === 0) {
+  if (!Array.isArray(input.allowedTools)) {
+    throw new WorkerExecutionError("executeTaskRun requires an allowedTools list", "INVALID_TOOLS");
+  }
+  if (input.connector !== undefined) {
+    assertConnectorContext(input.connector);
+  }
+  if (resolveAllowedTools(input).length === 0) {
     throw new WorkerExecutionError("executeTaskRun requires a non-empty allowedTools list", "INVALID_TOOLS");
   }
   if (typeof input.brokerDependencies !== "object" || input.brokerDependencies === null) {
@@ -107,6 +217,39 @@ function assertExecuteInput<TCodex, TGrok>(
   }
   if (input.queryFn !== undefined && typeof input.queryFn !== "function") {
     throw new WorkerExecutionError("queryFn must be a function when provided", "INVALID_QUERY");
+  }
+}
+
+function assertConnectorContext(connector: ConnectorContext): void {
+  if (typeof connector !== "object" || connector === null) {
+    throw new WorkerExecutionError("connector context must be an object", "INVALID_CONNECTOR");
+  }
+  const id = connector.manifest?.connector_id;
+  const serverName = connector.manifest?.mcp_server?.name;
+  if (!isNonEmptyString(id) || !isNonEmptyString(serverName)) {
+    throw new WorkerExecutionError(
+      "connector context requires manifest.connector_id and manifest.mcp_server.name",
+      "INVALID_CONNECTOR",
+    );
+  }
+  if (!Array.isArray(connector.allowedTools)) {
+    throw new WorkerExecutionError(
+      "connector context requires a derived allowedTools array",
+      "INVALID_CONNECTOR",
+    );
+  }
+  const servers = connector.mcpServers;
+  if (typeof servers !== "object" || servers === null || Array.isArray(servers)) {
+    throw new WorkerExecutionError(
+      "connector context requires resolved mcpServers",
+      "INVALID_CONNECTOR",
+    );
+  }
+  if (!Object.prototype.hasOwnProperty.call(servers, serverName)) {
+    throw new WorkerExecutionError(
+      "connector mcpServers is missing the manifest server",
+      "INVALID_CONNECTOR",
+    );
   }
 }
 
@@ -166,6 +309,29 @@ if (import.meta.vitest) {
           auditSink,
         }),
       ).rejects.toMatchObject({ code: "INVALID_RUN" });
+    });
+
+    it("rejects a connector context that does not name its resolved server", async () => {
+      const auditSink = { writeCompletionEvidence: async () => undefined };
+      await expect(
+        executeTaskRun({
+          prompt: "triage inbox",
+          run: {
+            runId: "run-1",
+            roleId: "inbox-triage",
+            tenantId: "basileia",
+            agentRef: { provider: "claude", sessionRef: "sess", isSubagent: false },
+          },
+          allowedTools: ["Read(src/**)"],
+          brokerDependencies: {} as BrokerDependencies,
+          auditSink,
+          connector: {
+            manifest: { connector_id: "gmail", mcp_server: { name: "gmail" }, tools: [] },
+            mcpServers: {},
+            allowedTools: ["mcp__gmail__list_messages"],
+          },
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_CONNECTOR" });
     });
   });
 }
