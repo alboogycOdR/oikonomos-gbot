@@ -70,3 +70,5 @@ WHAT'S NEEDED TO CONTINUE:
 
 Stopping the loop here. No further wakeup scheduled.
 - 2026-09-01T19:00Z [ORCH] Alister: Grok weekly limit reached — GB deactivated in autopilot.json (active: CX, S5). TASK-073 and TASK-076 reassigned GB->CX (073's branch renamed task/TASK-073-cx, still carrying the preserved refusal-memory commit; 073 set in_progress for CX to finish the mutation-proof step). TASK-076's single-owner note knowingly overridden — CX inherits worker continuity. Launching ADR-010 decompose pass headless on claude-opus-5.
+- [2026-09-01T15:04:57Z] SESSION_END unit=ORCH plan={done:76 pending:16 in_progress:1}
+- 2026-09-01T19:30Z [ORCH] Decompose pass (opus-5) done: plan v6.0, specs/OIKONOMOS_WBS_Addendum_F_v1.0.md, 9 new tasks (084-092), 8 re-triaged, validator green, protected paths CX-only confirmed. TASK-073: CX blocked SYNC_MISMATCH (branch held by retired GB worktree) — fixed by detaching wt-grok and attaching task/TASK-073-cx to wt-codex; redispatching. New wave NOT dispatched — awaiting user go-ahead.
