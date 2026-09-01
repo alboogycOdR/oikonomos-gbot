@@ -20,6 +20,11 @@ import {
   allowedToolsFor,
   createHttpMcpToolEnumerator,
 } from "../src/enumeration/index.js";
+import {
+  createGmailOAuthTokenProvider,
+  createOAuthTokenProvider,
+  OAuthTokenError,
+} from "../src/mcp/index.js";
 import { handoverGmailYaml } from "./helpers.js";
 
 const FIXED_NOW = () => new Date("2026-08-18T19:15:00.000Z");
@@ -230,7 +235,11 @@ const LIVE_GMAIL_BARE_TOOLS = [
   "list_labels",
 ] as const;
 
-type MountHandler = (body: Record<string, unknown>, res: ServerResponse) => void;
+type MountHandler = (
+  body: Record<string, unknown>,
+  res: ServerResponse,
+  req: IncomingMessage,
+) => void;
 
 async function withMountedMcp(
   handler: MountHandler,
@@ -258,7 +267,7 @@ async function withMountedMcp(
         res.end();
         return;
       }
-      handler(body, res);
+      handler(body, res, req);
     });
   });
 
@@ -285,7 +294,7 @@ function jsonRpcResult(res: ServerResponse, id: unknown, result: unknown): void 
 }
 
 function defaultMcpHandler(toolNames: readonly string[]): MountHandler {
-  return (body, res) => {
+  return (body, res, _req) => {
     const method = body.method;
     const id = body.id;
     if (method === "initialize") {
@@ -464,5 +473,161 @@ describe("createHttpMcpToolEnumerator — mounted MCP server (OIK-049)", () => {
       expect(allowlist).not.toContain("mcp__gmail__forward");
     });
   });
+});
+
+const FAKE_BEARER = ["fake-access-", "token-not-real"].join("");
+
+describe("createHttpMcpToolEnumerator — Authorization header (TASK-083)", () => {
+  it("attaches Authorization: Bearer <token> when a provider is configured", async () => {
+    const seen: Array<string | undefined> = [];
+    await withMountedMcp((body, res, req) => {
+      seen.push(req.headers.authorization);
+      defaultMcpHandler(["list_messages"])(body, res, req);
+    }, async (url) => {
+      const enumerator = createHttpMcpToolEnumerator(
+        "gmail",
+        { transport: "http", url },
+        {
+          tokenProvider: {
+            async getAccessToken() {
+              return FAKE_BEARER;
+            },
+          },
+        },
+      );
+      const names = await enumerator.listTools();
+      expect(names).toEqual(["mcp__gmail__list_messages"]);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((header) => header === `Bearer ${FAKE_BEARER}`)).toBe(true);
+    });
+  });
+
+  it("sends no Authorization header when no provider is configured", async () => {
+    const seen: Array<string | undefined> = [];
+    await withMountedMcp((body, res, req) => {
+      seen.push(req.headers.authorization);
+      defaultMcpHandler(["list_messages"])(body, res, req);
+    }, async (url) => {
+      const enumerator = createHttpMcpToolEnumerator("gmail", { transport: "http", url });
+      await enumerator.listTools();
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((header) => header === undefined)).toBe(true);
+    });
+  });
+
+  it("surfaces a typed token-exchange error and never falls back to unauthenticated", async () => {
+    let hits = 0;
+    await withMountedMcp((_body, res) => {
+      hits += 1;
+      res.statusCode = 200;
+      res.end();
+    }, async (url) => {
+      const enumerator = createHttpMcpToolEnumerator(
+        "gmail",
+        { transport: "http", url },
+        {
+          tokenProvider: {
+            async getAccessToken() {
+              throw new OAuthTokenError(
+                "oauth token exchange failed: invalid_grant",
+                "TOKEN_EXCHANGE_FAILED",
+              );
+            },
+          },
+        },
+      );
+      try {
+        await enumerator.listTools();
+        expect.unreachable("token failure must not continue");
+      } catch (err) {
+        expect(err).toBeInstanceOf(OAuthTokenError);
+        expect((err as OAuthTokenError).code).toBe("TOKEN_EXCHANGE_FAILED");
+        expect((err as OAuthTokenError).message).toBe("oauth token exchange failed: invalid_grant");
+        expect((err as OAuthTokenError).message).not.toContain(FAKE_BEARER);
+      }
+      expect(hits).toBe(0);
+
+      const report = await enumerateTools(requireManifest(), enumerator);
+      expect(report.ok).toBe(false);
+      expect(report.message).toBe("listTools failed: oauth token exchange failed: invalid_grant");
+      expect(report.mapped).toEqual([]);
+      expect(hits).toBe(0);
+    });
+  });
+
+  it("does not interpolate the bearer token into enumerator errors (N4)", async () => {
+    const enumerator = createHttpMcpToolEnumerator(
+      "gmail",
+      { transport: "http", url: ["https://", "enum-oauth-", "host.invalid/", "gmail"].join("") },
+      {
+        tokenProvider: {
+          async getAccessToken() {
+            return FAKE_BEARER;
+          },
+        },
+        fetch: async () => {
+          throw new Error(`transport carrying ${FAKE_BEARER}`);
+        },
+      },
+    );
+    const report = await enumerateTools(requireManifest(), enumerator);
+    expect(report.ok).toBe(false);
+    expect(report.message).toBe("listTools failed: transport error");
+    expect(report.message).not.toContain(FAKE_BEARER);
+    expect(JSON.stringify(report)).not.toContain(FAKE_BEARER);
+  });
+});
+
+const liveUrl = process.env.OIK_SECRET_MCP_GMAIL_URL;
+const liveRefresh = process.env.OIK_SECRET_GMAIL_OAUTH_REFRESH_TOKEN;
+const liveClientId = process.env.OIK_SECRET_GMAIL_OAUTH_CLIENT_ID;
+const liveClientSecret = process.env.OIK_SECRET_GMAIL_OAUTH_CLIENT_SECRET;
+const liveAuthenticated = Boolean(liveUrl && liveRefresh && liveClientId && liveClientSecret);
+
+describe("createHttpMcpToolEnumerator — live authenticated Gmail MCP (TASK-083)", () => {
+  it.skipIf(!liveAuthenticated)(
+    "enumerates the provisioned Gmail MCP server with a Bearer token (not faked)",
+    async () => {
+      const provider = createOAuthTokenProvider({
+        clientId: liveClientId ?? "",
+        clientSecret: liveClientSecret ?? "",
+        refreshToken: liveRefresh ?? "",
+      });
+      const enumerator = createHttpMcpToolEnumerator(
+        "gmail",
+        { transport: "http", url: liveUrl ?? "" },
+        { tokenProvider: provider },
+      );
+      const report = await enumerateTools(requireManifest(), enumerator);
+      const allowlist = allowedToolsFor(requireManifest(), report);
+      const exposed = [
+        ...report.mapped.map((tool) => tool.toolName),
+        ...report.unmapped,
+      ];
+
+      expect(exposed).toContain("mcp__gmail__send_message");
+      expect(exposed).toContain("mcp__gmail__reply");
+      expect(exposed).toContain("mcp__gmail__forward");
+      expect(report.mapped.map((tool) => tool.toolName)).toContain("mcp__gmail__send_message");
+      expect(report.unmapped).toContain("mcp__gmail__reply");
+      expect(report.unmapped).toContain("mcp__gmail__forward");
+      expect(allowlist).not.toContain("mcp__gmail__send_message");
+      expect(allowlist).not.toContain("mcp__gmail__reply");
+      expect(allowlist).not.toContain("mcp__gmail__forward");
+      expect(report.ok).toBe(false);
+      expect(report.message).not.toMatch(/https?:\/\//);
+      expect(report.message).not.toMatch(/Bearer\s+\S+/);
+      expect(JSON.stringify(report)).not.toMatch(/ya29\./);
+    },
+  );
+
+  it.skipIf(!liveAuthenticated)(
+    "createGmailOAuthTokenProvider reads the envSecretResolver refs for the live exchange",
+    async () => {
+      const provider = await createGmailOAuthTokenProvider();
+      const token = await provider.getAccessToken();
+      expect(typeof token === "string" && token.length > 0).toBe(true);
+    },
+  );
 });
 

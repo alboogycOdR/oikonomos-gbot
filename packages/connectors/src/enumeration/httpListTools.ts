@@ -6,9 +6,15 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const PROTOCOL_VERSION = "2025-03-26";
 const CLIENT_INFO = Object.freeze({ name: "oikonomos-connectors", version: "0.0.0" });
 
+/** Injected access-token source. Failures must not fall back to unauthenticated. */
+export interface AccessTokenProvider {
+  getAccessToken(): Promise<string>;
+}
+
 export interface HttpMcpEnumeratorOptions {
   readonly fetch?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  readonly tokenProvider?: AccessTokenProvider;
 }
 
 interface JsonRpcSuccess {
@@ -42,10 +48,12 @@ export function createHttpMcpToolEnumerator(
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headers = config.headers;
+  const tokenProvider = options.tokenProvider;
 
   return {
     async listTools() {
-      const names = await listToolsHttp(config.url, headers, fetchImpl, timeoutMs);
+      const requestHeaders = await headersForList(headers, tokenProvider);
+      const names = await listToolsHttp(config.url, requestHeaders, fetchImpl, timeoutMs);
       return names.map((name) => {
         const qualified = qualifyMcpToolName(serverName, name);
         if (qualified.includes("*") || qualified.includes("?")) {
@@ -55,6 +63,29 @@ export function createHttpMcpToolEnumerator(
       });
     },
   };
+}
+
+async function headersForList(
+  headers: Readonly<Record<string, string>> | undefined,
+  tokenProvider: AccessTokenProvider | undefined,
+): Promise<Readonly<Record<string, string>> | undefined> {
+  if (tokenProvider === undefined) {
+    return headers;
+  }
+  const token = await tokenProvider.getAccessToken();
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("token provider returned an empty access token");
+  }
+  const merged: Record<string, string> = {};
+  if (headers !== undefined) {
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.length > 0 && key.toLowerCase() !== "authorization") {
+        merged[key] = value;
+      }
+    }
+  }
+  merged.Authorization = `Bearer ${token}`;
+  return merged;
 }
 
 async function listToolsHttp(
