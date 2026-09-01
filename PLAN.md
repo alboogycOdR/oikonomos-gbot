@@ -2565,7 +2565,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.3 (F6), §9 OIK-201; docs/research/grok-bot-live-probe-2026-09-01.md Q4; CLAUDE.md non-negotiable 7 (ACL before similarity)
@@ -2581,15 +2581,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No API path writes memory implicitly: a read, a resolve and a failed write leave the store unchanged, tested
 - [ ] MUTATION-PROVEN: inverting the conflict order turns a resolve test RED; removing the scope filter turns the cross-role test RED
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-085-s5
+**Started_At:** 2026-09-01T23:25:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-01T23:25:00Z
 
 ### TASK-086
 **Title:** packages/policy — EnforcementClass resolver + require-approval precedence ⚑ protected
@@ -2648,7 +2648,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-088
 **Title:** packages/broker — D3 sealed-secret path guard (N13 enforcement + detection) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13), §2.2 (D3 tier), §9 OIK-204; docs/decisions/ADR-010 §6 (stricter than Grok Bot); docs/research/grok-bot-live-probe-2026-09-01.md Q11
@@ -2662,15 +2662,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] LIVENESS: disabling the guard makes a cookie-store read succeed in the test harness — the guard is proven load-bearing, not merely present
 - [ ] No secret value, path content or byte ever reaches a log, an audit payload or a test fixture (N4), asserted
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-088-cx
+**Started_At:** 2026-09-01T23:25:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T20:15:00Z
+**Updated_At:** 2026-09-01T23:25:00Z
 
 ### TASK-089
 **Title:** infra/compose — the Office: durable environment, named volumes, durability canary
