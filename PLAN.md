@@ -1,5 +1,5 @@
 ---
-plan_version: 6.0
+plan_version: 6.1
 last_updated: 2026-09-01T20:15:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v6.0 - ADR-010 PERSISTENT-OFFICE-COMPUTER DECOMPOSE (2026-09-01T20:15Z, ORCH, claude-opus-5). New spec: specs/OIKONOMOS_WBS_Addendum_F_v1.0.md answers all five ADR-010 §4 open questions - one durable environment per TENANT (not per role) as a long-lived container with named D0/D1/D2/D3 durability tiers; roles as D0 rows with three-scope/three-tier memory (agent>project>user) and routines; shared workspace with roles explicitly NOT a security boundary; the T0-T4 enum KEPT but decoupled from approval via an orthogonal EnforcementClass with a six-rank total precedence order and a FIXED enforced floor (spend / auth-friction / local execution / secret handling / D3 paths); and an additive reshape path that leaves TASK-052..083 intact. DISPOSITION of the 8 open tasks: KEEP 027/047/049/050/051/073, RESHAPE 060 (demo must park an enforced-floor action, not a send) and 076 (scheduler re-keyed to role_id + routine firing). Nothing dropped. NINE new tasks 084-092. BUILDER CONSTRAINT: GB is deactivated (Grok weekly limit), so protected paths (broker, policy, approvals, harness-factory, infra/ci) go to CX ONLY, never S5 - that is 086/087/088/091 plus in-flight 073, and CX also keeps single-owner worker territory (076). S5 takes the unprotected foundation: 084/085/089/090/092. FIRST DISPATCH WAVE: CX finishes TASK-073 (already in_progress, resume at the mutation-proof step) and S5 starts TASK-084 (D0 schema - it unblocks 086/090/076); territories disjoint (packages/broker vs packages/db+migrations). WAVE 2: CX TASK-086 (pure policy, no deps), S5 TASK-085 or TASK-092 (both dep-free). Do not dispatch 091 until 090 and 092 land. NOT DISPATCHED - planning only, per instruction."
@@ -2648,7 +2648,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-088
 **Title:** packages/broker — D3 sealed-secret path guard (N13 enforcement + detection) ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13), §2.2 (D3 tier), §9 OIK-204; docs/decisions/ADR-010 §6 (stricter than Grok Bot); docs/research/grok-bot-live-probe-2026-09-01.md Q11
@@ -2656,22 +2656,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-087
 **Description:** **CX only, NEVER S5** (protected path). The probe recorded Grok Bot's own instance calling browser cookies on the shared box "the hole in 'model never holds secrets'" — readable files guarded by policy only, with cookie-persistence helper scripts sitting right there. ADR-010 §6 requires OIKONOMOS to be stricter by construction. TASK-089 provides layer 1 (the D3 volume is not mounted into the model's namespace at all); this task builds layers 2 and 3: a broker guard that denies ANY tool call whose resolved target matches a D3 path pattern — browser profile, cookie stores, connector token files, CLI credential directories — **regardless of tier, grant, or allow rule**, and emits a distinct audit event type for the attempt. Path matching resolves symlinks and parent-directory segments BEFORE matching; a guard that can be walked around with a `..` segment is not a guard. This is E5 of the enforced floor, so it is not promotable, demotable, or configurable away. Detection matters independently of prevention: an attempt to read a cookie store is a signal worth keeping even when layer 1 already made it impossible.
 **Acceptance_Criteria:**
-- [ ] Every D3 pattern in Addendum F §2.2 is denied regardless of tier, grant and allow rule, tested one case each
-- [ ] Traversal and symlink evasion (parent-directory segments, a symlink into the secrets volume, encoded separators) are denied — normalisation happens before matching, tested
-- [ ] A denied attempt emits its own audit event type, distinguishable from an ordinary tier denial, tested
-- [ ] LIVENESS: disabling the guard makes a cookie-store read succeed in the test harness — the guard is proven load-bearing, not merely present
-- [ ] No secret value, path content or byte ever reaches a log, an audit payload or a test fixture (N4), asserted
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-088-cx
+- [x] Every D3 pattern in Addendum F §2.2 is denied regardless of tier, grant and allow rule, tested one case each
+- [x] Traversal and symlink evasion (parent-directory segments, a symlink into the secrets volume, encoded separators) are denied — normalisation happens before matching, tested
+- [x] A denied attempt emits its own audit event type, distinguishable from an ordinary tier denial, tested
+- [x] LIVENESS: disabling the guard makes a cookie-store read succeed in the test harness — the guard is proven load-bearing, not merely present
+- [x] No secret value, path content or byte ever reaches a log, an audit payload or a test fixture (N4), asserted
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-088-cx (merged, deleted)
 **Started_At:** 2026-09-01T23:25:00Z
 **Progress_Notes:**
 - [2026-09-01T23:35:00Z] [ORCH] BLOCKED triage (protocol §7). Two reported issues: (1) SYNC_MISMATCH — worktree was left detached at master tip with branch task/TASK-088-cx never created; FIXED directly by ORCH (`git checkout -b task/TASK-088-cx` in wt-codex-GROKBOT-CLONE). (2) OWNERSHIP_CONFLICT claim re: packages/broker/src/index.ts — this is NOT a real gap, do not widen Owned_Paths. Precedent: TASK-073 (refusal memory) shipped exactly this way — a standalone, fully-tested module with its own liveness assertion proven via a locally-assembled pipeline inside its own test file, deliberately left unwired from the real packages/broker/src/index.ts decision path, with wiring done later by a dedicated task (TASK-087) that owned index.ts outright. TASK-088 follows the identical pattern: build `secretPathGuard.ts` + its liveness test using a guard function called directly / composed into a small pipeline constructed INSIDE the test file itself (not the real broker) — the AC's "disabling the guard makes a cookie-store read succeed in the test harness" is written exactly to allow this, it says "in the test harness," not "in production." Real wiring into the live PreToolUse path is real follow-up work belonging to a new task, not TASK-088 — ORCH will cut that task once this one is done. Resume same branch, no territory change.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/broker/src/{secretPathGuard.ts,secretPathGuard.test.ts}, dossiers/TASK-088.md
+**Test_Evidence:** broker 8 files/102 tests pass (9 new). pnpm -r test/lint/canaries all exit 0 independently re-run (canaries 15/15). Builder's reported 3 packages/db failures under `pnpm -r test` did NOT reproduce on the reviewer's independent run (0 failed) — confirmed moot regardless since the diff touches zero files under packages/db.
+**Review_Findings:** APPROVED (protected path, adversarial review by a different model than the author — CX/Codex authored, Claude reviewed). Territory clean (2 Owned_Paths files + dossier, no index.ts, no PLAN.md/AUTOPILOT_LOG.md/REVIEW.md touched). guardSecretPath confirmed structurally unconditional — does not even accept a tier/grant/allow-rule parameter, so it cannot be gated by them. Path normalization order confirmed correct in code (decode→fold→resolve, then symlink-resolve, then re-normalize, then boundary check), not just claimed in a comment. Distinct audit event type (secret_path_attempt) confirmed structurally different from ordinary tier denial. LIVENESS reproduced independently: swapping in a stub guard makes a cookie-store read execute, proving the guard load-bearing. N4 confirmed: audit event type has no path field at all, and a test asserts the serialized audit payload never contains the target string. Same standalone-module-with-in-test-pipeline pattern as TASK-073, deliberately left unwired from the real index.ts — a follow-up wiring task should be cut, matching TASK-087's role for TASK-073. Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T23:25:00Z
+**Updated_At:** 2026-09-02T00:10:00Z
 
 ### TASK-089
 **Title:** infra/compose — the Office: durable environment, named volumes, durability canary
@@ -2779,3 +2779,29 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-01T20:15:00Z
+
+### TASK-093
+**Title:** packages/broker — wire secretPathGuard into the real PreToolUse decision path ⚑ protected
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.3 (F11/N13); docs/decisions/ADR-010 §6 (stricter than Grok Bot on browser-session credentials); TASK-088's Review_Findings (this task is TASK-088's own recommended follow-up, same relationship as TASK-087 was to TASK-073)
+**Owned_Paths:** packages/broker/src/index.ts, packages/broker/src/index.test.ts
+**Depends_On:** TASK-088
+**Description:** **CX only, NEVER S5** (protected path). TASK-088 shipped `secretPathGuard.ts` as a standalone, fully-tested module with its own liveness assertion proven via a pipeline assembled inside its own test file — deliberately not wired into the real `handlePreToolUse`/`decidePreToolUse` path, matching the TASK-073→TASK-087 precedent. This task closes that gap: call `guardSecretPath` (or equivalent) from the real decision path in `index.ts`, positioned ABOVE the six-rank enforcement resolver from TASK-087 (E5 of the fixed floor is rank 2, above require-approval/refusal-memory/grant-ceiling/autonomous — see PLAN.md TASK-086's Owned_Paths description and Addendum F §5.4) so a D3 path match denies unconditionally regardless of what the resolver would otherwise return. Do not duplicate secretPathGuard's own logic — call it. Do not weaken or bypass the existing ADR-001 fail-closed map or TASK-087's resolver wiring; this is an additional gate, not a replacement.
+**Acceptance_Criteria:**
+- [ ] A tool call resolving to a D3 path is denied by the REAL PreToolUse path even when the six-rank resolver would otherwise return autonomous, tested end-to-end through index.ts (not just the standalone module)
+- [ ] The secret-path denial's distinct audit event type (from TASK-088) reaches the real audit path unchanged
+- [ ] LIVENESS: removing the guard call from index.ts makes a previously-denied D3 read execute — proving the wiring itself, not just the module, is load-bearing (mirrors TASK-087's liveness canary pattern)
+- [ ] Broker unreachable/timeout/malformed still denies via the EXISTING fail-closed map — unchanged code path, not duplicated (ADR-001)
+- [ ] TASK-087's six-rank resolver wiring and TASK-073's refusal-memory consult are unchanged in behavior — full existing broker test suite green with zero modifications to pre-existing tests
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T00:10:00Z
