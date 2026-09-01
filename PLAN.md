@@ -2757,7 +2757,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-092
 **Title:** packages/connectors — durable tenant session pool: create/destroy becomes acquire/release
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §4.2 (F10), §6.2, §9 OIK-208; docs/decisions/ADR-010 §4 (signed in once, available thereafter); docs/research/grok-bot-live-probe-2026-09-01.md Q11
@@ -2765,21 +2765,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** The single change that turns connector work from per-run into "signed in once, available thereafter" — the property ADR-010 §4 says connectors gain under this pivot. Add a tenant-scoped `ConnectorSessionPool`: `acquire(connectorId)` mints a session on first use and reuses it thereafter; `release()` returns it to the pool instead of tearing it down; an expired session is re-minted transparently on the next acquire. The pool sits UNDERNEATH the existing manifest, enumeration, discovery-cache and allowedTools code — **none of which is modified** (TASK-054/083 are done and working; ADR-010 requires reshape, not rewrite). The probe's Q11 contract is preserved exactly and is the security bar: OAuth stays server-side, the model receives an opaque session handle plus whatever identity metadata a tool returns, and **no token, refresh token or secret ever appears in a tool schema, a tool result, a log, or an audit payload** (N4). Sessions are scoped by tenant, never by role — roles share sessions by design (F1, F10), which is precisely why a role is not a security boundary. `manifests/**` is another task's territory; do not touch it.
 **Acceptance_Criteria:**
-- [ ] `acquire` mints on first call and returns the SAME session on the second, tested; `release` does not destroy it, tested (F10 acquire/release; ADR-010 "signed in once, available thereafter")
-- [ ] An expired session is re-minted transparently on the next acquire, tested
-- [ ] Two different roles on one tenant acquire the same session; two tenants never do — both tested (F10 "scoped by tenant, never by role")
-- [ ] LIVENESS — N4: a test asserts no token or secret value appears in any tool schema, tool result, log line or audit payload emitted by the pool, and fails if one is introduced
-- [ ] `manifest/**`, `enumeration/**`, `discovery-cache/**` and `mcp/**` byte-identical to master — asserted by diff in the work log
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-092-s5
+- [x] `acquire` mints on first call and returns the SAME session on the second, tested; `release` does not destroy it, tested (F10 acquire/release; ADR-010 "signed in once, available thereafter")
+- [x] An expired session is re-minted transparently on the next acquire, tested
+- [x] Two different roles on one tenant acquire the same session; two tenants never do — both tested (F10 "scoped by tenant, never by role"; interface has no role parameter at all, so role-sharing is structurally guaranteed, not merely tested)
+- [x] LIVENESS — N4: a test asserts no token or secret value appears in any tool schema, tool result, log line or audit payload emitted by the pool, and fails if one is introduced
+- [x] `manifest/**`, `enumeration/**`, `discovery-cache/**` and `mcp/**` byte-identical to master — asserted by diff in the work log
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-092-s5 (merged, deleted)
 **Started_At:** 2026-09-02T01:25:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/connectors/src/sessions/{types,pool,pool.test,index}.ts, packages/connectors/src/index.ts (barrel export), dossiers/TASK-092.md
+**Test_Evidence:** connectors 109/109 (4 unrelated skips). Full pnpm -r test/lint/canaries independently re-run, exit 0. Reviewer's own N4 mutation (injecting a fake token field onto the returned handle) reddened the leak-detection test immediately, reverted clean.
+**Review_Findings:** APPROVED. Territory clean (2 Owned_Paths + dossier; manifest/enumeration/discovery-cache/mcp confirmed byte-identical to master). Pool key confirmed to be (tenantId, connectorId) with NO role dimension in the API surface at all — role-sharing is structurally guaranteed, not just tested. release() confirmed to be a lease-decrement, never a teardown. Expiry re-mint confirmed via fake-clock test. N4 liveness reproduced independently via a real mutation. Full pnpm -r test/lint/canaries independently re-run, exit 0. **ORCH post-merge finding (not from the reviewer):** pool.ts's `poolKey()` function contained a literal raw NUL byte (0x00) embedded directly in its template-literal separator instead of the `\0` escape sequence — functionally identical at runtime and it passed every test including the N4 proof, but the raw byte made the file register as binary to `file`/git-diff tooling and is invisible/fragile in a normal editor. Fixed directly by ORCH post-merge (cosmetic/encoding-only, zero behavior change, re-verified connectors 109/109 unchanged) rather than sent back for a rework round. Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T01:25:00Z
+**Updated_At:** 2026-09-02T01:35:00Z
 
 ### TASK-093
 **Title:** packages/broker — wire secretPathGuard into the real PreToolUse decision path ⚑ protected
