@@ -9,6 +9,19 @@ export {
   type ResolveApprovalRequestInput,
   type StandingApprovalMode,
 } from "./approvalResolution.js";
+export {
+  resolveEnforcement,
+  type EnforcedActionClass,
+  type EnforcementClass,
+  type EnforcementRank,
+  type EnforcementResolution,
+  type ResolveEnforcementInput,
+} from "./enforcement.js";
+export {
+  matchesRequireApprovalRule,
+  type RequireApprovalRule,
+  type TargetValue,
+} from "./requireApproval.js";
 
 /** Ordered from least to most restrictive. */
 export const riskTiers = [
