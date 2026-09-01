@@ -2332,7 +2332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-078
 **Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (admin ceiling rank clamp); Directive §4 N2 (no bypass); ADR-001
@@ -2340,20 +2340,20 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** **GB or CX only, NEVER S5** (protected path; note packages/policy has ZERO I/O imports, lint-enforced — pure functions only). The four-line primitive that makes "no bypass" structural (study §Tier 2): risk-tier decisions get an optional `ceiling` — `resolveEffectiveTier(requested, ceiling)` returns the STRICTER of the two by a declared rank order, so any per-routine, per-user, or per-config preference can only ever tighten the platform default, never loosen it. Wire it into the existing tier-resolution path as the single exit point (every resolved tier passes through the clamp); a missing/undefined ceiling means no relaxation either — the platform default IS the floor. This is the primitive a future org-config surface consumes; the config surface itself is out of scope. Pure function, exhaustive over the risk_tier enum (adding a tier without a rank fails typecheck). Existing policy tests byte-identical.
 **Acceptance_Criteria:**
-- [ ] Clamp returns the stricter tier for every (requested, ceiling) pair — exhaustively table-tested over the enum
-- [ ] Every tier resolution flows through the clamp — MUTATION-PROVEN: bypassing it for one path turns a test RED
-- [ ] A new enum member without a rank fails typecheck — demonstrated with a scratch member, reverted
-- [ ] Zero I/O imports preserved (lint), existing policy tests byte-identical and green
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-078-cx
+- [x] Clamp returns the stricter tier for every (requested, ceiling) pair — exhaustively table-tested over the enum
+- [x] Every tier resolution flows through the clamp — MUTATION-PROVEN: bypassing it for one path turns a test RED
+- [x] A new enum member without a rank fails typecheck — demonstrated with a scratch member, reverted
+- [x] Zero I/O imports preserved (lint), existing policy tests byte-identical and green
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-078-cx (merged, deleted)
 **Started_At:** 2026-09-01T09:22:53Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/policy/src/{ceiling.ts,ceiling.test.ts,index.ts}, dossiers/TASK-078.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). policy 24/24. tsc --noEmit clean.
+**Review_Findings:** APPROVED first pass (2026-09-01, ORCH via independent subagent, protected-path adversarial review). Clamp direction verified correct via the full 5x5 tier-rank matrix (always returns the stricter/higher-rank tier). Genuinely wired as the single exit point in index.ts's resolveCapabilityTier (old private resolver deleted, replaced by the new shared function). Two independent mutations reproduced: inverted comparison operator reddened 4 tests, bypassing the clamp step entirely reddened 1; both reverted clean. Exhaustiveness reproduced: a scratch enum member without a rank failed typecheck (TS1360/TS7053) as claimed. Zero I/O imports preserved, existing policy tests byte-identical. Merged.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T09:22:53Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T13:35:00Z
 
 ### TASK-079
 **Title:** packages/agent-providers — ephemeral loopback MCP bridge for CLI harnesses
