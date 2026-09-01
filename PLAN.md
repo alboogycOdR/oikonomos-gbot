@@ -1698,7 +1698,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-055
 **Title:** End-to-end governed inbox-triage run through services/worker (integration, single owner)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** WBS OIK-038 (run lifecycle), OIK-125 (inbox-triage real sessions); Directive §5 DoD (Functional/Governed/Evidenced); ADR-005 liveness
@@ -1706,22 +1706,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-054, TASK-083
 **Description:** **INTEGRATION TASK — `services/worker` is the shared seam between the runtime lane and the surface lane, so it has exactly one owner (you) and is sequenced after both of your prior tasks. CX must never touch it.** Extend `executeTaskRun` so a run can mount a connector's MCP server and use the derived allowlist: accept an optional connector context (manifest + resolved MCP config + derived allowedTools) and pass it through `composeHarness`. Then prove the whole chain: a triage run that lists messages (T0) and drafts a reply (T1) completes, while an attempt to send (T3, `enabled: false`) is DENIED and audited. Keep the existing ADR-005 liveness assertion intact (it keys on a broker decision audit event) and extend it to cover the MCP path — the control must die if MCP tool calls stop reaching the broker. Use an injected fake queryFn and fake MCP transport for the CI-green test; if live credentials are provisioned, ALSO record one real run in Test_Evidence. Do not modify packages/** — if the runtime lane left a gap, BLOCK rather than patch it from here.
 **Acceptance_Criteria:**
-- [ ] `executeTaskRun` accepts connector context and mounts the MCP server through composeHarness only (N9; OIK-033)
-- [ ] END-TO-END TEST: T0 list + T1 draft succeed through the governed path; T3 send is DENIED with an audit event, in one run (Directive §5 Governed; WBS §4 G-CONN)
-- [ ] Run lifecycle intact: session_ref persisted, run reaches a terminal state (OIK-038)
-- [ ] ADR-005 liveness extended to the MCP path and MUTATION-PROVEN: bypassing composeHarness for MCP calls turns the liveness assertion RED
-- [ ] Evidence: the run's audit trail answers what data, what actions, what was denied (Directive §5 Evidenced)
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-055-gb
+- [x] `executeTaskRun` accepts connector context and mounts the MCP server through composeHarness only (N9; OIK-033)
+- [x] END-TO-END TEST: T0 list + T1 draft succeed through the governed path; T3 send is DENIED with an audit event, in one run (Directive §5 Governed; WBS §4 G-CONN)
+- [x] Run lifecycle intact: session_ref persisted, run reaches a terminal state (OIK-038)
+- [x] ADR-005 liveness extended to the MCP path and MUTATION-PROVEN: bypassing composeHarness for MCP calls turns the liveness assertion RED
+- [x] Evidence: the run's audit trail answers what data, what actions, what was denied (Directive §5 Evidenced)
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-055-gb (merged, deleted)
 **Started_At:** 2026-09-01T10:59:12Z
 **Progress_Notes:**
 - [2026-09-01T15:41:00Z] [ORCH] TOOLING_FAILURE, not a builder issue: the dispatched GB session died mid-planning (log stops after the initial read/inspect narration, ~11:00Z, no grok/node process alive by 11:41Z, no task/TASK-055-gb branch ever created, no .done marker). Same failure class as the earlier documented dispatch-kill vulnerability (2026-08-27), now apparently recurring for a GB/grok session specifically rather than the strict-mode blocking issue that was fixed. No work lost (nothing was committed). Redispatching GB fresh on the same claim.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-01T16:25:00Z] [ORCH] APPROVED (independent adversarial verification, maximum rigor given this is the demo centerpiece for the whole project). ALL 6 ACs pass with hard, independently-traced evidence — nothing shallow or faked. (1) packages/** confirmed genuinely untouched (empty diff). (2) Single MCP mount path confirmed: exactly one composeHarness call site, and a dedicated test asserts the compiled source contains no bypass import (no attachMcpServersToQuery, no direct SDK/harness-factory reach-around). (3) THE CORE DEMO IS REAL ENFORCEMENT, NOT A MOCK: the T3 send denial traces through the actual PreToolUse hook wired by the real composeHarness, calling the real handlePreToolUse from @oikonomos/broker against injected BrokerDependencies — email.send is denied on a genuine tier-ceiling check (registered T3_external, role max T1_draft), confirmed via `result.events` showing `tool_denied`/`reason: "role.tier_ceiling"` and confirming send_message never appears in the fake transport's invocation log. (4) The audit event for the denial is a REAL write through the actual BrokerDependencies.recordDecision port (not an in-memory test shortcut), carrying verdict/capability/tier/payload. (5) ADR-005 liveness MUTATION-PROVEN BY THE REVIEWER PERSONALLY: mutated executeRun.ts to drop the MCP servers before composeHarness, reran e4-liveness — 4 tests went red, confirming the control is genuinely load-bearing, not decorative. Reverted, clean. (6) Run lifecycle verified via a real Postgres round-trip (DB-gated test, live DATABASE_URL): task inserted, session_ref persisted through startTaskRun, confirmed on read-back, cancelTaskRun reaches a real terminal state. (7) The claimed live tools/list is real and correctly scoped — reviewer ran it themselves with the real Gmail MCP URL (network-latency-timed, not instant) — but is honestly limited to the unauthenticated surface per TASK-054/083's known gap; the dossier states this plainly rather than overclaiming a live authenticated send/deny proof. Full pnpm -r test/lint/canaries independently re-run, exit 0 (worker 25/25). Merged. **This is the first fully governed, evidenced, live-adjacent demonstration of the OIKONOMOS control loop end-to-end**: a task comes in, the harness mounts a real (if currently unauthenticated) external connector, low-tier actions succeed, a high-tier action is denied by the real broker and the denial is durably audited — exactly what the whole project exists to prove.
+**Artifacts:** services/worker/src/{executeRun.ts,index.ts}, test/{e4-liveness.test.ts,executeRun.test.ts,fixtures.ts,inboxTriage.e2e.test.ts (new)}, dossiers/TASK-055.md
+**Test_Evidence:** Independently re-run: pnpm -r test/lint/canaries all exit 0, worker 25/25 (incl. live-Gmail-mount and live-DATABASE_URL-gated legs). ADR-005 liveness mutation-proof independently reproduced by the reviewer (not just claimed). Run lifecycle verified via a real live Postgres round-trip.
+**Review_Findings:** APPROVED first pass, maximum-rigor review (see Progress_Notes for full detail). No gaps found — diff is honest, scoped, and the enforcement/audit/liveness chain is real end to end. Correctly and honestly limited to the unauthenticated Gmail surface (send/reply/forward not yet provable live-authenticated, tracked separately per TASK-083's deferred AC) — the dossier does not overclaim this.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T15:41:00Z
+**Updated_At:** 2026-09-01T16:25:00Z
 
 ### TASK-056
 **Title:** services/control-api — tasks, runs, approvals, evidence endpoints (OIK-084)
