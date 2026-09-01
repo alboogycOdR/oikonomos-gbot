@@ -2565,7 +2565,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-085
 **Title:** packages/memory + migration 005 — three scopes, three tiers, one conflict order
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §3.3 (F6), §9 OIK-201; docs/research/grok-bot-live-probe-2026-09-01.md Q4; CLAUDE.md non-negotiable 7 (ACL before similarity)
@@ -2573,23 +2573,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** `packages/memory` is a 13-line stub; this fills it. Migration 005 **extends the existing `profile_facts` table** (do not create a parallel store — F6 is explicit that four-fifths of the shape already exists): add `role_id text NULL`, `project_id text NULL`, `tier text NOT NULL DEFAULT 'profile'`, and widen the unique constraint to `(tenant_id, scope, role_id, project_id, key)` with a CHECK that role_id is non-null exactly when scope is `agent`. Then the store: three scopes (`agent | project | user`), three tiers (`profile | log | note`), and `resolve(key, ctx)` implementing the probe's conflict order **agent > project > user** as a pure function. The injection budget is the point of the tier split — the profile-tier reader is the only one intended for every-turn prefix injection; `log` is on-demand only; `note` defaults to a 7-day TTL via the existing `expires_at`. Writes are explicit and audited: **nothing is written to memory as a side effect** (probe Q5 confirmed the receiving Bot did not auto-write). Cross-role reads of another role's `agent`-scope memory must be impossible through the API — this is where OIKONOMOS is deliberately stricter than Grok Bot's shared-filesystem shard. Migration 004 (TASK-084) touches different tables; do not touch the four tables it creates, and do not touch `knowledge_chunks`.
 **Acceptance_Criteria:**
-- [ ] Migration 005 extends profile_facts with role_id/project_id/tier and the widened unique key; the CHECK rejects an agent-scope row with a null role_id, tested; 005.down reverses cleanly
-- [ ] `resolve()` returns the agent-scope value when all three scopes hold the same key, project when agent is absent, user when both are absent — all three cases tested (F6 "agent > project > user")
-- [ ] Only the profile tier is returned by the every-turn reader; a log row and a note row are excluded from it, tested (F6 "only the profile tier enters the prefix every turn")
-- [ ] Note rows carry a default TTL and an expired note is not returned, tested
-- [ ] A read for role A never returns role B's agent-scope rows — tested with both roles holding the same key (F6 "a role cannot read another role's agent-scope memory at all")
-- [ ] No API path writes memory implicitly: a read, a resolve and a failed write leave the store unchanged, tested
-- [ ] MUTATION-PROVEN: inverting the conflict order turns a resolve test RED; removing the scope filter turns the cross-role test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-085-s5
+- [x] Migration 005 extends profile_facts with role_id/project_id/tier and the widened unique key; the CHECK rejects an agent-scope row with a null role_id, tested; 005.down reverses cleanly
+- [x] `resolve()` returns the agent-scope value when all three scopes hold the same key, project when agent is absent, user when both are absent — all three cases tested (F6 "agent > project > user")
+- [x] Only the profile tier is returned by the every-turn reader; a log row and a note row are excluded from it, tested (F6 "only the profile tier enters the prefix every turn")
+- [x] Note rows carry a default TTL and an expired note is not returned, tested
+- [x] A read for role A never returns role B's agent-scope rows — tested with both roles holding the same key (F6 "a role cannot read another role's agent-scope memory at all")
+- [x] No API path writes memory implicitly: a read, a resolve and a failed write leave the store unchanged, tested
+- [x] MUTATION-PROVEN: inverting the conflict order turns a resolve test RED; removing the scope filter turns the cross-role test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-085-s5 (merged, deleted)
 **Started_At:** 2026-09-01T23:25:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** infra/postgres/migrations/005_agent_memory.{up,down}.sql, packages/memory/src/{database,types,facts,resolve,index}.ts + memory.test.ts, packages/memory/package.json, dossiers/TASK-085.md
+**Test_Evidence:** memory 20/20, pnpm -r test/build/lint/canaries green (full suite independently re-run post-merge). Migration 005 up→up→down→up live-verified idempotent against real Postgres. Two independent mutations (invert CONFLICT_ORDER, remove role_id filter from getAgentFact) both reproduced RED by the reviewer, reverted clean.
+**Review_Findings:** Independent adversarial review: all 8 ACs verified true directly (not from builder claims). Territory clean (5 Owned_Paths globs + dossier, PLAN.md/AUTOPILOT_LOG.md/REVIEW.md untouched, migration 004 byte-identical). One legitimate cross-cutting gap found: packages/memory/package.json adds pg/@types/pg but pnpm-lock.yaml (correctly outside Owned_Paths) was never synced, breaking `pnpm install --frozen-lockfile` on a clean checkout — resolved as ORCH-owned merge wiring (matches TASK-005/006/007/009 precedent for shared-file integration), NOT sent back to S5 since nothing in packages/memory/src is defective. ORCH ran `pnpm install --no-frozen-lockfile` post-merge on master, re-verified `--frozen-lockfile` passes, committed the lockfile sync separately. Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T23:25:00Z
+**Updated_At:** 2026-09-01T23:50:00Z
 
 ### TASK-086
 **Title:** packages/policy — EnforcementClass resolver + require-approval precedence ⚑ protected
