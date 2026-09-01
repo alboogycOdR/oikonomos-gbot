@@ -2297,7 +2297,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-077
 **Title:** packages/audit — persistent capped outbox, backoff, exhaustive formatter
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Tier 2 (audit dual-sink); OIK-013 (append-only); Directive §4 N4
@@ -2305,24 +2305,26 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-059
 **Description:** Delivery hardening from Grok Bot's `action-audit-service.ts` (study §Tier 2), for audit events bound to a remote/secondary sink (future dashboard push, Telegram evidence). (1) **Capped persistent outbox**: undelivered events queue durably (a DB-backed `audit_outbox` is NOT wanted — reuse the append-only `audit_events` table with a delivery-cursor row instead, keeping one source of truth; if that proves incompatible with OIK-013's no-UPDATE rule for cursor storage, store the cursor in `kv`-style state, and BLOCK with SPEC_AMBIGUITY only if neither fits). Cap the in-memory batch; oldest-dropped ONLY with an explicit dropped-count event emitted — never silent loss. (2) **Backoff honouring `Retry-After`** on sink rate-limits, via injected clock. (3) **Exhaustive-union formatter**: one function mapping every audit action kind to its serialized line, written so adding a kind is a COMPILE error until its format exists (their `localAuditJsonlLine` switch-with-never). Redaction stays `redact.ts`'s job — call it, never reimplement (N4; TASK-059's rule). Local append-path behaviour unchanged; existing tests byte-identical.
 **Acceptance_Criteria:**
-- [ ] Sink failure ⇒ events retained and redelivered after recovery; delivery order preserved — tested with injected failing sink
-- [ ] Cap overflow emits an explicit dropped-count marker, never silent — tested
-- [ ] Retry-After honoured before next attempt, tested with injected clock
-- [ ] Formatter exhaustive: a new action kind without a format branch fails typecheck — demonstrated in Test_Evidence with a scratch kind, reverted
-- [ ] All outbound content passes through the existing redact.ts — asserted, no second redaction implementation (N4)
-- [ ] Existing audit tests byte-identical and green
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-077-s5
+- [x] Sink failure ⇒ events retained and redelivered after recovery; delivery order preserved — tested with injected failing sink
+- [x] Cap overflow emits an explicit dropped-count marker, never silent — tested
+- [x] Retry-After honoured before next attempt, tested with injected clock
+- [x] Formatter exhaustive: a new action kind without a format branch fails typecheck — demonstrated in Test_Evidence with a scratch kind, reverted
+- [x] All outbound content passes through the existing redact.ts — asserted, no second redaction implementation (N4)
+- [x] Existing audit tests byte-identical and green
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-077-s5 (merged, deleted)
 **Started_At:** 2026-09-01T04:06:38Z
 **Progress_Notes:**
 - [2026-09-01T06:50:00Z] [ORCH] REWORK round 1 (independent adversarial verification). outbox.ts and format.ts are correct and well-tested — all 7 ACs pass on a strict literal reading, including two independently-reproduced mutation tests (silent-drop path, exhaustive-union compile guard) and a live redaction-reuse proof. The rework finding: `index.ts` was deliberately left untouched because `persistence-surface.test.ts` (outside Owned_Paths) pins its exact export list — the SAME conflict TASK-059 hit on this same package, which TASK-059 correctly escalated/re-carved for rather than routing around. Here, nothing was exported, so `AuditOutbox`, `RetryAfterError`, `formatAuditLine` etc. are structurally unreachable by any real consumer (confirmed: packages/audit's exports map only publishes ".", and both actual consumers — gateway-telegram/evidence, packages/broker — import the root, which doesn't surface these symbols). Not an AC-checklist miss (no AC literally requires the export) but a genuine "configured-but-inert" deliverable per CLAUDE.md's own control-liveness standard, and the task's own description frames this work as existing to BE consumed by a future sink. Fix: export the new symbols from index.ts (additive only, same pattern as TASK-059's persistence-surface.test.ts change — append names to the pinned array, leave the mutating-name-pattern guard untouched) and widen Owned_Paths to include the test file (now done above). Do not touch outbox.ts/format.ts's actual logic — they already pass. Reset claimed->pending, resuming S5 same branch.
 - [2026-09-01T07:00:00Z] [ORCH] RESUME-STATE PROCESS GAP (matches the documented TASK-061/TASK-063 defect class — a resumed session checked only its own dossier/last commit and reported the pre-rework state again as "complete", missing the round-1 finding above entirely; no new commits landed on task/TASK-077-s5 since e607dae/a2a8264). NOT scored as a 2nd real rework round — no fix was attempted, so nothing to judge yet. **EXPLICIT INSTRUCTION FOR THE NEXT SESSION ON THIS BRANCH: outbox.ts and format.ts are already correct and complete — do NOT touch their logic. The ONLY remaining work is: (1) in packages/audit/src/index.ts, add named exports for AuditOutbox, RetryAfterError, and formatAuditLine (plus any other public symbols outbox.ts/format.ts already export) alongside the existing 5; (2) in packages/audit/test/persistence-surface.test.ts, append those same names to the literal array in the "exposes no update, delete..." test's `.toEqual([...])` assertion — do not touch the mutating-name-pattern regex check, that stays as-is; (3) rerun the full gate suite and confirm the new symbols are reachable via a real `from "@oikonomos/audit"` import (not just present in index.ts's source).** Redispatching S5 same branch with this instruction now literally the newest Progress_Note.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** REWORK round 1 — outbox.ts/format.ts logic is sound (verified, mutation-tested); the gap is a structurally unreachable export surface, same class of issue TASK-059 already resolved on this package. Precise, additive fix specified above. Round-2 resume did not apply the fix at all (process gap, not a rework judgment).
+- [2026-09-01T07:10:00Z] [ORCH] SAME GAP A 3RD TIME — S5's resumed session again made zero commits and reported "no code changes needed," ignoring the explicit instruction above verbatim. Escalated to the user rather than redispatching blindly a 4th time. User decision: ORCH writes the fix directly. Wrote it (commit 5d92380 on task/TASK-077-s5): additive exports in index.ts (AuditOutbox, RetryAfterError, systemClock, AUDIT_ACTION_KINDS, UnknownAuditActionKindError, toFormattableAuditEvent, formatAuditLine, formatAuditEventLine as values; the corresponding interfaces as type-only exports) plus the matching literal-array extension in persistence-surface.test.ts. Verified locally before committing: pnpm -r build/test/lint/canaries all exit 0, and a real `from "./packages/audit/dist/index.js"` import test confirmed the symbols genuinely resolve at runtime. Sent for independent verification WITH EXPLICIT EXTRA SCRUTINY given the unusual authorship (ORCH as both author and normal reviewer-dispatcher on this one commit).
+- [2026-09-01T07:40:00Z] [ORCH] APPROVED (independent adversarial verification, applying extra scrutiny to the ORCH-authored commit as instructed). Confirmed via diff that 5d92380 touches ONLY index.ts + persistence-surface.test.ts — outbox.ts/format.ts/their test files are byte-identical to the original e607dae commit, so nothing already-reviewed was touched. Ran `Object.keys()` against the real built module independently (13/13 exact match to the test's asserted list). Ran a real external-consumer import test from packages/broker (a genuine dependent workspace package, via `from "@oikonomos/audit"` not a relative path) — all 8 new value symbols resolved with correct runtime types (classes, functions, the AUDIT_ACTION_KINDS array, the systemClock object). Full pnpm -r build/test/lint/canaries independently re-run, exit 0. Merged.
+**Artifacts:** packages/audit/src/{outbox.ts,outbox.test.ts,format.ts,format.test.ts,index.ts}, packages/audit/test/persistence-surface.test.ts, dossiers/TASK-077.md
+**Test_Evidence:** Independently re-run twice (round 1 code review, round 4 export-fix review): pnpm -r build/test/lint/canaries all exit 0. Both the outbox/format logic (mutation-tested: silent-drop path, exhaustive-union compile guard) and the export fix (real cross-package import test) independently verified.
+**Review_Findings:** Round 1 REWORK — outbox.ts/format.ts logic sound but structurally unreachable (no barrel export), same class of gap TASK-059 hit on this package. Rounds 2-3: resumed S5 sessions made zero commits despite an explicit instruction each time (documented process failure, escalated to the user at round 3). Fix ultimately written directly by ORCH (commit 5d92380, additive-only, 2 files) and independently APPROVED under deliberately elevated scrutiny given the unusual authorship. Unlocks nothing further (post-MVP backlog item); closes cleanly.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-01T07:00:00Z
+**Updated_At:** 2026-09-01T07:40:00Z
 
 ### TASK-078
 **Title:** packages/policy — tier ceiling as a rank clamp: org policy only tightens ⚑ protected
