@@ -13,7 +13,26 @@ import {
 } from "@oikonomos/policy";
 import { actionDigest, type JsonValue } from "@oikonomos/shared";
 
+import {
+  recheckAgainstManifest,
+  type ManifestMap,
+} from "./recheck.js";
+
 export const workspaceName = "broker";
+
+export {
+  PolicyMissingError,
+  PolicyRegistry,
+  StalePolicyEntryError,
+  type PolicyRegistryInput,
+  type ToolPolicyEntry,
+} from "./registry.js";
+export {
+  ALLOWLIST_MISS_REASON,
+  recheckAgainstManifest,
+  type ManifestMap,
+  type RecheckDecision,
+} from "./recheck.js";
 
 /** Handover §4.1 request contract for POST /v1/broker/pretooluse. */
 export interface PreToolUseRequest {
@@ -58,6 +77,16 @@ export interface BrokerDependencies {
   issueApprovalDependencies: IssueApprovalDependencies;
   consumeDependencies: ConsumeDependencies;
   recordDecision(event: DecisionAuditEvent): Promise<{ eventId: string }>;
+  /**
+   * Derived allowedTools / connector-manifest map (study §Tier 1.6).
+   * When provided, every PreToolUse call is re-checked against this map
+   * before the rest of L1; a miss denies `allowlist.miss` even if the
+   * tool still appears on the mounted tool list. Optional so existing L1
+   * tests remain byte-identical; production callers construct a
+   * {@link PolicyRegistry} (throws on incompleteness) and pass its
+   * `manifestMap`.
+   */
+  manifestMap?: ManifestMap;
 }
 
 const APPROVAL_TIER: RiskTier = "T3_external";
@@ -273,6 +302,17 @@ async function decidePreToolUse(
   try {
     if (!await dependencies.isCapabilitiesEnabled()) {
       return deny(dependencies, request, "capability.disabled");
+    }
+
+    // Call-time re-check against the derived allowedTools/manifest map
+    // (study §Tier 1.6). MUTATION target: removing this block lets a
+    // stale-tool-list invocation fall through to L1 and turns the
+    // MUTATION-PROVEN test red.
+    if (dependencies.manifestMap !== undefined) {
+      const recheck = recheckAgainstManifest(request.toolName, dependencies.manifestMap);
+      if (recheck.decision === "deny") {
+        return deny(dependencies, request, recheck.reason);
+      }
     }
 
   const capability = await dependencies.getCapability(request.toolName);
