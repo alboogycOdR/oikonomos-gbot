@@ -2586,7 +2586,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-086
 **Title:** packages/policy — EnforcementClass resolver + require-approval precedence ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §5.1 (F12), §5.2 (F13 enforced floor), §5.3 (F14), §5.4 (F15 precedence table), §9 OIK-202; docs/decisions/ADR-010 §6; ADR-003 (tier resolution direction)
@@ -2594,23 +2594,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** **CX only, NEVER S5** (protected path). The tier map rework, as a pure function — `packages/policy` keeps its zero-I/O constraint, so rules arrive as data, never from a query. Add `EnforcementClass = "autonomous" | "enforced"` and `resolveEnforcement(input)` implementing Addendum F §5.4's SIX-RANK TOTAL ORDER exactly and in order: (1) fail-closed inputs — broker unreachable/timeout/malformed, undescribable action, unknown capability, yielding enforced; (2) enforced floor E1–E5 — spend/payment, auth-security friction, local-machine execution, secret handling, D3 path access, yielding enforced; (3) a matching require-approval rule, yielding enforced; (4) refusal-memory hit, yielding denied (pass-through — this module does not own refusal memory); (5) role_grants ceiling exceeded, yielding enforced; (6) otherwise autonomous. **`resolveEffectiveTier` and the `RiskTier` enum are NOT modified** (F12: the tier stays and stops implying approval) — this is a second, orthogonal output alongside the existing one. Rule matching is a deterministic predicate over capability_id plus a target predicate; **no model-based review, ever** (Addendum F §5.5). Rank 1 sits above rank 2 deliberately so an unclassifiable action can never be argued into rank 6. The floor is a floor: no rule input may move an E1–E5 action to autonomous.
 **Acceptance_Criteria:**
-- [ ] `resolveEnforcement` is exhaustively tested against all six ranks, including a case where a higher rank and a lower rank both match and the higher wins (F §5.4 "first match wins")
-- [ ] LIVENESS — FIXED FLOOR: with a maximally permissive allow-rule set, each of E1 (payment), E2 (2FA), E3 (local execution), E4 (secret handling), E5 (D3 path) still resolves enforced, tested one case each (F §5.2 "nothing can subtract from it")
-- [ ] Require Approval beats Always Allow: a rule promoting an autonomous action wins over any permissive input, tested (probe batch 3 item B)
-- [ ] Each §5.3 autonomous-by-default action (send email, post publicly, delete/overwrite, connector write, routine creation, message a teammate) resolves autonomous under a default configuration, tested
-- [ ] An unknown capability_id and an undescribable action both resolve enforced via rank 1, not rank 6, tested
-- [ ] `resolveEffectiveTier`, `ceiling.ts` and the RiskTier type are byte-identical to master; zero I/O imports added (lint-enforced)
-- [ ] MUTATION-PROVEN: reordering ranks 2 and 3 turns a test RED; deleting any single E-class from the floor turns its liveness test RED
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-086-cx
+- [x] `resolveEnforcement` is exhaustively tested against all six ranks, including a case where a higher rank and a lower rank both match and the higher wins (F §5.4 "first match wins")
+- [x] LIVENESS — FIXED FLOOR: with a maximally permissive allow-rule set, each of E1 (payment), E2 (2FA), E3 (local execution), E4 (secret handling), E5 (D3 path) still resolves enforced, tested one case each (F §5.2 "nothing can subtract from it")
+- [x] Require Approval beats Always Allow: a rule promoting an autonomous action wins over any permissive input, tested (probe batch 3 item B)
+- [x] Each §5.3 autonomous-by-default action (send email, post publicly, delete/overwrite, connector write, routine creation, message a teammate) resolves autonomous under a default configuration, tested
+- [x] An unknown capability_id and an undescribable action both resolve enforced via rank 1, not rank 6, tested
+- [x] `resolveEffectiveTier`, `ceiling.ts` and the RiskTier type are byte-identical to master; zero I/O imports added (lint-enforced)
+- [x] MUTATION-PROVEN: reordering ranks 2 and 3 turns a test RED; deleting any single E-class from the floor turns its liveness test RED
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-086-cx (merged, deleted)
 **Started_At:** 2026-09-01T19:45:12Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/policy/src/{enforcement.ts,enforcement.test.ts,requireApproval.ts,requireApproval.test.ts,index.ts}, dossiers/TASK-086.md
+**Test_Evidence:** pnpm -r test/lint/canaries all exit 0 (independently re-run). policy 54/54, 100% coverage.
+**Review_Findings:** APPROVED (2026-09-01, ORCH via independent subagent, maximum-rigor protected-path review — this is the core mechanism the entire ADR-010 enforced/autonomous split rests on). Six ranks confirmed correctly ordered and exhaustively tested. Fixed floor confirmed unconditional: `alwaysAllow` cannot subtract from E1-E5. Rank-1-above-floor safety property specifically tested with all five conditions (fail-closed input, floor match, matching rule, refusal-memory hit, ceiling exceeded) present SIMULTANEOUSLY — rank 1 wins. TWO independent mutations reproduced: swapping the floor/rule check order reddened 6 tests; deleting E1_payment from the floor reddened 2 (the liveness test + the mutation guard). Composition confirmed correct, not duplicative: refusalMemoryHit/roleGrantCeilingExceeded are opaque boolean pass-throughs (packages/policy's zero-I/O constraint makes this the only architecturally correct option, since the real stateful implementations live in packages/broker). ceiling.ts/resolveEffectiveTier confirmed byte-identical to master. Addendum F §5.2's liveness assertion directly implemented and confirmed non-inert via the mutation kill. Zero I/O imports preserved. Merged. Unlocks TASK-087 (with TASK-073, also done).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-01T19:45:12Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T20:15:00Z
 
 ### TASK-087
 **Title:** packages/broker — enforcement gate in the decision path ⚑ protected
