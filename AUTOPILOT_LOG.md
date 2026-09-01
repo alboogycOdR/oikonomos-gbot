@@ -92,3 +92,9 @@ Stopping the loop here. No further wakeup scheduled.
 - Merged to master (`d3b19c8`). Worktree `wt-s5-GROKBOT-CLONE` detached, branch `task/TASK-084-s5` deleted. No lockfile/package.json changes in this merge — no worktree `pnpm install` resync required.
 - **Process note for tomorrow's retro:** this is the 2nd task this session (after TASK-077) to hit the "resumed session reports no changes needed against fresh Review_Findings" gap, and the FIRST to hit it three times running. Precedent held: not scored as rework rounds, explicit unmissable instruction written each redispatch, ORCH wrote the fix directly on the 3rd occurrence with extra-scrutiny verification given the unusual authorship.
 - Deleted `.devteam/CHECKPOINT.md` (resumed cleanly per its own instructions).
+
+## 2026-09-01T23:30Z — next wave dispatched
+- TASK-085 (S5, packages/memory + migration 005) claimed and dispatched, resuming in wt-s5-GROKBOT-CLONE.
+- TASK-088 (CX, packages/broker D3 sealed-secret guard, protected) claimed and dispatched, worktree refreshed to master tip (851239e->75f26db) first.
+- Both were eligible immediately after TASK-084/TASK-087 merges (TASK-088 depended on TASK-087; TASK-085 had no deps and was queued). TASK-090 (deps TASK-084, now done) and TASK-089/TASK-092 remain eligible-but-idle for S5 pending this run; TASK-091 still blocked on TASK-090+TASK-092.
+- GB remains deactivated. Loop continues toward the user's 8am check-in.
