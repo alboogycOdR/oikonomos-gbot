@@ -48,3 +48,24 @@
 - 2026-09-01T18:00Z [ORCH] TASK-073 (GB) hit a genuine budget exhaustion: Grok Build account balance ran out mid-session (402 Payment Required) after ~1.6M tokens/22 model calls on this one task, during the mutation-proof step. Real work exists and was verified (84/84 broker tests incl. 12 new refusalMemory tests, matching the log's own claim) but was never committed - preserved it (commit 4a0371e). NOT yet reviewed/approved. Redispatching GB would hit the identical error. Escalating to user rather than looping - GB is effectively unusable until the account is topped up. CX remains idle; GB backlog (076, 079) also stalled on this same account issue.
 - 2026-09-01T18:05Z [ORCH] TASK-076 stays GB-assigned (explicit single-owner/worker-continuity rule in its own description, reassignment would violate it) - will not dispatch until GB's balance is restored. TASK-079 reassigned GB->CX (no such restriction, packages/agent-providers is safe to hand off) - dispatching now.
 - 2026-09-01T18:15Z [AUTOPILOT] TASK-079 (CX) at needs_review, territory clean. Dispatched independent verification, focused on the broker-bypass mutation-proof AC. Note: per ADR-010 (accepted this session - pivot to the persistent-office-computer model), no NEW backlog tasks are being dispatched from the old per-task-shaped list pending a proper decompose pass on Opus; this task was already in-flight before the ADR and remains directly relevant to the new target (a persistent environment still needs broker-gated tool bridges for CLI harnesses), so seeing it through to review/merge is consistent with the ADR's rollout plan, not a contradiction of it.
+
+=== WAVE END SUMMARY (2026-09-01T18:40Z) ===
+This overnight/day autopilot wave is stopping here cleanly, pending external action — not scheduling another wakeup.
+
+TASKS MERGED THIS WAVE (18 total): 069, 072, 074, 075, 082, 059, 077, 065, 078, 081, 054, 083 (partial-by-design), 055 (DEMO CENTERPIECE), 066, 067, 071, 068, 073 (preserved, not yet reviewed), 079.
+Plan totals: 76 done / 7 pending / 1 blocked / 0 in_progress.
+
+MAJOR MILESTONE: TASK-055 — the real end-to-end governed inbox-triage demo — landed and was independently verified with maximum rigor (real broker enforcement, real audit writes, real Postgres round-trip, mutation-proven ADR-005 liveness). ORCH additionally ran a live ad-hoc demonstration for the user on request, proving the same governed run (list+draft allow, send deny+audit) against the live Gmail MCP server and the real database.
+
+GMAIL CHAIN: TASK-054 (live enumeration), TASK-083 (OAuth token provider, offline half) both done. Live-authenticated re-enumeration remains a deliberately deferred, tracked item pending a one-time human browser consent for OIKONOMOS's own OAuth client (separate from the Anthropic connector used for the interactive proof).
+
+CURRENT BLOCKERS:
+1. GB (Grok Build) is out of action — account usage balance exhausted (402 Payment Required) mid-TASK-073. Real work was recovered and committed (packages/broker/src/refusalMemory.ts, commit 4a0371e) but NOT YET REVIEWED. TASK-073 sits Status:blocked. TASK-076 (services/worker scheduler) stays reserved for GB only per an explicit single-owner/continuity rule in its own task text — not reassigned. GB backlog (073 review, 076) needs either GB's balance restored, or an explicit user decision to reassign 076 despite the ownership rule.
+2. ADR-010 ACCEPTED THIS SESSION (docs/decisions/ADR-010-persistent-office-computer-pivot.md): the user has decided to pivot OIKONOMOS from its current ephemeral per-task governed-execution model toward a persistent-office-computer model (durable environment, named agent roles with memory/routines, shared workspace/session state, broader autonomy with human-takeover reserved for auth/security friction) — matching Grok Bot's actual product architecture, not just its permission-broker internals. This is a major architectural pivot, not a feature add. Per the ADR's own rollout plan, NEW backlog dispatch from the old per-task-shaped PLAN.md list is intentionally PAUSED pending a proper spec/decompose pass (meant to run at claude-opus-5 reasoning depth, not folded into this Sonnet-5 loop). In-flight work (TASK-079) was allowed to complete since it remains directly relevant either way.
+
+WHAT'S NEEDED TO CONTINUE:
+- User decision on how to proceed with the ADR-010 decompose pass (discuss design now, or hand to /devteam-decompose on Opus).
+- GB's Grok Build account balance topped up, to resume TASK-073 review and TASK-076.
+- (Separately, still open) a one-time browser OAuth consent for OIKONOMOS's own Gmail client to close TASK-083's deferred AC.
+
+Stopping the loop here. No further wakeup scheduled.
