@@ -2418,7 +2418,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-081
 **Title:** packages/policy — four-way approval resolution (allow-once/deny/always/never) as a standing-mode decision primitive ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/STUDY-grok-bot-018.md §Multi-agent coordination (research2 companion pack — verified against `source/shared/local-tool-permission.ts`, `source/host/extensions/local-tool-permission/local-tool-permission-controller.ts`); Directive §4 N2 (no bypass), N3 (fail closed); ADR-001
@@ -2434,15 +2434,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A new enum member added to `ApprovalResolution` without a corresponding decision-table entry fails typecheck — demonstrated with a scratch member, reverted
 - [ ] Zero I/O imports preserved (lint), existing packages/policy tests byte-identical and green
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-081-cx
+**Started_At:** 2026-09-01T09:35:13Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T20:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-01T09:35:13Z
 
 ### TASK-082
 **Title:** Telegram approvals — authorization test coverage + package export (post-merge fix for TASK-058)
