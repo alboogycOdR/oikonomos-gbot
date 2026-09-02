@@ -549,7 +549,16 @@ if ($ControlMode -eq "strict") {
         '# Safe to delete once the .done marker next to this file exists.',
         "`$ErrorActionPreference = 'Continue'",
         "Set-Location -LiteralPath '$Wt'",
-        "`$env:DEVTEAM_UNIT = '$Id'"
+        "`$env:DEVTEAM_UNIT = '$Id'",
+        # A detached window's process tree does not always inherit a User env
+        # var set after its ancestor (Explorer.exe) last read the registry --
+        # a known Windows env-propagation quirk. Re-read it fresh at runner
+        # execution time rather than embedding the secret value itself in this
+        # generated file (N4: no credentials in scripts/logs/fixtures).
+        # First occurrence: TASK-100 (CX), 2026-09-02 -- builder correctly
+        # self-blocked (MISSING_DEPENDENCY) rather than silently skipping the
+        # DB-gated proof it was scoped to run.
+        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }"
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += "Write-Host '[$Id] starting $TaskId ($ResumeOrClaim) in $Wt' -ForegroundColor Green"
@@ -632,7 +641,10 @@ if ($ControlMode -eq "strict") {
         '# Safe to delete once the session has ended.',
         "`$ErrorActionPreference = 'Continue'",
         "Set-Location -LiteralPath '$Wt'",
-        "`$env:DEVTEAM_UNIT = '$Id'"
+        "`$env:DEVTEAM_UNIT = '$Id'",
+        # See the matching comment in the strict-mode branch above -- same
+        # Windows env-propagation quirk, same non-secret-in-file fix.
+        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }"
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += @(
