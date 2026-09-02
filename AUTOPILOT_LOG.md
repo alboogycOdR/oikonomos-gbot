@@ -166,3 +166,28 @@ Stopping the loop here. No further wakeup scheduled.
 ## 2026-09-02T01:58Z — TASK-091 needs_review; backlog scan for post-wave work
 - TASK-091 (CX, protected, packages/harness-factory) came back needs_review: optional environment field added to composeHarness, existing behavior unchanged when omitted per builder. harness-factory 89/89, typecheck clean, full gates green, canaries 17/17. Dispatched mandatory protected-path adversarial review with special focus on additivity, layering/seam/fail-closed/decorator non-interference, and composeHarness staying per-run.
 - Scanned PLAN.md for other eligible pending work while TASK-091 reviews: TASK-027 is explicitly marked DEFERRED (do not dispatch, skip). TASK-047/049/050/051 (connector-onboarding checklist, Calendar/Drive connector waves, Composio spike) all have satisfied deps but Assigned_To: TBD and low/medium priority — deliberately NOT auto-assigned/dispatched overnight: these predate ADR-010 and, per the same disposition-check pattern already applied to TASK-076 (RESHAPE, not silent dispatch), each needs an explicit ADR-010 currency check before touching (e.g. do the connector-wave tasks still describe create/destroy semantics TASK-092 just replaced with acquire/release?). TASK-060 (ORCH-executed vertical-slice demo/runbook) also has all 3 deps done but is deliberately held for the same reason — a demo runbook written against the pre-pivot ephemeral model would need rework anyway. All four flagged for the 8am summary as "ready backlog, needs disposition triage" rather than spontaneously started at 2am.
+
+## 2026-09-02T02:05Z — ADDENDUM F WAVE COMPLETE (10/10 tasks merged)
+- TASK-091 (CX, protected, capstone) independent review: APPROVE, first-pass, all 9 checks verified against actual code. Merged to master (no lockfile changes).
+- **Full tally — every Addendum F task, first-pass unless noted:**
+  - TASK-084 (S5) — D0 role/routine/message/require-approval schema. 3 resume-state process-gap occurrences (not rework rounds), ORCH wrote the final idempotency fix directly on the 3rd, independently re-verified.
+  - TASK-085 (S5) — three-scope/three-tier memory. First-pass code; 1 legitimate lockfile-sync gap resolved as ORCH merge wiring.
+  - TASK-086 (CX, protected) — six-rank enforcement resolver. First-pass.
+  - TASK-087 (CX, protected) — resolver wired into real PreToolUse. First-pass. **Autonomy pivot went live in production code here.**
+  - TASK-088 (CX, protected) — D3 secret path guard. First-pass code; 1 dispatch-side sync triage + 1 rejected ownership claim (not rework).
+  - TASK-089 (S5) — the Office, real Docker durability canary. First-pass.
+  - TASK-090 (S5) — shared workspace/tier classification/handoff mailbox. First-pass; 1 legitimate lockfile-sync gap resolved as ORCH merge wiring.
+  - TASK-076 (CX, reshaped) — role-keyed scheduler, routine firing. First-pass.
+  - TASK-093 (CX, protected, cut mid-wave) — wired D3 guard above the resolver. First-pass code; 1 dispatch-side sync triage (not rework).
+  - TASK-092 (S5) — durable connector session pool. First-pass code; 1 ORCH post-merge cosmetic cleanup (raw NUL byte -> \0 escape, zero behavior change).
+  - TASK-091 (CX, protected, capstone) — additive environment binding. First-pass.
+  - **0 real rework rounds across all 10 tasks.** Every protected-path task got adversarial review by a different model (Claude reviewing Codex-authored work) per CLAUDE.md's non-negotiable.
+- Final full-suite verification (build/test/lint/canaries/validate_plan) dispatched to a subagent as the last gate before the user's 8am check-in.
+- **Retro items accumulated tonight, ready for the promised retro pass:**
+  1. dispatch.ps1 SYNC_MISMATCH — branch not created before builder launch, 4+ occurrences (TASK-088, TASK-093, TASK-076, TASK-092), on both resume and refresh paths, both CX and S5. Never cost a lost cycle only because ORCH added a mandatory post-dispatch `git status --short --branch` check. Top-priority fix: dispatch.ps1 should assert/create the branch itself.
+  2. Worktrees accumulate stray uncommitted local diffs (lockfile/AUTOPILOT_LOG.md noise) between dispatches that can block the safety refresh — caught once before it caused a stale-worktree mis-dispatch (TASK-089's first attempt). Suggest a standard pre-dispatch hygiene step.
+  3. A raw NUL byte silently made it through TASK-092's build/test/lint/typecheck gates undetected (functionally harmless but a code-smell) — worth a lint rule or pre-commit binary-content check for source files going forward.
+  4. Direct `node`/`perl` byte-level file writes to this Windows checkout silently failed to persist twice in a row (no error, but readback showed no change) — worked around with the harness's own Edit tool. Cause undiagnosed; worth a footnote, not a blocker.
+  5. A benign, recurring services/gateway-telegram session-store JSON parse warning appeared in multiple full-suite runs tonight — never failed a test, likely a stray local dev state file, worth a human look but not a regression.
+- **Deliberately not started tonight, held for the user's disposition triage:** TASK-047/049/050/051 (connector-onboarding checklist, Calendar/Drive waves, Composio spike — predate TASK-092's acquire/release model) and TASK-060 (vertical-slice demo/runbook — would need to target the new persistent-office model). TASK-027 remains explicitly DEFERRED.
+- **Next: awaiting the user's 8am check-in.** Full retro/INSTINCTS.md pass via scripts/retro.py still owed per their explicit request ("let's see how it goes by tomorrow morning") — ready to run on their signal.
