@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  TASK-107 (Chat-1c): standalone preview harness for taking a rendered
+  screenshot of <ChatShell> against fixture data — dev-tooling only, not
+  part of the shipped app entry point (App.tsx/main.tsx/index.html at the
+  app root belong to TASK-108's Owned_Paths, not this task's). Vite's dev
+  server serves any .html file on disk without needing vite.config.ts
+  changes, so this stays inside components/chat/**.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat design system preview (TASK-107)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

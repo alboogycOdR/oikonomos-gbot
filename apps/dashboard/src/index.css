@@ -1,0 +1,19 @@
+/* TASK-107 (Chat-1c): Tailwind v4 entry stylesheet. Imported directly by
+   chat components (see ChatShell.tsx) rather than from main.tsx/App.tsx —
+   those files belong to TASK-108 (Chat-1d), not this task's Owned_Paths.
+   `@config` wires in tailwind.config.ts's dark chrome palette explicitly,
+   since v4 no longer auto-discovers it. */
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface text-slate-100 antialiased;
+  }
+}
