@@ -175,7 +175,7 @@ integration("packages/memory — three scopes, three tiers, conflict order (TASK
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
 
-  it("MUTATION-PROVEN: writeMemoryFact upserts idempotently on (tenant, scope, role, project, key)", async () => {
+  it("writes a new version rather than mutating an existing fact for the same key", async () => {
     const opts = { connectionString: connectionString! };
     const first = await writeMemoryFact(opts, {
       tenantId,
@@ -191,13 +191,17 @@ integration("packages/memory — three scopes, three tiers, conflict order (TASK
       value: "v2",
       source: "test",
     });
-    expect(second.factId).toBe(first.factId);
+    expect(second.factId).not.toBe(first.factId);
     expect(second.value).toBe("v2");
 
-    const count = await pool.query(
-      `SELECT count(*)::int AS n FROM profile_facts WHERE tenant_id = $1 AND key = 'upsert-key'`,
+    const versions = await pool.query<{ fact_id: string; value: string; superseded_by: string | null }>(
+      `SELECT fact_id, value, superseded_by FROM profile_facts
+       WHERE tenant_id = $1 AND key = 'upsert-key' ORDER BY value`,
       [tenantId],
     );
-    expect(count.rows[0].n).toBe(1);
+    expect(versions.rows).toEqual([
+      { fact_id: first.factId, value: "v1", superseded_by: second.factId },
+      { fact_id: second.factId, value: "v2", superseded_by: null },
+    ]);
   });
 });
