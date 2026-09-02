@@ -2839,7 +2839,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-095
 **Title:** packages/agent-providers — Gemini AgentProvider (ProviderEvent translation over TASK-094's governed loop)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2; packages/agent-providers/src/providers/claudeCode.ts (the exact pattern to mirror — a thin translator over an already-governed query function, never itself calling L1)
@@ -2848,22 +2848,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** Add "gemini" as a fourth `ProviderId` alongside `claude-code`/`codex`/`grok`. `GeminiProvider` follows `claudeCode.ts`'s exact shape: it is a thin translator that turns TASK-094's already-governed Gemini query function's output into the shared `ProviderEvent` stream (`text_delta`, `tool_start`, `tool_end`, `turn_complete`, `error`) — it must NOT itself call `l1.handle()` or duplicate any enforcement logic; enforcement already happened inside the injected query function, exactly like `claudeCode.ts` never touches L1 either. Unlike `codex`/`grok` (which report `costUsd: null` because their CLIs don't surface usage), Gemini's REST response carries real token counts — compute `turn_complete.costUsd` using TASK-096's pricing calculator from the actual `usageMetadata` the API returns, not a stub. `config.ts` gains `GEMINI_API_KEY` loading via `loadConfig`/`loadConfigFromEnv` with the same validation rigor as the existing keys (present, non-empty, never logged). Do not touch `claudeCode.ts`, `codex.ts`, or `grok.ts` — this task adds a sibling, it does not modify the existing three.
 **Acceptance_Criteria:**
 - [ ] "gemini" added to `PROVIDER_IDS`/`ProviderId`; `isProviderId("gemini")` returns true, tested
-- [ ] `GeminiProvider` implements `AgentProvider`, translating a fake injected governed-query function's output into the correct `ProviderEvent` sequence (no live network calls in tests), tested
-- [ ] `GeminiProvider` never calls any L1/broker port directly — asserted by the test double having no such port injected at all (the type signature structurally cannot receive one), matching `claudeCode.ts`'s own non-enforcement shape
-- [ ] `turn_complete.costUsd` is computed via TASK-096's `costForUsage` from real token counts, not null and not a placeholder, tested against known usage values
-- [ ] `GEMINI_API_KEY` loading in `config.ts` validates presence/non-emptiness the same way existing keys do, and is never logged, tested
-- [ ] `claudeCode.ts`, `codex.ts`, `grok.ts` byte-identical to master — asserted by diff in the work log
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-095-s5
+- [x] `GeminiProvider` implements `AgentProvider`, translating a fake injected governed-query function's output into the correct `ProviderEvent` sequence (no live network calls in tests), tested
+- [x] `GeminiProvider` never calls any L1/broker port directly — asserted by the test double having no such port injected at all (the type signature structurally cannot receive one), matching `claudeCode.ts`'s own non-enforcement shape
+- [x] `turn_complete.costUsd` is computed via TASK-096's `costForUsage` from real token counts, not null and not a placeholder, tested against known usage values
+- [x] `GEMINI_API_KEY` loading in `config.ts` validates presence/non-emptiness the same way existing keys do, and is never logged, tested
+- [x] `claudeCode.ts`, `codex.ts`, `grok.ts` byte-identical to master — asserted by diff in the work log
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-095-s5 (merged, deleted)
 **Started_At:** 2026-09-02T09:10:00Z
 **Progress_Notes:**
 - [2026-09-02T09:35:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence on this task) — S5 correctly self-blocked rather than pushing through: widening `ProviderId` to include `"gemini"` (required by AC1) makes `metadata.ts`'s `ProviderExtrasMap` non-exhaustive (TS2536 x3), and `metadata.ts` was outside Owned_Paths. Verified via S5's own `git stash -u` isolation that this is caused solely by the widening, not pre-existing. Legitimate gap — added `packages/agent-providers/src/metadata.ts` to Owned_Paths above. Also note: S5 correctly flagged a `pricing.test.ts` TS2578 error as a pre-existing TASK-096 leftover in its baseline — that was already fixed by ORCH on master (commit after TASK-095 branched from an earlier master tip); will resolve once S5 rebases/the worktree refreshes, not a new problem. Redispatching S5 same branch: add a `GeminiProviderExtras` interface + a `gemini` entry to `ProviderExtrasMap` in metadata.ts, matching the existing three providers' shape, then re-run typecheck/test/lint/canaries.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/agent-providers/src/providers/{gemini.ts,gemini.test.ts,index.ts}, packages/agent-providers/src/{types.ts,config.ts,metadata.ts}, dossiers/TASK-095.md
+**Test_Evidence:** agent-providers 96/96 (18 new gemini tests). `pnpm --filter @oikonomos/agent-providers build` and a full `pnpm -r build` across all 16 workspaces both independently re-run and confirmed clean (mandatory as its own gate per the TASK-096 build-vs-test gap). Full pnpm -r test/lint/canaries independently re-run, exit 0.
+**Review_Findings:** APPROVED, first-pass on this redispatch. Territory clean (6 Owned_Paths files + dossier; claudeCode.ts/codex.ts/grok.ts confirmed byte-identical). `GeminiQueryFn`'s type signature confirmed to structurally exclude any L1/broker port — cannot receive one, matching claudeCode.ts's own non-enforcement shape (a dedicated test asserts this). `turn_complete.costUsd` confirmed computed via TASK-096's real `costForUsage()` fed genuine `usageMetadata` token counts (verified with two known-usage cases plus a missing-usage-to-zero case, never a placeholder). GEMINI_API_KEY confirmed loaded via the same helper as the existing XAI_API_KEY, never in a thrown error message. metadata.ts confirmed to contain only the GeminiProviderExtras addition, nothing else. Full pnpm -r build run explicitly as its own gate (separate from pnpm -r test) per the new review standard — clean across all 16 workspaces. Merged. **Completes the full ADR-011 multi-provider wave (TASK-094/095/096) — Gemini is now a fully wired, governed, cost-tracked provider alongside Claude.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T09:10:00Z
+**Updated_At:** 2026-09-02T10:05:00Z
 
 ### TASK-096
 **Title:** packages/agent-providers — gemini-3.7-flash cost calculator (pure, no I/O)
