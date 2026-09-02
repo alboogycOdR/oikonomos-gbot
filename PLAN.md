@@ -2928,7 +2928,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Master WBS OIK-098/OIK-100/OIK-101; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.1-2.2 (E10 scope authorized 2026-09-02)
-**Owned_Paths:** infra/postgres/migrations/006_memory_acl_versioning.up.sql, infra/postgres/migrations/006_memory_acl_versioning.down.sql, packages/memory/src/types.ts, packages/memory/src/facts.ts, packages/memory/src/facts.test.ts
+**Owned_Paths:** infra/postgres/migrations/006_memory_acl_versioning.up.sql, infra/postgres/migrations/006_memory_acl_versioning.down.sql, packages/memory/src/types.ts, packages/memory/src/facts.ts, packages/memory/src/facts.test.ts, packages/memory/src/index.ts
 **Depends_On:** —
 **Description:** **CX preferred** (security-relevant cross-role read boundary; adversarial review mandatory regardless of author, matching this project's protected-path standard even though packages/memory isn't formally on that list — ADR-012 §2.6). Extends `profile_facts` (does not create a parallel table — ADR-012 §2 "exactly one implementation"): (1) an ACL surface for project/user-scope facts — a `visible_to text[] NULL` column, NULL meaning "visible to the whole tenant" (today's existing behaviour, unchanged default) and a populated array meaning "visible only to these role_ids." Agent-scope facts are UNCHANGED — already owner-only by construction (TASK-085), this column has no effect there and must not weaken that isolation. (2) A `superseded_by uuid NULL REFERENCES profile_facts(fact_id)` self-reference: a corrected fact is inserted as a NEW row, the old row gets `superseded_by` pointing at the new one, nothing is ever overwritten in place — `resolve()`/`getAgentFact`/`getProjectFact`/`getUserFact` must only ever return the LATEST (non-superseded) fact for a key, never a stale superseded one, and the old row must remain queryable by its `fact_id` for history/"since when" purposes. Do not touch `roles`, `role_routines`, `role_messages`, `require_approval_rules` (migration 004) or migration 005's original columns beyond the two additions.
 **Acceptance_Criteria:**
@@ -2942,7 +2942,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0 (build is its own mandatory gate, separate from test)
 **Branch:** task/TASK-098-cx
 **Started_At:** 2026-09-02T12:05:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T12:20:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence) — CX correctly self-blocked: the public fact-history query needs exporting from packages/memory/src/index.ts, which was missing from Owned_Paths (an oversight in the task's original scoping, not a builder error). Added packages/memory/src/index.ts to Owned_Paths above. Redispatching CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -3006,7 +3007,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Master WBS OIK-084 (extends), OIK-088's dependency; E9.1 scope authorized 2026-09-02
-**Owned_Paths:** services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts
+**Owned_Paths:** services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/test/**
 **Depends_On:** —
 **Description:** **Foundational gap found while scoping E9.1, not previously flagged anywhere:** `control-api` currently has ZERO authentication — every route is open to anyone who can reach the port. That was an acceptable posture while its only callers were the Telegram gateway (itself gated by `allowedChatIds`) and internal scripts; it is NOT an acceptable posture once a browser-facing dashboard exists. Scope for THIS task, deliberately minimal (a full multi-user identity system is out of scope — flag it as a real follow-up decision, don't build it unasked): a single shared-secret bearer-token gate, matching the risk posture of the Telegram bot's own token gating (one shared credential, not per-user accounts). Read `CONTROL_API_TOKEN` from env (never logged, never in a response body, N4); a request without a valid `Authorization: Bearer <token>` header (or an equivalent httpOnly session cookie set by a `POST /auth/login` route that accepts the same token once and issues a signed, expiring session cookie) is denied `401` before reaching any existing route handler. `POST /auth/login` and `GET /openapi.json` are the only unauthenticated routes. Also add `GET /tasks` (list, with the same tenant/status/cursor filtering shape as the existing `GET /runs`) — needed by the dashboard's run-list view to show task context, and currently missing entirely (there is a `POST /tasks` to create one, but no way to list them back).
 **Acceptance_Criteria:**
@@ -3018,7 +3019,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-101-s5
 **Started_At:** 2026-09-02T12:05:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T12:20:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence) — S5 correctly self-blocked and investigated thoroughly before reporting: a global fail-closed auth preHandler necessarily makes every EXISTING test file under services/control-api/test/** fail (they call app.inject() with no Authorization header), and those files were missing from Owned_Paths — an oversight in the task's original scoping (fail-closed gates always require touching every existing caller, this should have been anticipated). Added services/control-api/test/** to Owned_Paths above. Confirmed S5's own reasoning was correct to reject the alternative (a fail-open/env-gated default) as it would violate CLAUDE.md's fail-closed non-negotiable and defeat the LIVENESS AC — do not take that shortcut. Update each existing test's buildApp/inject calls to include a valid token/session; this is expected, not a zero-behavior-change violation, since a global auth gate is definitionally a behavior change for every route. Redispatching S5 same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
