@@ -1,12 +1,19 @@
 import type { Writable } from "node:stream";
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { runStatuses, type Approval, type RunStatus } from "@oikonomos/db";
+import { runStatuses, taskStatuses, type Approval, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
 import type { ControlApiDeps } from "./ports.js";
+import {
+  buildExpiredSessionCookie,
+  buildSessionCookie,
+  createSessionToken,
+  isAuthorized,
+  isValidLoginToken,
+} from "./auth.js";
 
 export interface BuildAppOptions {
   /** `false` disables logging entirely (route tests default to this). */
@@ -17,6 +24,17 @@ export interface BuildAppOptions {
    * redaction proof) without parsing stdout.
    */
   logStream?: Writable;
+  /**
+   * TASK-101: the shared secret gating every route except `POST
+   * /auth/login` and `GET /openapi.json`. Falls back to
+   * `process.env.CONTROL_API_TOKEN` when omitted (so `index.ts#start` —
+   * outside this task's Owned_Paths — needs no changes to pick up the
+   * gate). Whichever value is used, a blank/whitespace-only result is
+   * rejected at build time: fail closed (N3) — a service that cannot
+   * authenticate must refuse to start, never silently serve every route
+   * unauthenticated.
+   */
+  authToken?: string;
 }
 
 const NEW_TASK_SCHEMA = {
@@ -42,6 +60,26 @@ const LIST_RUNS_QUERY_SCHEMA = {
     taskId: { type: "string" },
     limit: { type: "integer" },
     cursor: { type: "string" },
+  },
+} as const;
+
+const LIST_TASKS_QUERY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    tenantId: { type: "string" },
+    status: { type: "string" },
+    limit: { type: "integer" },
+    cursor: { type: "string" },
+  },
+} as const;
+
+const LOGIN_SCHEMA = {
+  type: "object",
+  required: ["token"],
+  additionalProperties: false,
+  properties: {
+    token: { type: "string" },
   },
 } as const;
 
@@ -106,6 +144,10 @@ function isRunStatus(value: string): value is RunStatus {
   return (runStatuses as readonly string[]).includes(value);
 }
 
+function isTaskStatus(value: string): value is TaskStatus {
+  return (taskStatuses as readonly string[]).includes(value);
+}
+
 /**
  * TASK-063 rework (round-1 review): a caller-supplied `expiresAt` on the
  * edit route was accepted with zero bound validation, letting a single
@@ -151,6 +193,16 @@ function validateEditExpiresAt(expiresAt: Date, now: number): string | undefined
  * integration tests inject `createDatabaseBackedDeps(...)`.
  */
 export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): FastifyInstance {
+  const resolvedAuthToken = options.authToken ?? process.env.CONTROL_API_TOKEN ?? "";
+  if (resolvedAuthToken.trim().length === 0) {
+    // Fail closed (N3): a service that cannot authenticate must refuse
+    // to start rather than silently serve every route unauthenticated.
+    throw new Error(
+      "control-api requires an auth token: pass BuildAppOptions.authToken or set CONTROL_API_TOKEN.",
+    );
+  }
+  const authToken = resolvedAuthToken;
+
   const app = Fastify({
     logger:
       options.logger === false
@@ -170,7 +222,104 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           },
   });
 
-  app.get("/openapi.json", async () => getOpenApiDocument());
+  // TASK-101: global fail-closed auth gate. Runs as a preHandler (after
+  // routing, so `routeOptions.config` is populated) for every route
+  // except the two explicitly marked `public: true` below. A route that
+  // does not exist never reaches this hook at all (Fastify 404s first),
+  // which is fine — there is nothing to protect on a 404.
+  app.addHook("preHandler", async (request, reply) => {
+    const config = request.routeOptions.config as { public?: boolean } | undefined;
+    if (config?.public === true) {
+      return;
+    }
+    if (isAuthorized({ authorization: request.headers.authorization, cookie: request.headers.cookie }, authToken)) {
+      return;
+    }
+    await reply.code(401).send({ error: "unauthorized" });
+  });
+
+  // TASK-101: `openapi.ts` is outside this task's Owned_Paths, so the new
+  // `/auth/login` and `GET /tasks` documentation is merged onto the base
+  // document here at serve time rather than editing that file. This keeps
+  // `GET /openapi.json` describing every live route (AC #4's "same
+  // OpenAPI-document pattern") without an out-of-territory edit.
+  app.get("/openapi.json", { config: { public: true } }, async () => {
+    const base = getOpenApiDocument() as {
+      paths: Record<string, unknown>;
+      components: { schemas: Record<string, unknown> };
+    };
+    return {
+      ...base,
+      paths: {
+        ...base.paths,
+        "/auth/login": {
+          post: {
+            summary: "Exchange the shared CONTROL_API_TOKEN for a session cookie (TASK-101)",
+            operationId: "login",
+            requestBody: {
+              required: true,
+              content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } },
+            },
+            responses: {
+              "200": { description: "Session cookie issued" },
+              "401": { description: "Invalid token" },
+            },
+          },
+        },
+        "/tasks": {
+          ...(base.paths["/tasks"] as Record<string, unknown>),
+          get: {
+            summary: "List tasks",
+            operationId: "listTasks",
+            parameters: [
+              { name: "tenantId", in: "query", schema: { type: "string" } },
+              { name: "status", in: "query", schema: { type: "string" } },
+              { name: "limit", in: "query", schema: { type: "integer" } },
+              { name: "cursor", in: "query", schema: { type: "string" } },
+            ],
+            responses: {
+              "200": {
+                description: "A page of tasks, newest-first",
+                content: { "application/json": { schema: { $ref: "#/components/schemas/TaskListPage" } } },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        ...base.components,
+        schemas: {
+          ...base.components.schemas,
+          LoginRequest: {
+            type: "object",
+            required: ["token"],
+            properties: { token: { type: "string" } },
+          },
+          TaskListPage: {
+            type: "object",
+            properties: {
+              tasks: { type: "array", items: { $ref: "#/components/schemas/Task" } },
+              nextCursor: { type: "string", nullable: true },
+            },
+          },
+        },
+      },
+    };
+  });
+
+  app.post<{ Body: { token: string } }>(
+    "/auth/login",
+    { config: { public: true }, schema: { body: LOGIN_SCHEMA } },
+    async (request, reply) => {
+      const { token } = request.body;
+      if (!isValidLoginToken(token, authToken)) {
+        await reply.code(401).send({ error: "invalid token" });
+        return;
+      }
+      const session = createSessionToken(authToken);
+      await reply.header("set-cookie", buildSessionCookie(session)).code(200).send({ authenticated: true });
+    },
+  );
 
   app.post<{ Body: Record<string, unknown> }>(
     "/tasks",
@@ -192,6 +341,27 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  app.get<{
+    Querystring: { tenantId?: string; status?: string; limit?: number; cursor?: string };
+  }>("/tasks", { schema: { querystring: LIST_TASKS_QUERY_SCHEMA } }, async (request, reply) => {
+    try {
+      const { tenantId, status, limit, cursor } = request.query;
+      if (status !== undefined && !isTaskStatus(status)) {
+        await reply.code(400).send({ error: `status must be one of ${taskStatuses.join(", ")}.` });
+        return;
+      }
+      const page = await deps.listTasks({
+        ...(tenantId !== undefined && { tenantId }),
+        ...(status !== undefined && { status }),
+        ...(limit !== undefined && { limit }),
+        ...(cursor !== undefined && { cursor }),
+      });
+      await reply.code(200).send(page);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
 
   app.get<{
     Querystring: { tenantId?: string; status?: string; taskId?: string; limit?: number; cursor?: string };

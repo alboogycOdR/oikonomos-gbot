@@ -12,6 +12,7 @@ import {
   getRun as dbGetRun,
   listPendingApprovals as dbListPendingApprovals,
   listRuns as dbListRuns,
+  listTasks as dbListTasks,
   type AuditEvent,
   type DatabaseOptions,
   type NewTask,
@@ -21,6 +22,8 @@ import {
   type RunListFilter,
   type RunListPage,
   type Task,
+  type TaskListFilter,
+  type TaskListPage,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -41,6 +44,7 @@ import {
  */
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
+  listTasks(filter?: TaskListFilter): Promise<TaskListPage>;
   listRuns(filter?: RunListFilter): Promise<RunListPage>;
   getRun(runId: string): Promise<Run | null>;
   listPendingApprovals(filter?: PendingApprovalFilter): Promise<Approval[]>;
@@ -70,6 +74,7 @@ export interface ControlApiDeps {
 export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDeps {
   return {
     createTask: (input) => dbCreateTask(options, input),
+    listTasks: (filter) => dbListTasks(options, filter),
     listRuns: (filter) => dbListRuns(options, filter),
     getRun: (runId) => dbGetRun(options, runId),
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),

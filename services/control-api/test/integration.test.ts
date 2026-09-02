@@ -21,6 +21,8 @@ import { createDatabaseBackedDeps } from "../src/ports.js";
  */
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+const TEST_TOKEN = "task-101-fixture-shared-secret";
+const AUTH_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` };
 
 integration("control-api — HTTP routes against a real Postgres, real @oikonomos/db + @oikonomos/approvals", () => {
   const options: DatabaseOptions = { connectionString: connectionString ?? "" };
@@ -33,11 +35,12 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
       await database.close();
     }
 
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const createRes = await app.inject({
       method: "POST",
       url: "/tasks",
+      headers: AUTH_HEADERS,
       payload: {
         roleId: "inbox-triage",
         title: "TASK-056 integration task",
@@ -51,12 +54,12 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
 
     const run = await startRun(options, { taskId: task.taskId, provider: "claude" });
 
-    const listRes = await app.inject({ method: "GET", url: `/runs?taskId=${task.taskId}` });
+    const listRes = await app.inject({ method: "GET", url: `/runs?taskId=${task.taskId}`, headers: AUTH_HEADERS });
     expect(listRes.statusCode).toBe(200);
     const page = JSON.parse(listRes.body) as { runs: { runId: string }[] };
     expect(page.runs.some((r) => r.runId === run.runId)).toBe(true);
 
-    const getRes = await app.inject({ method: "GET", url: `/runs/${run.runId}` });
+    const getRes = await app.inject({ method: "GET", url: `/runs/${run.runId}`, headers: AUTH_HEADERS });
     expect(getRes.statusCode).toBe(200);
     expect(JSON.parse(getRes.body).runId).toBe(run.runId);
 
@@ -67,7 +70,11 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
       payload: { note: "integration evidence row" },
     });
 
-    const evidenceRes = await app.inject({ method: "GET", url: `/runs/${run.runId}/evidence` });
+    const evidenceRes = await app.inject({
+      method: "GET",
+      url: `/runs/${run.runId}/evidence`,
+      headers: AUTH_HEADERS,
+    });
     expect(evidenceRes.statusCode).toBe(200);
     const events = JSON.parse(evidenceRes.body) as { runId: string }[];
     expect(events.some((e) => e.runId === run.runId)).toBe(true);
@@ -100,9 +107,9 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
       expiresAt: new Date(Date.now() + 60_000),
     });
 
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
-    const listRes = await app.inject({ method: "GET", url: "/approvals" });
+    const listRes = await app.inject({ method: "GET", url: "/approvals", headers: AUTH_HEADERS });
     expect(listRes.statusCode).toBe(200);
     const pending = JSON.parse(listRes.body) as { nonce: string }[];
     expect(pending.some((a) => a.nonce === approval.nonce)).toBe(true);
@@ -110,6 +117,7 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
     const decideRes = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "test:task-056" },
     });
     expect(decideRes.statusCode).toBe(200);
@@ -118,6 +126,7 @@ integration("control-api — HTTP routes against a real Postgres, real @oikonomo
     const repeatRes = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "test:task-056" },
     });
     expect(repeatRes.statusCode).toBe(409);

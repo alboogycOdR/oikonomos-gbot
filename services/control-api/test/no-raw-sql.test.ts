@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
  * @oikonomos/db / @oikonomos/approvals ports) or a bare SQL keyword
  * string literal.
  */
-const SOURCE_FILES = ["app.ts", "index.ts", "openapi.ts", "ports.ts", "redact.ts"];
+const SOURCE_FILES = ["app.ts", "auth.ts", "index.ts", "openapi.ts", "ports.ts", "redact.ts"];
 
 function readSource(name: string): string {
   const path = fileURLToPath(new URL(`../src/${name}`, import.meta.url));

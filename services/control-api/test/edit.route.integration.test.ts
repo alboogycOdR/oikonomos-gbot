@@ -27,6 +27,8 @@ import { createDatabaseBackedDeps } from "../src/ports.js";
  */
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+const TEST_TOKEN = "task-101-fixture-shared-secret";
+const AUTH_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` };
 
 integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editApproval, real Postgres", () => {
   const options: DatabaseOptions = { connectionString: connectionString ?? "" };
@@ -60,11 +62,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("invalidates the old approval and issues a replacement bound to the edited payload, with a NEW nonce and a digest+render describing the edited payload (ADR-004)", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -111,11 +114,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("the old nonce is unusable after a successful edit — both decide and verifyAndConsume refuse it (OIK-023, N8)", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const editRes = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -129,6 +133,7 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
     const decideRes = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "test:task-063" },
     });
     expect(decideRes.statusCode).toBe(409);
@@ -141,11 +146,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("never two live approvals for one action: after edit, exactly one pending row exists for that run+capability (N8)", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -171,10 +177,11 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
       // Reach the target status via the real, already-proven primitives
       // (decide / verifyAndConsume) — never a hand-rolled UPDATE — so this
       // fixture itself exercises real status transitions, not an assumed one.
-      const decideApp = buildApp(createDatabaseBackedDeps(options), { logger: false });
+      const decideApp = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
       await decideApp.inject({
         method: "POST",
         url: `/approvals/${approval.nonce}/decide`,
+        headers: AUTH_HEADERS,
         payload: { decision: targetStatus === "rejected" ? "rejected" : "granted", decidedBy: "test:task-063" },
       });
       await decideApp.close();
@@ -199,10 +206,11 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
       const confirmed = await getApprovalByNonce(options, approval.nonce);
       expect(confirmed?.status).toBe(targetStatus);
 
-      const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+      const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
       const res = await app.inject({
         method: "POST",
         url: `/approvals/${approval.nonce}/edit`,
+        headers: AUTH_HEADERS,
         payload: {
           runId: run.runId,
           capabilityId: "email.create_draft",
@@ -226,11 +234,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
       destination: "original@example.test",
       expiresAt: new Date(Date.now() - 1_000),
     });
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${expiredApproval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -249,7 +258,7 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("a forced mid-operation failure (identity mismatch after invalidate) leaves the ORIGINAL approval untouched and issues no replacement — atomicity proven against a live DB (OIK-086)", async () => {
     const { approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     // A runId that does not match the approval's actual run_id: invalidate
     // matches by nonce alone and succeeds, then editApproval's identity
@@ -260,6 +269,7 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: randomUUID(),
         capabilityId: "email.create_draft",
@@ -284,11 +294,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("HARD REFUSAL: an omitted tenantId defaults to 'basileia' and is rejected for a non-basileia tenant's approval (round-2 TASK-080 lesson)", async () => {
     const { run, approval } = await fixture("acme");
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -308,11 +319,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("succeeds for a non-basileia tenant when tenantId is forwarded correctly", async () => {
     const { run, approval } = await fixture("acme");
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -332,11 +344,12 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("REWORK AC: a past expiresAt is rejected before editApproval runs — original approval left untouched and pending, live DB", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -366,12 +379,13 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("REWORK AC: an expiresAt beyond the platform approval TTL is rejected before editApproval runs — original approval untouched, live DB", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const excessiveExpiresAt = new Date(Date.now() + DEFAULT_APPROVAL_TTL_MS + 24 * 60 * 60 * 1000).toISOString();
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",
@@ -392,12 +406,13 @@ integration("POST /approvals/:nonce/edit — real @oikonomos/approvals editAppro
 
   it("REWORK AC: omitting expiresAt still succeeds and the replacement inherits editApproval's own default TTL, live DB", async () => {
     const { run, approval } = await fixture();
-    const app = buildApp(createDatabaseBackedDeps(options), { logger: false });
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TEST_TOKEN, logger: false });
 
     const before = Date.now();
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/edit`,
+      headers: AUTH_HEADERS,
       payload: {
         runId: run.runId,
         capabilityId: "email.create_draft",

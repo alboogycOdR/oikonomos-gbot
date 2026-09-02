@@ -5,8 +5,25 @@ import { describe, expect, it } from "vitest";
 import type { Approval, AuditEvent, Run, Task } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResult } from "@oikonomos/approvals";
 
-import { buildApp } from "../src/app.js";
+import { buildApp, type BuildAppOptions } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
+
+/**
+ * TASK-101: every test in this file that exercises a protected route must
+ * authenticate, since the global auth preHandler now denies unauthenticated
+ * requests fail-closed. `TEST_TOKEN` is a fixture value, never a real
+ * secret (N4 — no credentials in test fixtures; this is a made-up string,
+ * not anything from a real environment).
+ */
+const TEST_TOKEN = "task-101-fixture-shared-secret";
+
+function authHeaders(): { authorization: string } {
+  return { authorization: `Bearer ${TEST_TOKEN}` };
+}
+
+function buildTestApp(deps: ControlApiDeps, overrides: Partial<BuildAppOptions> = {}) {
+  return buildApp(deps, { authToken: TEST_TOKEN, logger: false, ...overrides });
+}
 
 function fixtureTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -104,6 +121,7 @@ function createFakeDeps(overrides: Partial<ControlApiDeps> = {}): FakeDeps {
 
   const defaults: ControlApiDeps = {
     createTask: async (input) => fixtureTask(input),
+    listTasks: async () => ({ tasks: [fixtureTask()], nextCursor: null }),
     listRuns: async () => ({ runs: [fixtureRun()], nextCursor: null }),
     getRun: async (runId) => fixtureRun({ runId }),
     listPendingApprovals: async () => [fixtureApproval()],
@@ -116,6 +134,7 @@ function createFakeDeps(overrides: Partial<ControlApiDeps> = {}): FakeDeps {
   return {
     calls,
     createTask: record("createTask", defaults.createTask as never) as ControlApiDeps["createTask"],
+    listTasks: record("listTasks", defaults.listTasks as never) as ControlApiDeps["listTasks"],
     listRuns: record("listRuns", defaults.listRuns as never) as ControlApiDeps["listRuns"],
     getRun: record("getRun", defaults.getRun as never) as ControlApiDeps["getRun"],
     listPendingApprovals: record(
@@ -131,13 +150,192 @@ function createFakeDeps(overrides: Partial<ControlApiDeps> = {}): FakeDeps {
   };
 }
 
+describe("buildApp — fail-closed authToken requirement (TASK-101)", () => {
+  it("throws synchronously when authToken is empty rather than building an unauthenticated app", () => {
+    expect(() => buildApp(createFakeDeps(), { authToken: "", logger: false })).toThrow(/authToken/);
+  });
+
+  it("throws synchronously when authToken is whitespace-only", () => {
+    expect(() => buildApp(createFakeDeps(), { authToken: "   ", logger: false })).toThrow(/authToken/);
+  });
+});
+
+describe("Auth gate — every existing route denies an unauthenticated request (TASK-101 AC #1, #5 LIVENESS)", () => {
+  /**
+   * These assertions are the LIVENESS proof the task's AC #5 requires:
+   * each one hits a route with NO Authorization header and NO session
+   * cookie and asserts 401, with the fake port never invoked. If the
+   * global `preHandler` auth gate were ever removed from `app.ts`, every
+   * one of these would flip to the route's normal success/validation
+   * status code instead of 401 — turning this whole block red.
+   */
+  it("POST /tasks", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "POST",
+      url: "/tasks",
+      payload: { roleId: "inbox-triage", title: "t", goal: "g", requestedBy: "telegram:user:1" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /tasks", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/tasks" });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /runs", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/runs" });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /runs/:id", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}` });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /runs/:id/evidence", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}/evidence` });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /approvals", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/approvals" });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("POST /approvals/:nonce/decide", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/decide`,
+      payload: { decision: "granted", decidedBy: "telegram:user:1" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("POST /approvals/:nonce/edit", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "POST",
+      url: `/approvals/${randomUUID()}/edit`,
+      payload: {
+        runId: randomUUID(),
+        capabilityId: "email.create_draft",
+        toolName: "create_draft",
+        input: {},
+        destination: "review@example.test",
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it("an invalid/garbage bearer token is rejected just like a missing one", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/runs", headers: { authorization: "Bearer not-the-token" } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("an invalid/garbage session cookie is rejected just like a missing one", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/runs", headers: { cookie: "control_api_session=garbage" } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("GET /openapi.json requires no auth", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/openapi.json" });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe("POST /auth/login (TASK-101)", () => {
+  it("issues a session cookie for the correct token, requiring no prior auth itself", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "POST", url: "/auth/login", payload: { token: TEST_TOKEN } });
+    expect(res.statusCode).toBe(200);
+    const setCookie = res.headers["set-cookie"];
+    expect(setCookie).toBeDefined();
+    expect(String(setCookie)).toContain("control_api_session=");
+    expect(String(setCookie)).toContain("HttpOnly");
+    await app.close();
+  });
+
+  it("rejects an incorrect token with 401 and issues no cookie", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "POST", url: "/auth/login", payload: { token: "wrong" } });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["set-cookie"]).toBeUndefined();
+    await app.close();
+  });
+
+  it("never echoes CONTROL_API_TOKEN or the session token in the response body (N4)", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "POST", url: "/auth/login", payload: { token: "wrong" } });
+    expect(res.body).not.toContain(TEST_TOKEN);
+    await app.close();
+  });
+
+  it("the issued session cookie authenticates a subsequent request to a protected route", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const loginRes = await app.inject({ method: "POST", url: "/auth/login", payload: { token: TEST_TOKEN } });
+    const setCookie = String(loginRes.headers["set-cookie"]);
+    const cookieValue = setCookie.split(";")[0];
+    expect(cookieValue).toBeTruthy();
+
+    const runsRes = await app.inject({ method: "GET", url: "/runs", headers: { cookie: cookieValue } });
+    expect(runsRes.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
 describe("GET /openapi.json", () => {
   it("serves a document covering every registered route", async () => {
-    const app = buildApp(createFakeDeps(), { logger: false });
+    const app = buildTestApp(createFakeDeps());
     const res = await app.inject({ method: "GET", url: "/openapi.json" });
     expect(res.statusCode).toBe(200);
     const doc = JSON.parse(res.body) as { paths: Record<string, unknown> };
     for (const path of [
+      "/auth/login",
       "/tasks",
       "/runs",
       "/runs/{id}",
@@ -155,10 +353,11 @@ describe("GET /openapi.json", () => {
 describe("POST /tasks", () => {
   it("creates a task via the db port and returns 201", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: "/tasks",
+      headers: authHeaders(),
       payload: { roleId: "inbox-triage", title: "t", goal: "g", requestedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(201);
@@ -169,8 +368,43 @@ describe("POST /tasks", () => {
 
   it("rejects a body missing required fields with 400, before reaching the port", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "POST", url: "/tasks", payload: { title: "only a title" } });
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "POST",
+      url: "/tasks",
+      headers: authHeaders(),
+      payload: { title: "only a title" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(deps.calls).toHaveLength(0);
+    await app.close();
+  });
+});
+
+describe("GET /tasks (TASK-101)", () => {
+  it("lists tasks and passes query filters through to the port", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "GET",
+      url: "/tasks?status=draft&limit=5",
+      headers: authHeaders(),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { tasks: unknown[]; nextCursor: string | null };
+    expect(body.tasks).toHaveLength(1);
+    expect(deps.calls[0]).toEqual({ name: "listTasks", args: [{ status: "draft", limit: 5 }] });
+    await app.close();
+  });
+
+  it("rejects an unknown status value with 400 before reaching the port", async () => {
+    const deps = createFakeDeps();
+    const app = buildTestApp(deps);
+    const res = await app.inject({
+      method: "GET",
+      url: "/tasks?status=not-a-status",
+      headers: authHeaders(),
+    });
     expect(res.statusCode).toBe(400);
     expect(deps.calls).toHaveLength(0);
     await app.close();
@@ -180,8 +414,8 @@ describe("POST /tasks", () => {
 describe("GET /runs", () => {
   it("lists runs and passes query filters through to the port", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: "/runs?status=started&limit=5" });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/runs?status=started&limit=5", headers: authHeaders() });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { runs: unknown[]; nextCursor: string | null };
     expect(body.runs).toHaveLength(1);
@@ -191,8 +425,8 @@ describe("GET /runs", () => {
 
   it("rejects an unknown status value with 400 before reaching the port", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: "/runs?status=not-a-status" });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/runs?status=not-a-status", headers: authHeaders() });
     expect(res.statusCode).toBe(400);
     expect(deps.calls).toHaveLength(0);
     await app.close();
@@ -203,8 +437,8 @@ describe("GET /runs/:id", () => {
   it("returns 200 with the run when found", async () => {
     const run = fixtureRun();
     const deps = createFakeDeps({ getRun: async () => run });
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: `/runs/${run.runId}` });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: `/runs/${run.runId}`, headers: authHeaders() });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).runId).toBe(run.runId);
     await app.close();
@@ -212,8 +446,8 @@ describe("GET /runs/:id", () => {
 
   it("returns 404 when the port reports no such run", async () => {
     const deps = createFakeDeps({ getRun: async () => null });
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}` });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}`, headers: authHeaders() });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
@@ -223,8 +457,8 @@ describe("GET /runs/:id/evidence", () => {
   it("returns the run's audit events", async () => {
     const events = [fixtureAuditEvent(), fixtureAuditEvent({ eventId: "2" })];
     const deps = createFakeDeps({ getAuditEventsForRun: async () => events });
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}/evidence` });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: `/runs/${randomUUID()}/evidence`, headers: authHeaders() });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toHaveLength(2);
     await app.close();
@@ -235,8 +469,8 @@ describe("GET /approvals", () => {
   it("lists pending approvals with actionDigest serialized as base64", async () => {
     const approval = fixtureApproval();
     const deps = createFakeDeps({ listPendingApprovals: async () => [approval] });
-    const app = buildApp(deps, { logger: false });
-    const res = await app.inject({ method: "GET", url: "/approvals" });
+    const app = buildTestApp(deps);
+    const res = await app.inject({ method: "GET", url: "/approvals", headers: authHeaders() });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { actionDigest: string }[];
     expect(body[0]?.actionDigest).toBe(Buffer.from(approval.actionDigest).toString("base64"));
@@ -250,10 +484,11 @@ describe("POST /approvals/:nonce/decide", () => {
     const deps = createFakeDeps({
       decideApproval: async () => ({ decided: true, rowCount: 1, approval }),
     });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${approval.nonce}/decide`,
+      headers: authHeaders(),
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(200);
@@ -267,10 +502,11 @@ describe("POST /approvals/:nonce/decide", () => {
 
   it("returns 409 when the port reports decided:false (already decided / expired / unknown nonce)", async () => {
     const deps = createFakeDeps({ decideApproval: async () => ({ decided: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/decide`,
+      headers: authHeaders(),
       payload: { decision: "rejected", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(409);
@@ -280,10 +516,11 @@ describe("POST /approvals/:nonce/decide", () => {
 
   it("rejects a body with an invalid decision value before reaching the port", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/decide`,
+      headers: authHeaders(),
       payload: { decision: "maybe", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(400);
@@ -315,10 +552,11 @@ describe("POST /approvals/:nonce/edit", () => {
         replacement,
       }),
     });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${invalidated.nonce}/edit`,
+      headers: authHeaders(),
       payload: editBody(),
     });
     expect(res.statusCode).toBe(200);
@@ -336,10 +574,11 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("returns 409 when the port reports edited:false (not pending, expired, or unknown nonce)", async () => {
     const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody(),
     });
     expect(res.statusCode).toBe(409);
@@ -349,10 +588,11 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("rejects a body missing required fields with 400, before reaching the port", async () => {
     const deps = createFakeDeps();
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: { runId: randomUUID() },
     });
     expect(res.statusCode).toBe(400);
@@ -362,10 +602,11 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("strips a caller-supplied 'render' field before it ever reaches the port — ADR-004 render is always derived, never accepted", async () => {
     const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody({ render: "a caller-authored render" }),
     });
     expect(deps.calls).toHaveLength(1);
@@ -376,11 +617,12 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("forwards tenantId through to the port on every call, even for a non-basileia tenant (round-2 TASK-080 lesson)", async () => {
     const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const nonce = randomUUID();
     await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/edit`,
+      headers: authHeaders(),
       payload: editBody({ tenantId: "acme" }),
     });
     expect(deps.calls[0]?.name).toBe("editApproval");
@@ -391,10 +633,11 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("forwards tenantId as undefined (not silently coerced) when the caller omits it — editApproval owns the default", async () => {
     const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody(),
     });
     const forwarded = deps.calls[0]?.args[1] as { tenantId?: string };
@@ -404,11 +647,12 @@ describe("POST /approvals/:nonce/edit", () => {
 
   it("forwards an expiresAt string as a Date to the port", async () => {
     const deps = createFakeDeps({ editApproval: async () => ({ edited: false, rowCount: 0 }) });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
     await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody({ expiresAt }),
     });
     const forwarded = deps.calls[0]?.args[1] as { expiresAt?: Date };
@@ -418,12 +662,15 @@ describe("POST /approvals/:nonce/edit", () => {
   });
 
   it("rejects a past expiresAt with 400 before reaching the port — original approval left untouched", async () => {
-    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
-    const app = buildApp(deps, { logger: false });
+    const deps = createFakeDeps({
+      editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }),
+    });
+    const app = buildTestApp(deps);
     const pastExpiresAt = new Date(Date.now() - 1_000).toISOString();
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody({ expiresAt: pastExpiresAt }),
     });
     expect(res.statusCode).toBe(400);
@@ -435,12 +682,15 @@ describe("POST /approvals/:nonce/edit", () => {
   });
 
   it("rejects an expiresAt beyond the platform approval TTL with 400 before reaching the port", async () => {
-    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
-    const app = buildApp(deps, { logger: false });
+    const deps = createFakeDeps({
+      editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }),
+    });
+    const app = buildTestApp(deps);
     const excessiveExpiresAt = new Date(Date.now() + DEFAULT_APPROVAL_TTL_MS + 24 * 60 * 60 * 1000).toISOString();
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody({ expiresAt: excessiveExpiresAt }),
     });
     expect(res.statusCode).toBe(400);
@@ -450,11 +700,14 @@ describe("POST /approvals/:nonce/edit", () => {
   });
 
   it("accepts an omitted expiresAt — inherits editApproval's own default, no bound check applied", async () => {
-    const deps = createFakeDeps({ editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }) });
-    const app = buildApp(deps, { logger: false });
+    const deps = createFakeDeps({
+      editApproval: async () => ({ edited: true, rowCount: 1, invalidated: fixtureApproval(), replacement: fixtureWaitSignal() }),
+    });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody(),
     });
     expect(res.statusCode).toBe(200);
@@ -469,10 +722,11 @@ describe("POST /approvals/:nonce/edit", () => {
         throw new Error("editApproval cannot rebind run_id.");
       },
     });
-    const app = buildApp(deps, { logger: false });
+    const app = buildTestApp(deps);
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/edit`,
+      headers: authHeaders(),
       payload: editBody(),
     });
     expect(res.statusCode).toBe(400);
@@ -510,10 +764,11 @@ describe("N4 log redaction on the approvals decide route", () => {
       },
     });
 
-    const app = buildApp(deps, { logStream });
+    const app = buildTestApp(deps, { logger: undefined, logStream });
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: authHeaders(),
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(200);
@@ -522,6 +777,7 @@ describe("N4 log redaction on the approvals decide route", () => {
     const logOutput = Buffer.concat(chunks).toString("utf8");
     expect(logOutput.length).toBeGreaterThan(0);
     expect(logOutput).not.toContain(nonce);
+    expect(logOutput).not.toContain(TEST_TOKEN);
   });
 });
 
@@ -546,10 +802,11 @@ describe("N4 log redaction on the approvals edit route", () => {
       },
     });
 
-    const app = buildApp(deps, { logStream });
+    const app = buildTestApp(deps, { logger: undefined, logStream });
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/edit`,
+      headers: authHeaders(),
       payload: {
         runId: randomUUID(),
         capabilityId: "email.create_draft",
@@ -564,5 +821,6 @@ describe("N4 log redaction on the approvals edit route", () => {
     const logOutput = Buffer.concat(chunks).toString("utf8");
     expect(logOutput.length).toBeGreaterThan(0);
     expect(logOutput).not.toContain(nonce);
+    expect(logOutput).not.toContain(TEST_TOKEN);
   });
 });
