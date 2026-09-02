@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SEALED_SECRET_ROOT } from "@oikonomos/shared";
 
 import {
   SECRET_PATH_AUDIT_EVENT_TYPE,
@@ -7,7 +8,7 @@ import {
   type SecretPathGuardDecision,
 } from "./secretPathGuard.js";
 
-const sealedRoot = "/oikonomos-secrets";
+const sealedRoot = SEALED_SECRET_ROOT;
 
 interface PermissiveBrokerContext {
   readonly tier: "T0_read" | "T1_draft" | "T2_external_reversible" | "T3_external";
@@ -42,11 +43,11 @@ describe("guardSecretPath — Addendum F N13", () => {
   });
 
   it("normalises parent segments and encoded separators before matching", () => {
-    expect(invokeTool("/oikonomos/workspace/../../oikonomos-secrets/browser-profile/Cookies")).toEqual({
+    expect(invokeTool("/oikonomos/workspace/../../oikonomos/secrets/browser-profile/Cookies")).toEqual({
       outcome: "denied",
       audit: expect.any(Object),
     });
-    expect(invokeTool("/oikonomos-secrets%2fbrowser-profile%2fCookies")).toEqual({
+    expect(invokeTool("/oikonomos/secrets%2fbrowser-profile%2fCookies")).toEqual({
       outcome: "denied",
       audit: expect.any(Object),
     });

@@ -1,11 +1,11 @@
 import { resolve as resolvePosixPath, sep } from "node:path/posix";
+import { SEALED_SECRET_ROOT } from "@oikonomos/shared";
 
 /**
  * D3 is deliberately outside the model namespace. This guard is the broker
  * backstop: it prevents an attempted tool target from reaching an executor
  * should a D3 path nevertheless be presented to it.
  */
-export const SEALED_SECRET_ROOT = "/oikonomos-secrets";
 export const SECRET_PATH_AUDIT_EVENT_TYPE = "secret_path_attempt";
 export const SECRET_PATH_DENIAL_REASON = "secret_path.sealed";
 
