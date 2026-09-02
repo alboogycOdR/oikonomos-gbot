@@ -81,7 +81,7 @@
   — holding the worktree dirty at the blocked checkpoint so the diff is inspectable as-is; will
   commit once unblocked (or on request).
 
-## Status: blocked
+## Status: blocked (resolved — see below)
 
 **Blocked_Reason:** OWNERSHIP_CONFLICT — completing this task's own acceptance criterion #1
 ("gemini" added to `ProviderId`/`PROVIDER_IDS`) breaks `packages/agent-providers/src/metadata.ts`
@@ -93,3 +93,28 @@ task's `Owned_Paths` so I can add the `gemini` entry to `ProviderExtrasMap` (and
 Gemini's extras namespace. All other Owned_Paths work (gemini.ts, gemini.test.ts, types.ts,
 config.ts, providers/index.ts) is implemented and test-green; only this one file outside my
 territory blocks a clean `pnpm -r test`/typecheck.
+
+- [2026-09-02T10:00:00Z] [S5] Resumed after ORCH re-triage (PLAN.md Progress_Note @09:35Z):
+  `metadata.ts` added to Owned_Paths, redispatched same branch. Rebased `task/TASK-095-s5` onto
+  local `master` (picks up ORCH's pre-existing `pricing.test.ts` TS2578 fix noted in my prior log —
+  confirmed gone). Added `GeminiProviderExtras` interface (mirrors `ClaudeCodeProviderExtras`/
+  `GrokProviderExtras` shape: `sessionRef?: string`) and a `gemini: GeminiProviderExtras` entry to
+  `ProviderExtrasMap` in `metadata.ts` — the minimal fix ORCH described.
+
+  Verified full acceptance criteria:
+  - `npx tsc --noEmit` in `packages/agent-providers` — **clean, zero errors**.
+  - `npx vitest run` in `packages/agent-providers` — **10 files, 96/96 tests passed** (includes
+    `src/metadata.ts (3 tests)` unaffected, `src/providers/gemini.test.ts (18 tests)`).
+  - `pnpm -r test` (full recursive suite, repo root) — **all packages/services/evals green**,
+    exit 0 (broker 106, control-api 59, worker 30+1skip, evals/harness 17, evals/golden Done,
+    gateway-telegram Done, agent-providers 96 — all passed).
+  - `pnpm lint` — exit 0, zero eslint findings.
+  - `pnpm canaries` — exit 0, evals/harness 17/17 (CAN-01..09 + workspace + subprocess-gate).
+  - `claudeCode.ts`/`codex.ts`/`grok.ts` confirmed byte-identical to `master`:
+    `git diff master -- .../claudeCode.ts .../codex.ts .../grok.ts` → empty.
+
+  Committed `c2a76aa feat(agent-providers): add GeminiProviderExtras to ProviderExtrasMap
+  [TASK-095]` on top of `506e1b5` (prior session's Gemini translator commit). Both commits now on
+  `task/TASK-095-s5`, rebased cleanly onto current `master` tip (`f949174`).
+
+  All 7 acceptance criteria satisfied. Handing to `needs_review`.
