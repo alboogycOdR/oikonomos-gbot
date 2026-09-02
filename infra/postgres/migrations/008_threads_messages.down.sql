@@ -1,0 +1,3 @@
+-- Reverse TASK-105 / OIK-129, OIK-156.
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS threads;

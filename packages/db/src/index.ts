@@ -98,6 +98,23 @@ export {
   handoffKinds,
 } from "./roleMessages.js";
 export {
+  createThread,
+  getOrCreateThreadForRole,
+  getThreadsForRole,
+  listThreads,
+  type NewThread,
+  type Thread,
+} from "./threads.js";
+export {
+  insertMessage,
+  listMessages,
+  messageRoles,
+  type Message,
+  type MessageListOptions,
+  type MessageRole,
+  type NewMessage,
+} from "./messages.js";
+export {
   createRequireApprovalRule,
   getRequireApprovalRule,
   listRequireApprovalRules,
