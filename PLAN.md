@@ -3156,7 +3156,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b); WBS OIK-129, OIK-131
-**Owned_Paths:** services/control-api/src/routes/threads.ts, services/control-api/src/routes/roles.ts, services/control-api/src/index.ts (additive route registration only — do not touch existing route handlers), services/control-api/src/**/*.test.ts (new test files only)
+**Owned_Paths:** services/control-api/src/routes/threads.ts, services/control-api/src/routes/roles.ts, services/control-api/src/index.ts, services/control-api/src/**/*.test.ts
 **Depends_On:** TASK-105
 **Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` exactly per spec §4. `POST /roles` creates a bot with the existing default-general-role T1_draft ceiling — reuse whatever role-creation/grant logic `packages/db`/`packages/policy` already expose for the default ceiling; do not hand-roll a new tier constant. `POST /threads/:id/messages` inserts the user message then creates a task+run via control-api's **existing** task-creation code path — grep for it before writing new run-lifecycle logic, this task must not duplicate it. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do — no route added here may skip auth. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH rather than editing those paths (protected, adversarial review required).
 **Acceptance_Criteria:**
@@ -3177,11 +3177,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §2, §5, §6 (Chat-1c) — the visual bar, graded on rendered output, not just code
-**Owned_Paths:** apps/dashboard/src/components/chat/**, apps/dashboard/tailwind.config.ts, apps/dashboard/postcss.config.js, apps/dashboard/src/index.css, apps/dashboard/package.json (add Tailwind/component deps only — do not touch existing dependencies' versions)
+**Owned_Paths:** apps/dashboard/src/components/chat/**, apps/dashboard/tailwind.config.ts, apps/dashboard/postcss.config.js, apps/dashboard/src/index.css, apps/dashboard/package.json, pnpm-lock.yaml
 **Depends_On:** —
 **Description:** Install and configure Tailwind CSS in `apps/dashboard` (currently unstyled per spec §0 background). Build the component set from spec §5 against **static fixture data only** (no API calls yet — that's Chat-1d): `<ChatShell>` (sidebar/conversation/right-panel three-column layout), `<BotSidebar>`, `<ConversationPane>` + `<MessageBubble>`, `<ComposeBox>`, `<RightPanel>` with Members/Routines tabs. Match the reference screenshot's dark, chrome-like desktop aesthetic (spec §2) — persistent sidebar, distinguishable user/bot bubbles, avatar-by-initials, typing/in-flight indicator state (can be a static prop for this task; wiring comes in Chat-1d). This is explicitly graded on how it looks rendered, not just on tests passing — take a screenshot of the fixture-data render and include it in your dossier/progress note.
 **Acceptance_Criteria:**
@@ -3194,12 +3194,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T18:13:01Z
 **Progress_Notes:**
 - [2026-09-02T18:42:28Z] [SV:S5] ChatShell + all Chat-1c components/tests/fixtures/preview-screenshot committed (f708c09, 22 files, 44/44 tests green, full pnpm -r build/test/lint green). Blocked only on committing apps/dashboard/package.json's 4 new Tailwind devDeps + pnpm-lock.yaml companion hunk: hooks/territory-precommit.js rejects package.json because its Owned_Paths entry in PLAN.md has an unseparated parenthetical annotation that breaks the comma-split glob parser (reproduced deterministically via node -e against real hooks/lib.js). Needs a PLAN.md Owned_Paths edit or hooks/lib.js parser fix, both outside my territory.
+- [2026-09-02T20:05:00Z] [ORCH] Unblocking. S5's TOOLING_FAILURE finding was correct — my own Owned_Paths entry for this task had an unseparated parenthetical that broke hooks/lib.js's comma-split glob parser. Confirmed the same defect was latent in TASK-106's Owned_Paths too (services/control-api/src/index.ts's parenthetical) and fixed that pre-emptively before CX reaches it. TASK-107's Owned_Paths now bare paths, root `pnpm-lock.yaml` added explicitly (S5 needs to commit its Tailwind-devDeps hunk; no other active task modifies it). Resume on the existing branch from the dossier stopping point — do not re-branch, do not redo the 22 files already committed at f708c09.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE: hooks/territory-precommit.js (via hooks/lib.js ownedPathsOf/globPrefix) cannot parse TASK-107's Owned_Paths entry 'apps/dashboard/package.json (add Tailwind/component deps only ΓÇö do not touch existing dependencies' versions)' ΓÇö the unseparated parenthetical becomes part of the glob, so pathInGlob('apps/dashboard/package.json', <that string>) is always false and the hook rejects committing the file despite it being explicitly in-territory. Confirmed via direct node reproduction against the live hooks/lib.js and PLAN.md. Blocks committing the 4 new Tailwind devDependency lines and the matching pnpm-lock.yaml hunk. Fix needs either a PLAN.md Owned_Paths syntax edit (comma-separate the annotation) or a hooks/lib.js parser fix ΓÇö both outside my Owned_Paths.
-**Updated_By:** SV
-**Updated_At:** 2026-09-02T18:42:28Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T20:05:00Z
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
