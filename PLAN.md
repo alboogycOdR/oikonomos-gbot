@@ -3153,7 +3153,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b); WBS OIK-129, OIK-131
@@ -3166,15 +3166,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `POST /threads/:id/messages` provably creates a task+run reusing the existing creation path (test asserts on the same code path / shared helper, not a parallel reimplementation) and inserts the user message row
 - [ ] A bot message awaiting approval round-trips its nonce/action_render/status through `GET /threads/:id/messages`, tested against a real pending approval fixture
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-106-cx
+**Started_At:** 2026-09-02T18:48:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T19:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-02T18:48:01Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
