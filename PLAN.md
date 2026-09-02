@@ -2838,7 +2838,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-095
 **Title:** packages/agent-providers — Gemini AgentProvider (ProviderEvent translation over TASK-094's governed loop)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2; packages/agent-providers/src/providers/claudeCode.ts (the exact pattern to mirror — a thin translator over an already-governed query function, never itself calling L1)
@@ -2853,15 +2853,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `GEMINI_API_KEY` loading in `config.ts` validates presence/non-emptiness the same way existing keys do, and is never logged, tested
 - [ ] `claudeCode.ts`, `codex.ts`, `grok.ts` byte-identical to master — asserted by diff in the work log
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-095-s5
+**Started_At:** 2026-09-02T09:10:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T00:00:00Z
+**Updated_At:** 2026-09-02T09:10:00Z
 
 ### TASK-096
 **Title:** packages/agent-providers — gemini-3.7-flash cost calculator (pure, no I/O)
