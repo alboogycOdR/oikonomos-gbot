@@ -1517,8 +1517,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-049
 **Title:** OIK-053 — Wave 1: Google Calendar connector
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** S5
 **Priority:** low
 **Spec_References:** WBS OIK-053; Build Handover §4.4; Gap Closure §G1
 **Owned_Paths:** packages/connectors/manifests/google-calendar.yaml, evals/golden/suites/google-calendar/**
@@ -1529,16 +1529,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Golden suite >=90% via the OIK-051 runner (OIK-053 "Evals ≥90%")
 - [ ] Registration + idempotent re-run recorded
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-049-s5
+**Started_At:** 2026-09-02T10:15:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. Calendar writes are in Addendum F §5.3's autonomous-by-default set, so the manifest's 'disabled until G-CONN' posture is now a G-CONN gate rather than a tier gate — no change to this task's acceptance criteria, but the reviewer should not read a T3 tier as implying an approval card (Addendum F §5.1).
+- [2026-09-02T10:15:00Z] [ORCH] Claimed and dispatched to S5, filling an idle slot while CX works TASK-097. Deps (TASK-043/044/046) confirmed done.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_At:** 2026-09-02T10:15:00Z
 
 ### TASK-050
 **Title:** OIK-054 — Wave 1: Google Drive connector
