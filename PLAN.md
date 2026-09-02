@@ -3125,13 +3125,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-105
 **Title:** threads/messages schema + DB accessors (Chat-1a)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
-**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a); WBS OIK-129, OIK-156
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a) — corrected 2026-09-02; WBS OIK-129, OIK-156
 **Owned_Paths:** infra/postgres/migrations/**, packages/db/src/threads.ts, packages/db/src/messages.ts, packages/db/src/threads.test.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
 **Depends_On:** —
-**Description:** Additive migration creating `threads` and `messages` tables exactly per spec §3 (do not deviate from the column set without flagging ORCH — `role_id` FK to existing `roles`, `run_id` nullable FK to existing `runs`, `role` CHECK constrained to user/bot/system). Add typed accessor functions in `packages/db` (mirror the existing style of `roleMessages.ts`/`seedInboxTriage.ts`): `createThread`, `getThreadsForRole`/`listThreads`, `getOrCreateThreadForRole`, `insertMessage`, `listMessages(threadId, {after?})`. No control-api or dashboard changes in this task — pure data layer. Index on `(thread_id, created_at)` for the polling query. Up/down migration both required and tested (apply, verify shape, revert, verify gone) matching the project's existing migration test convention.
+**Description:** Additive migration creating `threads` and `messages` tables exactly per spec §3 (do not deviate from the column set without flagging ORCH — `role_id` **text** FK to existing `roles(role_id)` [corrected 2026-09-02: the live schema (migration 004) has no `roles.id`/UUID column, only `roles.role_id text PRIMARY KEY` — you correctly caught this in the first pass, spec now matches reality], `run_id` nullable FK to existing `runs`, `role` CHECK constrained to user/bot/system). Add typed accessor functions in `packages/db` (mirror the existing style of `roleMessages.ts`/`seedInboxTriage.ts`): `createThread`, `getThreadsForRole`/`listThreads`, `getOrCreateThreadForRole`, `insertMessage`, `listMessages(threadId, {after?})`. No control-api or dashboard changes in this task — pure data layer. Index on `(thread_id, created_at)` for the polling query. Up/down migration both required and tested (apply, verify shape, revert, verify gone) matching the project's existing migration test convention.
 **Acceptance_Criteria:**
 - [ ] Migration up creates both tables with the exact constraints in spec §3; migration down cleanly reverts; both tested
 - [ ] `createThread`/`getOrCreateThreadForRole` is idempotent per (role_id) for v1's one-thread-per-bot model — calling it twice for the same role returns the same thread, tested
@@ -3141,12 +3141,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T18:12:47Z
 **Progress_Notes:**
 - [2026-09-02T18:17:19Z] [SV:CX] Recorded the schema conflict in dossiers/TASK-105.md and committed it on task/TASK-105-cx.
+- [2026-09-02T19:35:00Z] [ORCH] Unblocking. CX's SPEC_AMBIGUITY finding was correct — specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3 wrongly assumed a `roles.id` UUID PK that does not exist (live schema, migration 004: `roles.role_id text PRIMARY KEY`). Spec §3 corrected to `threads.role_id text REFERENCES roles(role_id)`; this task's Owned_Paths/Depends_On unchanged. Resume on task/TASK-105-cx from the dossier stopping point — do not re-branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** SPEC_AMBIGUITY: Chat spec Â§3 requires threads.role_id UUID REFERENCES roles(id), but existing migration 004 defines roles.role_id TEXT PRIMARY KEY and no roles.id; PostgreSQL cannot create the required FK without a spec or existing-schema change outside TASK-105 authority.
-**Updated_By:** SV
-**Updated_At:** 2026-09-02T18:17:19Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:35:00Z
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)

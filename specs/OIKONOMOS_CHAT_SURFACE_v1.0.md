@@ -80,9 +80,13 @@ independence requirement is satisfied by *not coupling* the schema to
 
 ```sql
 -- threads: one per (user, bot) conversation for v1 (group threads = Chat-2)
+-- role_id is TEXT, matching the live schema: migration 004 defines
+-- roles.role_id TEXT PRIMARY KEY (no roles.id/UUID column exists).
+-- Corrected 2026-09-02 after TASK-105 (CX) blocked on this exact mismatch
+-- in the first draft of this spec — good catch, not a builder error.
 CREATE TABLE threads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  role_id UUID NOT NULL REFERENCES roles(id),   -- the bot
+  role_id text NOT NULL REFERENCES roles(role_id),   -- the bot
   title TEXT,                                    -- nullable, derived from first message if unset
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
