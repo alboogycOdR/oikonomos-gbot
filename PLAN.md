@@ -2810,7 +2810,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-094
 **Title:** packages/harness-factory — Gemini provider adapter, Tier-0 observation scope ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2-3 (enforcement parity via l1.handle(), Stage 1 Tier-0 scope); ADR-001 (broker enforcement point); ADR-005 (control liveness)
@@ -2819,22 +2819,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** **CX only, NEVER S5** (protected path). Gemini's function-calling API has no PreToolUse-hook equivalent — the model returns `functionCall` parts and the calling code decides whether to execute each one, then feeds back a `functionResponse`. That caller-driven loop IS the enforcement point: this adapter's own request/response loop must call the injected `PreToolUseHookPort.handle()` synchronously before ever executing a tool or returning a `functionResponse`, exactly mirroring what `createHarness`'s hooks wiring does for Claude, but by construction rather than by SDK feature (ADR-011 §2.2). Load the adapter in `compose.ts` via the SAME "assembled specifier" dynamic-import pattern already used for l1/l2/l3/post (see the existing `l1Mod`/`postMod`/`l2Mod`/`l3Mod` lines) so `createHarness` still does not hard-import it and `factory.test.ts`'s no-hard-import scan needs no changes. `ComposeOptions` gains an OPTIONAL `provider` field (mirrors TASK-091's exact additive pattern) — omitting it must yield today's Claude-only behaviour byte-for-byte. Scope for this stage is Tier-0 (read-only/observation) ONLY per ADR-011 §3 Stage 1 — the adapter must itself refuse (fail closed, never silently continue) any tool call whose declared tier is above what Stage 1 authorizes; lifting that ceiling to full tool-execution parity is Stage 2, explicitly out of scope here. Reads `GEMINI_API_KEY` from env at construction only — never logs it, never puts it in an audit payload or test fixture (N4). Uses Node 22's native `fetch` against `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent` — no new dependency needed. A malformed/timeout Gemini response denies via the SAME fail-closed posture ADR-001 already establishes, not a new parallel mechanism.
 **Acceptance_Criteria:**
 - [ ] For every `functionCall` the model returns, `l1.handle()` is called and awaited BEFORE the tool executes or any `functionResponse` is returned, tested
-- [ ] A `deny` decision from `l1.handle()` results in a `functionResponse` carrying the denial message; the tool itself is never invoked, tested
-- [ ] LIVENESS: removing/bypassing the adapter's `l1.handle()` call makes a previously-denied tool call execute — the shipped canary, mirroring TASK-087's exact liveness-canary pattern
-- [ ] A tool call whose declared tier is above Tier-0 is refused by the adapter itself (fail closed), tested — this ceiling is Stage-1-only and must be trivially liftable later, not hardcoded in a way that fights Stage 2
-- [ ] A malformed Gemini API response or a request timeout denies rather than silently continuing or throwing an unhandled rejection, tested
-- [ ] `GEMINI_API_KEY` is read from env only; a source-scan and a runtime assertion both confirm it never reaches a log line, audit payload, or test fixture (N4)
-- [ ] `ComposeOptions.provider` added as OPTIONAL; the full existing Claude-path suite and all canaries pass with ZERO changes to existing tests (mirrors TASK-091 F §6.1 "omitting it yields exactly today's behaviour")
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-094-cx
+- [x] A `deny` decision from `l1.handle()` results in a `functionResponse` carrying the denial message; the tool itself is never invoked, tested
+- [x] LIVENESS: removing/bypassing the adapter's `l1.handle()` call makes a previously-denied tool call execute — the shipped canary, mirroring TASK-087's exact liveness-canary pattern
+- [x] A tool call whose declared tier is above Tier-0 is refused by the adapter itself (fail closed), tested — this ceiling is Stage-1-only and must be trivially liftable later, not hardcoded in a way that fights Stage 2
+- [x] A malformed Gemini API response or a request timeout denies rather than silently continuing or throwing an unhandled rejection, tested
+- [x] `GEMINI_API_KEY` is read from env only; a source-scan and a runtime assertion both confirm it never reaches a log line, audit payload, or test fixture (N4)
+- [x] `ComposeOptions.provider` added as OPTIONAL; the full existing Claude-path suite and all canaries pass with ZERO changes to existing tests (mirrors TASK-091 F §6.1 "omitting it yields exactly today's behaviour")
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-094-cx (merged, deleted)
 **Started_At:** 2026-09-02T08:05:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/harness-factory/src/providers/{gemini.ts,gemini.test.ts}, packages/harness-factory/src/compose.ts (additive), dossiers/TASK-094.md
+**Test_Evidence:** harness-factory 98/98 (13 files). Full pnpm -r test/lint/canaries independently re-run, exit 0, canaries 15/17. Reviewer's own liveness mutation (hardcoding l1.handle() to always allow) reddened 3 tests, reverted clean (98/98 restored).
+**Review_Findings:** APPROVED (protected path, precedent-setting task — first non-Claude provider ever wired into this codebase's enforcement architecture, reviewed at maximum rigor per that stakes). Territory clean (3 Owned_Paths files touched, index.ts untouched since optional). Enforcement-by-construction confirmed structurally: the single tool-call loop's decideFunctionCall() awaits l1.handle() before any tool executes or functionResponse is built; execute() is only reachable when decision.allow===true, which can only be set after a non-deny l1 result — no recursive/early-return path bypasses this. Deny path confirmed via a test asserting the underlying execute mock is never called. LIVENESS reproduced independently (not just reading the shipped test) via a real bypass mutation, 3 tests went RED including the dedicated liveness test, reverted clean. Tier-0 ceiling confirmed as a named STAGE_ONE_MAXIMUM_TOOL_TIER constant, denies post-l1 for any non-zero tier, explicitly marked as the one line Stage 2 changes. Malformed/timeout handling confirmed via try/catch + response.ok check + AbortController timeout, every failure path denies, never throws — tested with malformed JSON, HTTP 503, and fake-timer timeout. GEMINI_API_KEY confirmed read once at construction, never logged, grepped clean across impl+tests, with a runtime assertion the key never appears in the request body. ComposeOptions.provider confirmed optional with zero pre-existing test modifications (only gemini.test.ts is new; pre-existing compose.test.ts unmodified, 15/15 still passing). Dynamic-import pattern confirmed identical to the existing l1/l2/l3/post assembled-specifier lines — no hard import. Full pnpm -r test/lint/canaries independently re-run, exit 0, zero failures across all 16 workspaces. Merged. **First non-Claude LLM provider now live in production code, with the same enforcement guarantee as the reference Claude implementation, proven by construction rather than by SDK feature.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T08:05:00Z
+**Updated_At:** 2026-09-02T09:05:00Z
 
 ### TASK-095
 **Title:** packages/agent-providers — Gemini AgentProvider (ProviderEvent translation over TASK-094's governed loop)
