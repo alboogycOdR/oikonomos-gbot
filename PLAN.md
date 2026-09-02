@@ -1,8 +1,8 @@
 ---
-plan_version: 6.5
-last_updated: 2026-09-02T16:25:00Z
+plan_version: 6.6
+last_updated: 2026-09-02T16:35:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.5 - TASK-102 (apps/dashboard scaffold) finalized done/merged; unlocks TASK-103 (approval inbox, ready to dispatch). Post-TASK-102-merge, pnpm -r test surfaced a real pre-existing bug in services/worker's vitest invocation (Vite server.fs.allow scoped to --root ., excluding sibling packages/harness-factory/dist) - root-caused, fixed in packages/shared/vitest.config.ts (not a protected path; confirmed to predate TASK-102 via a scratch pre-merge worktree), pnpm -r test and pnpm -r build both re-confirmed green (commit c7ab9c5). pnpm-lock.yaml re-synced against apps/dashboard's own deps (949ae7f). Also fixed this session: shared dev-Postgres schema drift (role_grants_role_id_fkey silently dropped by concurrent migration testing) - re-added the constraint directly after confirming zero orphaned rows, packages/db 107/107 green; a destructive DROP SCHEMA first-instinct fix was correctly blocked by the permission classifier and not retried. TASK-099 (CX, typed handoff) was redispatched after a legitimate role_messages/migration-007 territory gap; result not yet checked this pass. Next: check TASK-099, dispatch TASK-103, continue the E9.1/E10 wave under standing rules (mandatory pnpm -r build gate, adversarial review by a different model for security-relevant work, worktree-staleness verification before every redispatch, 3rd-territory-gap escalates to the user, GB deactivated)."
+orchestrator_notes: "Plan v6.6 - TASK-099 (typed handoff, fact-reference not value-copy) reviewed (different model, ADR-012 security-relevant-by-policy), merged, closed out - unlocks TASK-100 (two-role e2e proof + adversarial ACL review, CX, security-relevant). TASK-102 finalized done/merged last pass; TASK-103 (approval inbox, S5) dispatched and in flight. Two DB-contention flakes hit during this pass's full pnpm -r test re-verification (packages/approvals, packages/db/roles.test.ts) - both confirmed pre-existing/unrelated via isolated 100%-pass re-runs, same shared-Postgres contention pattern as TASK-097/TASK-049 (not a regression from today's work; standing retro item - shared dev container needs per-worktree isolation or a CI schema-integrity check). services/worker Vite server.fs.allow bug and the role_grants FK schema-drift bug from the previous pass both remain fixed and green. Next: dispatch TASK-100 (CX) now that TASK-099 unlocked it, monitor TASK-103 (S5), continue the E9.1/E10 wave under standing rules (mandatory pnpm -r build gate, adversarial review by a different model for security-relevant work, worktree-staleness verification before every redispatch, 3rd-territory-gap escalates to the user, GB deactivated)."
 ---
 
 # Project Plan
@@ -2955,7 +2955,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-099
 **Title:** services/workspace — typed handoff variant carrying a memory fact reference
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Master WBS OIK-102; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.4-2.5
@@ -2963,26 +2963,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-098
 **Description:** Adds an OPTIONAL typed variant to `sendToRole` — a small closed set of handoff kinds (start with `research.complete` and `draft.ready_for_review`; export the set as a const array, not a bare string union, so a future kind is a one-line addition) that carry a memory **fact reference** (`{ tenantId, scope, roleId?, projectId?, key }` — enough for the receiver to call TASK-098's `resolve()`/scope-getters itself) alongside the existing free-text `body`. The receiver re-reads the fact LIVE via the reference; the handoff itself never copies the fact's `value` into the message row — that would recreate exactly the "stale copy" problem OIK-102 exists to avoid. Existing untyped handoffs (no `handoffKind`/`factRef`) continue working completely unmodified — this is additive, matching TASK-091's own additive-field precedent, not a breaking change to `SendToRoleInput`.
 **Acceptance_Criteria:**
-- [ ] `SendToRoleInput` gains OPTIONAL `handoffKind` (from a closed, exported set) and `factRef` fields; omitting both yields today's exact behaviour, zero changes to existing tests
-- [ ] A typed handoff's persisted row carries the fact REFERENCE (scope/role/project/key), never the fact's `value` — asserted directly against the persisted row, not just the function's return value
-- [ ] The receiving side can take a typed handoff's `factRef` and successfully resolve it back to the live fact via TASK-098's query layer, tested end-to-end (mailbox → memory)
-- [ ] `handoffKind` without a matching `factRef` (or vice versa) is rejected before any DB write — tested
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-099-cx
+- [x] `SendToRoleInput` gains OPTIONAL `handoffKind` (from a closed, exported set) and `factRef` fields; omitting both yields today's exact behaviour, zero changes to existing tests
+- [x] A typed handoff's persisted row carries the fact REFERENCE (scope/role/project/key), never the fact's `value` — asserted directly against the persisted row, not just the function's return value
+- [x] The receiving side can take a typed handoff's `factRef` and successfully resolve it back to the live fact via TASK-098's query layer, tested end-to-end (mailbox → memory)
+- [x] `handoffKind` without a matching `factRef` (or vice versa) is rejected before any DB write — tested
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-099-cx (merged)
 **Started_At:** 2026-09-02T14:20:00Z
 **Progress_Notes:**
 - [2026-09-02T14:20:00Z] [ORCH] TASK-098 (dependency) merged. Reassigned from S5 to CX at dispatch — S5 was busy with TASK-102, CX was idle after TASK-098 merged; no protected-path concern either way, reassignment is purely for parallelism.
 - [2026-09-02T14:35:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence) — CX correctly self-blocked before writing any persistence code: `role_messages` (migration 004) only has a `workspace_refs` column, nothing for a typed fact reference — encoding `factRef` into the existing free-text/refs shape would violate both that table's own contract and this task's own "reference, not a copy" bar. This is a real gap in the original scoping: the typed-handoff work genuinely needs a DB-layer migration + packages/db API change, not just a services/workspace-layer change. Widened Owned_Paths to include a new migration 007 (handoffKind/factRef columns, additive, `workspace_refs`-shaped precedent) and packages/db/src/roleMessages.ts + roleMessages.test.ts + index.ts (barrel export). Redispatching CX same branch.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-02T16:30:00Z] [ORCH] Independent adversarial review APPROVE, first-pass, no findings (agentId abf2dc938a057cdb5). Territory clean (9 files, all in widened Owned_Paths). Value-copy prevention confirmed at the DB layer itself — migration 007's `role_messages_fact_ref_no_value_check` CHECK constraint, not just app discipline. End-to-end mailbox→memory resolution actually exercised live against Postgres, not just typed. Pair-validation (handoffKind/factRef) confirmed pre-write at both packages/db and services/workspace layers with tests proving it. Reviewer applied migration 007 to the shared dev DB directly to run DB-gated tests live, then reverted via the down script — confirmed clean afterward. Merged `--no-ff`.
+- [2026-09-02T16:35:00Z] [ORCH] Re-applied migration 007 to the shared dev DB post-merge (reviewer's down-migration had reverted it). Full `pnpm -r build` (15/15) and `pnpm -r test` independently re-run: one stale-dist false alarm in services/workspace (handoffKinds undefined — fixed by rebuilding packages/db first) and two separate single-file DB-contention flakes under `pnpm -r`'s concurrent load (packages/approvals, then packages/db/roles.test.ts) — both confirmed pre-existing/unrelated by isolated re-run (each passes 100% alone), matching the already-documented TASK-097/TASK-049 shared-Postgres contention pattern, not a regression from this diff. `pnpm lint` clean.
+**Artifacts:** infra/postgres/migrations/007_role_messages_typed_handoff.{up,down}.sql; packages/db/src/{roleMessages.ts,roleMessages.test.ts,index.ts}; services/workspace/src/{mailbox.ts,mailbox.test.ts,index.ts}
+**Test_Evidence:** Reviewer's live DB-gated run (packages/db 108/108, services/workspace 33/33, lint clean) + ORCH's independent post-merge re-run (pnpm -r build 15/15, pnpm -r test green modulo two isolated-and-confirmed pre-existing DB-contention flakes, lint clean)
+**Review_Findings:** APPROVE, first-pass, no findings.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T14:20:00Z
+**Updated_At:** 2026-09-02T16:35:00Z
 
 ### TASK-100
 **Title:** Two-role typed-handoff end-to-end proof (research → drafting) + adversarial ACL review ⚑ security-relevant
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Master WBS OIK-103/OIK-104; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.6
@@ -2995,15 +2997,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A fact superseded AFTER the handoff was sent resolves to the NEW value when the receiver reads it, not the value at send-time — proves the reference-not-copy design point directly
 - [ ] Neither role's action expands the other's privilege — the handoff carries no grant, matching TASK-090's "a handoff carries no privilege" invariant, re-asserted here for the typed variant
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-100-cx
+**Started_At:** 2026-09-02T16:36:00Z
+**Progress_Notes:**
+- [2026-09-02T16:36:00Z] [ORCH] TASK-099 (dependency) done/merged — claiming and dispatching CX on a freshly-rebased worktree.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T12:00:00Z
+**Updated_At:** 2026-09-02T16:36:00Z
 
 ### TASK-101
 **Title:** services/control-api — session auth gate + GET /tasks ⚑ security-relevant, adversarial review required
