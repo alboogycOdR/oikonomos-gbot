@@ -353,6 +353,9 @@ importers:
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oikonomos/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       '@types/node':
         specifier: ^22.17.0
