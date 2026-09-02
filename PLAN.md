@@ -1,8 +1,8 @@
 ---
-plan_version: 6.1
-last_updated: 2026-09-02T02:05:00Z
+plan_version: 6.2
+last_updated: 2026-09-02T08:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.1 - ADR-010 ADDENDUM F WAVE COMPLETE (2026-09-02T02:05Z, ORCH). All 10 tasks (084-093, TASK-093 cut mid-wave as TASK-088's wiring follow-up) done, merged, independently verified, zero unresolved rework rounds carried forward. The persistent-office-computer pivot is now live in production code: D0 role/routine/message/require-approval schema (084), three-scope/three-tier memory (085), six-rank enforcement resolver (086) wired into the real PreToolUse path (087), D3 sealed-secret guard (088) wired into the same path above the resolver (093), shared workspace/tier-classification/handoff mailbox (090), role-keyed scheduler with routine firing (076, reshaped), the Office itself as a real Docker durability canary (089), the durable connector session pool (092), and the additive environment binding closing the loop in harness-factory (091, capstone). GB stayed deactivated throughout (Grok weekly limit) - CX took every protected path plus worker (076), S5 took the unprotected foundation. 4+ occurrences of a systemic dispatch.ps1 SYNC_MISMATCH gap (branch not created before builder launch, on both the resume and refresh paths, for both CX and S5) were caught pre-emptively each time via a post-dispatch `git status --short --branch` check - never became a lost cycle, but this is the top concrete fix for the promised retro pass. Pending disposition triage against ADR-010 before dispatch (deliberately NOT auto-started overnight): TASK-047/049/050/051 (connector-onboarding checklist, Calendar/Drive connector waves, Composio spike - predate the acquire/release session-pool model TASK-092 just shipped) and TASK-060 (vertical-slice demo/runbook - would need to target the new persistent-office model, not the old ephemeral one). TASK-027 remains explicitly DEFERRED, do not dispatch. Full retro/INSTINCTS.md pass still owed per the user's explicit request, deferred to when they check in."
+orchestrator_notes: "Plan v6.2 - ADR-011 MULTI-PROVIDER LLM SUPPORT (2026-09-02T08:00Z, ORCH). Addendum F wave (084-093) closed out v6.1 with 10/10 done, 0 rework rounds. User then asked to fill the day (until 3pm) with TASK-060 + related backlog + a new requirement: OIKONOMOS must support multiple LLM providers, default gemini-3.7-flash (real model, confirmed live 2026-09-02, released 2026-08-13). Investigated packages/harness-factory/ports.ts first: HarnessInvocation's hooks.PreToolUse/canUseTool shape is Claude-Agent-SDK-specific vocabulary, not a generic port - a straight swap was never on the table. Gemini's function-calling API has no hook equivalent (caller-driven functionCall/functionResponse loop, confirmed via live docs search) but that loop IS a valid enforcement point if the adapter calls l1.handle() itself before executing - by construction, not by SDK feature. Wrote ADR-011 (docs/decisions/) authorizing this, staged: Stage 1 = Tier-0/observation-only Gemini adapter (this wave); Stage 2 = full tool-execution parity (deferred to a follow-up decompose once Stage 1 is reviewed). Discovered packages/agent-providers (TASK-072's AgentProvider/ProviderId abstraction, used by services/gateway-telegram) already has a clean multi-provider seam ABOVE harness-factory (claudeCode.ts is a thin translator over an already-governed query function, never touching L1 itself) - a Gemini provider slots in there too, cutting the real new-package need down significantly. Cut 3 new tasks: TASK-094 (CX, protected, harness-factory - the enforcement-critical Gemini adapter + its own liveness canary, Tier-0 ceiling enforced), TASK-095 (S5, agent-providers - GeminiProvider translator, mirrors claudeCode.ts, depends on 094+096), TASK-096 (S5, agent-providers - pure gemini-3.7-flash cost calculator, no deps, ships first). Re-checked TASK-047/049/050/051 against the morning's own 'predates ADR-010' assumption - it was WRONG on inspection: 047 is ORCH-executed docs-only (no code), 049/050 are manifest+golden-suite declarations that never touch session create/destroy semantics at all, 051 is a recommendation-only spike. None need reshaping; all four remain legitimate as-is backlog. TASK-060 was ALREADY reshaped correctly by the earlier opus decompose (2026-08-19 note, re-confirmed 2026-09-01T20:15Z) - the morning's 'held for disposition' framing was stale. TASK-060 is ORCH-executed (docs/runbooks/**) and needs the user's live participation for its phone-approval step - not dispatched to a builder, sequenced separately. TASK-027 remains explicitly DEFERRED. Dispatching TASK-096+TASK-094 now; TASK-049 queued as S5 filler while TASK-094 is in flight (095 blocked on both 094+096)."
 ---
 
 # Project Plan
@@ -2807,3 +2807,83 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-02T00:50:00Z
+
+### TASK-094
+**Title:** packages/harness-factory — Gemini provider adapter, Tier-0 observation scope ⚑ protected
+**Status:** claimed
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2-3 (enforcement parity via l1.handle(), Stage 1 Tier-0 scope); ADR-001 (broker enforcement point); ADR-005 (control liveness)
+**Owned_Paths:** packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts, packages/harness-factory/src/compose.ts, packages/harness-factory/src/index.ts
+**Depends_On:** —
+**Description:** **CX only, NEVER S5** (protected path). Gemini's function-calling API has no PreToolUse-hook equivalent — the model returns `functionCall` parts and the calling code decides whether to execute each one, then feeds back a `functionResponse`. That caller-driven loop IS the enforcement point: this adapter's own request/response loop must call the injected `PreToolUseHookPort.handle()` synchronously before ever executing a tool or returning a `functionResponse`, exactly mirroring what `createHarness`'s hooks wiring does for Claude, but by construction rather than by SDK feature (ADR-011 §2.2). Load the adapter in `compose.ts` via the SAME "assembled specifier" dynamic-import pattern already used for l1/l2/l3/post (see the existing `l1Mod`/`postMod`/`l2Mod`/`l3Mod` lines) so `createHarness` still does not hard-import it and `factory.test.ts`'s no-hard-import scan needs no changes. `ComposeOptions` gains an OPTIONAL `provider` field (mirrors TASK-091's exact additive pattern) — omitting it must yield today's Claude-only behaviour byte-for-byte. Scope for this stage is Tier-0 (read-only/observation) ONLY per ADR-011 §3 Stage 1 — the adapter must itself refuse (fail closed, never silently continue) any tool call whose declared tier is above what Stage 1 authorizes; lifting that ceiling to full tool-execution parity is Stage 2, explicitly out of scope here. Reads `GEMINI_API_KEY` from env at construction only — never logs it, never puts it in an audit payload or test fixture (N4). Uses Node 22's native `fetch` against `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent` — no new dependency needed. A malformed/timeout Gemini response denies via the SAME fail-closed posture ADR-001 already establishes, not a new parallel mechanism.
+**Acceptance_Criteria:**
+- [ ] For every `functionCall` the model returns, `l1.handle()` is called and awaited BEFORE the tool executes or any `functionResponse` is returned, tested
+- [ ] A `deny` decision from `l1.handle()` results in a `functionResponse` carrying the denial message; the tool itself is never invoked, tested
+- [ ] LIVENESS: removing/bypassing the adapter's `l1.handle()` call makes a previously-denied tool call execute — the shipped canary, mirroring TASK-087's exact liveness-canary pattern
+- [ ] A tool call whose declared tier is above Tier-0 is refused by the adapter itself (fail closed), tested — this ceiling is Stage-1-only and must be trivially liftable later, not hardcoded in a way that fights Stage 2
+- [ ] A malformed Gemini API response or a request timeout denies rather than silently continuing or throwing an unhandled rejection, tested
+- [ ] `GEMINI_API_KEY` is read from env only; a source-scan and a runtime assertion both confirm it never reaches a log line, audit payload, or test fixture (N4)
+- [ ] `ComposeOptions.provider` added as OPTIONAL; the full existing Claude-path suite and all canaries pass with ZERO changes to existing tests (mirrors TASK-091 F §6.1 "omitting it yields exactly today's behaviour")
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-094-cx
+**Started_At:** 2026-09-02T08:05:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T08:05:00Z
+
+### TASK-095
+**Title:** packages/agent-providers — Gemini AgentProvider (ProviderEvent translation over TASK-094's governed loop)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2; packages/agent-providers/src/providers/claudeCode.ts (the exact pattern to mirror — a thin translator over an already-governed query function, never itself calling L1)
+**Owned_Paths:** packages/agent-providers/src/providers/gemini.ts, packages/agent-providers/src/providers/gemini.test.ts, packages/agent-providers/src/providers/index.ts, packages/agent-providers/src/types.ts, packages/agent-providers/src/config.ts
+**Depends_On:** TASK-094, TASK-096
+**Description:** Add "gemini" as a fourth `ProviderId` alongside `claude-code`/`codex`/`grok`. `GeminiProvider` follows `claudeCode.ts`'s exact shape: it is a thin translator that turns TASK-094's already-governed Gemini query function's output into the shared `ProviderEvent` stream (`text_delta`, `tool_start`, `tool_end`, `turn_complete`, `error`) — it must NOT itself call `l1.handle()` or duplicate any enforcement logic; enforcement already happened inside the injected query function, exactly like `claudeCode.ts` never touches L1 either. Unlike `codex`/`grok` (which report `costUsd: null` because their CLIs don't surface usage), Gemini's REST response carries real token counts — compute `turn_complete.costUsd` using TASK-096's pricing calculator from the actual `usageMetadata` the API returns, not a stub. `config.ts` gains `GEMINI_API_KEY` loading via `loadConfig`/`loadConfigFromEnv` with the same validation rigor as the existing keys (present, non-empty, never logged). Do not touch `claudeCode.ts`, `codex.ts`, or `grok.ts` — this task adds a sibling, it does not modify the existing three.
+**Acceptance_Criteria:**
+- [ ] "gemini" added to `PROVIDER_IDS`/`ProviderId`; `isProviderId("gemini")` returns true, tested
+- [ ] `GeminiProvider` implements `AgentProvider`, translating a fake injected governed-query function's output into the correct `ProviderEvent` sequence (no live network calls in tests), tested
+- [ ] `GeminiProvider` never calls any L1/broker port directly — asserted by the test double having no such port injected at all (the type signature structurally cannot receive one), matching `claudeCode.ts`'s own non-enforcement shape
+- [ ] `turn_complete.costUsd` is computed via TASK-096's `costForUsage` from real token counts, not null and not a placeholder, tested against known usage values
+- [ ] `GEMINI_API_KEY` loading in `config.ts` validates presence/non-emptiness the same way existing keys do, and is never logged, tested
+- [ ] `claudeCode.ts`, `codex.ts`, `grok.ts` byte-identical to master — asserted by diff in the work log
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T00:00:00Z
+
+### TASK-096
+**Title:** packages/agent-providers — gemini-3.7-flash cost calculator (pure, no I/O)
+**Status:** claimed
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §5 (per-provider cost table); CLAUDE.md Budget section (R30,000/month ceiling, per-routine budgets from week 5)
+**Owned_Paths:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts
+**Depends_On:** —
+**Description:** A small, pure cost-calculation module: `costForUsage({ inputTokens, outputTokens })` returns the USD cost of one Gemini 3.7 Flash turn using its published introductory pricing ($0.75 / 1M input tokens, $3.75 / 1M output tokens, confirmed live 2026-09-02 against https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash). No I/O, no network calls, no dependency on any other package in this wave — this can and should be built and merged independently of TASK-094/095 landing. TASK-095 will import and call it once it exists; this task does not wire it into anything itself.
+**Acceptance_Criteria:**
+- [ ] `costForUsage({ inputTokens: 1000000, outputTokens: 0 })` returns `0.75`; `costForUsage({ inputTokens: 0, outputTokens: 1000000 })` returns `3.75`; a mixed case is tested too
+- [ ] Zero/undefined token counts are handled without throwing (returns `0`, not `NaN` or an exception), tested
+- [ ] Pricing constants are named/exported (not magic numbers inline) so a future price change is a one-line diff, and a comment records the source URL + date they were confirmed
+- [ ] Pure function — no `fetch`, no filesystem, no process env read — asserted (source-level check acceptable)
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-096-s5
+**Started_At:** 2026-09-02T08:05:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T08:05:00Z
