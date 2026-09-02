@@ -3124,7 +3124,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-105
 **Title:** threads/messages schema + DB accessors (Chat-1a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a); WBS OIK-129, OIK-156
@@ -3136,15 +3136,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `createThread`/`getOrCreateThreadForRole` is idempotent per (role_id) for v1's one-thread-per-bot model — calling it twice for the same role returns the same thread, tested
 - [ ] `insertMessage` + `listMessages` round-trip correctly ordered by `created_at`; the `after` cursor works, tested against a real Postgres instance (no mocked DB)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0 (full recursive suite per CLAUDE.md's amended review standard)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-105-cx
+**Started_At:** 2026-09-02T18:12:47Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T19:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-02T18:12:47Z
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
