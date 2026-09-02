@@ -1,0 +1,22 @@
+connector_id: google-calendar
+tasks:
+  - id: list-today
+    prompt: List today's calendar events and prepare a schedule summary.
+    expected_outcome:
+      contains: [schedule summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: list-upcoming-week
+    prompt: List the events scheduled for the upcoming week and flag any conflicts.
+    expected_outcome:
+      contains: [schedule summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: read-event-details
+    prompt: Read the details of the next meeting with the vendor and summarize the agenda.
+    expected_outcome:
+      contains: [event summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: find-free-slot
+    prompt: Review the calendar and identify a free 30-minute slot tomorrow afternoon.
+    expected_outcome:
+      contains: [schedule summary prepared]
+    allowed_tiers: [T0_observe]
