@@ -46,3 +46,5 @@ At the ordinary own-credential overage rate, even 1,000,000 calls is about US$30
 - Composio, [Composio Connect](https://docs.composio.dev/docs/composio-connect) — hosted endpoint, seven meta-tools, dynamic discovery, and multi-execute semantics.
 - Composio, [Authentication](https://docs.composio.dev/docs/authentication) and [Connected Accounts](https://docs.composio.dev/reference/api-reference/connected-accounts) — connected-account credential storage/refresh and hosted authentication.
 - Composio, [Pricing](https://composio.dev/pricing) — current rates, spend caps, ZDR/KMS limitation, and premium-tool pricing (checked 2026-09-02).
+
+- [2026-09-02T11:05:00Z] [CX] Recommendation complete and committed as `72cfbea` (`docs: recommend against Composio Connect adoption [TASK-051]`). Verified the dossier-only diff with `git diff --check`; no product code, dependency, configuration, or adoption change was made. Next: ORCH review and, if accepted, relocation of this recommendation into `docs/` under its own authority.
