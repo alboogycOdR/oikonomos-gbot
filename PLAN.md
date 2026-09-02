@@ -3051,6 +3051,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T13:20:00Z
 **Progress_Notes:**
 - [2026-09-02T13:20:00Z] [ORCH] TASK-101 (auth gate) merged — claiming and dispatching. Reminder for the builder: `CONTROL_API_TOKEN` is not yet provisioned as a real secret anywhere; use a test-only value in your own test harness/dev instructions, do not invent a production default.
+- [2026-09-02T13:45:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7) — S5 correctly stopped before writing any code once it found `apps/dashboard` couldn't satisfy its own acceptance criteria: neither `pnpm-workspace.yaml` nor `vitest.workspace.ts` (both root shared-config files, owned by no single task) listed `apps/*`, since this is the first package ever created under `apps/`. Same class of gap as the established pnpm-lock.yaml merge-wiring precedent — resolved directly by ORCH (added `apps/*` to both files, verified `pnpm install --frozen-lockfile` still passes), not by widening this task's Owned_Paths over root config. Redispatching S5 same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
