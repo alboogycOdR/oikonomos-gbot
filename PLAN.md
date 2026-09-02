@@ -1,8 +1,8 @@
 ---
-plan_version: 6.3
-last_updated: 2026-09-02T08:00:00Z
+plan_version: 6.4
+last_updated: 2026-09-02T12:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.2 - ADR-011 MULTI-PROVIDER LLM SUPPORT (2026-09-02T08:00Z, ORCH). Addendum F wave (084-093) closed out v6.1 with 10/10 done, 0 rework rounds. User then asked to fill the day (until 3pm) with TASK-060 + related backlog + a new requirement: OIKONOMOS must support multiple LLM providers, default gemini-3.7-flash (real model, confirmed live 2026-09-02, released 2026-08-13). Investigated packages/harness-factory/ports.ts first: HarnessInvocation's hooks.PreToolUse/canUseTool shape is Claude-Agent-SDK-specific vocabulary, not a generic port - a straight swap was never on the table. Gemini's function-calling API has no hook equivalent (caller-driven functionCall/functionResponse loop, confirmed via live docs search) but that loop IS a valid enforcement point if the adapter calls l1.handle() itself before executing - by construction, not by SDK feature. Wrote ADR-011 (docs/decisions/) authorizing this, staged: Stage 1 = Tier-0/observation-only Gemini adapter (this wave); Stage 2 = full tool-execution parity (deferred to a follow-up decompose once Stage 1 is reviewed). Discovered packages/agent-providers (TASK-072's AgentProvider/ProviderId abstraction, used by services/gateway-telegram) already has a clean multi-provider seam ABOVE harness-factory (claudeCode.ts is a thin translator over an already-governed query function, never touching L1 itself) - a Gemini provider slots in there too, cutting the real new-package need down significantly. Cut 3 new tasks: TASK-094 (CX, protected, harness-factory - the enforcement-critical Gemini adapter + its own liveness canary, Tier-0 ceiling enforced), TASK-095 (S5, agent-providers - GeminiProvider translator, mirrors claudeCode.ts, depends on 094+096), TASK-096 (S5, agent-providers - pure gemini-3.7-flash cost calculator, no deps, ships first). Re-checked TASK-047/049/050/051 against the morning's own 'predates ADR-010' assumption - it was WRONG on inspection: 047 is ORCH-executed docs-only (no code), 049/050 are manifest+golden-suite declarations that never touch session create/destroy semantics at all, 051 is a recommendation-only spike. None need reshaping; all four remain legitimate as-is backlog. TASK-060 was ALREADY reshaped correctly by the earlier opus decompose (2026-08-19 note, re-confirmed 2026-09-01T20:15Z) - the morning's 'held for disposition' framing was stale. TASK-060 is ORCH-executed (docs/runbooks/**) and needs the user's live participation for its phone-approval step - not dispatched to a builder, sequenced separately. TASK-027 remains explicitly DEFERRED. Dispatching TASK-096+TASK-094 now; TASK-049 queued as S5 filler while TASK-094 is in flight (095 blocked on both 094+096)."
+orchestrator_notes: "Plan v6.4 - E9.1 (web dashboard) + E10 (OME) AUTHORIZED (2026-09-02T12:00Z, ORCH). v6.3 closed the ADR-011 Gemini wave, TASK-060's live demo, and the full ready backlog (97 tasks done, only TASK-027 deferred). User then explicitly scoped the next wave: 'proceed with E9.1 and E10, defer all others' (E9.2 mobile, E9.3 nonce-parity, E9.4 Tauri spike, E11 routines/budgets, E12 observability all deliberately NOT started). Investigated ground truth before decomposing: (1) services/control-api has ZERO authentication today - a real gap, not previously flagged, now a first-class task (TASK-101) rather than an afterthought bolted onto the dashboard. (2) E10 as originally spec'd (Master WBS OIK-098-104, a standalone org_facts table) has genuine conceptual overlap with TASK-085 (packages/memory) and TASK-090 (services/workspace mailbox), which already shipped a DIFFERENT design (scope-based access, no versioning, free-text handoffs) - wrote ADR-012 (docs/decisions/) resolving this: E10 EXTENDS the existing memory/mailbox substrate (ACL column + supersession chain + typed fact-referencing handoffs), it does not stand up a parallel store, matching this project's 'exactly one implementation' convention (same reasoning as TASK-097's D3-root consolidation). Cut 7 tasks: TASK-098 (CX, memory ACL+versioning, security-relevant/adversarial-review-by-policy), TASK-099 (S5, typed handoff, depends on 098), TASK-100 (CX, two-role e2e proof + adversarial ACL review, depends on 099), TASK-101 (S5, control-api auth gate + GET /tasks, security-relevant), TASK-102/103/104 (S5, apps/dashboard - scaffold+runs / approval-inbox / evidence-browser+PWA, single-owner sequential chain matching services/worker's precedent, each depends on the prior, TASK-102 also depends on TASK-101 for auth). Dispatching TASK-098 (CX) and TASK-101 (S5) now - disjoint packages (memory vs control-api), safe to run in parallel; TASK-099/100 and TASK-102/103/104 queue behind their respective dependency chains."
 ---
 
 # Project Plan
@@ -2922,3 +2922,180 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-02T10:35:00Z
+### TASK-098
+**Title:** packages/memory — ACL (`visible_to`) + versioning (`superseded_by`) extension ⚑ security-relevant, adversarial review required
+**Status:** claimed
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** Master WBS OIK-098/OIK-100/OIK-101; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.1-2.2 (E10 scope authorized 2026-09-02)
+**Owned_Paths:** infra/postgres/migrations/006_memory_acl_versioning.up.sql, infra/postgres/migrations/006_memory_acl_versioning.down.sql, packages/memory/src/types.ts, packages/memory/src/facts.ts, packages/memory/src/facts.test.ts
+**Depends_On:** —
+**Description:** **CX preferred** (security-relevant cross-role read boundary; adversarial review mandatory regardless of author, matching this project's protected-path standard even though packages/memory isn't formally on that list — ADR-012 §2.6). Extends `profile_facts` (does not create a parallel table — ADR-012 §2 "exactly one implementation"): (1) an ACL surface for project/user-scope facts — a `visible_to text[] NULL` column, NULL meaning "visible to the whole tenant" (today's existing behaviour, unchanged default) and a populated array meaning "visible only to these role_ids." Agent-scope facts are UNCHANGED — already owner-only by construction (TASK-085), this column has no effect there and must not weaken that isolation. (2) A `superseded_by uuid NULL REFERENCES profile_facts(fact_id)` self-reference: a corrected fact is inserted as a NEW row, the old row gets `superseded_by` pointing at the new one, nothing is ever overwritten in place — `resolve()`/`getAgentFact`/`getProjectFact`/`getUserFact` must only ever return the LATEST (non-superseded) fact for a key, never a stale superseded one, and the old row must remain queryable by its `fact_id` for history/"since when" purposes. Do not touch `roles`, `role_routines`, `role_messages`, `require_approval_rules` (migration 004) or migration 005's original columns beyond the two additions.
+**Acceptance_Criteria:**
+- [ ] `visible_to` defaults to NULL (whole-tenant-visible, today's exact behaviour) — a fact written without it is readable exactly as before, zero existing test changes
+- [ ] A project/user-scope fact with a populated `visible_to` is readable only by role_ids in that array — a NEGATIVE test asserts a role NOT in the list gets null/nothing back (OIK-100's explicit negative-test bar)
+- [ ] Agent-scope isolation is provably unaffected — the existing TASK-085 cross-role isolation test still passes unmodified, and a new test confirms `visible_to` on an agent-scope fact has no effect (agent scope stays owner-only regardless)
+- [ ] Writing a fact for an existing key creates a NEW row with the old row's `superseded_by` set to the new row's id; the old row is never mutated in place, tested
+- [ ] `resolve()` and the three scope getters only ever return the latest (non-superseded) fact for a key, tested with a superseded chain of 3+ versions
+- [ ] A superseded fact remains independently queryable by its own `fact_id` (history is retrievable, not deleted), tested
+- [ ] LIVENESS: a test asserts no exported helper returns a superseded row from a normal read path — removing the supersession filter must turn this test RED
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0 (build is its own mandatory gate, separate from test)
+**Branch:** task/TASK-098-cx
+**Started_At:** 2026-09-02T12:05:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:05:00Z
+
+### TASK-099
+**Title:** services/workspace — typed handoff variant carrying a memory fact reference
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** Master WBS OIK-102; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.4-2.5
+**Owned_Paths:** services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts, services/workspace/src/index.ts
+**Depends_On:** TASK-098
+**Description:** Adds an OPTIONAL typed variant to `sendToRole` — a small closed set of handoff kinds (start with `research.complete` and `draft.ready_for_review`; export the set as a const array, not a bare string union, so a future kind is a one-line addition) that carry a memory **fact reference** (`{ tenantId, scope, roleId?, projectId?, key }` — enough for the receiver to call TASK-098's `resolve()`/scope-getters itself) alongside the existing free-text `body`. The receiver re-reads the fact LIVE via the reference; the handoff itself never copies the fact's `value` into the message row — that would recreate exactly the "stale copy" problem OIK-102 exists to avoid. Existing untyped handoffs (no `handoffKind`/`factRef`) continue working completely unmodified — this is additive, matching TASK-091's own additive-field precedent, not a breaking change to `SendToRoleInput`.
+**Acceptance_Criteria:**
+- [ ] `SendToRoleInput` gains OPTIONAL `handoffKind` (from a closed, exported set) and `factRef` fields; omitting both yields today's exact behaviour, zero changes to existing tests
+- [ ] A typed handoff's persisted row carries the fact REFERENCE (scope/role/project/key), never the fact's `value` — asserted directly against the persisted row, not just the function's return value
+- [ ] The receiving side can take a typed handoff's `factRef` and successfully resolve it back to the live fact via TASK-098's query layer, tested end-to-end (mailbox → memory)
+- [ ] `handoffKind` without a matching `factRef` (or vice versa) is rejected before any DB write — tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
+
+### TASK-100
+**Title:** Two-role typed-handoff end-to-end proof (research → drafting) + adversarial ACL review ⚑ security-relevant
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** Master WBS OIK-103/OIK-104; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.6
+**Owned_Paths:** evals/harness/test/ome-two-role-handoff.test.ts, dossiers/TASK-100.md
+**Depends_On:** TASK-099
+**Description:** **CX preferred, adversarial review mandatory regardless of author** (this is precisely the "can role B read role A's data" boundary ADR-012 §2.6 flags as needing the same rigor as a protected path by policy). A real, automated end-to-end test — not an ORCH-executed live demo like TASK-060; this scenario doesn't need a human in the loop — proving: role A ("researcher") writes an ACL-scoped project fact (visible only to role B), sends role B ("drafter") a typed `research.complete` handoff referencing it; role B resolves the reference and gets the real value; a THIRD role C, not in the ACL list, attempts the same resolution and gets nothing (the negative case, exercised again here at the integration level, not just TASK-098's unit level). Also prove the reverse: role A supersedes the fact (writes a correction) AFTER sending the handoff — role B's live resolution picks up the NEW value, not a stale one, demonstrating why fact-reference (not payload-copy) handoffs matter.
+**Acceptance_Criteria:**
+- [ ] Full research→drafting handoff completes: fact written with `visible_to: [drafter]`, typed handoff sent, drafter resolves the reference to the real value — real Postgres, real query layer, no fakes
+- [ ] A third role NOT in the ACL list attempts to resolve the same reference and gets null/nothing — the integration-level negative test
+- [ ] A fact superseded AFTER the handoff was sent resolves to the NEW value when the receiver reads it, not the value at send-time — proves the reference-not-copy design point directly
+- [ ] Neither role's action expands the other's privilege — the handoff carries no grant, matching TASK-090's "a handoff carries no privilege" invariant, re-asserted here for the typed variant
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
+
+### TASK-101
+**Title:** services/control-api — session auth gate + GET /tasks ⚑ security-relevant, adversarial review required
+**Status:** claimed
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** Master WBS OIK-084 (extends), OIK-088's dependency; E9.1 scope authorized 2026-09-02
+**Owned_Paths:** services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts
+**Depends_On:** —
+**Description:** **Foundational gap found while scoping E9.1, not previously flagged anywhere:** `control-api` currently has ZERO authentication — every route is open to anyone who can reach the port. That was an acceptable posture while its only callers were the Telegram gateway (itself gated by `allowedChatIds`) and internal scripts; it is NOT an acceptable posture once a browser-facing dashboard exists. Scope for THIS task, deliberately minimal (a full multi-user identity system is out of scope — flag it as a real follow-up decision, don't build it unasked): a single shared-secret bearer-token gate, matching the risk posture of the Telegram bot's own token gating (one shared credential, not per-user accounts). Read `CONTROL_API_TOKEN` from env (never logged, never in a response body, N4); a request without a valid `Authorization: Bearer <token>` header (or an equivalent httpOnly session cookie set by a `POST /auth/login` route that accepts the same token once and issues a signed, expiring session cookie) is denied `401` before reaching any existing route handler. `POST /auth/login` and `GET /openapi.json` are the only unauthenticated routes. Also add `GET /tasks` (list, with the same tenant/status/cursor filtering shape as the existing `GET /runs`) — needed by the dashboard's run-list view to show task context, and currently missing entirely (there is a `POST /tasks` to create one, but no way to list them back).
+**Acceptance_Criteria:**
+- [ ] Every existing route (`/tasks`, `/runs`, `/runs/:id`, `/runs/:id/evidence`, `/approvals`, `/approvals/:nonce/decide`, `/approvals/:nonce/edit`) returns 401 without a valid token/session, tested for each
+- [ ] `POST /auth/login` with the correct `CONTROL_API_TOKEN` issues a signed, expiring httpOnly session cookie; an incorrect token is rejected 401; the login route itself requires no prior auth
+- [ ] `CONTROL_API_TOKEN` is read from env only, never logged, never echoed in any response body or error message — a source-scan and a runtime assertion both confirm this (N4)
+- [ ] `GET /tasks` lists tasks with tenant/status/cursor filtering, matching `GET /runs`'s existing pagination shape; schema-validated via the same OpenAPI-document pattern as the other routes
+- [ ] LIVENESS: a test asserts that bypassing the auth check (calling a route handler directly, skipping the gate) is what the shipped test suite would need to do to pass without the gate — i.e., removing the auth preHandler must turn the 401 tests RED
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-101-s5
+**Started_At:** 2026-09-02T12:05:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
+
+### TASK-102
+**Title:** apps/dashboard — scaffold + run list/detail (E9.1a)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** Master WBS OIK-088; Synthesis Spec §O6 (React, reusing VANTAGE canvas-dashboard patterns, Phase 2)
+**Owned_Paths:** apps/dashboard/**
+**Depends_On:** TASK-101
+**Description:** **Single-owner package for this entire E9.1 wave** — `apps/dashboard` is claimed by ONE builder across TASK-102/103/104 in sequence (matching `services/worker`'s single-owner precedent, TASK-076's description) so two builders never touch the same frontend package concurrently. A minimal Vite + React SPA (not Next.js/SSR — everything here is API-driven against `control-api`, no server-rendering need), served as static files (add a `@fastify/static` mount to `control-api` or document a separate static host — builder's call, state the choice and why in the dossier). Login screen posting to `POST /auth/login` (TASK-101), then a run list (status, role, started/ended, live-updating via polling — no need for a websocket/SSE layer in this pass, note it as a possible follow-up if polling proves too slow) and a run detail view showing the audit trail via `GET /runs/:id/evidence`. No mock data — every view is wired to the real control-api endpoints from the start.
+**Acceptance_Criteria:**
+- [ ] Login screen authenticates against TASK-101's `POST /auth/login`; an unauthenticated visit to any other route redirects to login, tested (component/integration test, not just manual verification)
+- [ ] Run list shows real runs from `GET /runs`, with status/role/timestamps, paginated using the endpoint's real cursor shape
+- [ ] Run detail view shows the real audit trail from `GET /runs/:id/evidence` for a selected run
+- [ ] No hardcoded/mock data anywhere in the shipped build — every data-bearing component fetches from a real endpoint
+- [ ] `pnpm --filter` build for the new package succeeds; if a test runner is set up, it's wired into `pnpm -r test`
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0 (confirm the new package doesn't break any existing gate)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
+
+### TASK-103
+**Title:** apps/dashboard — approval inbox (E9.1b)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** Master WBS OIK-089 ("same nonce-binding as Telegram; one approval service, many surfaces")
+**Owned_Paths:** apps/dashboard/**
+**Depends_On:** TASK-102
+**Description:** Single-owner continuation of TASK-102 (same package, sequenced not parallelized). An approval inbox view: list pending approvals from `GET /approvals` (the exact action render text, same as the Telegram card's content — one approval service, one canonical rendering, per OIK-089's own bar), with Approve/Reject buttons calling `POST /approvals/:nonce/decide`. The nonce itself must never appear in the page's URL, local storage, or any client-visible state beyond the single request that consumes it — same "nonce stays in this process until sent to control-api" discipline `gateway-telegram`'s own approvals module already follows (read `services/gateway-telegram/src/approvals/index.ts`'s doc comment for the exact pattern to mirror).
+**Acceptance_Criteria:**
+- [ ] Pending approvals list matches `GET /approvals`'s real data, showing the actual `actionRender` text verbatim (not a re-derived summary)
+- [ ] Approve/Reject call `POST /approvals/:nonce/decide` and the UI reflects the real result (granted/rejected/already-decided-409)
+- [ ] The nonce never appears in the URL bar, browser history, or persisted client storage — tested/asserted, not just eyeballed
+- [ ] A second decide attempt on an already-decided approval is handled gracefully (matches the API's 409), tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
+
+### TASK-104
+**Title:** apps/dashboard — evidence gallery/audit browser + PWA packaging (E9.1c)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** Master WBS OIK-090 ("any run reconstructible from UI alone"), OIK-091 (PWA, folded in here to keep the dashboard task count reasonable — same package, same builder, small addition)
+**Owned_Paths:** apps/dashboard/**
+**Depends_On:** TASK-103
+**Description:** Single-owner continuation, final piece of the E9.1 dashboard wave. An evidence/audit browser: given a run, show its full audit_events trail (event type, verdict, capability, tier, timestamp) in one reconstructible view — OIK-090's bar is literally "any run reconstructible from UI alone," so this view plus TASK-102's run detail together must be sufficient to answer "what did this run do and why" with no other tool. Add a PWA manifest (`manifest.json`) and a minimal service worker (offline app-shell caching only — do not attempt to cache live API data offline, that would show stale approval/run state, which is actively dangerous for an approval surface) so the dashboard is installable per OIK-091.
+**Acceptance_Criteria:**
+- [ ] Given any run_id, the audit browser reconstructs its full decision trail (every policy.decision event, verdict, reason where present) — no direct DB access, everything through `GET /runs/:id/evidence`
+- [ ] PWA manifest present, app is installable (Lighthouse-installable or equivalent check), service worker caches only the static app shell — NOT API responses (approval/run state must always be live, never served stale from a cache)
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T12:00:00Z
