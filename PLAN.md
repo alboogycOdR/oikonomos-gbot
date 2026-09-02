@@ -1466,7 +1466,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-047
 **Title:** OIK-050 — Scope-minimisation review checklist + per-connector onboarding records (ORCH-executed)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** WBS OIK-050; docs/decisions/ADR-008-connector-manifest-location.md; Gap Closure §G1 scope boundary
@@ -1474,19 +1474,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-043
 **Description:** ORCH-executed task — territory is `docs/connectors/**`, which is outside the builder firewall (ADR-008). The checklist + record template already exist (`docs/connectors/README.md`, authored at decompose). Remaining work: write the onboarding record for each Wave-1 connector AT ITS REVIEW (TASK-048+), answering all seven checklist items, and reject any manifest whose target is not a Basileia-owned account (N5). This task closes when every merged Wave-1 connector has a record. Assigned_To stays TBD so no builder ever claims it; ORCH performs it as part of connector reviews.
 **Acceptance_Criteria:**
-- [ ] docs/connectors/README.md checklist covers ownership, scopes, tier map, disabled-until-G-CONN, evals, reversal, decision (WBS OIK-050)
-- [ ] Every merged Wave-1 connector has `docs/connectors/<id>.md` completed per template ("every connector has a written scope justification in docs/connectors/")
-**Branch:** —
+- [x] docs/connectors/README.md checklist covers ownership, scopes, tier map, disabled-until-G-CONN, evals, reversal, decision (WBS OIK-050)
+- [x] Every merged Wave-1 connector has `docs/connectors/<id>.md` completed per template ("every connector has a written scope justification in docs/connectors/")
+**Branch:** — (ORCH-executed, no task branch)
 **Started_At:** —
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. ADR-010 §4 makes connector work MORE valuable, not less; the scope-minimisation checklist is unaffected by the pivot. Still ORCH-executed, Assigned_To stays TBD.
 - [2026-08-19T05:25:00Z] [ORCH] docs/connectors/gmail.md written at TASK-048's review - all seven checklist items answered (ownership N5, scopes+justification, tier map with T3 rationale, disabled-until-G-CONN incl. the role_grant cross-product caveat, evals with both positive and negative verification, reversal paths, decision). First Wave-1 record complete; task stays open until Calendar and Drive have theirs.
-**Artifacts:** —
+- [2026-09-02T11:15:00Z] [ORCH] docs/connectors/google-calendar.md written at TASK-049's review — all seven checklist items answered, plus a flagged finding: no enforced-floor class (E1-E5) currently covers external calendar-attendee notification, noted as a per-role Require Approval candidate for whenever G-CONN opens.
+- [2026-09-02T11:25:00Z] [ORCH] docs/connectors/google-drive.md written at TASK-050's review — all seven checklist items answered, same Require-Approval-candidate finding for drive.share_file. **All three Wave-1 connectors now have complete records — TASK-047 closes.**
+**Artifacts:** docs/connectors/{gmail,google-calendar,google-drive}.md
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** Self-reviewed as ORCH-executed documentation work. All 3 Wave-1 connector records complete, cross-checked against their respective merged manifests and golden-suite evidence at each connector's own review. A real cross-connector finding surfaced while writing these: neither Calendar's attendee-notification actions nor Drive's share_file have a corresponding enforced-floor class (E1-E5) — flagged in both records as a Require Approval rule candidate for whenever G-CONN opens on either connector, not blocking today since both remain disabled.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_At:** 2026-09-02T11:25:00Z
 
 ### TASK-048
 **Title:** OIK-052 — Wave 1: Gmail connector (readonly + compose; send present but disabled)
