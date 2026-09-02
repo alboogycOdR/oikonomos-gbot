@@ -123,3 +123,88 @@ export interface AuditEvent {
 export async function getRunEvidence(runId: string): Promise<AuditEvent[]> {
   return request<AuditEvent[]>(`/runs/${encodeURIComponent(runId)}/evidence`);
 }
+
+export type ApprovalStatus =
+  | "pending"
+  | "granted"
+  | "rejected"
+  | "expired"
+  | "invalidated"
+  | "consumed";
+
+/**
+ * TASK-103 — mirrors `GET /approvals`'s real, serialized shape (one
+ * approval service, one canonical rendering per OIK-089). `nonce` rides in
+ * this response body because control-api's contract puts it there; the
+ * discipline this task owns is keeping it out of the URL bar, browser
+ * history, and any persisted client storage, same as
+ * `services/gateway-telegram/src/approvals/index.ts`'s in-process handle
+ * pattern — it must only ever be read from in-memory component state and
+ * sent straight back over a single `decide` request.
+ */
+export interface ApprovalSummary {
+  approvalId: string;
+  tenantId: string;
+  runId: string;
+  capabilityId: string;
+  actionDigest: string;
+  actionRender: string;
+  destination: string;
+  nonce: string;
+  status: ApprovalStatus;
+  requestedAt: string;
+  expiresAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  consumedAt: string | null;
+}
+
+export async function listPendingApprovals(): Promise<ApprovalSummary[]> {
+  return request<ApprovalSummary[]>("/approvals");
+}
+
+export type ApprovalDecisionKind = "granted" | "rejected";
+
+export type DecideApprovalResult =
+  | { decided: true; approval: ApprovalSummary }
+  | { decided: false };
+
+/**
+ * The dashboard has no per-operator identity beyond the shared operator
+ * access token (TASK-101) — there is no per-user session claim to attribute
+ * the decision to, so `decidedBy` uses a fixed, clearly-labelled actor
+ * string, same spirit as gateway-telegram's `telegram:user:${id}` but
+ * without a real per-user id to interpolate.
+ */
+const DASHBOARD_DECIDER = "dashboard:operator";
+
+export async function decideApproval(
+  nonce: string,
+  decision: ApprovalDecisionKind,
+): Promise<DecideApprovalResult> {
+  const response = await fetch(`${BASE_URL}/approvals/${encodeURIComponent(nonce)}/decide`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision, decidedBy: DASHBOARD_DECIDER }),
+  });
+  if (response.status === 401) {
+    throw new UnauthorizedError();
+  }
+  if (response.status === 409) {
+    return { decided: false };
+  }
+  if (!response.ok) {
+    let message = `request to /approvals/${nonce}/decide failed with ${response.status}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error !== undefined) {
+        message = body.error;
+      }
+    } catch {
+      // response body wasn't JSON; keep the generic message.
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as DecideApprovalResult;
+}

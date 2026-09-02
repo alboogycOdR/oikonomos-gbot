@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "./components/RequireAuth";
 import { AuthProvider } from "./lib/AuthContext";
+import { ApprovalInboxPage } from "./pages/ApprovalInboxPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RunDetailPage } from "./pages/RunDetailPage";
 import { RunListPage } from "./pages/RunListPage";
@@ -24,6 +25,14 @@ export function App() {
           element={
             <RequireAuth>
               <RunDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/approvals"
+          element={
+            <RequireAuth>
+              <ApprovalInboxPage />
             </RequireAuth>
           }
         />
