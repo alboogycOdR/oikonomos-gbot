@@ -2843,7 +2843,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §2; packages/agent-providers/src/providers/claudeCode.ts (the exact pattern to mirror — a thin translator over an already-governed query function, never itself calling L1)
-**Owned_Paths:** packages/agent-providers/src/providers/gemini.ts, packages/agent-providers/src/providers/gemini.test.ts, packages/agent-providers/src/providers/index.ts, packages/agent-providers/src/types.ts, packages/agent-providers/src/config.ts
+**Owned_Paths:** packages/agent-providers/src/providers/gemini.ts, packages/agent-providers/src/providers/gemini.test.ts, packages/agent-providers/src/providers/index.ts, packages/agent-providers/src/types.ts, packages/agent-providers/src/config.ts, packages/agent-providers/src/metadata.ts
 **Depends_On:** TASK-094, TASK-096
 **Description:** Add "gemini" as a fourth `ProviderId` alongside `claude-code`/`codex`/`grok`. `GeminiProvider` follows `claudeCode.ts`'s exact shape: it is a thin translator that turns TASK-094's already-governed Gemini query function's output into the shared `ProviderEvent` stream (`text_delta`, `tool_start`, `tool_end`, `turn_complete`, `error`) — it must NOT itself call `l1.handle()` or duplicate any enforcement logic; enforcement already happened inside the injected query function, exactly like `claudeCode.ts` never touches L1 either. Unlike `codex`/`grok` (which report `costUsd: null` because their CLIs don't surface usage), Gemini's REST response carries real token counts — compute `turn_complete.costUsd` using TASK-096's pricing calculator from the actual `usageMetadata` the API returns, not a stub. `config.ts` gains `GEMINI_API_KEY` loading via `loadConfig`/`loadConfigFromEnv` with the same validation rigor as the existing keys (present, non-empty, never logged). Do not touch `claudeCode.ts`, `codex.ts`, or `grok.ts` — this task adds a sibling, it does not modify the existing three.
 **Acceptance_Criteria:**
@@ -2856,7 +2856,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
 **Branch:** task/TASK-095-s5
 **Started_At:** 2026-09-02T09:10:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T09:35:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence on this task) — S5 correctly self-blocked rather than pushing through: widening `ProviderId` to include `"gemini"` (required by AC1) makes `metadata.ts`'s `ProviderExtrasMap` non-exhaustive (TS2536 x3), and `metadata.ts` was outside Owned_Paths. Verified via S5's own `git stash -u` isolation that this is caused solely by the widening, not pre-existing. Legitimate gap — added `packages/agent-providers/src/metadata.ts` to Owned_Paths above. Also note: S5 correctly flagged a `pricing.test.ts` TS2578 error as a pre-existing TASK-096 leftover in its baseline — that was already fixed by ORCH on master (commit after TASK-095 branched from an earlier master tip); will resolve once S5 rebases/the worktree refreshes, not a new problem. Redispatching S5 same branch: add a `GeminiProviderExtras` interface + a `gemini` entry to `ProviderExtrasMap` in metadata.ts, matching the existing three providers' shape, then re-run typecheck/test/lint/canaries.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
