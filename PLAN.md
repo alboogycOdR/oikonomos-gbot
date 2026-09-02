@@ -3001,6 +3001,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T16:36:00Z
 **Progress_Notes:**
 - [2026-09-02T16:36:00Z] [ORCH] TASK-099 (dependency) done/merged — claiming and dispatching CX on a freshly-rebased worktree.
+- [2026-09-02T17:56:00Z] [ORCH] STALE HEARTBEAT (protocol §10a) — no log growth for ~75 min, log ended mid-`pnpm install; pnpm -r build; pnpm -r test; pnpm lint; pnpm canaries` gate run with no output past the install step. Verified genuinely dead, not just slow: no `node`/`codex` process running at all, and a manual `pnpm install --frozen-lockfile` in the same worktree completed in 3.4s (rules out a lockfile-resolution hang). Matches the exact "detached window died mid-write" failure class dispatch.ps1's own header comment warns about. Work-in-progress preserved: `evals/harness/test/ome-two-role-handoff.test.ts` (4749 bytes, a full test already written per the log tail) and `dossiers/TASK-100.md` both present untracked in the worktree, uncommitted. Not counting this as rework — redispatching CX resume-first on the same branch/worktree, uncommitted files left in place.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
