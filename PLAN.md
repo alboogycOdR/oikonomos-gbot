@@ -2959,7 +2959,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Master WBS OIK-102; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.4-2.5
-**Owned_Paths:** services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts, services/workspace/src/index.ts
+**Owned_Paths:** services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts, services/workspace/src/index.ts, infra/postgres/migrations/007_role_messages_typed_handoff.up.sql, infra/postgres/migrations/007_role_messages_typed_handoff.down.sql, packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts
 **Depends_On:** TASK-098
 **Description:** Adds an OPTIONAL typed variant to `sendToRole` — a small closed set of handoff kinds (start with `research.complete` and `draft.ready_for_review`; export the set as a const array, not a bare string union, so a future kind is a one-line addition) that carry a memory **fact reference** (`{ tenantId, scope, roleId?, projectId?, key }` — enough for the receiver to call TASK-098's `resolve()`/scope-getters itself) alongside the existing free-text `body`. The receiver re-reads the fact LIVE via the reference; the handoff itself never copies the fact's `value` into the message row — that would recreate exactly the "stale copy" problem OIK-102 exists to avoid. Existing untyped handoffs (no `handoffKind`/`factRef`) continue working completely unmodified — this is additive, matching TASK-091's own additive-field precedent, not a breaking change to `SendToRoleInput`.
 **Acceptance_Criteria:**
@@ -2972,6 +2972,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T14:20:00Z
 **Progress_Notes:**
 - [2026-09-02T14:20:00Z] [ORCH] TASK-098 (dependency) merged. Reassigned from S5 to CX at dispatch — S5 was busy with TASK-102, CX was idle after TASK-098 merged; no protected-path concern either way, reassignment is purely for parallelism.
+- [2026-09-02T14:35:00Z] [ORCH] OWNERSHIP_CONFLICT triage (protocol §7, 1st occurrence) — CX correctly self-blocked before writing any persistence code: `role_messages` (migration 004) only has a `workspace_refs` column, nothing for a typed fact reference — encoding `factRef` into the existing free-text/refs shape would violate both that table's own contract and this task's own "reference, not a copy" bar. This is a real gap in the original scoping: the typed-handoff work genuinely needs a DB-layer migration + packages/db API change, not just a services/workspace-layer change. Widened Owned_Paths to include a new migration 007 (handoffKind/factRef columns, additive, `workspace_refs`-shaped precedent) and packages/db/src/roleMessages.ts + roleMessages.test.ts + index.ts (barrel export). Redispatching CX same branch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
