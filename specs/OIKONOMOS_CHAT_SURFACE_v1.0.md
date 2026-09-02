@@ -229,6 +229,21 @@ present).
   by explicit user instruction).
 - Real-time push (websocket/SSE) replacing polling.
 - Bot avatar image upload, custom theming.
+- **Agent-initiated action visible in the thread list preview** (added
+  2026-09-02, from the real Grok Bot Android app: a sidebar row can read
+  "New Bot independently opened Google on their sc…" — a bot's unprompted
+  action surfaced as the list preview text, not only inside the open
+  conversation). Our policy side for this already exists on paper
+  (Addendum A E14.2, `initiative` axis: reactive/suggest/act_draft/
+  act_governed) but has no UI attachment point yet. Chat-2 needs a preview
+  string derived from the *latest event* in a thread, not only the latest
+  chat message — an initiative-policy event must be able to win that slot.
+- **Bot-to-bot thread visible in the user's own list** (added 2026-09-02,
+  same source: a `"New Bot and TREVOR"` row, and a `"New Bot"` row whose
+  preview reads `"↗ Messaged TREVOR: Shared-browser probe res…"` — outbound
+  attribution, not just inbound). Confirms OIK-150 (multi-agent thread with
+  human visibility) needs its own list entry, distinct from a 1:1 user↔bot
+  thread, with a directional icon/prefix showing who messaged whom.
 
 ## 9. Definition of done for the wave
 
