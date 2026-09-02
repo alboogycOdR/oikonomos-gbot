@@ -3173,7 +3173,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §2, §5, §6 (Chat-1c) — the visual bar, graded on rendered output, not just code
@@ -3186,15 +3186,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Component tests render each component with fixture props and assert key structural elements are present (not snapshot-only)
 - [ ] Dossier includes a screenshot or equivalent rendered evidence of the fixture-data ChatShell — reviewer must be able to see, not just read, that this looks like the reference UI
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-107-s5
+**Started_At:** 2026-09-02T18:13:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T19:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-02T18:13:01Z
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
