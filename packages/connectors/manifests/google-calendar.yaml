@@ -1,0 +1,29 @@
+connector_id: google-calendar
+account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
+mcp_server: { name: google-calendar, transport: remote, url_ref: secret://mcp/google-calendar/url }
+oauth_scopes: [calendar.readonly, calendar.events]
+tools:
+  - tool_name: mcp__google-calendar__list_events
+    capability_id: calendar.list
+    default_tier: T0_observe
+  - tool_name: mcp__google-calendar__get_event
+    capability_id: calendar.read
+    default_tier: T0_observe
+  - tool_name: mcp__google-calendar__create_event
+    capability_id: calendar.create_event
+    default_tier: T3_external
+    enabled: false                                 # until G-CONN (externally-visible; invites attendees)
+  - tool_name: mcp__google-calendar__update_event
+    capability_id: calendar.update_event
+    default_tier: T3_external
+    enabled: false                                 # until G-CONN (externally-visible; notifies attendees)
+  - tool_name: mcp__google-calendar__delete_event
+    capability_id: calendar.delete_event
+    default_tier: T3_external
+    enabled: false                                 # until G-CONN (externally-visible; cancels/notifies attendees)
+role_grants:
+  - role_id: calendar-assistant
+    max_tier: T0_observe
+    constraints: { rate_per_hour: 60, domains: ["*"] }
+evals: { suite: evals/golden/suites/google-calendar, min_pass_rate: 0.90 }   # ADR-008: suites/<id>
+review: { onboarded_by: "", date: "", scope_justification: "" }
