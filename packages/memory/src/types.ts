@@ -31,6 +31,10 @@ export interface MemoryFact {
   confidence: number;
   tier: MemoryTier;
   expiresAt: Date | null;
+  /** NULL means tenant-visible; populated lists restrict project/user reads. */
+  visibleTo?: string[] | null;
+  /** The newer row that replaced this fact, or null when this is current. */
+  supersededBy?: string | null;
 }
 
 export interface NewMemoryFact {
@@ -47,6 +51,8 @@ export interface NewMemoryFact {
   tier?: MemoryTier;
   /** Explicit TTL in milliseconds. Only meaningful for tier === 'note'; defaults to DEFAULT_NOTE_TTL_MS there. */
   ttlMs?: number;
+  /** Optional role ACL for project/user facts. Agent reads remain owner-only. */
+  visibleTo?: readonly string[];
 }
 
 /** The read context a resolve()/readProfileTier() call is scoped to. */

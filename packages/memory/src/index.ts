@@ -14,6 +14,7 @@ export {
   getAgentFact,
   getProjectFact,
   getUserFact,
+  getFactById,
   readProfileTier,
 } from "./facts.js";
 export { resolve, resolveConflict } from "./resolve.js";
