@@ -42,6 +42,8 @@ export interface Env {
   GROK_SANDBOX: GrokSandbox;
   GROK_ALWAYS_APPROVE: boolean;
   XAI_API_KEY: string | undefined;
+  GEMINI_MODEL: string;
+  GEMINI_API_KEY: string | undefined;
   BOT_LOCALE: string;
   MESSAGE_EDIT_INTERVAL_MS: number;
   MAX_TELEGRAM_MESSAGE_CHARS: number;
@@ -199,7 +201,7 @@ export function loadConfig(source: Record<string, string | undefined>): AppConfi
   } else {
     issues.push({
       path: "DEFAULT_PROVIDER",
-      message: `Invalid enum value. Expected claude-code | codex | grok, received '${defaultProviderRaw}'`,
+      message: `Invalid enum value. Expected claude-code | codex | grok | gemini, received '${defaultProviderRaw}'`,
     });
   }
 
@@ -222,6 +224,8 @@ export function loadConfig(source: Record<string, string | undefined>): AppConfi
   const GROK_SANDBOX = enumWithDefault(source, "GROK_SANDBOX", GROK_SANDBOXES, "workspace", issues);
   const GROK_ALWAYS_APPROVE = coerceBoolean(source, "GROK_ALWAYS_APPROVE", true);
   const XAI_API_KEY = optionalString(source, "XAI_API_KEY");
+  const GEMINI_MODEL = stringWithDefault(source, "GEMINI_MODEL", "gemini-3.7-flash");
+  const GEMINI_API_KEY = optionalString(source, "GEMINI_API_KEY");
   const BOT_LOCALE = stringWithDefault(source, "BOT_LOCALE", "en");
   const MESSAGE_EDIT_INTERVAL_MS = coercePositiveInt(source, "MESSAGE_EDIT_INTERVAL_MS", 900, issues);
   const MAX_TELEGRAM_MESSAGE_CHARS = coercePositiveInt(source, "MAX_TELEGRAM_MESSAGE_CHARS", 3500, issues);
@@ -264,6 +268,8 @@ export function loadConfig(source: Record<string, string | undefined>): AppConfi
     GROK_SANDBOX,
     GROK_ALWAYS_APPROVE,
     XAI_API_KEY,
+    GEMINI_MODEL,
+    GEMINI_API_KEY,
     BOT_LOCALE,
     MESSAGE_EDIT_INTERVAL_MS,
     MAX_TELEGRAM_MESSAGE_CHARS,

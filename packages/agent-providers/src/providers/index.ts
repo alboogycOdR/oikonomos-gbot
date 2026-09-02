@@ -3,6 +3,7 @@ import type { AgentProvider, ProviderId } from "../types.js";
 import { ClaudeCodeProvider } from "./claudeCode.js";
 import { CodexProvider } from "./codex.js";
 import { GrokProvider } from "./grok.js";
+import { GeminiProvider } from "./gemini.js";
 
 /**
  * Builds one long-lived provider instance per backend, keyed by provider id.
@@ -35,6 +36,9 @@ export class ProviderRegistry {
         alwaysApprove: config.GROK_ALWAYS_APPROVE,
         apiKey: config.XAI_API_KEY,
       }),
+      gemini: new GeminiProvider({
+        defaultModel: config.GEMINI_MODEL,
+      }),
     };
   }
 
@@ -58,3 +62,5 @@ export { CodexProvider, isCodexEvent, mapCodexEvent } from "./codex.js";
 export type { CodexProviderOptions } from "./codex.js";
 export { GrokProvider, buildGrokArgs } from "./grok.js";
 export type { GrokProviderOptions, GrokSandboxProfile } from "./grok.js";
+export { GeminiProvider } from "./gemini.js";
+export type { GeminiProviderOptions, GeminiQueryFn, GeminiQueryResult, GeminiUsageMetadata } from "./gemini.js";

@@ -25,11 +25,17 @@ export interface GrokProviderExtras {
   sessionRef?: string;
 }
 
+/** Gemini REST API extras: none surfaced beyond usage metadata (handled separately). */
+export interface GeminiProviderExtras {
+  sessionRef?: string;
+}
+
 /** Maps each `ProviderId` to its own extras shape — the namespace keys. */
 export interface ProviderExtrasMap {
   "claude-code": ClaudeCodeProviderExtras;
   codex: CodexProviderExtras;
   grok: GrokProviderExtras;
+  gemini: GeminiProviderExtras;
 }
 
 /**

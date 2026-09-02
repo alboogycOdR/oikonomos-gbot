@@ -6,14 +6,16 @@
  *   - claude-code : full agentic coding via an injected Claude Agent SDK query
  *   - codex       : full agentic coding via the OpenAI `codex` CLI (subprocess)
  *   - grok        : full agentic coding via xAI's `grok` CLI (subprocess)
+ *   - gemini      : chat/tool-calling via Google's Gemini REST API, translated
+ *                    over TASK-094's already-governed request loop
  *
  * Every provider emits the same ProviderEvent stream so callers only have to
  * know one protocol.
  */
 
-export type ProviderId = "claude-code" | "codex" | "grok";
+export type ProviderId = "claude-code" | "codex" | "grok" | "gemini";
 
-export const PROVIDER_IDS: readonly ProviderId[] = ["claude-code", "codex", "grok"];
+export const PROVIDER_IDS: readonly ProviderId[] = ["claude-code", "codex", "grok", "gemini"];
 
 export function isProviderId(value: string): value is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(value);
