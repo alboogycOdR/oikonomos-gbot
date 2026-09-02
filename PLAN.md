@@ -3033,7 +3033,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-102
 **Title:** apps/dashboard — scaffold + run list/detail (E9.1a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Master WBS OIK-088; Synthesis Spec §O6 (React, reusing VANTAGE canvas-dashboard patterns, Phase 2)
@@ -3047,9 +3047,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No hardcoded/mock data anywhere in the shipped build — every data-bearing component fetches from a real endpoint
 - [ ] `pnpm --filter` build for the new package succeeds; if a test runner is set up, it's wired into `pnpm -r test`
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0 (confirm the new package doesn't break any existing gate)
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-102-s5
+**Started_At:** 2026-09-02T13:20:00Z
+**Progress_Notes:**
+- [2026-09-02T13:20:00Z] [ORCH] TASK-101 (auth gate) merged — claiming and dispatching. Reminder for the builder: `CONTROL_API_TOKEN` is not yet provisioned as a real secret anywhere; use a test-only value in your own test harness/dev instructions, do not invent a production default.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
