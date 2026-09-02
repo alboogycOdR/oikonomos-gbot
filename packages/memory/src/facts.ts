@@ -12,7 +12,7 @@ import {
   type NewMemoryFact,
 } from "./types.js";
 
-const factColumns = `fact_id, tenant_id, scope, role_id, project_id, key, value, source, confidence, tier, expires_at`;
+const factColumns = `fact_id, tenant_id, scope, role_id, project_id, key, value, source, confidence, tier, expires_at, visible_to, superseded_by`;
 
 interface FactRow extends QueryResultRow {
   fact_id: string;
@@ -26,6 +26,8 @@ interface FactRow extends QueryResultRow {
   confidence: number;
   tier: MemoryTier;
   expires_at: Date | null;
+  visible_to: string[] | null;
+  superseded_by: string | null;
 }
 
 function toFact(row: FactRow): MemoryFact {
@@ -41,7 +43,18 @@ function toFact(row: FactRow): MemoryFact {
     confidence: row.confidence,
     tier: row.tier,
     expiresAt: row.expires_at,
+    visibleTo: row.visible_to,
+    supersededBy: row.superseded_by,
   };
+}
+
+function normalizeVisibleTo(value: readonly string[] | undefined): string[] | null {
+  if (value === undefined) return null;
+  const normalized = value.map((roleId) => requireNonEmpty(roleId, "visibleTo roleId"));
+  if (new Set(normalized).size !== normalized.length) {
+    throw new Error("visibleTo must not contain duplicate roleIds.");
+  }
+  return normalized;
 }
 
 function requireScope(value: MemoryScope, field: string): MemoryScope {
@@ -79,6 +92,7 @@ export async function writeMemoryFact(
   const tier = requireTier(input.tier ?? "profile", "tier");
   const confidence = input.confidence ?? 0.8;
   const tenantId = input.tenantId ?? "basileia";
+  const visibleTo = normalizeVisibleTo(input.visibleTo);
 
   // Mirror the DB CHECK (scope = 'agent') = (role_id IS NOT NULL) here so a
   // bad call fails with a clear message before ever reaching the pool.
@@ -107,16 +121,20 @@ export async function writeMemoryFact(
 
   return withPool(options, async (pool) => {
     const result = await pool.query<FactRow>(
-      `INSERT INTO profile_facts (tenant_id, scope, role_id, project_id, key, value, source, confidence, tier, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (tenant_id, scope, COALESCE(role_id, ''), COALESCE(project_id, ''), key) DO UPDATE SET
-         value = EXCLUDED.value,
-         source = EXCLUDED.source,
-         confidence = EXCLUDED.confidence,
-         tier = EXCLUDED.tier,
-         expires_at = EXCLUDED.expires_at
-       RETURNING ${factColumns}`,
-      [tenantId, scope, roleId, projectId, key, value, source, confidence, tier, expiresAt],
+      `WITH locked AS (
+         SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2 || ':' || COALESCE($3, '') || ':' || COALESCE($4, '') || ':' || $5, 0))
+       ), inserted AS (
+         INSERT INTO profile_facts (tenant_id, scope, role_id, project_id, key, value, source, confidence, tier, expires_at, visible_to)
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 FROM locked
+         RETURNING ${factColumns}
+       ), superseded AS (
+         UPDATE profile_facts SET superseded_by = (SELECT fact_id FROM inserted)
+         WHERE tenant_id = $1 AND scope = $2 AND role_id IS NOT DISTINCT FROM $3
+           AND project_id IS NOT DISTINCT FROM $4 AND key = $5
+           AND fact_id <> (SELECT fact_id FROM inserted) AND superseded_by IS NULL
+       )
+       SELECT ${factColumns} FROM inserted`,
+      [tenantId, scope, roleId, projectId, key, value, source, confidence, tier, expiresAt, visibleTo],
     );
 
     const row = result.rows[0];
@@ -129,6 +147,8 @@ export async function writeMemoryFact(
 
 /** Excludes expired notes (expires_at in the past) from every read below. */
 const NOT_EXPIRED = `(expires_at IS NULL OR expires_at > now())`;
+const CURRENT = `superseded_by IS NULL`;
+const VISIBLE_TO_CALLER = `(visible_to IS NULL OR $2 = ANY(visible_to))`;
 
 /**
  * Look up the agent-scope fact for exactly the caller's own role_id.
@@ -151,7 +171,7 @@ export async function getAgentFact(
   return withPool(options, async (pool) => {
     const result = await pool.query<FactRow>(
       `SELECT ${factColumns} FROM profile_facts
-       WHERE tenant_id = $1 AND scope = 'agent' AND role_id = $2 AND key = $3 AND ${NOT_EXPIRED}`,
+       WHERE tenant_id = $1 AND scope = 'agent' AND role_id = $2 AND key = $3 AND ${NOT_EXPIRED} AND ${CURRENT}`,
       [tenantId, roleId, normalizedKey],
     );
     return result.rows[0] === undefined ? null : toFact(result.rows[0]);
@@ -160,7 +180,7 @@ export async function getAgentFact(
 
 export async function getProjectFact(
   options: DatabaseOptions,
-  ctx: { tenantId: string; projectId: string },
+  ctx: { tenantId: string; projectId: string; roleId?: string },
   key: string,
 ): Promise<MemoryFact | null> {
   const tenantId = requireNonEmpty(ctx.tenantId, "tenantId");
@@ -170,8 +190,9 @@ export async function getProjectFact(
   return withPool(options, async (pool) => {
     const result = await pool.query<FactRow>(
       `SELECT ${factColumns} FROM profile_facts
-       WHERE tenant_id = $1 AND scope = 'project' AND project_id = $2 AND key = $3 AND ${NOT_EXPIRED}`,
-      [tenantId, projectId, normalizedKey],
+       WHERE tenant_id = $1 AND scope = 'project' AND project_id = $2 AND key = $3
+         AND ${NOT_EXPIRED} AND ${CURRENT} AND (visible_to IS NULL OR $4 = ANY(visible_to))`,
+      [tenantId, projectId, normalizedKey, ctx.roleId ?? null],
     );
     return result.rows[0] === undefined ? null : toFact(result.rows[0]);
   });
@@ -179,7 +200,7 @@ export async function getProjectFact(
 
 export async function getUserFact(
   options: DatabaseOptions,
-  ctx: { tenantId: string },
+  ctx: { tenantId: string; roleId?: string },
   key: string,
 ): Promise<MemoryFact | null> {
   const tenantId = requireNonEmpty(ctx.tenantId, "tenantId");
@@ -189,8 +210,8 @@ export async function getUserFact(
     const result = await pool.query<FactRow>(
       `SELECT ${factColumns} FROM profile_facts
        WHERE tenant_id = $1 AND scope = 'user' AND role_id IS NULL AND project_id IS NULL
-         AND key = $2 AND ${NOT_EXPIRED}`,
-      [tenantId, normalizedKey],
+         AND key = $2 AND ${NOT_EXPIRED} AND ${CURRENT} AND (visible_to IS NULL OR $3 = ANY(visible_to))`,
+      [tenantId, normalizedKey, ctx.roleId ?? null],
     );
     return result.rows[0] === undefined ? null : toFact(result.rows[0]);
   });
@@ -208,13 +229,12 @@ export async function readProfileTier(
   ctx: MemoryContext,
 ): Promise<MemoryFact[]> {
   const tenantId = requireNonEmpty(ctx.tenantId, "tenantId");
-  const conditions = [`tenant_id = $1`, `tier = 'profile'`, NOT_EXPIRED];
-  const params: unknown[] = [tenantId];
+  const conditions = [`tenant_id = $1`, `tier = 'profile'`, NOT_EXPIRED, CURRENT, VISIBLE_TO_CALLER];
+  const params: unknown[] = [tenantId, ctx.roleId ?? null];
   const scopeConditions: string[] = [`scope = 'user' AND role_id IS NULL AND project_id IS NULL`];
 
   if (ctx.roleId !== undefined) {
-    params.push(ctx.roleId);
-    scopeConditions.push(`(scope = 'agent' AND role_id = $${params.length})`);
+    scopeConditions.push(`(scope = 'agent' AND role_id = $2)`);
   }
   if (ctx.projectId !== undefined) {
     params.push(ctx.projectId);
@@ -230,6 +250,29 @@ export async function readProfileTier(
       params,
     );
     return result.rows.map(toFact);
+  });
+}
+
+/**
+ * Retrieve one historical fact by id. Unlike normal key reads this permits a
+ * superseded row, while preserving the same agent ownership and ACL checks.
+ */
+export async function getFactById(
+  options: DatabaseOptions,
+  ctx: { tenantId: string; roleId?: string },
+  factId: string,
+): Promise<MemoryFact | null> {
+  const tenantId = requireNonEmpty(ctx.tenantId, "tenantId");
+  const normalizedFactId = requireNonEmpty(factId, "factId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<FactRow>(
+      `SELECT ${factColumns} FROM profile_facts
+       WHERE tenant_id = $1 AND fact_id = $3 AND ${NOT_EXPIRED}
+         AND ((scope = 'agent' AND role_id = $2)
+           OR (scope <> 'agent' AND ${VISIBLE_TO_CALLER}))`,
+      [tenantId, ctx.roleId ?? null, normalizedFactId],
+    );
+    return result.rows[0] === undefined ? null : toFact(result.rows[0]);
   });
 }
 
