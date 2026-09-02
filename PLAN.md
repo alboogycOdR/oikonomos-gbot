@@ -2891,24 +2891,24 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_At:** 2026-09-02T09:20:00Z
 
 ### TASK-097
-**Title:** Unify the D3 sealed-secret root constant across packages/broker and services/workspace
-**Status:** pending
-**Assigned_To:** TBD
+**Title:** Unify the D3 sealed-secret root constant across packages/broker and services/workspace ⚑ protected
+**Status:** claimed
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** docs/runbooks/persistent-office-demo/README.md "Real integration issues found" #6 (found live 2026-09-02 building TASK-060's demo); TASK-088 (packages/broker/src/secretPathGuard.ts), TASK-090 (services/workspace/src/paths.ts)
-**Owned_Paths:** TBD at dispatch — likely a new shared constant in packages/shared plus updates to packages/broker/src/secretPathGuard.ts and services/workspace/src/paths.ts to both import it instead of each defining their own literal
+**Owned_Paths:** packages/shared/src/sealedSecretRoot.ts, packages/shared/src/sealedSecretRoot.test.ts, packages/shared/src/index.ts, packages/broker/src/secretPathGuard.ts, services/workspace/src/paths.ts
 **Depends_On:** —
 **Description:** `packages/broker/src/secretPathGuard.ts` defines `SEALED_SECRET_ROOT = "/oikonomos-secrets"` (hyphenated, no subdirectory); `services/workspace/src/paths.ts` defines `SEALED_SECRETS_ROOT = "/oikonomos/secrets"` (slash-separated, plural). Both guards are independently correct and independently proven (TASK-088/090's reviews both confirmed this) — this is not a security bug in either one. It is a real footgun: a caller matching one package's convention for a D3 path will silently miss the other's, discovered live while building TASK-060's demo when a target string written against services/workspace's convention sailed straight past packages/broker's guard. Fix: promote one canonical constant (likely into packages/shared, matching this project's "canonical JSON + digest has exactly one implementation" convention) and have both guards import it, with each guard's own existing test suite re-run to confirm zero behavior change — this is a naming/DRY fix, not a behavior change, and must not become one.
 **Acceptance_Criteria:**
 - [ ] One canonical D3 root constant exists in exactly one place; packages/broker/src/secretPathGuard.ts and services/workspace/src/paths.ts both import it, neither defines its own literal
 - [ ] Both packages' existing test suites pass with ZERO behavior changes — this is a naming consolidation, not a new feature; a test asserting the two guards now agree on the same literal string is a reasonable new addition
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-097-cx
+**Started_At:** 2026-09-02T09:40:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T09:15:00Z
+**Updated_At:** 2026-09-02T09:40:00Z
