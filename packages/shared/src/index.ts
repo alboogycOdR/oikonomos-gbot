@@ -11,6 +11,7 @@ export {
   type JsonValue,
 } from "./canonicalJson.js";
 export { actionDigest, type ActionDigestInput } from "./actionDigest.js";
+export { SEALED_SECRET_ROOT } from "./sealedSecretRoot.js";
 
 export {
   SystemClock,

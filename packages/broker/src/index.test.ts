@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
+import { SEALED_SECRET_ROOT } from "@oikonomos/shared";
 
 import {
   handlePreToolUse,
@@ -14,7 +15,7 @@ import {
   SECRET_PATH_DENIAL_REASON,
 } from "./secretPathGuard.js";
 
-const sealedTarget = "/oikonomos-secrets/browser-profile/Default/Cookies";
+const sealedTarget = `${SEALED_SECRET_ROOT}/browser-profile/Default/Cookies`;
 
 const request: PreToolUseRequest = {
   toolUseId: "sealed-target-1",

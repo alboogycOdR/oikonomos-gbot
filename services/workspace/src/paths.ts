@@ -11,6 +11,8 @@
  * (if any) is the broker's job (grants/tiers), never this module's.
  */
 
+import { SEALED_SECRET_ROOT } from "@oikonomos/shared";
+
 export const WORKSPACE_ROOT = "/oikonomos/workspace";
 export const ROLES_ROOT = "/oikonomos/roles";
 /**
@@ -21,7 +23,7 @@ export const ROLES_ROOT = "/oikonomos/roles";
  * jailbreak attempt) is refused here too, in defence in depth alongside
  * TASK-088's broker-side guard, never as a substitute for it.
  */
-export const SEALED_SECRETS_ROOT = "/oikonomos/secrets";
+export { SEALED_SECRET_ROOT as SEALED_SECRETS_ROOT };
 
 export type DurabilityTier = "D1" | "D2" | "D3";
 
@@ -116,8 +118,8 @@ export function assertContained(root: string, resolved: string): void {
 
 export function classifyTier(absolutePath: string): DurabilityTier {
   if (
-    absolutePath === SEALED_SECRETS_ROOT ||
-    absolutePath.startsWith(`${SEALED_SECRETS_ROOT}/`)
+    absolutePath === SEALED_SECRET_ROOT ||
+    absolutePath.startsWith(`${SEALED_SECRET_ROOT}/`)
   ) {
     return "D3";
   }
