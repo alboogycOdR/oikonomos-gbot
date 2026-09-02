@@ -3066,7 +3066,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-103
 **Title:** apps/dashboard — approval inbox (E9.1b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Master WBS OIK-089 ("same nonce-binding as Telegram; one approval service, many surfaces")
@@ -3079,15 +3079,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The nonce never appears in the URL bar, browser history, or persisted client storage — tested/asserted, not just eyeballed
 - [ ] A second decide attempt on an already-decided approval is handled gracefully (matches the API's 409), tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-103-s5
+**Started_At:** 2026-09-02T16:30:00Z
+**Progress_Notes:**
+- [2026-09-02T16:30:00Z] [ORCH] TASK-102 (dependency) done/merged — claiming and dispatching S5 on the same apps/dashboard worktree (rebased fresh onto master first).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T12:00:00Z
+**Updated_At:** 2026-09-02T16:30:00Z
 
 ### TASK-104
 **Title:** apps/dashboard — evidence gallery/audit browser + PWA packaging (E9.1c)
