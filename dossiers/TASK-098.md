@@ -1,0 +1,6 @@
+# TASK-098 Dossier
+
+## Work Log
+
+- [2026-09-02T10:45:00Z] [CX] Resumed `task/TASK-098-cx`; preflight output: `[preflight] TASK-098 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE`; `NEW infra/postgres/migrations/006_memory_acl_versioning.up.sql -> does not exist; parent infra/postgres/migrations/ exists`; `NEW infra/postgres/migrations/006_memory_acl_versioning.down.sql -> does not exist; parent infra/postgres/migrations/ exists`; `FILE packages/memory/src/types.ts -> exists, 58 line(s), 1979 bytes`; `FILE packages/memory/src/facts.ts -> exists, 348 line(s), 12729 bytes`; `NEW packages/memory/src/facts.test.ts -> does not exist; parent packages/memory/src/ exists`.
+- [2026-09-02T10:45:00Z] [CX] BLOCKED — OWNERSHIP_CONFLICT: acceptance criterion requires a superseded fact remain independently queryable by `fact_id`. The required public query (`getFactById` or equivalent) must be exported from `packages/memory/src/index.ts`, which is not in TASK-098 Owned_Paths. Implementing it only in `facts.ts` would make it unavailable through the package’s public API and cannot satisfy the criterion. Please add `packages/memory/src/index.ts` to Owned_Paths (or explicitly designate an alternative public history API).
