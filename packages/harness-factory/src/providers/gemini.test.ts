@@ -1,0 +1,198 @@
+import { readFileSync } from "node:fs";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  createGeminiAdapter,
+  GEMINI_REQUEST_TIMEOUT_MS,
+  type GeminiTool,
+} from "./gemini.js";
+import { composeHarness } from "../compose.js";
+
+const source = readFileSync(new URL("./gemini.ts", import.meta.url), "utf8");
+const originalApiKey = process.env.GEMINI_API_KEY;
+
+afterEach(() => {
+  if (originalApiKey === undefined) {
+    delete process.env.GEMINI_API_KEY;
+  } else {
+    process.env.GEMINI_API_KEY = originalApiKey;
+  }
+  vi.useRealTimers();
+});
+
+function withNonSecretTestValue(): void {
+  // This is deliberately not a credential; the transport is always fake.
+  process.env.GEMINI_API_KEY = "unit-test-not-a-credential";
+}
+
+function functionCall(name = "observe", args: Record<string, unknown> = { path: "inbox" }): Response {
+  return new Response(JSON.stringify({
+    candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args } }] } }],
+  }));
+}
+
+function text(textValue = "observed"): Response {
+  return new Response(JSON.stringify({
+    candidates: [{ content: { role: "model", parts: [{ text: textValue }] } }],
+  }));
+}
+
+function tool(execute: GeminiTool["execute"], tier = 0): GeminiTool {
+  return { name: "observe", description: "Observe data", tier, execute };
+}
+
+describe("Gemini adapter — governed Stage-1 function loop", () => {
+  it("is loaded only for explicit provider selection; omitted provider retains the Claude runtime", () => {
+    const base = {
+      run: {
+        runId: "gemini-compose-run",
+        roleId: "observer",
+        tenantId: "tenant",
+        agentRef: { provider: "claude", sessionRef: "session", isSubagent: false },
+      },
+      allowedTools: [],
+      auditSink: { async writeCompletionEvidence() {} },
+      pretooluse: {
+        async handlePreToolUse() {
+          return { decision: "allow" as const, tier: "T0", auditEventId: "audit" };
+        },
+        dependencies: {},
+      },
+    };
+    expect(composeHarness(base).gemini).toBeUndefined();
+    expect(composeHarness({ ...base, provider: "gemini" }).gemini?.run).toBeTypeOf("function");
+  });
+
+  it("awaits L1 before executing a function call or returning its functionResponse", async () => {
+    withNonSecretTestValue();
+    const order: string[] = [];
+    let requests = 0;
+    const adapter = createGeminiAdapter({
+      l1: {
+        async handle(request) {
+          order.push(`l1:${request.toolName}`);
+          return { decision: "allow", updatedInput: { ...request.input, gated: true } };
+        },
+      },
+      tools: [tool(async (args) => {
+        order.push(`execute:${String(args.gated)}`);
+        return { ok: true };
+      })],
+      fetch: async (_url, init) => {
+        requests += 1;
+        if (requests === 1) {
+          order.push("request");
+          return functionCall();
+        }
+        const payload = JSON.parse(String(init?.body)) as { contents: Array<{ parts: unknown[] }> };
+        expect(payload.contents.at(-1)?.parts).toEqual([
+          { functionResponse: { name: "observe", response: { result: { ok: true } } } },
+        ]);
+        order.push("functionResponse");
+        return text();
+      },
+    });
+
+    await expect(adapter.run("observe the inbox")).resolves.toMatchObject({ text: "observed", denied: false });
+    expect(order).toEqual(["request", "l1:observe", "execute:true", "functionResponse"]);
+  });
+
+  it("returns L1's denial to Gemini and never invokes the tool", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    let responsePayload = "";
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "deny", message: "approval required" }; } },
+      tools: [tool(execute)],
+      fetch: async (_url, init) => {
+        responsePayload = String(init?.body ?? "");
+        return responsePayload.includes("functionResponse") ? text() : functionCall();
+      },
+    });
+
+    await expect(adapter.run("observe")).resolves.toMatchObject({ denied: false });
+    expect(execute).not.toHaveBeenCalled();
+    expect(responsePayload).toContain("approval required");
+  });
+
+  it("LIVENESS: removing the adapter L1 call makes the denied-tool canary RED", async () => {
+    expect(source).toContain("await l1.handle(");
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    withNonSecretTestValue();
+    let requests = 0;
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "deny", message: "denied by L1" }; } },
+      tools: [tool(execute)],
+      fetch: async () => (requests++ === 0 ? functionCall() : text()),
+    });
+
+    await adapter.run("observe");
+    // If the awaited L1 call above is bypassed, this Tier-0 tool executes.
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("refuses a tool above the Stage-1 Tier-0 ceiling", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    let responsePayload = "";
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [tool(execute, 1)],
+      fetch: async (_url, init) => {
+        responsePayload = String(init?.body ?? "");
+        return responsePayload.includes("functionResponse") ? text() : functionCall();
+      },
+    });
+
+    await adapter.run("observe");
+    expect(execute).not.toHaveBeenCalled();
+    expect(responsePayload).toContain("Tier-0 tools only");
+  });
+
+  it.each([
+    ["malformed response", async () => new Response("not-json")],
+    ["HTTP failure", async () => new Response("unavailable", { status: 503 })],
+  ])("fails closed on a %s", async (_label, fetch) => {
+    withNonSecretTestValue();
+    const adapter = createGeminiAdapter({ l1: { async handle() { return { decision: "allow" }; } }, fetch });
+    await expect(adapter.run("observe")).resolves.toMatchObject({ denied: true, text: "" });
+  });
+
+  it("fails closed on a request timeout without an unhandled rejection", async () => {
+    withNonSecretTestValue();
+    vi.useFakeTimers();
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      timeoutMs: 5,
+      fetch: async (_url, init) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      }),
+    });
+    const pending = adapter.run("observe");
+    await vi.advanceTimersByTimeAsync(5);
+    await expect(pending).resolves.toMatchObject({ denied: true, text: "" });
+  });
+
+  it("reads the key only from construction-time env and never sends it to a payload, log, audit, or fixture", async () => {
+    expect(source).toContain("process.env.GEMINI_API_KEY");
+    expect(source).not.toMatch(/console\.|\baudit\b/i);
+    expect(source).not.toContain("GEMINI_API_KEY =");
+    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(10_000);
+
+    withNonSecretTestValue();
+    const log = vi.spyOn(console, "log");
+    let body = "";
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      fetch: async (_url, init) => {
+        body = String(init?.body ?? "");
+        return text();
+      },
+    });
+    await adapter.run("summarize");
+    expect(body).not.toContain(process.env.GEMINI_API_KEY!);
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+});

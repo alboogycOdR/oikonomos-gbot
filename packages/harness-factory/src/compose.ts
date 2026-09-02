@@ -72,11 +72,13 @@ const l1Mod = await import(new URL(`./${["hooks", "pretooluse.js"].join("/")}`, 
 const postMod = await import(new URL(`./${["hooks", "posttooluse.js"].join("/")}`, import.meta.url).href);
 const l2Mod = await import(new URL(`./${["l2", "allowed-tools.js"].join("/")}`, import.meta.url).href);
 const l3Mod = await import(new URL(`./${["l3", "canusetool.js"].join("/")}`, import.meta.url).href);
+const geminiMod = await import(new URL(`./${["providers", "gemini.js"].join("/")}`, import.meta.url).href);
 
 const createL1PreToolUseHook = l1Mod.createL1PreToolUseHook as typeof l1Mod.createL1PreToolUseHook;
 const createPostToolUseHook = postMod.createPostToolUseHook as typeof postMod.createPostToolUseHook;
 const createL2Policy = l2Mod.createL2Policy as typeof l2Mod.createL2Policy;
 const createL3CanUseTool = l3Mod.createL3CanUseTool as typeof l3Mod.createL3CanUseTool;
+const createGeminiAdapter = geminiMod.createGeminiAdapter as typeof geminiMod.createGeminiAdapter;
 
 /** ADR-001 CAN-02 / directive §6 — same name as the L2 validator fixture. */
 export const CAN02_TIER3_BARE_NAME = "mcp__gmail__send_message";
@@ -157,8 +159,28 @@ export interface SubprocessProviderFactories<TCodex, TGrok> {
   createGrok: (gate: GateSubprocess) => TGrok;
 }
 
+/** Stage-1 Gemini settings accepted by the composition root. */
+export interface GeminiComposeOptions {
+  readonly tools?: readonly {
+    readonly name: string;
+    readonly description?: string;
+    readonly parameters?: Record<string, unknown>;
+    readonly tier: number;
+    execute(arguments_: Record<string, unknown>): Promise<unknown>;
+  }[];
+  readonly fetch?: typeof globalThis.fetch;
+  readonly timeoutMs?: number;
+}
+
 export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unknown> {
   run: L1RunIdentity;
+  /**
+   * Additive provider selection. Undefined deliberately retains the existing
+   * Claude Agent SDK construction path byte-for-byte.
+   */
+  provider?: "claude" | "gemini";
+  /** Gemini's Stage-1 transport/tool settings when provider is "gemini". */
+  gemini?: GeminiComposeOptions;
   /**
    * Optional durable substrate binding for this run. Omitting it preserves
    * the existing per-run composition exactly; the substrate, not the harness,
@@ -204,6 +226,8 @@ export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
     readonly codex?: TCodex;
     readonly grok?: TGrok;
   };
+  /** Present only for an explicit Stage-1 Gemini composition. */
+  readonly gemini?: ReturnType<typeof createGeminiAdapter>;
   readonly mountedTools: readonly MountedTool[];
 }
 
@@ -331,7 +355,13 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     ]),
   );
 
-  const runtime = { harness, broker, providers, mountedTools };
+  const gemini =
+    options.provider === "gemini"
+      ? createGeminiAdapter({ l1, ...(options.gemini ?? {}) })
+      : undefined;
+  const runtime = gemini === undefined
+    ? { harness, broker, providers, mountedTools }
+    : { harness, broker, providers, mountedTools, gemini };
   return environment === undefined ? runtime : { ...runtime, environment };
 }
 
