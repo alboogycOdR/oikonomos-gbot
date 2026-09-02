@@ -1543,8 +1543,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-050
 **Title:** OIK-054 — Wave 1: Google Drive connector
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** S5
 **Priority:** low
 **Spec_References:** WBS OIK-054; Build Handover §4.4; Gap Closure §G1
 **Owned_Paths:** packages/connectors/manifests/google-drive.yaml, evals/golden/suites/google-drive/**
@@ -1555,10 +1555,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Golden suite >=90% via the OIK-051 runner (OIK-054 "Evals ≥90%")
 - [ ] Registration + idempotent re-run recorded
 - [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-050-s5
+**Started_At:** 2026-09-02T10:40:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. Same disposition as TASK-049. Drive sharing/permission changes remain the highest-risk capability in the manifest and remain a candidate for a per-role Require Approval rule (Addendum F §5.4) once roles exist.
+- [2026-09-02T10:40:00Z] [ORCH] Claimed and dispatched to S5, same shape as the just-approved TASK-049.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -1568,8 +1569,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-051
 **Title:** OIK-164 — Composio Connect evaluation spike (recommendation only, no adoption)
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_D_v1.0.md §2 OIK-164, §3 R19; WBS N5
 **Owned_Paths:** dossiers/TASK-051.md
@@ -1578,10 +1579,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Acceptance_Criteria:**
 - [ ] Recommendation addresses N5/data-sovereignty, tier-mapping feasibility, and cost, each explicitly (Addendum D OIK-164 acceptance)
 - [ ] No code, no dependency, no adoption — recommendation only
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-051-cx
+**Started_At:** 2026-09-02T10:40:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged, still low. Addendum F §4.2 keeps OIKONOMOS's own server-side connector-session model, so a Composio recommendation is still a recommendation and still requires an ADR to adopt. If anything the N5/data-sovereignty question is sharper now: a hosted gateway holding a DURABLE session is a bigger exposure than one holding a per-run session.
+- [2026-09-02T10:40:00Z] [ORCH] Claimed and dispatched to CX to fill an idle slot — low-risk, dossier-only, no code.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
