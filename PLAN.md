@@ -2865,7 +2865,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-096
 **Title:** packages/agent-providers — gemini-3.7-flash cost calculator (pure, no I/O)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-011-multi-provider-llm-support.md §5 (per-provider cost table); CLAUDE.md Budget section (R30,000/month ceiling, per-routine budgets from week 5)
@@ -2873,17 +2873,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** —
 **Description:** A small, pure cost-calculation module: `costForUsage({ inputTokens, outputTokens })` returns the USD cost of one Gemini 3.7 Flash turn using its published introductory pricing ($0.75 / 1M input tokens, $3.75 / 1M output tokens, confirmed live 2026-09-02 against https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash). No I/O, no network calls, no dependency on any other package in this wave — this can and should be built and merged independently of TASK-094/095 landing. TASK-095 will import and call it once it exists; this task does not wire it into anything itself.
 **Acceptance_Criteria:**
-- [ ] `costForUsage({ inputTokens: 1000000, outputTokens: 0 })` returns `0.75`; `costForUsage({ inputTokens: 0, outputTokens: 1000000 })` returns `3.75`; a mixed case is tested too
-- [ ] Zero/undefined token counts are handled without throwing (returns `0`, not `NaN` or an exception), tested
-- [ ] Pricing constants are named/exported (not magic numbers inline) so a future price change is a one-line diff, and a comment records the source URL + date they were confirmed
-- [ ] Pure function — no `fetch`, no filesystem, no process env read — asserted (source-level check acceptable)
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-096-s5
+- [x] `costForUsage({ inputTokens: 1000000, outputTokens: 0 })` returns `0.75`; `costForUsage({ inputTokens: 0, outputTokens: 1000000 })` returns `3.75`; a mixed case is tested too
+- [x] Zero/undefined token counts are handled without throwing (returns `0`, not `NaN` or an exception), tested
+- [x] Pricing constants are named/exported (not magic numbers inline) so a future price change is a one-line diff, and a comment records the source URL + date they were confirmed
+- [x] Pure function — no `fetch`, no filesystem, no process env read — asserted (source-level check acceptable)
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-096-s5 (merged, deleted)
 **Started_At:** 2026-09-02T08:05:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/agent-providers/src/{pricing.ts,pricing.test.ts}, dossiers/TASK-096.md
+**Test_Evidence:** agent-providers 78/78 (9 pricing tests). Full pnpm -r test/lint/canaries independently re-run, exit 0.
+**Review_Findings:** APPROVED. Territory clean (2 files + dossier). Constants named `GEMINI_3_7_FLASH_INPUT_USD_PER_MILLION_TOKENS`/`..._OUTPUT_...` with source URL + confirmation date in a comment. `normalizeTokenCount` guard confirmed to handle undefined/null/non-numeric/negative inputs without throwing (tests include a `@ts-expect-error` null case). Confirmed genuinely pure — no fetch/fs/process.env anywhere in the file. Merged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T08:05:00Z
+**Updated_At:** 2026-09-02T09:00:00Z
