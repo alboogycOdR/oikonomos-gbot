@@ -1,8 +1,8 @@
 ---
-plan_version: 6.9
-last_updated: 2026-09-02T18:39:00Z
-overall_status: wave_complete
-orchestrator_notes: "Plan v6.9 - E9.1/E10 WAVE COMPLETE. TASK-100 (two-role e2e ACL proof, security-relevant) reviewed by a different model than CX per ADR-012 SS2.6, APPROVE, merged - closes E10 (Organizational Memory Exchange: TASK-098/099/100/101 all done). Combined with E9.1's completion (TASK-101/102/103/104, web dashboard) earlier this pass, THE ENTIRE WAVE THE USER AUTHORIZED ('proceed with E9.1 and E10, defer all others') IS NOW COMPLETE - 12 tasks (TASK-098 through TASK-104 inclusive, wired through ADR-012's memory/mailbox-extension design), zero E9.2/E9.3/E9.4/E11/E12 work started, matching the user's explicit deferral. Full pnpm -r build (16/16)/test (zero flakes)/lint/canaries (18/18) all green on final verification. Standing retro items accumulated this wave (not yet actioned - owed a dedicated retro pass): (1) dispatch.ps1's two staleness bugs - branch-not-created-on-dispatch, and worktree PLAN.md not refreshed on resume; (2) shared dev-Postgres schema drift risk under concurrent migration testing (role_grants FK silently dropped, found and fixed); (3) a recurring stale-packages/db-dist artifact pattern in fresh worktrees (3+ occurrences, cosmetic - always rebuild the dependency package first before trusting a cross-package test-failure claim); (4) the services/worker Vite server.fs.allow bug (root-caused, fixed, packages/shared/vitest.config.ts); (5) dispatch.ps1 didn't forward DATABASE_URL into detached windows (root-caused, fixed, 419fd94). No further tasks queued or dispatched. Awaiting the user's next scope direction before starting any of E9.2 (mobile)/E9.3 (nonce parity)/E9.4 (Tauri spike)/E11 (routines/budgets)/E12 (observability), all still explicitly deferred."
+plan_version: 7.0
+last_updated: 2026-09-02T19:10:00Z
+overall_status: in_progress
+orchestrator_notes: "Plan v7.0 - PIVOT (user, 2026-09-02): after reviewing the E9.1 dashboard against the real Grok Bot UI, user redirected priority away from governance/ops-console work toward a chat-first product (bot roster, conversation pane, compose box, inline approval cards) - see specs/OIKONOMOS_CHAT_SURFACE_v1.0.md, written this pass from Addendum A E14 + docs/STUDY-grok-bot-018.md + the user's reference screenshot. Opened Wave 'Chat-1' (TASK-105..110), extending apps/dashboard rather than forking a new app, reusing existing auth/approvals/broker/policy unchanged - this wave is a UI+read/compose surface over already-built governance primitives, not new governance work. TASK-105 (schema) and TASK-107 (design system, static fixtures) have no deps and are eligible now; TASK-106 depends on 105; TASK-108 depends on 106+107; TASK-109/110 depend on 108. Dispatching CX->TASK-105, S5->TASK-107 this pass. GB remains deactivated (weekly limit) - user says they will attempt to renew. Visual bar (spec SS2) is graded by ORCH actually looking at rendered output, not just tests passing - flagged explicitly to reviewers. E9.1's ops dashboard (TASK-101-104) and E10 (TASK-098-100) remain done/merged, not reverted - /runs /approvals /evidence routes get folded under /ops/* in TASK-108 rather than deleted. Prior wave's 5 retro items: (4) and (5) already fixed in-session (packages/shared/vitest.config.ts server.fs.allow; dispatch.ps1 DATABASE_URL forwarding, commit 419fd94). (1) dispatch.ps1's two staleness bugs and (2) shared-DB schema drift risk remain open but lower-risk now (GB deactivated, only CX+S5 active reduces concurrent-session collision surface); (3) stale-packages/db-dist is a known cosmetic pattern, rebuild packages/db first before trusting a cross-package failure claim. Standing practice continues: verify worktree PLAN.md/Owned_Paths against master before concluding a repeat blocker is new; confirm shared-Postgres contention flakes via isolated re-run before treating a lone pnpm -r test failure as a regression; adversarial review by a different model required only if a task turns out to need protected-path (packages/broker|policy|approvals|harness-factory) changes - none of Chat-1's tasks are scoped to touch those paths as planned. E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred."
 ---
 
 # Project Plan
@@ -3121,3 +3121,150 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-02T17:00:00Z
+
+### TASK-105
+**Title:** threads/messages schema + DB accessors (Chat-1a)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a); WBS OIK-129, OIK-156
+**Owned_Paths:** infra/postgres/migrations/**, packages/db/src/threads.ts, packages/db/src/messages.ts, packages/db/src/threads.test.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
+**Depends_On:** —
+**Description:** Additive migration creating `threads` and `messages` tables exactly per spec §3 (do not deviate from the column set without flagging ORCH — `role_id` FK to existing `roles`, `run_id` nullable FK to existing `runs`, `role` CHECK constrained to user/bot/system). Add typed accessor functions in `packages/db` (mirror the existing style of `roleMessages.ts`/`seedInboxTriage.ts`): `createThread`, `getThreadsForRole`/`listThreads`, `getOrCreateThreadForRole`, `insertMessage`, `listMessages(threadId, {after?})`. No control-api or dashboard changes in this task — pure data layer. Index on `(thread_id, created_at)` for the polling query. Up/down migration both required and tested (apply, verify shape, revert, verify gone) matching the project's existing migration test convention.
+**Acceptance_Criteria:**
+- [ ] Migration up creates both tables with the exact constraints in spec §3; migration down cleanly reverts; both tested
+- [ ] `createThread`/`getOrCreateThreadForRole` is idempotent per (role_id) for v1's one-thread-per-bot model — calling it twice for the same role returns the same thread, tested
+- [ ] `insertMessage` + `listMessages` round-trip correctly ordered by `created_at`; the `after` cursor works, tested against a real Postgres instance (no mocked DB)
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0 (full recursive suite per CLAUDE.md's amended review standard)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
+
+### TASK-106
+**Title:** control-api thread/message/role endpoints (Chat-1b)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b); WBS OIK-129, OIK-131
+**Owned_Paths:** services/control-api/src/routes/threads.ts, services/control-api/src/routes/roles.ts, services/control-api/src/index.ts (additive route registration only — do not touch existing route handlers), services/control-api/src/**/*.test.ts (new test files only)
+**Depends_On:** TASK-105
+**Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` exactly per spec §4. `POST /roles` creates a bot with the existing default-general-role T1_draft ceiling — reuse whatever role-creation/grant logic `packages/db`/`packages/policy` already expose for the default ceiling; do not hand-roll a new tier constant. `POST /threads/:id/messages` inserts the user message then creates a task+run via control-api's **existing** task-creation code path — grep for it before writing new run-lifecycle logic, this task must not duplicate it. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do — no route added here may skip auth. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH rather than editing those paths (protected, adversarial review required).
+**Acceptance_Criteria:**
+- [ ] All 5 new endpoints implemented and covered by the OpenAPI doc generation (existing `getOpenApiDocument` picks them up)
+- [ ] Every new route rejects an unauthenticated request (no session cookie) with 401 — tested, not just "auth middleware is attached"
+- [ ] `POST /threads/:id/messages` provably creates a task+run reusing the existing creation path (test asserts on the same code path / shared helper, not a parallel reimplementation) and inserts the user message row
+- [ ] A bot message awaiting approval round-trips its nonce/action_render/status through `GET /threads/:id/messages`, tested against a real pending approval fixture
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
+
+### TASK-107
+**Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §2, §5, §6 (Chat-1c) — the visual bar, graded on rendered output, not just code
+**Owned_Paths:** apps/dashboard/src/components/chat/**, apps/dashboard/tailwind.config.ts, apps/dashboard/postcss.config.js, apps/dashboard/src/index.css, apps/dashboard/package.json (add Tailwind/component deps only — do not touch existing dependencies' versions)
+**Depends_On:** —
+**Description:** Install and configure Tailwind CSS in `apps/dashboard` (currently unstyled per spec §0 background). Build the component set from spec §5 against **static fixture data only** (no API calls yet — that's Chat-1d): `<ChatShell>` (sidebar/conversation/right-panel three-column layout), `<BotSidebar>`, `<ConversationPane>` + `<MessageBubble>`, `<ComposeBox>`, `<RightPanel>` with Members/Routines tabs. Match the reference screenshot's dark, chrome-like desktop aesthetic (spec §2) — persistent sidebar, distinguishable user/bot bubbles, avatar-by-initials, typing/in-flight indicator state (can be a static prop for this task; wiring comes in Chat-1d). This is explicitly graded on how it looks rendered, not just on tests passing — take a screenshot of the fixture-data render and include it in your dossier/progress note.
+**Acceptance_Criteria:**
+- [ ] No unstyled browser-default form controls or tables remain in the new components; Tailwind is genuinely wired (a real utility class renders real CSS, verified by inspecting build output, not just present in JSX)
+- [ ] `<ChatShell>` renders the three-column layout with static fixture data: bot list in sidebar, a multi-message conversation with distinguishable user/bot bubbles, a functioning (visually, not yet wired) compose box, right panel with Members/Routines tabs
+- [ ] Component tests render each component with fixture props and assert key structural elements are present (not snapshot-only)
+- [ ] Dossier includes a screenshot or equivalent rendered evidence of the fixture-data ChatShell — reviewer must be able to see, not just read, that this looks like the reference UI
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
+
+### TASK-108
+**Title:** wire ChatShell to live API + routing (Chat-1d)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6 (Chat-1d)
+**Owned_Paths:** apps/dashboard/src/App.tsx, apps/dashboard/src/pages/**, apps/dashboard/src/lib/**, apps/dashboard/src/main.tsx
+**Depends_On:** TASK-106, TASK-107
+**Description:** Wire `<ChatShell>` (Chat-1c's components, do not modify `components/chat/**`) to the live endpoints from Chat-1b: sidebar from `GET /threads`, sending a message via `POST /threads/:id/messages`, transcript via `GET /threads/:id/messages` polled every ~2s while a run is in flight (stop polling once the run reaches a terminal state or no run is pending — do not poll forever on an idle thread). Re-route the app: `/` becomes the chat surface (default landing route, matching the product-shape bar in spec §1); existing `/runs`, `/approvals`, `/evidence` routes move under `/ops/*` prefix, reachable but out of primary navigation. Reuse `lib/api.ts`'s existing auth/session handling as-is.
+**Acceptance_Criteria:**
+- [ ] Logging in and landing on `/` shows the chat surface with real threads from the database, not fixture data
+- [ ] Sending a message in the compose box results in a real task+run being created (verifiable via `/ops/runs`) and the bot's reply appearing in the pane once the run completes, without a page reload
+- [ ] Polling stops once the run is terminal or no run is in flight for that thread (tested — assert the poll interval clears)
+- [ ] `/ops/runs`, `/ops/approvals`, `/ops/evidence` still function exactly as `/runs`/`/approvals`/`/evidence` did before this task (regression check, not just "still compiles")
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
+
+### TASK-109
+**Title:** inline ApprovalCard in chat (Chat-1e)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6, §7 (Chat-1e); ADR-004 (render provenance); TASK-058/082 precedent (mutation-proof authorization tests)
+**Owned_Paths:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx
+**Depends_On:** TASK-108
+**Description:** Render `action_render` verbatim as plain text inside the conversation (never interpreted as Markdown/HTML — same rule TASK-082 enforced for the Telegram gateway; an agent-controlled `canonicalJson(input)` value could otherwise inject a rendered link). Approve/Edit/Reject buttons call the existing `POST /approvals/:nonce/decide` unchanged. Card shows status (pending/granted/rejected/expired) and disables its own buttons once decided, reflecting the real 409-on-redecide behavior TASK-103 already handles in the ops approvals page — reuse that call pattern rather than reinventing it.
+**Acceptance_Criteria:**
+- [ ] A pending approval surfaced in a thread renders `action_render` verbatim (a mutation test: feed a render string containing Markdown/HTML syntax and assert it appears as literal text, not interpreted)
+- [ ] Approve/Reject call the real decide endpoint with the real nonce; the nonce never appears in the URL bar, browser history, or persisted client storage — tested (same standard TASK-103 already proved for the ops approvals page)
+- [ ] A second decide attempt on an already-decided approval is handled gracefully (409), tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
+
+### TASK-110
+**Title:** "Create bot" flow (Chat-1f)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
+**Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx
+**Depends_On:** TASK-106, TASK-108, TASK-109
+**Description:** A "+ New bot" affordance in the sidebar (from Chat-1c/1d) opens a minimal dialog: name + description, submits to Chat-1b's `POST /roles`, and on success immediately creates/opens a thread for the new bot via `POST /threads` and navigates to it — matching spec §1's "no manifest, role definition, or routine authored by the user first" bar. No tier/capability picker in this dialog; the default ceiling is applied server-side (Chat-1b's responsibility, already built).
+**Acceptance_Criteria:**
+- [ ] Creating a bot via the dialog results in a real `roles` row with the default T1_draft ceiling (not user-settable from this UI) — tested
+- [ ] Immediately after creation, the user lands in a working conversation with the new bot (thread created, compose box usable) without navigating away
+- [ ] Empty/whitespace-only bot name is rejected client-side with a visible message, no request sent
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T19:10:00Z
