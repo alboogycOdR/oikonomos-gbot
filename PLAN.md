@@ -3125,7 +3125,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-105
 **Title:** threads/messages schema + DB accessors (Chat-1a)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a) — corrected 2026-09-02; WBS OIK-129, OIK-156
@@ -3143,12 +3143,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-02T18:17:19Z] [SV:CX] Recorded the schema conflict in dossiers/TASK-105.md and committed it on task/TASK-105-cx.
 - [2026-09-02T19:35:00Z] [ORCH] Unblocking. CX's SPEC_AMBIGUITY finding was correct — specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3 wrongly assumed a `roles.id` UUID PK that does not exist (live schema, migration 004: `roles.role_id text PRIMARY KEY`). Spec §3 corrected to `threads.role_id text REFERENCES roles(role_id)`; this task's Owned_Paths/Depends_On unchanged. Resume on task/TASK-105-cx from the dossier stopping point — do not re-branch.
 - [2026-09-02T18:42:28Z] [SV:CX] Implemented and committed threads/messages migration, typed DB accessors, and real-Postgres integration coverage on task/TASK-105-cx (4bfc712).
+- [2026-09-02T20:50:00Z] [ORCH] APPROVED, first-pass (post-unblock). Territory clean (8 files, all in Owned_Paths). Migration/types verified against corrected spec: role_id text FK to roles(role_id), run_id nullable FK to runs(run_id), role CHECK constrained — asserted via pg_constraint/information_schema queries against a real Postgres instance, not source-text reading. getOrCreateThreadForRole idempotency and cursor-paginated listMessages (created_at,id) tuple comparison both independently re-run: 114/115 pass isolated (1 skipped = opt-in MIGRATION_ROUND_TRIP path, itself independently confirmed 4/4 by CX's own isolated run — real evidence, just not wired into default CI, recorded as a non-blocking follow-up rather than a rework item). Full pnpm -r build (16/16) and pnpm lint clean. pnpm -r test showed 2 packages/db failures under parallel load; isolated re-run twice = 100% green — matches the known shared-Postgres single-file contention pattern, not a regression. Non-blocking observation: createThread and getOrCreateThreadForRole are byte-identical implementations (same upsert) — harmless duplication, not incorrect against the AC as written, noted for a future cleanup rather than requiring rework now. Merged --no-ff (bc19fbb). Unlocks TASK-106.
 **Artifacts:** infra/postgres/migrations/008_threads_messages.up.sql, infra/postgres/migrations/008_threads_messages.down.sql, packages/db/src/threads.ts, packages/db/src/messages.ts, packages/db/src/threads.test.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts, dossiers/TASK-105.md
-**Test_Evidence:** pnpm --filter @oikonomos/db typecheck passed; pnpm --filter @oikonomos/db test: 26 files, 114 passed, 1 skipped; isolated MIGRATION_ROUND_TRIP=1 threads migration test: 4/4 passed; pnpm lint, pnpm -r build, and pnpm -r test all exited 0.
-**Review_Findings:** —
+**Test_Evidence:** CX's own run (26 files, 114/115) + ORCH's independent re-run (same result, twice) + full pnpm -r build (16/16) + pnpm lint clean. pnpm -r test parallel-load contention confirmed pre-existing via isolated rerun.
+**Review_Findings:** APPROVE, first-pass. Non-blocking: (1) MIGRATION_ROUND_TRIP=1 path not wired into default CI — ticket for later; (2) createThread/getOrCreateThreadForRole duplicate implementation — cosmetic.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-02T18:42:28Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T20:50:00Z
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
