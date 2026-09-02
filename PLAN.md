@@ -1,8 +1,8 @@
 ---
-plan_version: 6.6
-last_updated: 2026-09-02T16:35:00Z
+plan_version: 6.7
+last_updated: 2026-09-02T16:40:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.6 - TASK-099 (typed handoff, fact-reference not value-copy) reviewed (different model, ADR-012 security-relevant-by-policy), merged, closed out - unlocks TASK-100 (two-role e2e proof + adversarial ACL review, CX, security-relevant). TASK-102 finalized done/merged last pass; TASK-103 (approval inbox, S5) dispatched and in flight. Two DB-contention flakes hit during this pass's full pnpm -r test re-verification (packages/approvals, packages/db/roles.test.ts) - both confirmed pre-existing/unrelated via isolated 100%-pass re-runs, same shared-Postgres contention pattern as TASK-097/TASK-049 (not a regression from today's work; standing retro item - shared dev container needs per-worktree isolation or a CI schema-integrity check). services/worker Vite server.fs.allow bug and the role_grants FK schema-drift bug from the previous pass both remain fixed and green. Next: dispatch TASK-100 (CX) now that TASK-099 unlocked it, monitor TASK-103 (S5), continue the E9.1/E10 wave under standing rules (mandatory pnpm -r build gate, adversarial review by a different model for security-relevant work, worktree-staleness verification before every redispatch, 3rd-territory-gap escalates to the user, GB deactivated)."
+orchestrator_notes: "Plan v6.7 - TASK-103 (approval inbox) reviewed, merged, closed out - unlocks TASK-104 (evidence/audit browser + PWA, final E9.1 dashboard piece, S5), now claimed+dispatched. TASK-100 (CX, two-role e2e ACL proof, security-relevant) still in flight as of this pass - CX self-reports independently; when it lands, adversarial review MUST be by a different model than CX per ADR-012 SS2.6. E9.1 (web dashboard) is now 3/3 done (TASK-102/103, TASK-104 dispatched) pending only TASK-104's own review. E10 (OME) has TASK-098/099 done, TASK-100 in flight, TASK-101 (control-api auth, prerequisite for the dashboard) already done - only TASK-100 remains to close E10 entirely. Full pnpm -r test/build/lint all green with zero flakes on this pass's re-verification (contrast with two isolated shared-Postgres contention flakes seen during TASK-099's pass - confirmed pre-existing/unrelated, standing retro item). Next: check TASK-100, monitor TASK-104, once both land the entire E9.1/E10 wave the user authorized is complete - prepare a wave-end digest and await further scope direction (E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred)."
 ---
 
 # Project Plan
@@ -3069,7 +3069,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-103
 **Title:** apps/dashboard — approval inbox (E9.1b)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Master WBS OIK-089 ("same nonce-binding as Telegram; one approval service, many surfaces")
@@ -3077,25 +3077,26 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-102
 **Description:** Single-owner continuation of TASK-102 (same package, sequenced not parallelized). An approval inbox view: list pending approvals from `GET /approvals` (the exact action render text, same as the Telegram card's content — one approval service, one canonical rendering, per OIK-089's own bar), with Approve/Reject buttons calling `POST /approvals/:nonce/decide`. The nonce itself must never appear in the page's URL, local storage, or any client-visible state beyond the single request that consumes it — same "nonce stays in this process until sent to control-api" discipline `gateway-telegram`'s own approvals module already follows (read `services/gateway-telegram/src/approvals/index.ts`'s doc comment for the exact pattern to mirror).
 **Acceptance_Criteria:**
-- [ ] Pending approvals list matches `GET /approvals`'s real data, showing the actual `actionRender` text verbatim (not a re-derived summary)
-- [ ] Approve/Reject call `POST /approvals/:nonce/decide` and the UI reflects the real result (granted/rejected/already-decided-409)
-- [ ] The nonce never appears in the URL bar, browser history, or persisted client storage — tested/asserted, not just eyeballed
-- [ ] A second decide attempt on an already-decided approval is handled gracefully (matches the API's 409), tested
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-103-s5
+- [x] Pending approvals list matches `GET /approvals`'s real data, showing the actual `actionRender` text verbatim (not a re-derived summary)
+- [x] Approve/Reject call `POST /approvals/:nonce/decide` and the UI reflects the real result (granted/rejected/already-decided-409)
+- [x] The nonce never appears in the URL bar, browser history, or persisted client storage — tested/asserted, not just eyeballed
+- [x] A second decide attempt on an already-decided approval is handled gracefully (matches the API's 409), tested
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-103-s5 (merged)
 **Started_At:** 2026-09-02T16:30:00Z
 **Progress_Notes:**
 - [2026-09-02T16:30:00Z] [ORCH] TASK-102 (dependency) done/merged — claiming and dispatching S5 on the same apps/dashboard worktree (rebased fresh onto master first).
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-02T16:40:00Z] [ORCH] S5 self-reported needs_review, all 5 ACs met. Territory clean (4 files, all apps/dashboard/**). Independent review APPROVE, no rework findings (agentId a3fafbd4ebe76d88c) — actionRender rendered verbatim via `<pre>`, real decide calls with correct request bodies, dedicated test explicitly asserts window.location/history/localStorage/sessionStorage never contain the nonce, 409-path has its own passing test. One minor non-blocking observation (nonce interpolated into an in-memory-only thrown Error message on non-409 failures — never logged/persisted) noted, not a rework item. Merged `--no-ff`. Full `pnpm -r build` (15/15) and `pnpm -r test` independently re-run clean, no flakes this pass, `pnpm lint` clean.
+**Artifacts:** apps/dashboard/src/{App.tsx, lib/api.ts, pages/ApprovalInboxPage.tsx, pages/ApprovalInboxPage.test.tsx}
+**Test_Evidence:** Reviewer's own run (pnpm --filter @oikonomos/dashboard test 8/8, build clean) + ORCH's post-merge pnpm -r build (15/15) and pnpm -r test (all 15 packages green, no flakes) + pnpm lint clean
+**Review_Findings:** APPROVE, first-pass, no rework findings (one minor non-blocking observation, noted above).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T16:30:00Z
+**Updated_At:** 2026-09-02T16:40:00Z
 
 ### TASK-104
 **Title:** apps/dashboard — evidence gallery/audit browser + PWA packaging (E9.1c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Master WBS OIK-090 ("any run reconstructible from UI alone"), OIK-091 (PWA, folded in here to keep the dashboard task count reasonable — same package, same builder, small addition)
@@ -3106,12 +3107,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Given any run_id, the audit browser reconstructs its full decision trail (every policy.decision event, verdict, reason where present) — no direct DB access, everything through `GET /runs/:id/evidence`
 - [ ] PWA manifest present, app is installable (Lighthouse-installable or equivalent check), service worker caches only the static app shell — NOT API responses (approval/run state must always be live, never served stale from a cache)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-104-s5
+**Started_At:** 2026-09-02T16:41:00Z
+**Progress_Notes:**
+- [2026-09-02T16:41:00Z] [ORCH] TASK-103 (dependency) done/merged — claiming and dispatching S5 on a freshly-rebased worktree. Final piece of the E9.1 dashboard wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T12:00:00Z
+**Updated_At:** 2026-09-02T16:41:00Z
