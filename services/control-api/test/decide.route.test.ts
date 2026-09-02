@@ -80,11 +80,15 @@ function createMemoryStore(rows: Map<string, Approval>): ApprovalStore {
   };
 }
 
+const TEST_TOKEN = "task-101-fixture-shared-secret";
+const AUTH_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` };
+
 function buildDeps(store: ApprovalStore): ControlApiDeps {
   return {
     createTask: () => {
       throw new Error("not used by this fixture");
     },
+    listTasks: async () => ({ tasks: [], nextCursor: null }),
     listRuns: async () => ({ runs: [], nextCursor: null }),
     getRun: async () => null,
     listPendingApprovals: async () => [],
@@ -97,11 +101,12 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
   it("approves a pending approval; a second decide on the same nonce affects zero rows (N8 double-decide)", async () => {
     const nonce = randomUUID();
     const rows = new Map([[nonce, fixtureApproval(nonce)]]);
-    const app = buildApp(buildDeps(createMemoryStore(rows)), { logger: false });
+    const app = buildApp(buildDeps(createMemoryStore(rows)), { authToken: TEST_TOKEN, logger: false });
 
     const first = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(first.statusCode).toBe(200);
@@ -111,6 +116,7 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
     const second = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(second.statusCode).toBe(409);
@@ -122,11 +128,12 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
   it("a reject after a grant on the same nonce affects zero rows — exactly one decision wins", async () => {
     const nonce = randomUUID();
     const rows = new Map([[nonce, fixtureApproval(nonce)]]);
-    const app = buildApp(buildDeps(createMemoryStore(rows)), { logger: false });
+    const app = buildApp(buildDeps(createMemoryStore(rows)), { authToken: TEST_TOKEN, logger: false });
 
     const grant = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(grant.statusCode).toBe(200);
@@ -134,6 +141,7 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
     const reject = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "rejected", decidedBy: "telegram:user:2" },
     });
     expect(reject.statusCode).toBe(409);
@@ -145,11 +153,12 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
   it("refuses to grant an already-expired pending row", async () => {
     const nonce = randomUUID();
     const rows = new Map([[nonce, fixtureApproval(nonce, { expiresAt: new Date(Date.now() - 1000) })]]);
-    const app = buildApp(buildDeps(createMemoryStore(rows)), { logger: false });
+    const app = buildApp(buildDeps(createMemoryStore(rows)), { authToken: TEST_TOKEN, logger: false });
 
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${nonce}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(409);
@@ -159,10 +168,11 @@ describe("POST /approvals/:nonce/decide — real packages/approvals decideApprov
   });
 
   it("returns 409 for a nonce with no matching approval", async () => {
-    const app = buildApp(buildDeps(createMemoryStore(new Map())), { logger: false });
+    const app = buildApp(buildDeps(createMemoryStore(new Map())), { authToken: TEST_TOKEN, logger: false });
     const res = await app.inject({
       method: "POST",
       url: `/approvals/${randomUUID()}/decide`,
+      headers: AUTH_HEADERS,
       payload: { decision: "granted", decidedBy: "telegram:user:1" },
     });
     expect(res.statusCode).toBe(409);
