@@ -1,0 +1,45 @@
+connector_id: google-drive
+account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
+mcp_server: { name: google-drive, transport: remote, url_ref: secret://mcp/google-drive/url }
+oauth_scopes: [drive.readonly, drive.file]
+tools:
+  - tool_name: mcp__google-drive__list_recent_files
+    capability_id: drive.list
+    default_tier: T0_observe
+  - tool_name: mcp__google-drive__search_files
+    capability_id: drive.search
+    default_tier: T0_observe
+  - tool_name: mcp__google-drive__get_file_metadata
+    capability_id: drive.read_metadata
+    default_tier: T0_observe
+  - tool_name: mcp__google-drive__read_file_content
+    capability_id: drive.read_content
+    default_tier: T0_observe
+  - tool_name: mcp__google-drive__download_file_content
+    capability_id: drive.download
+    default_tier: T0_observe
+  - tool_name: mcp__google-drive__create_file
+    capability_id: drive.create_file
+    default_tier: T2_internal
+  - tool_name: mcp__google-drive__update_file
+    capability_id: drive.update_file
+    default_tier: T2_internal
+  - tool_name: mcp__google-drive__copy_file
+    capability_id: drive.copy_file
+    default_tier: T2_internal
+  - tool_name: mcp__google-drive__trash_file
+    capability_id: drive.trash_file
+    default_tier: T2_internal
+  - tool_name: mcp__google-drive__share_file
+    capability_id: drive.share_file
+    default_tier: T3_external
+    enabled: false                                 # until G-CONN (externally-visible; grants access/notifies)
+  - tool_name: mcp__google-drive__get_file_permissions
+    capability_id: drive.get_permissions
+    default_tier: T1_draft
+role_grants:
+  - role_id: drive-assistant
+    max_tier: T2_internal
+    constraints: { rate_per_hour: 60, domains: ["*"] }
+evals: { suite: evals/golden/suites/google-drive, min_pass_rate: 0.90 }   # ADR-008: suites/<id>
+review: { onboarded_by: "", date: "", scope_justification: "" }

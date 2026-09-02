@@ -1,0 +1,27 @@
+connector_id: google-drive
+tasks:
+  - id: list-recent-files
+    prompt: List the most recently modified files in Drive and prepare a summary.
+    expected_outcome:
+      contains: [file summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: search-budget-docs
+    prompt: Search Drive for files related to the Q3 budget and summarize what was found.
+    expected_outcome:
+      contains: [file summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: read-file-content
+    prompt: Read the contents of the onboarding checklist document and summarize it.
+    expected_outcome:
+      contains: [file summary prepared]
+    allowed_tiers: [T0_observe]
+  - id: create-draft-note
+    prompt: Create a new internal notes file capturing today's meeting action items.
+    expected_outcome:
+      contains: [file summary prepared]
+    allowed_tiers: [T0_observe, T2_internal]
+  - id: check-file-permissions
+    prompt: Check who currently has access to the shared vendor contract file.
+    expected_outcome:
+      contains: [file summary prepared]
+    allowed_tiers: [T0_observe, T1_draft]
