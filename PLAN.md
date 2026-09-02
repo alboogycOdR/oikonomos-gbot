@@ -2955,8 +2955,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-099
 **Title:** services/workspace — typed handoff variant carrying a memory fact reference
-**Status:** pending
-**Assigned_To:** S5
+**Status:** claimed
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Master WBS OIK-102; docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2.4-2.5
 **Owned_Paths:** services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts, services/workspace/src/index.ts
@@ -2968,15 +2968,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The receiving side can take a typed handoff's `factRef` and successfully resolve it back to the live fact via TASK-098's query layer, tested end-to-end (mailbox → memory)
 - [ ] `handoffKind` without a matching `factRef` (or vice versa) is rejected before any DB write — tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-099-cx
+**Started_At:** 2026-09-02T14:20:00Z
+**Progress_Notes:**
+- [2026-09-02T14:20:00Z] [ORCH] TASK-098 (dependency) merged. Reassigned from S5 to CX at dispatch — S5 was busy with TASK-102, CX was idle after TASK-098 merged; no protected-path concern either way, reassignment is purely for parallelism.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T12:00:00Z
+**Updated_At:** 2026-09-02T14:20:00Z
 
 ### TASK-100
 **Title:** Two-role typed-handoff end-to-end proof (research → drafting) + adversarial ACL review ⚑ security-relevant
