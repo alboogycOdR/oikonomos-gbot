@@ -1543,7 +1543,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-050
 **Title:** OIK-054 — Wave 1: Google Drive connector
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** WBS OIK-054; Build Handover §4.4; Gap Closure §G1
@@ -1552,20 +1552,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** Same shape as TASK-048 for Google Drive: manifest (list/read/search T0, file create/update T2, sharing/permission changes T3_external disabled until G-CONN), golden suite 3–5 tasks >=90%, registration exercised. `account_ownership: basileia`. Backlog: assigned at dispatch once 043/044/046 are merged.
 **Acceptance_Criteria:**
 - [ ] Manifest validates; sharing/permission changes are T3_external and disabled until G-CONN
-- [ ] Golden suite >=90% via the OIK-051 runner (OIK-054 "Evals ≥90%")
-- [ ] Registration + idempotent re-run recorded
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-050-s5
+- [x] Golden suite >=90% via the OIK-051 runner (OIK-054 "Evals ≥90%")
+- [x] Registration + idempotent re-run recorded
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-050-s5 (merged, deleted)
 **Started_At:** 2026-09-02T10:40:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged. Same disposition as TASK-049. Drive sharing/permission changes remain the highest-risk capability in the manifest and remain a candidate for a per-role Require Approval rule (Addendum F §5.4) once roles exist.
 - [2026-09-02T10:40:00Z] [ORCH] Claimed and dispatched to S5, same shape as the just-approved TASK-049.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-02T11:10:00Z] [ORCH] Fixed a spurious pre-review environment issue (missing services/workspace @oikonomos/shared symlink after TASK-097's lockfile update) before dispatching review — not this task's fault, already correctly disclosed by the builder.
+**Artifacts:** packages/connectors/manifests/google-drive.yaml, evals/golden/suites/google-drive/suite.yaml
+**Test_Evidence:** Manifest CLI: ok, 3/3 manifests. Golden suite independently re-run both directions (positive: pass_rate 1/5 harness_invocations; negative: pass_rate 0, exit 1). pnpm -r test 17/17 packages green (0 failures), services/workspace 29/29 confirming the symlink fix held. pnpm -r build 16/16 clean. pnpm lint clean. pnpm canaries 17/17.
+**Review_Findings:** APPROVED. Territory clean (2 files, no dossier). Manifest structurally matches google-calendar.yaml exactly. share_file (T3_external) correctly disabled until G-CONN — the highest-risk capability. get_file_permissions (read-only lookup, T1_draft, enabled) correctly distinguished from the actual sharing-change action. Registration upsert mechanism confirmed intact (same as TASK-049's review). Merged. **Closes TASK-047's Wave-1 connector set — Gmail, Calendar, and Drive all now have onboarding records once google-drive.md is written.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_At:** 2026-09-02T11:20:00Z
 
 ### TASK-051
 **Title:** OIK-164 — Composio Connect evaluation spike (recommendation only, no adoption)
