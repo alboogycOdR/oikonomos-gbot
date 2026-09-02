@@ -32,6 +32,14 @@ export {
   type CreateSubagentL1Options,
   type SubagentRunIdentity,
 } from "./subagent.js";
+export {
+  bindEnvironment,
+  type BoundEnvironment,
+  type ConnectorSessionPool,
+  type EnvironmentAuditIdentity,
+  type EnvironmentOptions,
+  type RunIdentity,
+} from "./environment.js";
 
 export type {
   AgentSdkQueryFn,

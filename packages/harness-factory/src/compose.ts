@@ -15,6 +15,11 @@ import {
   type PreToolUsePortDecision,
 } from "./index.js";
 import {
+  bindEnvironment,
+  type BoundEnvironment,
+  type EnvironmentOptions,
+} from "./environment.js";
+import {
   decorateTool,
   withApprovalScope,
   withMandatoryCallId,
@@ -154,6 +159,12 @@ export interface SubprocessProviderFactories<TCodex, TGrok> {
 
 export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unknown> {
   run: L1RunIdentity;
+  /**
+   * Optional durable substrate binding for this run. Omitting it preserves
+   * the existing per-run composition exactly; the substrate, not the harness,
+   * owns persistence and connector-session lifetime (OIK-207).
+   */
+  environment?: EnvironmentOptions;
   allowedTools: readonly string[];
   auditSink: CompletionAuditSink;
   /**
@@ -187,6 +198,8 @@ export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unkno
 export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
   readonly harness: Harness;
   readonly broker: BrokerHttpPort;
+  /** Present only when the caller supplies the optional durable environment binding. */
+  readonly environment?: BoundEnvironment;
   readonly providers: {
     readonly codex?: TCodex;
     readonly grok?: TGrok;
@@ -261,6 +274,8 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
   if (typeof options.auditSink?.writeCompletionEvidence !== "function") {
     throw new Error("composeHarness requires an injected completion audit sink");
   }
+  const environment =
+    options.environment === undefined ? undefined : bindEnvironment(options.run, options.environment);
 
   const broker = resolveBroker(options);
   const l1 = withPark(
@@ -316,7 +331,8 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     ]),
   );
 
-  return { harness, broker, providers, mountedTools };
+  const runtime = { harness, broker, providers, mountedTools };
+  return environment === undefined ? runtime : { ...runtime, environment };
 }
 
 function resolveBroker<TDeps>(options: ComposeOptions<TDeps>): BrokerHttpPort {
