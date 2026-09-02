@@ -1,8 +1,8 @@
 ---
-plan_version: 6.7
-last_updated: 2026-09-02T16:40:00Z
+plan_version: 6.8
+last_updated: 2026-09-02T17:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.7 - TASK-103 (approval inbox) reviewed, merged, closed out - unlocks TASK-104 (evidence/audit browser + PWA, final E9.1 dashboard piece, S5), now claimed+dispatched. TASK-100 (CX, two-role e2e ACL proof, security-relevant) still in flight as of this pass - CX self-reports independently; when it lands, adversarial review MUST be by a different model than CX per ADR-012 SS2.6. E9.1 (web dashboard) is now 3/3 done (TASK-102/103, TASK-104 dispatched) pending only TASK-104's own review. E10 (OME) has TASK-098/099 done, TASK-100 in flight, TASK-101 (control-api auth, prerequisite for the dashboard) already done - only TASK-100 remains to close E10 entirely. Full pnpm -r test/build/lint all green with zero flakes on this pass's re-verification (contrast with two isolated shared-Postgres contention flakes seen during TASK-099's pass - confirmed pre-existing/unrelated, standing retro item). Next: check TASK-100, monitor TASK-104, once both land the entire E9.1/E10 wave the user authorized is complete - prepare a wave-end digest and await further scope direction (E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred)."
+orchestrator_notes: "Plan v6.8 - TASK-104 (evidence browser + PWA) reviewed, merged, closed out. E9.1 (web dashboard) is now FULLY COMPLETE: TASK-101 (control-api auth gate) + TASK-102/103/104 (dashboard scaffold/approvals/evidence+PWA) all done, reviewed, merged - the entire dashboard surface the user authorized is shipped. E10 (OME) has TASK-098/099/101 done; only TASK-100 (CX, two-role e2e ACL proof, security-relevant) remains in flight to close E10 entirely - when it lands, adversarial review MUST be a DIFFERENT model than CX per ADR-012 SS2.6. Recurring worktree-hygiene finding this pass (3rd occurrence, retro item): a fresh worktree checkout doesn't carry a built dist/ for dependency packages, so a builder's own repo-wide pnpm -r test can misdiagnose a stale-packages/db-dist symptom as an unrelated pre-existing failure - always rebuild the dependency package first before trusting such a claim. Full pnpm -r build/test/lint all green, zero flakes, on this pass's re-verification. Next: check/finalize TASK-100 - once it lands the ENTIRE E9.1/E10 wave the user explicitly authorized ('proceed with E9.1 and E10, defer all others') is complete. Prepare a wave-end digest and await further scope direction (E9.2 mobile/E9.3 nonce-parity/E9.4 Tauri spike/E11 routines-budgets/E12 observability remain explicitly deferred)."
 ---
 
 # Project Plan
@@ -3096,7 +3096,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-104
 **Title:** apps/dashboard — evidence gallery/audit browser + PWA packaging (E9.1c)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Master WBS OIK-090 ("any run reconstructible from UI alone"), OIK-091 (PWA, folded in here to keep the dashboard task count reasonable — same package, same builder, small addition)
@@ -3104,16 +3104,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-103
 **Description:** Single-owner continuation, final piece of the E9.1 dashboard wave. An evidence/audit browser: given a run, show its full audit_events trail (event type, verdict, capability, tier, timestamp) in one reconstructible view — OIK-090's bar is literally "any run reconstructible from UI alone," so this view plus TASK-102's run detail together must be sufficient to answer "what did this run do and why" with no other tool. Add a PWA manifest (`manifest.json`) and a minimal service worker (offline app-shell caching only — do not attempt to cache live API data offline, that would show stale approval/run state, which is actively dangerous for an approval surface) so the dashboard is installable per OIK-091.
 **Acceptance_Criteria:**
-- [ ] Given any run_id, the audit browser reconstructs its full decision trail (every policy.decision event, verdict, reason where present) — no direct DB access, everything through `GET /runs/:id/evidence`
-- [ ] PWA manifest present, app is installable (Lighthouse-installable or equivalent check), service worker caches only the static app shell — NOT API responses (approval/run state must always be live, never served stale from a cache)
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-104-s5
+- [x] Given any run_id, the audit browser reconstructs its full decision trail (every policy.decision event, verdict, reason where present) — no direct DB access, everything through `GET /runs/:id/evidence`
+- [x] PWA manifest present, app is installable (Lighthouse-installable or equivalent check), service worker caches only the static app shell — NOT API responses (approval/run state must always be live, never served stale from a cache)
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-104-s5 (merged)
 **Started_At:** 2026-09-02T16:41:00Z
 **Progress_Notes:**
 - [2026-09-02T16:41:00Z] [ORCH] TASK-103 (dependency) done/merged — claiming and dispatching S5 on a freshly-rebased worktree. Final piece of the E9.1 dashboard wave.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-02T17:00:00Z] [ORCH] S5 self-reported needs_review, own package fully green. Flagged a services/workspace/mailbox.test.ts failure in pnpm -r test as pre-existing/unrelated (outside Owned_Paths) — independently verified by the reviewer as a stale-packages/db-dist artifact in the worktree (rebuilding packages/db first made it pass 30/33+3 skipped clean), not a real regression, matching the recurring TASK-097/TASK-099 pattern. Territory clean (14 files, apps/dashboard/**+dossier only). Independent review APPROVE, no findings (agentId a65272afeadfed604): full decision trail sourced only from GET /runs/:id/evidence (no direct DB access, no mock data, grepped for counterexamples); sw.js's fetch handler explicitly bypasses /runs, /approvals, /auth BEFORE any cache logic (the safer of two designs, statically guarded by a source-order test against future reordering); registerServiceWorker genuinely wired into main.tsx, not dead code; manifest.json structurally valid. Merged `--no-ff`. Full pnpm -r build (15/15) and pnpm -r test independently re-run — fully green, zero flakes, lint clean. **Closes E9.1 (web dashboard) entirely — TASK-102/103/104 all done.**
+**Artifacts:** apps/dashboard/{index.html, public/{manifest.json,sw.js,icons/*}, scripts/gen-icons.cjs, src/{App.tsx,main.tsx,lib/registerServiceWorker.*,pages/EvidenceBrowserPage.*,pwa.test.ts}}, dossiers/TASK-104.md
+**Test_Evidence:** Reviewer's own run (pnpm --filter @oikonomos/dashboard test 16/16, build clean) + independent stale-dist reproduction of the flagged workspace failure + ORCH's post-merge pnpm -r build (15/15) and pnpm -r test (all 15 packages green, zero flakes), lint clean
+**Review_Findings:** APPROVE, first-pass, no findings.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T16:41:00Z
+**Updated_At:** 2026-09-02T17:00:00Z
