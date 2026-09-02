@@ -43,10 +43,9 @@ if (import.meta.vitest) {
     });
 
     it("treats null token counts as zero cost without throwing", () => {
-      expect(
-        // @ts-expect-error - exercising runtime null handling
-        costForUsage({ inputTokens: null, outputTokens: null }),
-      ).toBe(0);
+      // No @ts-expect-error here: UsageTokens deliberately types both
+      // fields as `number | null` so this call is not a type error.
+      expect(costForUsage({ inputTokens: null, outputTokens: null })).toBe(0);
     });
 
     it("never returns NaN for degenerate input", () => {
