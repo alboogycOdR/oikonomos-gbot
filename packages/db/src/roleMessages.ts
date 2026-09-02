@@ -2,6 +2,22 @@ import { Pool, type QueryResultRow } from "pg";
 
 import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
 
+/** The closed set of typed mailbox handoffs (TASK-099 / OIK-102). */
+export const handoffKinds = ["research.complete", "draft.ready_for_review"] as const;
+export type HandoffKind = (typeof handoffKinds)[number];
+
+/**
+ * A locator for a live memory fact. Deliberately no `value` field: handoffs
+ * point recipients to memory, which they re-read under their own identity.
+ */
+export interface HandoffFactReference {
+  tenantId: string;
+  scope: "agent" | "project" | "user";
+  roleId?: string;
+  projectId?: string;
+  key: string;
+}
+
 /**
  * TASK-084 / Addendum F §3.5 (F8) — async role-to-role handoff. A handoff
  * carries no privilege (R13): the receiving role acts under its own
@@ -16,6 +32,8 @@ export interface NewRoleMessage {
   toRoleId: string;
   body: string;
   workspaceRefs?: readonly string[];
+  handoffKind?: HandoffKind;
+  factRef?: HandoffFactReference;
 }
 
 export interface RoleMessage {
@@ -25,6 +43,8 @@ export interface RoleMessage {
   toRoleId: string;
   body: string;
   workspaceRefs: readonly string[];
+  handoffKind: HandoffKind | null;
+  factRef: HandoffFactReference | null;
   createdAt: Date;
   readAt: Date | null;
 }
@@ -36,12 +56,14 @@ interface RoleMessageRow extends QueryResultRow {
   to_role_id: string;
   body: string;
   workspace_refs: string[];
+  handoff_kind: HandoffKind | null;
+  fact_ref: HandoffFactReference | null;
   created_at: Date;
   read_at: Date | null;
 }
 
 const messageColumns = `message_id, tenant_id, from_role_id, to_role_id, body,
-       workspace_refs, created_at, read_at`;
+       workspace_refs, handoff_kind, fact_ref, created_at, read_at`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,6 +84,44 @@ function requireUuid(value: string, field: string): string {
   return trimmed;
 }
 
+function validateFactRef(value: HandoffFactReference): HandoffFactReference {
+  const tenantId = requireNonEmpty(value.tenantId, "factRef.tenantId");
+  const key = requireNonEmpty(value.key, "factRef.key");
+  if (!["agent", "project", "user"].includes(value.scope)) {
+    throw new Error("factRef.scope must be one of: agent, project, user.");
+  }
+  const roleId = value.roleId === undefined ? undefined : requireNonEmpty(value.roleId, "factRef.roleId");
+  const projectId = value.projectId === undefined
+    ? undefined
+    : requireNonEmpty(value.projectId, "factRef.projectId");
+  if (value.scope === "agent" && (roleId === undefined || projectId !== undefined)) {
+    throw new Error("factRef for scope='agent' requires roleId and forbids projectId.");
+  }
+  if (value.scope === "project" && (projectId === undefined || roleId !== undefined)) {
+    throw new Error("factRef for scope='project' requires projectId and forbids roleId.");
+  }
+  if (value.scope === "user" && (roleId !== undefined || projectId !== undefined)) {
+    throw new Error("factRef for scope='user' forbids roleId and projectId.");
+  }
+  return { tenantId, scope: value.scope, ...(roleId === undefined ? {} : { roleId }), ...(projectId === undefined ? {} : { projectId }), key };
+}
+
+function validateTypedHandoff(input: NewRoleMessage): {
+  handoffKind: HandoffKind | null;
+  factRef: HandoffFactReference | null;
+} {
+  if ((input.handoffKind === undefined) !== (input.factRef === undefined)) {
+    throw new Error("handoffKind and factRef must be supplied together.");
+  }
+  if (input.handoffKind === undefined || input.factRef === undefined) {
+    return { handoffKind: null, factRef: null };
+  }
+  if (!handoffKinds.includes(input.handoffKind)) {
+    throw new Error(`handoffKind must be one of: ${handoffKinds.join(", ")}.`);
+  }
+  return { handoffKind: input.handoffKind, factRef: validateFactRef(input.factRef) };
+}
+
 function toRoleMessage(row: RoleMessageRow): RoleMessage {
   return {
     messageId: row.message_id,
@@ -70,6 +130,8 @@ function toRoleMessage(row: RoleMessageRow): RoleMessage {
     toRoleId: row.to_role_id,
     body: row.body,
     workspaceRefs: row.workspace_refs,
+    handoffKind: row.handoff_kind,
+    factRef: row.fact_ref,
     createdAt: row.created_at,
     readAt: row.read_at,
   };
@@ -108,13 +170,26 @@ export async function sendRoleMessage(
   const toRoleId = requireNonEmpty(input.toRoleId, "toRoleId");
   const body = requireNonEmpty(input.body, "body");
   const workspaceRefs = input.workspaceRefs ?? [];
+  const { handoffKind, factRef } = validateTypedHandoff(input);
+  const tenantId = input.tenantId ?? "basileia";
+  if (factRef !== null && factRef.tenantId !== tenantId) {
+    throw new Error("factRef.tenantId must match the handoff tenantId.");
+  }
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RoleMessageRow>(
-      `INSERT INTO role_messages (tenant_id, from_role_id, to_role_id, body, workspace_refs)
-       VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5::jsonb)
+      `INSERT INTO role_messages (tenant_id, from_role_id, to_role_id, body, workspace_refs, handoff_kind, fact_ref)
+       VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5::jsonb, $6, $7::jsonb)
        RETURNING ${messageColumns}`,
-      [input.tenantId ?? null, fromRoleId, toRoleId, body, JSON.stringify(workspaceRefs)],
+      [
+        input.tenantId ?? null,
+        fromRoleId,
+        toRoleId,
+        body,
+        JSON.stringify(workspaceRefs),
+        handoffKind,
+        factRef === null ? null : JSON.stringify(factRef),
+      ],
     );
 
     const row = result.rows[0];
@@ -239,6 +314,32 @@ if (import.meta.vitest) {
       await expect(
         sendRoleMessage(live, { fromRoleId: "a", toRoleId: "b", body: "   " }),
       ).rejects.toThrow(/body/);
+    });
+
+    it("rejects incomplete or malformed typed handoffs before opening a pool", async () => {
+      const live: DatabaseOptions = { connectionString: "postgres://x" };
+      await expect(
+        sendRoleMessage(live, { fromRoleId: "a", toRoleId: "b", body: "hi", handoffKind: "research.complete" }),
+      ).rejects.toThrow(/handoffKind and factRef/);
+      await expect(
+        sendRoleMessage(live, {
+          fromRoleId: "a",
+          toRoleId: "b",
+          body: "hi",
+          handoffKind: "research.complete",
+          factRef: { tenantId: "t", scope: "project", key: "k" },
+        }),
+      ).rejects.toThrow(/projectId/);
+      await expect(
+        sendRoleMessage(live, {
+          tenantId: "tenant-a",
+          fromRoleId: "a",
+          toRoleId: "b",
+          body: "hi",
+          handoffKind: "research.complete",
+          factRef: { tenantId: "tenant-b", scope: "user", key: "k" },
+        }),
+      ).rejects.toThrow(/must match/);
     });
 
     it("rejects a non-UUID messageId", async () => {

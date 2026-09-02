@@ -19,7 +19,10 @@ export {
 
 export {
   sendToRole,
+  handoffKinds,
   type SendToRoleAcknowledgement,
   type SendToRoleDeps,
   type SendToRoleInput,
+  type HandoffFactReference,
+  type HandoffKind,
 } from "./mailbox.js";
