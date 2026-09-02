@@ -3002,12 +3002,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-02T16:36:00Z] [ORCH] TASK-099 (dependency) done/merged — claiming and dispatching CX on a freshly-rebased worktree.
 - [2026-09-02T17:56:00Z] [ORCH] STALE HEARTBEAT (protocol §10a) — no log growth for ~75 min, log ended mid-`pnpm install; pnpm -r build; pnpm -r test; pnpm lint; pnpm canaries` gate run with no output past the install step. Verified genuinely dead, not just slow: no `node`/`codex` process running at all, and a manual `pnpm install --frozen-lockfile` in the same worktree completed in 3.4s (rules out a lockfile-resolution hang). Matches the exact "detached window died mid-write" failure class dispatch.ps1's own header comment warns about. Work-in-progress preserved: `evals/harness/test/ome-two-role-handoff.test.ts` (4749 bytes, a full test already written per the log tail) and `dossiers/TASK-100.md` both present untracked in the worktree, uncommitted. Not counting this as rework — redispatching CX resume-first on the same branch/worktree, uncommitted files left in place.
+- [2026-09-02T18:03:00Z] [ORCH] BLOCKED (MISSING_DEPENDENCY, legitimate) — redispatch completed cleanly, CX wrote the full proof (persisted-locator readback, ACL negative case, live supersession, committed `94e1396`) and correctly self-blocked rather than reporting green: `DATABASE_URL` was unset in its launched environment even though it is a persisted Windows User env var, because a detached dispatch window's process tree doesn't reliably inherit an env var set after its ancestor (Explorer.exe) last read the registry. Root-caused and fixed directly in `scripts/dispatch.ps1` (commit `419fd94`) — both runner-generation branches now re-read `DATABASE_URL` fresh at runner execution time rather than relying on ambient inheritance, without ever embedding the secret value itself in the generated script file (N4). Not a builder defect, not counted as rework. Redispatching CX resume-first on the same branch/commit with the fixed dispatch script.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T16:36:00Z
+**Updated_At:** 2026-09-02T18:03:00Z
 
 ### TASK-101
 **Title:** services/control-api — session auth gate + GET /tasks ⚑ security-relevant, adversarial review required
