@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
+import { registerServiceWorker } from "./lib/registerServiceWorker";
 
 const container = document.getElementById("root");
 if (container === null) {
@@ -16,3 +17,5 @@ createRoot(container).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+registerServiceWorker();
