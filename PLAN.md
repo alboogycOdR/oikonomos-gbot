@@ -1569,7 +1569,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-051
 **Title:** OIK-164 — Composio Connect evaluation spike (recommendation only, no adoption)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_D_v1.0.md §2 OIK-164, §3 R19; WBS N5
@@ -1578,18 +1578,18 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Description:** Written recommendation ONLY — adoption requires an ADR (Addendum D). Evaluate Composio Connect as connector supply for G1. Must explicitly address: (1) hosted third-party gateway vs the N5 scope boundary and data sovereignty (R19 — connector traffic through external SaaS); (2) per-tool tier-mapping feasibility against the OIK-047 manifest schema; (3) cost vs the R30k/month ceiling. Draft lands in the task dossier; ORCH relocates the final note to docs/ at review (builder firewall). Backlog — assign at dispatch when a unit is free; do not let it displace pipeline work.
 **Acceptance_Criteria:**
 - [ ] Recommendation addresses N5/data-sovereignty, tier-mapping feasibility, and cost, each explicitly (Addendum D OIK-164 acceptance)
-- [ ] No code, no dependency, no adoption — recommendation only
-**Branch:** task/TASK-051-cx
+- [x] No code, no dependency, no adoption — recommendation only
+**Branch:** task/TASK-051-cx (merged, deleted)
 **Started_At:** 2026-09-02T10:40:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: KEEP, unchanged, still low. Addendum F §4.2 keeps OIKONOMOS's own server-side connector-session model, so a Composio recommendation is still a recommendation and still requires an ADR to adopt. If anything the N5/data-sovereignty question is sharper now: a hosted gateway holding a DURABLE session is a bigger exposure than one holding a per-run session.
 - [2026-09-02T10:40:00Z] [ORCH] Claimed and dispatched to CX to fill an idle slot — low-risk, dossier-only, no code.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** docs/research/OIK-164-composio-connect-evaluation-2026-09-02.md (relocated from the dossier per this task's own instruction), dossiers/TASK-051.md (reverted to brief)
+**Test_Evidence:** `git diff --check`/`git show --check` clean, no code/dependency changes. Dossier-only diff confirmed via `git diff master...task/TASK-051-cx --stat`.
+**Review_Findings:** APPROVED, first-pass. All three required topics addressed explicitly: N5/R19 data sovereignty (verdict: not approved — hosted OAuth token custody is exactly R19's unresolved exposure, sharper under the durable-session model), OIK-047 tier-mapping feasibility (verdict: not feasible with Connect directly — its 7 meta-tools including a dynamic-discovery + up-to-50-action multi-execute tool cannot map to the static per-tool allowlist contract), cost vs R30k/month (verdict: acceptable only behind a dedicated spend cap, not itself a blocker but doesn't cure the other two). Well-sourced against Composio's own current docs/pricing, checked live 2026-09-02. Recommendation: do not adopt for G1. Merged; relocated to docs/research/ per the task's own instruction (ORCH performs relocation, outside builder firewall).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-18T14:40:00Z
+**Updated_At:** 2026-09-02T11:15:00Z
 
 ### TASK-052
 **Title:** Live MCP server mount in composeHarness — tools reach L1 ⚑ protected
