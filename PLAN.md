@@ -3177,7 +3177,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §2, §5, §6 (Chat-1c) — the visual bar, graded on rendered output, not just code
@@ -3192,13 +3192,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-107-s5
 **Started_At:** 2026-09-02T18:13:01Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T18:42:28Z] [SV:S5] ChatShell + all Chat-1c components/tests/fixtures/preview-screenshot committed (f708c09, 22 files, 44/44 tests green, full pnpm -r build/test/lint green). Blocked only on committing apps/dashboard/package.json's 4 new Tailwind devDeps + pnpm-lock.yaml companion hunk: hooks/territory-precommit.js rejects package.json because its Owned_Paths entry in PLAN.md has an unseparated parenthetical annotation that breaks the comma-split glob parser (reproduced deterministically via node -e against real hooks/lib.js). Needs a PLAN.md Owned_Paths edit or hooks/lib.js parser fix, both outside my territory.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** TOOLING_FAILURE: hooks/territory-precommit.js (via hooks/lib.js ownedPathsOf/globPrefix) cannot parse TASK-107's Owned_Paths entry 'apps/dashboard/package.json (add Tailwind/component deps only ΓÇö do not touch existing dependencies' versions)' ΓÇö the unseparated parenthetical becomes part of the glob, so pathInGlob('apps/dashboard/package.json', <that string>) is always false and the hook rejects committing the file despite it being explicitly in-territory. Confirmed via direct node reproduction against the live hooks/lib.js and PLAN.md. Blocks committing the 4 new Tailwind devDependency lines and the matching pnpm-lock.yaml hunk. Fix needs either a PLAN.md Owned_Paths syntax edit (comma-separate the annotation) or a hooks/lib.js parser fix ΓÇö both outside my Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-09-02T18:13:01Z
+**Updated_At:** 2026-09-02T18:42:28Z
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
