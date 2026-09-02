@@ -17,11 +17,16 @@
 import {
   sendRoleMessage,
   type DatabaseOptions,
+  type HandoffFactReference,
+  type HandoffKind,
   type NewRoleMessage,
   type RoleMessage,
 } from "@oikonomos/db";
 
 import { resolveWorkspacePath } from "./paths.js";
+
+export { handoffKinds } from "@oikonomos/db";
+export type { HandoffFactReference, HandoffKind } from "@oikonomos/db";
 
 export interface SendToRoleInput {
   tenantId?: string;
@@ -35,6 +40,9 @@ export interface SendToRoleInput {
    * shared workspace/role roots or that points at a sealed secret (D3).
    */
   workspaceRefs?: readonly string[];
+  /** Typed handoffs carry a reference, never a memory value snapshot. */
+  handoffKind?: HandoffKind;
+  factRef?: HandoffFactReference;
 }
 
 /**
@@ -76,6 +84,9 @@ export async function sendToRole(
   const fromRoleId = requireNonEmpty(input.fromRoleId, "fromRoleId");
   const toRoleId = requireNonEmpty(input.toRoleId, "toRoleId");
   const body = requireNonEmpty(input.body, "body");
+  if ((input.handoffKind === undefined) !== (input.factRef === undefined)) {
+    throw new Error("handoffKind and factRef must be supplied together.");
+  }
 
   // Workspace refs are validated as real, in-bounds, non-secret paths
   // before anything is persisted — a handoff must not smuggle a D3 path or
@@ -91,6 +102,8 @@ export async function sendToRole(
     toRoleId,
     body,
     workspaceRefs: resolvedRefs,
+    handoffKind: input.handoffKind,
+    factRef: input.factRef,
   });
 
   // Acknowledgement carries only what the SENDER needs to know the handoff
@@ -138,6 +151,8 @@ if (import.meta.vitest) {
         toRoleId: input.toRoleId,
         body: input.body,
         workspaceRefs: input.workspaceRefs ?? [],
+        handoffKind: input.handoffKind ?? null,
+        factRef: input.factRef ?? null,
         createdAt: new Date("2026-09-01T00:00:00Z"),
         readAt: null,
       };

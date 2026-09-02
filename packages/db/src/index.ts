@@ -91,8 +91,11 @@ export {
   markRoleMessageRead,
   sendRoleMessage,
   type NewRoleMessage,
+  type HandoffFactReference,
+  type HandoffKind,
   type RoleMessage,
   type RoleMessageListFilter,
+  handoffKinds,
 } from "./roleMessages.js";
 export {
   createRequireApprovalRule,

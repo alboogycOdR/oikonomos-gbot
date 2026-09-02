@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+
 import {
   createRole,
   defaultPoolConfig,
@@ -59,7 +60,10 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
 
     const fetched = await getRoleMessage({ connectionString: connectionString! }, sent.messageId);
     expect(fetched).toEqual(sent);
+    expect(sent.handoffKind).toBeNull();
+    expect(sent.factRef).toBeNull();
   });
+
 
   it("getRoleMessage returns null for an unknown messageId", async () => {
     const result = await getRoleMessage(
