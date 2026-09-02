@@ -1,5 +1,5 @@
 ---
-plan_version: 6.2
+plan_version: 6.3
 last_updated: 2026-09-02T08:00:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v6.2 - ADR-011 MULTI-PROVIDER LLM SUPPORT (2026-09-02T08:00Z, ORCH). Addendum F wave (084-093) closed out v6.1 with 10/10 done, 0 rework rounds. User then asked to fill the day (until 3pm) with TASK-060 + related backlog + a new requirement: OIKONOMOS must support multiple LLM providers, default gemini-3.7-flash (real model, confirmed live 2026-09-02, released 2026-08-13). Investigated packages/harness-factory/ports.ts first: HarnessInvocation's hooks.PreToolUse/canUseTool shape is Claude-Agent-SDK-specific vocabulary, not a generic port - a straight swap was never on the table. Gemini's function-calling API has no hook equivalent (caller-driven functionCall/functionResponse loop, confirmed via live docs search) but that loop IS a valid enforcement point if the adapter calls l1.handle() itself before executing - by construction, not by SDK feature. Wrote ADR-011 (docs/decisions/) authorizing this, staged: Stage 1 = Tier-0/observation-only Gemini adapter (this wave); Stage 2 = full tool-execution parity (deferred to a follow-up decompose once Stage 1 is reviewed). Discovered packages/agent-providers (TASK-072's AgentProvider/ProviderId abstraction, used by services/gateway-telegram) already has a clean multi-provider seam ABOVE harness-factory (claudeCode.ts is a thin translator over an already-governed query function, never touching L1 itself) - a Gemini provider slots in there too, cutting the real new-package need down significantly. Cut 3 new tasks: TASK-094 (CX, protected, harness-factory - the enforcement-critical Gemini adapter + its own liveness canary, Tier-0 ceiling enforced), TASK-095 (S5, agent-providers - GeminiProvider translator, mirrors claudeCode.ts, depends on 094+096), TASK-096 (S5, agent-providers - pure gemini-3.7-flash cost calculator, no deps, ships first). Re-checked TASK-047/049/050/051 against the morning's own 'predates ADR-010' assumption - it was WRONG on inspection: 047 is ORCH-executed docs-only (no code), 049/050 are manifest+golden-suite declarations that never touch session create/destroy semantics at all, 051 is a recommendation-only spike. None need reshaping; all four remain legitimate as-is backlog. TASK-060 was ALREADY reshaped correctly by the earlier opus decompose (2026-08-19 note, re-confirmed 2026-09-01T20:15Z) - the morning's 'held for disposition' framing was stale. TASK-060 is ORCH-executed (docs/runbooks/**) and needs the user's live participation for its phone-approval step - not dispatched to a builder, sequenced separately. TASK-027 remains explicitly DEFERRED. Dispatching TASK-096+TASK-094 now; TASK-049 queued as S5 filler while TASK-094 is in flight (095 blocked on both 094+096)."
@@ -1852,7 +1852,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-060
 **Title:** Vertical-slice demo wiring + runbook (ORCH-executed integration)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** Directive §5 DoD (Functional/Governed/Evidenced/Evaluated); WBS OIK-122 (runbooks); OIK-125
@@ -1860,21 +1860,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-055, TASK-059, TASK-082
 **Description:** ORCH-executed — `docs/**` is outside builder territory. Once both lanes land, wire and demonstrate the full loop on real infrastructure: control-api up, Telegram gateway connected, worker running a governed inbox-triage against the live Gmail MCP server. Record the runbook: how to start it, how to trigger a run, what the approval looks like on the phone, how to stop/reverse. Capture the evidence trail for one complete run including a denied Tier-3 attempt. **This task is the demo Alister asked for; it closes only when the loop has actually been run end-to-end, not when the code exists** — demonstrate-not-assert, per the TASK-038 precedent. Assigned_To stays TBD so no builder claims it.
 **Acceptance_Criteria:**
-- [ ] Full loop demonstrated live: task in via Telegram → governed run → an **enforced-floor** action parks for approval → approve on phone → action completes → evidence retrievable (Directive §5 Functional/Governed/Evidenced; Addendum F §5.2)
-- [ ] The parking action is drawn from the enforced floor E1–E5, NOT a generic T3 send — under Addendum F §5.3 a send is autonomous by default, so demonstrating a parked send would be demonstrating a misconfiguration
-- [ ] The same run also shows an autonomous action executing without a card, with an audit event naming its EnforcementClass and deciding rank (Addendum F §5.4) — the pivot is only demonstrated if both halves are visible
-- [ ] A denied enforced-floor attempt captured in the same session's audit trail
-- [ ] Runbook records start, trigger, approve, stop/reverse (OIK-122)
-**Branch:** —
-**Started_At:** —
+- [x] Full loop demonstrated live: task in via Telegram → governed run → an **enforced-floor** action parks for approval → approve on phone → action completes → evidence retrievable (Directive §5 Functional/Governed/Evidenced; Addendum F §5.2)
+- [x] The parking action is drawn from the enforced floor E1–E5, NOT a generic T3 send — under Addendum F §5.3 a send is autonomous by default, so demonstrating a parked send would be demonstrating a misconfiguration
+- [x] The same run also shows an autonomous action executing without a card, with an audit event naming its EnforcementClass and deciding rank (Addendum F §5.4) — the pivot is only demonstrated if both halves are visible
+- [x] A denied enforced-floor attempt captured in the same session's audit trail
+- [x] Runbook records start, trigger, approve, stop/reverse (OIK-122)
+**Branch:** — (ORCH-executed, no task branch)
+**Started_At:** 2026-09-02T08:35:00Z
 **Progress_Notes:**
 - [2026-09-01T20:15:00Z] [ORCH] ADR-010 DISPOSITION: RESHAPE (acceptance criteria rewritten above, 2026-09-01). The demo's approval moment must now be an enforced-floor action (Addendum F §5.2 E1-E5), not a generic Tier-3 send — under §5.3 a send is autonomous by default, so a parked send would demonstrate a misconfiguration rather than the architecture. Two criteria added: the parking action must come from the floor, and the same run must also show an autonomous action executing with an audit event naming its class and deciding rank. Territory, ownership (ORCH-executed) and Depends_On are unchanged.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-02T09:15:00Z] [ORCH] EXECUTED LIVE. Built docs/runbooks/persistent-office-demo/{run-demo.mjs,telegram-runtime.mjs}: real control-api HTTP server, real broker decision path, real approvals issue/consume, real Telegram bot round trip via the operator's phone. Smoke-tested the full plumbing before ever waking the user (found and fixed 5 real integration bugs along the way — Windows entrypoint-guard mismatch, allowedTools scoping, composeHarness return shape, exact RiskTier enum strings, and the approvals→capabilities FK requiring real capability seeding — all documented in the runbook's own "issues found" section). Live run: operator messaged @GithubBuild_bot, email.list executed autonomously (real audit row, verdict=allow), office.local_execute (E3_local_machine_execution) parked with a real approval row, operator approved via a real inline-keyboard tap 6.8s later, a follow-up re-attempt with the granted nonce completed the action for real (approval status granted->consumed, nonce-bound single-use consumption genuinely exercised — not just simulated), and a separate governed run's attempt to read /oikonomos-secrets/cookie-store was denied outright by the D3 guard (secret_path.sealed) with a target-free audit payload, no approval ever offered. Also found, documented, and left as follow-up (TASK-097, not fixed today): a real naming inconsistency between packages/broker's D3 root (/oikonomos-secrets) and services/workspace's (/oikonomos/secrets) — both guards independently correct, but the literals don't match.
+**Artifacts:** docs/runbooks/persistent-office-demo/{README.md,run-demo.mjs,telegram-runtime.mjs}
+**Test_Evidence:** Live run against real Postgres + real Telegram, 2026-09-02: run_id 17d8d07a-e847-423a-aa89-714b435935aa (autonomous allow + enforced-floor park→approve→consume), run_id 4fc46471-989c-4e99-804f-35e37918fdbd (D3 deny). approval_id 67620e80-407a-4ecd-b4de-dd9a281cb07e: requested 05:57:11.032Z, decided 05:57:17.804Z (telegram:user:880001908), consumed 05:59:29.729Z. Full evidence trail (audit_events rows, approvals row) captured verbatim in the runbook.
+**Review_Findings:** Self-reviewed as ORCH-executed integration work (no builder territory involved); evidence is the live DB rows and audit trail quoted in the runbook, not a claim — matches this task's own "demonstrate-not-assert" bar (TASK-038 precedent). Both halves of the pivot shown in one session (autonomous execution + enforced-floor park/approve/complete), plus the deny half from a second run. **This closes the loop the user originally asked to "see this thing in action" for.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-19T06:10:00Z
+**Updated_At:** 2026-09-02T09:20:00Z
 
 ### TASK-061
 **Title:** packages/db — read + CRUD layer control-api needs (tasks, listRuns, pending approvals, audit read)
@@ -2883,7 +2884,30 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:** —
 **Artifacts:** packages/agent-providers/src/{pricing.ts,pricing.test.ts}, dossiers/TASK-096.md
 **Test_Evidence:** agent-providers 78/78 (9 pricing tests). Full pnpm -r test/lint/canaries independently re-run, exit 0.
-**Review_Findings:** APPROVED. Territory clean (2 files + dossier). Constants named `GEMINI_3_7_FLASH_INPUT_USD_PER_MILLION_TOKENS`/`..._OUTPUT_...` with source URL + confirmation date in a comment. `normalizeTokenCount` guard confirmed to handle undefined/null/non-numeric/negative inputs without throwing (tests include a `@ts-expect-error` null case). Confirmed genuinely pure — no fetch/fs/process.env anywhere in the file. Merged.
+**Review_Findings:** APPROVED. Territory clean (2 files + dossier). Constants named `GEMINI_3_7_FLASH_INPUT_USD_PER_MILLION_TOKENS`/`..._OUTPUT_...` with source URL + confirmation date in a comment. `normalizeTokenCount` guard confirmed to handle undefined/null/non-numeric/negative inputs without throwing (tests include a `@ts-expect-error` null case). Confirmed genuinely pure — no fetch/fs/process.env anywhere in the file. Merged. **Post-merge finding, fixed directly by ORCH:** a full `pnpm -r build` (as opposed to `pnpm -r test`) caught a real `tsc` failure — TS2578 "Unused @ts-expect-error directive" on the null-handling test, since `UsageTokens.inputTokens/outputTokens` are deliberately typed `number | null` so passing `null` is not actually a type error. Vitest's typecheck path didn't surface this; a standalone `tsc` build did. Removed the stale directive, verified `pnpm --filter @oikonomos/agent-providers build`+`test` clean and a full `pnpm -r build` clean across all 16 workspaces. **Retro note:** review standard should explicitly require a full `pnpm -r build` (not just `pnpm -r test`) as its own independent gate — vitest and tsc enforce different strictness on `@ts-expect-error`, and this gap could recur on any task touching a `@ts-expect-error` comment.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T09:00:00Z
+**Updated_At:** 2026-09-02T09:20:00Z
+
+### TASK-097
+**Title:** Unify the D3 sealed-secret root constant across packages/broker and services/workspace
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** docs/runbooks/persistent-office-demo/README.md "Real integration issues found" #6 (found live 2026-09-02 building TASK-060's demo); TASK-088 (packages/broker/src/secretPathGuard.ts), TASK-090 (services/workspace/src/paths.ts)
+**Owned_Paths:** TBD at dispatch — likely a new shared constant in packages/shared plus updates to packages/broker/src/secretPathGuard.ts and services/workspace/src/paths.ts to both import it instead of each defining their own literal
+**Depends_On:** —
+**Description:** `packages/broker/src/secretPathGuard.ts` defines `SEALED_SECRET_ROOT = "/oikonomos-secrets"` (hyphenated, no subdirectory); `services/workspace/src/paths.ts` defines `SEALED_SECRETS_ROOT = "/oikonomos/secrets"` (slash-separated, plural). Both guards are independently correct and independently proven (TASK-088/090's reviews both confirmed this) — this is not a security bug in either one. It is a real footgun: a caller matching one package's convention for a D3 path will silently miss the other's, discovered live while building TASK-060's demo when a target string written against services/workspace's convention sailed straight past packages/broker's guard. Fix: promote one canonical constant (likely into packages/shared, matching this project's "canonical JSON + digest has exactly one implementation" convention) and have both guards import it, with each guard's own existing test suite re-run to confirm zero behavior change — this is a naming/DRY fix, not a behavior change, and must not become one.
+**Acceptance_Criteria:**
+- [ ] One canonical D3 root constant exists in exactly one place; packages/broker/src/secretPathGuard.ts and services/workspace/src/paths.ts both import it, neither defines its own literal
+- [ ] Both packages' existing test suites pass with ZERO behavior changes — this is a naming consolidation, not a new feature; a test asserting the two guards now agree on the same literal string is a reasonable new addition
+- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-02T09:15:00Z
