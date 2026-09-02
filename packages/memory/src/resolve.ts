@@ -48,9 +48,9 @@ export async function resolve(
       ? getAgentFact(options, { tenantId, roleId: ctx.roleId }, normalizedKey)
       : Promise.resolve(null),
     ctx.projectId !== undefined
-      ? getProjectFact(options, { tenantId, projectId: ctx.projectId }, normalizedKey)
+      ? getProjectFact(options, { tenantId, projectId: ctx.projectId, roleId: ctx.roleId }, normalizedKey)
       : Promise.resolve(null),
-    getUserFact(options, { tenantId }, normalizedKey),
+    getUserFact(options, { tenantId, roleId: ctx.roleId }, normalizedKey),
   ]);
 
   return resolveConflict([agent, project, user]);

@@ -92,7 +92,6 @@ export async function writeMemoryFact(
   const tier = requireTier(input.tier ?? "profile", "tier");
   const confidence = input.confidence ?? 0.8;
   const tenantId = input.tenantId ?? "basileia";
-  const visibleTo = normalizeVisibleTo(input.visibleTo);
 
   // Mirror the DB CHECK (scope = 'agent') = (role_id IS NOT NULL) here so a
   // bad call fails with a clear message before ever reaching the pool.
@@ -103,6 +102,10 @@ export async function writeMemoryFact(
   }
 
   const roleId = scope === "agent" ? (input.roleId ?? null) : null;
+  // ACLs deliberately apply only to tenant-shared project/user facts.  An
+  // agent fact is still readable only by its owner, so a supplied ACL cannot
+  // alter that invariant (and is not persisted as an accidental policy hint).
+  const visibleTo = scope === "agent" ? null : normalizeVisibleTo(input.visibleTo);
   const projectId = scope === "project" ? (input.projectId ?? null) : null;
   if (scope === "project" && (projectId === null || projectId.trim().length === 0)) {
     throw new Error("projectId (required for scope='project')");
