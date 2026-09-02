@@ -1,8 +1,8 @@
 ---
 plan_version: 6.1
-last_updated: 2026-09-01T20:15:00Z
+last_updated: 2026-09-02T02:05:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v6.0 - ADR-010 PERSISTENT-OFFICE-COMPUTER DECOMPOSE (2026-09-01T20:15Z, ORCH, claude-opus-5). New spec: specs/OIKONOMOS_WBS_Addendum_F_v1.0.md answers all five ADR-010 §4 open questions - one durable environment per TENANT (not per role) as a long-lived container with named D0/D1/D2/D3 durability tiers; roles as D0 rows with three-scope/three-tier memory (agent>project>user) and routines; shared workspace with roles explicitly NOT a security boundary; the T0-T4 enum KEPT but decoupled from approval via an orthogonal EnforcementClass with a six-rank total precedence order and a FIXED enforced floor (spend / auth-friction / local execution / secret handling / D3 paths); and an additive reshape path that leaves TASK-052..083 intact. DISPOSITION of the 8 open tasks: KEEP 027/047/049/050/051/073, RESHAPE 060 (demo must park an enforced-floor action, not a send) and 076 (scheduler re-keyed to role_id + routine firing). Nothing dropped. NINE new tasks 084-092. BUILDER CONSTRAINT: GB is deactivated (Grok weekly limit), so protected paths (broker, policy, approvals, harness-factory, infra/ci) go to CX ONLY, never S5 - that is 086/087/088/091 plus in-flight 073, and CX also keeps single-owner worker territory (076). S5 takes the unprotected foundation: 084/085/089/090/092. FIRST DISPATCH WAVE: CX finishes TASK-073 (already in_progress, resume at the mutation-proof step) and S5 starts TASK-084 (D0 schema - it unblocks 086/090/076); territories disjoint (packages/broker vs packages/db+migrations). WAVE 2: CX TASK-086 (pure policy, no deps), S5 TASK-085 or TASK-092 (both dep-free). Do not dispatch 091 until 090 and 092 land. NOT DISPATCHED - planning only, per instruction."
+orchestrator_notes: "Plan v6.1 - ADR-010 ADDENDUM F WAVE COMPLETE (2026-09-02T02:05Z, ORCH). All 10 tasks (084-093, TASK-093 cut mid-wave as TASK-088's wiring follow-up) done, merged, independently verified, zero unresolved rework rounds carried forward. The persistent-office-computer pivot is now live in production code: D0 role/routine/message/require-approval schema (084), three-scope/three-tier memory (085), six-rank enforcement resolver (086) wired into the real PreToolUse path (087), D3 sealed-secret guard (088) wired into the same path above the resolver (093), shared workspace/tier-classification/handoff mailbox (090), role-keyed scheduler with routine firing (076, reshaped), the Office itself as a real Docker durability canary (089), the durable connector session pool (092), and the additive environment binding closing the loop in harness-factory (091, capstone). GB stayed deactivated throughout (Grok weekly limit) - CX took every protected path plus worker (076), S5 took the unprotected foundation. 4+ occurrences of a systemic dispatch.ps1 SYNC_MISMATCH gap (branch not created before builder launch, on both the resume and refresh paths, for both CX and S5) were caught pre-emptively each time via a post-dispatch `git status --short --branch` check - never became a lost cycle, but this is the top concrete fix for the promised retro pass. Pending disposition triage against ADR-010 before dispatch (deliberately NOT auto-started overnight): TASK-047/049/050/051 (connector-onboarding checklist, Calendar/Drive connector waves, Composio spike - predate the acquire/release session-pool model TASK-092 just shipped) and TASK-060 (vertical-slice demo/runbook - would need to target the new persistent-office model, not the old ephemeral one). TASK-027 remains explicitly DEFERRED, do not dispatch. Full retro/INSTINCTS.md pass still owed per the user's explicit request, deferred to when they check in."
 ---
 
 # Project Plan
@@ -2730,7 +2730,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-091
 **Title:** packages/harness-factory — additive environment binding in ComposeOptions ⚑ protected
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WBS_Addendum_F_v1.0.md §6.1, §6 preamble (persistence belongs to the substrate, not the harness object), §9 OIK-207; docs/decisions/ADR-010 §4 (migration path, not a rewrite); ADR-001
@@ -2738,22 +2738,22 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-090, TASK-092
 **Description:** **CX only, NEVER S5** (protected path). The smallest possible change that makes a composed harness aware of the durable environment: ONE new optional field on `ComposeOptions` — `environment?: { workspaceRoot, roleId, roleDir, sessionPool? }` — and nothing else. Omitting it must yield today's behaviour exactly, which is why every existing test, canary and caller stays green without modification; that is the acceptance bar, not a nice-to-have. `mcpServers` continues to receive already-resolved strings, is never read from env and is never logged (N4/N9) — the TASK-092 pool resolves them, the contract does not change. The L1/L2/L3 layering, the `PreToolUse` seam, the fail-closed map and the mandatory tool decorators are UNTOUCHED (ADR-001). Do not make the harness itself long-lived: per Addendum F §6, the harness may still be composed per run — what became durable is the state it points at. A change that turns `composeHarness` into a persistent object is rework, not an alternative implementation.
 **Acceptance_Criteria:**
-- [ ] `ComposeOptions.environment` added as OPTIONAL; the full existing suite and all canaries pass with zero changes to existing tests (F §6.1 "omitting it yields exactly today's behaviour")
-- [ ] With environment supplied, the run's role identity and workspace root reach the composed runtime and appear in the run's audit identity, tested
-- [ ] `sessionPool` is consumed via TASK-092's acquire/release; no connector session is destroyed at run end, tested
-- [ ] `mcpServers` is still never logged and never read from env; the N4 assertion is still green
-- [ ] `composeHarness` remains per-run — a test asserts two runs produce two harnesses (F §6 substrate-not-harness)
-- [ ] Diff touches no hook, decorator, fail-closed mapping or permission-mode code — asserted in the work log with the file-level diff
-- [ ] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
-**Branch:** task/TASK-091-cx
+- [x] `ComposeOptions.environment` added as OPTIONAL; the full existing suite and all canaries pass with zero changes to existing tests (F §6.1 "omitting it yields exactly today's behaviour")
+- [x] With environment supplied, the run's role identity and workspace root reach the composed runtime and appear in the run's audit identity, tested
+- [x] `sessionPool` is consumed via TASK-092's acquire/release; no connector session is destroyed at run end, tested
+- [x] `mcpServers` is still never logged and never read from env; the N4 assertion is still green
+- [x] `composeHarness` remains per-run — a test asserts two runs produce two harnesses (F §6 substrate-not-harness)
+- [x] Diff touches no hook, decorator, fail-closed mapping or permission-mode code — asserted in the work log with the file-level diff
+- [x] `pnpm -r test`, `pnpm lint`, `pnpm canaries` all exit 0
+**Branch:** task/TASK-091-cx (merged, deleted)
 **Started_At:** 2026-09-02T01:40:00Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/harness-factory/src/{environment.ts,compose.ts,index.ts}, packages/harness-factory/test/environment.test.ts, dossiers/TASK-091.md
+**Test_Evidence:** harness-factory 89/89 (0 pre-existing tests modified — only environment.test.ts is new). Full pnpm -r test/lint/canaries independently re-run, exit 0, canaries 15/17.
+**Review_Findings:** APPROVED, first-pass (protected path, adversarial review by a different model — CX/Codex authored, Claude reviewed). Territory clean (4 Owned_Paths files + dossier). `environment` confirmed genuinely optional with no default that changes omitted-case behavior; all 12 pre-existing harness-factory test files confirmed byte-identical in the diff. Role identity/workspace root reaching audit identity confirmed by reading bindEnvironment's actual construction of auditIdentity (not a comment), including a role-mismatch rejection test. sessionPool consumption confirmed to have no destroy path — ConnectorSessionPool interface structurally has no destroy method, and compose.ts has zero teardown code touching sessions (grepped). mcpServers confirmed untouched (zero references to it, console., or log( in the compose.ts diff). composeHarness-remains-per-run confirmed via a genuine object-identity test (`first.harness).not.toBe(second.harness)`), not a superficial call-twice check. Full diff to compose.ts read line-by-line: no hook/decorator/fail-closed-map/permission-mode code touched anywhere. Full pnpm -r test/lint/canaries independently re-run, exit 0. Merged. **This is the capstone of the Addendum F wave — the full persistent-office-computer pivot (TASK-084 through TASK-093, 10 tasks) is now complete, merged, and independently verified end to end.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-02T01:40:00Z
+**Updated_At:** 2026-09-02T02:05:00Z
 
 ### TASK-092
 **Title:** packages/connectors — durable tenant session pool: create/destroy becomes acquire/release
