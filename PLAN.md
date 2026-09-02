@@ -3124,7 +3124,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-105
 **Title:** threads/messages schema + DB accessors (Chat-1a)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §3, §6 (Chat-1a); WBS OIK-129, OIK-156
@@ -3138,13 +3138,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0 (full recursive suite per CLAUDE.md's amended review standard)
 **Branch:** task/TASK-105-cx
 **Started_At:** 2026-09-02T18:12:47Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-02T18:17:19Z] [SV:CX] Recorded the schema conflict in dossiers/TASK-105.md and committed it on task/TASK-105-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SPEC_AMBIGUITY: Chat spec Â§3 requires threads.role_id UUID REFERENCES roles(id), but existing migration 004 defines roles.role_id TEXT PRIMARY KEY and no roles.id; PostgreSQL cannot create the required FK without a spec or existing-schema change outside TASK-105 authority.
 **Updated_By:** SV
-**Updated_At:** 2026-09-02T18:12:47Z
+**Updated_At:** 2026-09-02T18:17:19Z
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
