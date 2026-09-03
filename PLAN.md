@@ -3214,7 +3214,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6 (Chat-1d)
@@ -3231,12 +3231,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-03T11:00:28Z
 **Progress_Notes:**
 - [2026-09-03T11:47:21Z] [SV:S5] Wired <ChatShell> to live control-api: lib/api.ts thread/message/role client calls, pages/ChatPage.tsx (real threads/messages, send, 2s poll that clears on reply), App.tsx routing (/ -> chat, /runs|/approvals|/evidence redirect to /ops/*), LoginPage default landing updated. App.test.tsx untouched (outside Owned_Paths) and still green via redirect chain. AC2's bot-reply-appearing is verified only against this task's own mocked poll test, not a live run: TASK-111 (the reply-producing driver) is Status:blocked per PLAN.md as of this session, so ORCH needs a final live check once it lands; task-creation-on-send is fully wired and tested now.
+- [2026-09-03T13:55:00Z] [ORCH] APPROVED, first-pass. Territory clean (6 files, all Owned_Paths). Old /runs /approvals /evidence paths correctly redirect (not deleted) to /ops/*, keeping App.test.tsx green through the redirect chain — checked the diff directly, not just the claim. Polling effect genuinely clears via useEffect cleanup on reply-arrival, thread-switch, and unmount; stop condition compares createdAt correctly against the just-sent message so a stale bot message can't falsely end the poll. Independently re-ran: pnpm --filter dashboard test (46/46), full pnpm -r build (18/18), pnpm lint (clean), full pnpm -r test (270 assertions, zero failures, no flakes this run). Merged --no-ff (2f60ccb). **AC2 (live bot-reply end-to-end) is APPROVED CONDITIONALLY** — the code is correct and honestly self-reported as unverified against a real run; ORCH will do one combined live smoke test once TASK-111 also lands, before calling Chat-1's product bar (spec §1) met. Not re-opening this task for that — it's a one-time joint check, not rework.
 **Artifacts:** apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/App.tsx, apps/dashboard/src/pages/LoginPage.tsx, dossiers/TASK-108.md
-**Test_Evidence:** pnpm --filter dashboard test -- --run: 14 files/46 tests green (incl. 2 new ChatPage.test.tsx cases + unmodified App.test.tsx). pnpm -r build: 17/17 green. pnpm lint: clean. pnpm -r test (full recursive suite): all workspace packages green including services/control-api 110/110 (TASK-106's chat.routes.test.ts 7/7), no flakes this run.
-**Review_Findings:** —
+**Test_Evidence:** S5's own run (46/46 dashboard, 17/17 build, full recursive green) + ORCH's independent re-run (46/46, 18/18 build, 270 test assertions, zero failures).
+**Review_Findings:** APPROVE, first-pass. AC2 conditionally approved pending a joint live check with TASK-111 (tracked, not a rework item).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T11:47:21Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T13:55:00Z
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)

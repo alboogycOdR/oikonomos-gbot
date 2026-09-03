@@ -155,3 +155,4 @@ Evidence here refines assignment heuristics (protocol §8) after ~10 reviews.
 TASK-105 | CX | approved | first-pass (post spec-fix unblock); non-blocking: MIGRATION_ROUND_TRIP=1 path not in default CI, createThread/getOrCreateThreadForRole duplicate impl | first-pass? yes
 TASK-107 | S5 | approved | first-pass (post Owned_Paths-parser unblock); visual bar checked against committed screenshot, real match to reference UI | first-pass? yes
 TASK-106 | CX | approved | first-pass (post 2-round scope-correction unblock); rescoped to task-creation only after real MISSING_DEPENDENCY finding, execution split to TASK-111 | first-pass? yes
+TASK-108 | S5 | approved | first-pass; AC2 (live bot-reply) conditionally approved pending joint smoke test once TASK-111 lands | first-pass? yes
