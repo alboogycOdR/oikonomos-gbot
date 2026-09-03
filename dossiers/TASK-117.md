@@ -1,0 +1,18 @@
+# TASK-117 Dossier
+
+## Work Log
+
+- [2026-09-03T21:58:00Z] [CX] New dispatch verified against the authoritative main-checkout PLAN.md. Preflight output (run from the main checkout because this worktree has a stale PLAN.md):
+
+  ```text
+  [preflight] TASK-117 Owned_Paths inspected in E:/DELL-PROJECTS/GROKBOT-CLONE
+  [preflight] 3 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   services/control-api/src/app.ts  -> exists, 683 line(s), 25708 bytes
+    FILE   services/control-api/src/ports.ts  -> exists, 116 line(s), 5049 bytes
+    GLOB   services/control-api/src/**/*.test.ts  -> 2 file(s):
+             services/control-api/src/auth.test.ts
+             services/control-api/src/chat.routes.test.ts
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+
+- [2026-09-03T22:02:00Z] [CX] Blocked before implementation: TASK-117 AC #3 requires a real chat run to execute a T0 action such as `Read` without a pending approval. Live `services/worker/src/chatRunDriver.ts` mounts only `allowedTools: ["Bash(*)"]` and creates a policy for only `Bash`, so no chat run can execute `Read`, `Glob`, or `Grep`. Making this acceptance criterion executable requires changing that worker file and likely its test, both outside TASK-117 `Owned_Paths`. No production or test source was changed.
