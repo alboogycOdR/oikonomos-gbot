@@ -3241,7 +3241,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6, §7 (Chat-1e); ADR-004 (render provenance); TASK-058/082 precedent (mutation-proof authorization tests)
@@ -3253,15 +3253,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Approve/Reject call the real decide endpoint with the real nonce; the nonce never appears in the URL bar, browser history, or persisted client storage — tested (same standard TASK-103 already proved for the ops approvals page)
 - [ ] A second decide attempt on an already-decided approval is handled gracefully (409), tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-109-s5
+**Started_At:** 2026-09-03T11:53:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T19:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T11:53:11Z
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
