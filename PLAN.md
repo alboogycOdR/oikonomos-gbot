@@ -3268,7 +3268,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
@@ -3280,15 +3280,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Immediately after creation, the user lands in a working conversation with the new bot (thread created, compose box usable) without navigating away
 - [ ] Empty/whitespace-only bot name is rejected client-side with a visible message, no request sent
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-110-s5
+**Started_At:** 2026-09-03T12:55:36Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T10:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T12:55:36Z
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
