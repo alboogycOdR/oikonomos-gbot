@@ -3294,7 +3294,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (9th pass); docs/decisions/ADR-013-tool-capability-resolution.md (Fable design, resolves the SPEC_AMBIGUITY blocker below); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3330,10 +3330,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T20:07:03Z] [SV:CX] Chat task execution now uses harness-factory's sanctioned default SDK query; live governed tool and HTTP fire-and-forget paths verified.
 **Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/index.ts, services/worker/package.json, packages/db/src/runs.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, pnpm-lock.yaml, dossiers/TASK-111.md
 **Test_Evidence:** pnpm --filter @oikonomos/worker test: 36 passed, 1 skipped; pnpm --filter @oikonomos/control-api test: 110 passed; pnpm -r build, pnpm -r test, and pnpm lint clean. Live authenticated Claude run persisted policy.decision runtime.bash/T3_external/require_approval; real POST /threads/:id/messages returned 201 in 182ms and asynchronously persisted a bot reply with run_id.
-**Review_Findings:** —
+- [2026-09-03T22:15:00Z] [ORCH] APPROVED, first-pass, with one required fast-follow (not a rework condition — the delivered code is correct and proven, not defective). Implementation review: chatRunDriver.ts is genuinely well-built — real CapabilityRegistry/PolicyRegistry construction, correct startTaskRun→executeTaskRun→completeTaskRun/failTaskRun lifecycle with failTaskRun on any exception, real broker dependencies via registry.brokerPorts(database), correct fire-and-forget wiring in control-api (`void deps.runChatTask(...).catch(...)` before the HTTP reply, verified in the diff). destinationFor matches ADR-013's v1 rule exactly, fails closed on unknown shapes. **Independently verified the live claim directly against production Postgres, not taken on trust**: two real `policy.decision` audit events (capability=runtime.bash, tier=T3_external, actor=agent:claude), two matching real `pending` approvals, both runs correctly `completed` (not stuck), and two genuine bot reply messages where the model itself correctly explained it could not complete the Bash call because it was awaiting approval — the entire governed chat pipeline working end-to-end, for real, right now. Full recursive suite (284 assertions, zero failures), build (19/19), lint clean (confirms N9 wasn't bypassed — no direct SDK import survived, matching chatRunDriver.test.ts's own negative-control check). Merged --no-ff (27c6c66). **Gap, not a defect**: none of AC1 (broker fires, real audit event)/AC2 (completeRun against real Postgres)/AC3 (Tier-2+ → pending approval) has a *permanent, repeatable automated test* — chatRunDriver.test.ts only covers two pure helper functions (destinationFor, finalText) plus a source-grep negative check; the load-bearing claims are proven true by the one-time live run I just independently verified, not by anything that would catch a future regression. This is a real gap against this project's own ADR-005 liveness-assertion standard (every other task in this wave required exactly this kind of test). Opened TASK-116 to close it — assigned to S5, not CX, matching the user's explicit contingency for this task's next round; not because CX's work here was wrong, but because the remaining piece (writing tests, no new production logic) is a clean, well-scoped handoff and CX has carried this task through 9 correction rounds already.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/index.ts, services/worker/package.json, packages/db/src/runs.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, pnpm-lock.yaml, dossiers/TASK-111.md
+**Review_Findings:** APPROVE, first-pass. Real functionality independently verified against live production data. Required fast-follow: permanent regression tests for AC1/2/3 (TASK-116, S5).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T20:07:03Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T22:15:00Z
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
@@ -3450,3 +3452,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-03T20:22:00Z
+
+### TASK-116
+**Title:** Permanent regression tests for the chat run driver's governed-execution claims
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** TASK-111's original AC1/AC2/AC3 (unmet by automated tests despite being proven true by a live run ORCH independently verified against production Postgres — see TASK-111 Review_Findings); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the evidentiary shape to match; ADR-005 (every mechanical control ships a liveness assertion)
+**Owned_Paths:** services/worker/src/chatRunDriver.test.ts, packages/db/src/runs.test.ts
+**Depends_On:** TASK-111
+**Description:** TASK-111 shipped genuinely correct, working code — ORCH independently confirmed a real governed chat run end-to-end against live production data (real `policy.decision` audit event for `runtime.bash`/`T3_external`, a real pending approval, a run that correctly completed, a bot reply correctly reporting the pending state). What's missing is **permanent, repeatable test coverage** proving the same thing — right now `chatRunDriver.test.ts` only exercises two pure helper functions (`destinationFor`, `finalText`) plus a source-grep negative check; nothing drives `createChatRunDriver`/`runChatTask` itself, and `packages/db/src/runs.test.ts` has zero coverage of `completeRun`. This task closes that gap. Do not change any production logic in `chatRunDriver.ts`, `runLifecycle.ts`, or `runs.ts` — they are correct; this is test-only. (1) `packages/db/src/runs.test.ts`: add a real-Postgres test that `completeRun` transitions a `started` run to `'completed'` with `ended_at` set, and that it throws (matching `failRun`'s existing pattern) on an already-terminal run — mirror the file's existing `failRun`/`cancelRun` test shape exactly. (2) `chatRunDriver.test.ts`: add an integration-shaped test (real Postgres via `DATABASE_URL`, `describe.skip` when absent — matching this project's existing convention for DB-gated tests) that seeds a real chat-created task and a real thread, calls `createChatRunDriver(options).run(...)` directly, and asserts against real Postgres afterward: a `policy.decision` audit event exists for the attempted tool with the correct capability/tier, an `approvals` row exists in `pending` status (ADR-013 §7's own suggested method: seed a real `T1_draft`+ grant first via `Database.upsertRoleGrant` so the Tier-3 attempt is classified rather than silently denied before reaching the approval path — or, if simpler and equally valid, assert the zero-grant deny path with its own real audit event; either is acceptable as long as it is real, not mocked), a `messages` row with `role: 'bot'` and the correct `run_id`, and the run's final status is `'completed'`. This is a real Claude Agent SDK call and will cost real inference budget — keep the seeded task's prompt short and deterministic-enough to reliably attempt exactly one tool call (e.g. explicitly instruct "run `pwd` via Bash exactly once, then stop" — matching the prompt shape ORCH observed working in TASK-111's own live verification), and note actual spend in the dossier.
+**Acceptance_Criteria:**
+- [ ] `completeRun` has a real-Postgres test proving the `'completed'` transition and `ended_at`, plus the illegal-transition-throws case, mirroring `failRun`'s existing test shape
+- [ ] A real (non-mocked) test drives `createChatRunDriver(...).run(...)` end-to-end against real Postgres and a real Claude Agent SDK call, then asserts a real `policy.decision` audit event, a real `messages` row with `role: 'bot'` and the correct `run_id`, and the run's terminal status — same evidentiary bar as CAN-09
+- [ ] Test is `describe.skip`-gated on `DATABASE_URL` presence, matching this project's existing convention, so it doesn't silently fail in an environment without one
+- [ ] No production code in chatRunDriver.ts/runLifecycle.ts/runs.ts changes — diff review will check this literally
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T22:15:00Z
