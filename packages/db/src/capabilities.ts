@@ -18,6 +18,8 @@ export interface ConnectorRoleGrantRow {
 
 export interface ConnectorRegistrationRows {
   readonly connectorId: string;
+  /** Ownership tag stored on each `capabilities` row. Defaults to `mcp:<connectorId>` when omitted (ADR-013 §4). */
+  readonly adapter?: string;
   readonly capabilities: readonly ConnectorCapabilityRow[];
   readonly roleGrants: readonly ConnectorRoleGrantRow[];
 }
@@ -48,7 +50,7 @@ export function createConnectorRegistrationStore(pool: Pool): ConnectorRegistrat
   return {
     async register(rows: ConnectorRegistrationRows): Promise<void> {
       const client = await pool.connect();
-      const adapter = adapterFor(rows.connectorId);
+      const adapter = rows.adapter ?? adapterFor(rows.connectorId);
       try {
         await client.query("BEGIN");
         for (const capability of rows.capabilities) {
