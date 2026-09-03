@@ -3332,7 +3332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (registry design), §3 (built-in tools table), §5 (construction-time closure checks C1–C7), §8.1–8.2 (liveness layers 1–2)
@@ -3346,15 +3346,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `brokerPorts(persisted).getCapability`/`getRoleGrant` implement §6's exact logic: enabled=false → null (not a construction error), defaultTier drift → null, unknown capability_id → null — each case tested against a fake `persisted` port
 - [ ] Liveness layer 2 (§8.2): build the registry from the real `packages/connectors/manifests/` dir content and the real `BUILTIN_TOOLS`, drive `handlePreToolUse` for a real tool, then rebuild with one `tools[]` entry removed and prove the same request now denies with a real audit event — assertion keys on the audit event, not on registry internals
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-112-cx
+**Started_At:** 2026-09-03T15:46:27Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T16:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T15:46:27Z
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
