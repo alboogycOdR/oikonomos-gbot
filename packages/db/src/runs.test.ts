@@ -4,9 +4,11 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  completeRun,
   createTask,
   defaultPoolConfig,
   getAuditEventsForRun,
+  IllegalRunTransitionError,
   insertApproval,
   insertAuditEvent,
   listPendingApprovals,
@@ -223,6 +225,64 @@ integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
     expect(result.every((a) => a.expiresAt.getTime() > Date.now())).toBe(true);
   });
 
+});
+
+// TASK-116: completeRun had zero test coverage (a live production run was
+// independently verified by ORCH against real Postgres for TASK-111, but
+// nothing here would catch a future regression). Mirrors this file's own
+// `listRuns`/`listPendingApprovals` integration shape: real Postgres, a
+// dedicated role_id fixture, cleaned up in afterAll.
+integration("packages/db runs — completeRun (TASK-116)", () => {
+  let pool: Pool;
+  const roleId = "task-116-runs-completeRun-suite";
+  let taskId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    const task = await createTask(
+      { connectionString: connectionString! },
+      { roleId, title: "completeRun fixture", goal: "g", requestedBy: "alister" },
+    );
+    taskId = task.taskId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("transitions a started run to 'completed' with ended_at set", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    expect(run.status).toBe("started");
+    expect(run.endedAt).toBeNull();
+
+    const completed = await completeRun({ connectionString: connectionString! }, run.runId);
+    expect(completed.runId).toBe(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.endedAt).not.toBeNull();
+    expect(completed.endedAt!.getTime()).toBeGreaterThanOrEqual(run.startedAt.getTime());
+  });
+
+  it("throws IllegalRunTransitionError when completing an already-terminal run", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    await completeRun({ connectionString: connectionString! }, run.runId);
+
+    await expect(
+      completeRun({ connectionString: connectionString! }, run.runId),
+    ).rejects.toThrow(IllegalRunTransitionError);
+    await expect(
+      completeRun({ connectionString: connectionString! }, run.runId),
+    ).rejects.toMatchObject({ runId: run.runId, fromStatus: "completed" });
+  });
 });
 
 // NOT gated behind `integration` (review round 3): same reasoning as
