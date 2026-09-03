@@ -3390,7 +3390,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §4 (registration CLI, "boot never writes authorization tables"), §8.3 (production-caller liveness), §8.4 (CI surrogate)
@@ -3408,9 +3408,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-03T17:00:48Z] [SV:CX] Committed worker registration CLI and CI registry-closure probe in eac530c; CLAUDE.md edit was rejected by the territory hook and discarded.
 - [2026-09-03T19:00:00Z] [ORCH] Unblocking. CX's finding was correct — CLAUDE.md is mechanically off-limits to every builder regardless of Owned_Paths (protocol-level, not a scoping mistake this time). Made the ADR-013 §9 edit directly (one line + one explanatory paragraph, matching the existing hooks/.claude precedent style). Removed CLAUDE.md from Owned_Paths entirely; added pnpm-lock.yaml for the new @oikonomos/connectors dependency sync. Resume on task/TASK-114-cx — your registration CLI and CI probe commit (eac530c) stands.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-03T17:18:07Z] [SV:CX] Explicit registration CLI, registry-closure CI probe, tests, and lockfile synchronization are complete; ORCH applied the CLAUDE.md-only change.
+**Artifacts:** services/worker/src/registerCapabilities.ts, services/worker/src/registerCapabilities.test.ts, services/worker/package.json, pnpm-lock.yaml, infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-114.md
+**Test_Evidence:** Node v22.23.2: worker test 33 passed/1 skipped; worker build passed; pnpm -r build passed; pnpm lint passed; pnpm -r test passed. controls-live registry closure PASS. Standalone controls test has known unrelated missing-main-ATLAS failure (21/22 pass).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T17:00:48Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T17:18:07Z
