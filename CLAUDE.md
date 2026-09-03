@@ -15,9 +15,11 @@ AI teammate control plane for Basileia Technologies. TypeScript, Node 22, pnpm w
 
 ## Protected paths (adversarial review required before merge)
 
-`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, `hooks/**`, `.claude/**`, `.codex/**`.
+`packages/broker/**`, `packages/policy/**`, `packages/approvals/**`, `packages/harness-factory/**`, `infra/ci/**`, `docs/decisions/**`, `hooks/**`, `.claude/**`, `.codex/**`, `packages/connectors/manifests/**`.
 
 `hooks/**` and `.claude/**` were added 2026-08-15 (ORCH), replacing the vaguer "all settings and subagent configs". Reason: both are control-plane surface where an edit silently weakens an enforcement mechanism rather than breaking a test. `hooks/` now holds `territory-precommit.js`, the mechanical territory control ADR-002 Amendment B installed; `.claude/commands/**` defines the review procedure itself, so a narrow settings-only reading would let the review standard be edited without review. The old phrasing covered `.claude/settings*.json` and `.claude/agents/**` but not `commands/`, `skills/`, or `hooks/` — a gap found while reviewing TASK-018.
+
+`packages/connectors/manifests/**` was added 2026-09-03 (ORCH, ADR-013 §9). Reason: a manifest's `tools[].default_tier` is where a capability's governed tier is decided; `CapabilityRegistry` (packages/broker) enforces exactly what a manifest declares once registered, so an unreviewed manifest edit is an unreviewed tier change. C5 (registry construction throws on tier drift between a manifest and its registered row) means an edit alone can't silently take effect without re-registration, but re-registration is precisely the step a builder-authored connector task runs next.
 
 **Adversarial review ("Fable") must be run by a different model than the author** — use Codex CLI or Grok Build via AgentProvider. Solo-developer conflict of interest is not acceptable on these paths.
 
