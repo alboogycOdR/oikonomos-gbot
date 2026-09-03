@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 export { buildApp, type BuildAppOptions } from "./app.js";
 export { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
 export { getOpenApiDocument } from "./openapi.js";
@@ -22,8 +24,11 @@ export async function start(): Promise<void> {
 }
 
 // Only run when this module is the process entrypoint, not when imported
-// (by tests or by other packages) for its exports.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// (by tests or by other packages) for its exports. `file://${argv[1]}`
+// string comparison breaks on Windows (argv[1] is a raw path, not a URL);
+// fileURLToPath is the portable comparison — same fix already proven in
+// services/worker/src/registerCapabilities.ts (TASK-114).
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
   start().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;

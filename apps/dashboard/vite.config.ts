@@ -19,6 +19,8 @@ export default defineConfig({
       "/runs": "http://localhost:3000",
       "/approvals": "http://localhost:3000",
       "/tasks": "http://localhost:3000",
+      "/roles": "http://localhost:3000",
+      "/threads": "http://localhost:3000",
     },
   },
 });
