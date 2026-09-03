@@ -34,6 +34,24 @@ export {
   type ToolPolicyEntry,
 } from "./registry.js";
 export {
+  CapabilityRegistry,
+  CapabilityNotRegisteredError,
+  CapabilityOwnershipError,
+  CapabilityTierDriftError,
+  DuplicateToolDeclarationError,
+  InvalidToolDeclarationError,
+  StaleCapabilityRowError,
+  UnobservableCapabilityRegistryError,
+  declaredToolsFromManifest,
+  type CapabilityRegistryBuildInput,
+  type ConnectorManifestSlice,
+  type DeclaredTool,
+  type PersistedCapability,
+  type PersistedCapabilityReader,
+  type PersistedRoleGrant,
+} from "./capabilityRegistry.js";
+export { BUILTIN_TOOLS } from "./builtinTools.js";
+export {
   ALLOWLIST_MISS_REASON,
   recheckAgainstManifest,
   type ManifestMap,
@@ -97,7 +115,9 @@ export interface BrokerDependencies {
    * before the rest of L1; a miss denies `allowlist.miss` even if the
    * tool still appears on the mounted tool list. Optional so existing L1
    * tests remain byte-identical; production callers construct a
-   * {@link PolicyRegistry} (throws on incompleteness) and pass its
+   * {@link CapabilityRegistry} (which validates declaration/persistence
+   * closure) plus a {@link PolicyRegistry} (which validates mounted-tool
+   * completeness), then pass the latter's
    * `manifestMap`.
    */
   manifestMap?: ManifestMap;

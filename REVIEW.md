@@ -157,3 +157,7 @@ TASK-107 | S5 | approved | first-pass (post Owned_Paths-parser unblock); visual 
 TASK-106 | CX | approved | first-pass (post 2-round scope-correction unblock); rescoped to task-creation only after real MISSING_DEPENDENCY finding, execution split to TASK-111 | first-pass? yes
 TASK-108 | S5 | approved | first-pass; AC2 (live bot-reply) conditionally approved pending joint smoke test once TASK-111 lands | first-pass? yes
 TASK-109 | S5 | approved | first-pass; non-blocking: onUnauthorized/onDecided props unwired (fails safe) | first-pass? yes
+TASK-110 | S5 | approved | first-pass; disciplined territory workaround (local fetch helper, full reload) noted as non-blocking, driven by narrow Owned_Paths not a shortcut | first-pass? yes
+TASK-113 | S5 | approved | first-pass; ADR-013 SS2/SS4 implemented exactly, real content returned not just filenames | first-pass? yes
+TASK-112 | CX | approved | first-pass, protected path, reviewed by different model (ORCH/Sonnet-5 vs CX/Codex); all C1-C7 checks verified line-by-line against ADR-013; non-blocking: liveness test uses regex manifest parser not real loadManifests (territory-driven) | first-pass? yes
+TASK-114 | CX | approved | first-pass, protected path, reviewed by different model (ORCH); verified real Postgres writes directly (23 capability rows, zero builtin grants); pre-existing unrelated ATLAS test flake confirmed reproducible on master | first-pass? yes

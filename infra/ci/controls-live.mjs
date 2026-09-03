@@ -199,6 +199,60 @@ export function checkDistFreshness(packages) {
   return stale.length === 0 ? null : stale.join('; ');
 }
 
+/**
+ * Runs ADR-013's production-shaped registry closure probe in a child process.
+ * The build step preceding CI makes the real package declarations importable
+ * from dist/ without giving this plain-node CI script a TypeScript loader.
+ */
+export function collectCapabilityRegistryEvidence(root) {
+  const probe = `
+import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest } from './packages/broker/dist/index.js';
+import { defaultManifestsDir, loadManifests } from './packages/connectors/dist/index.js';
+const manifests = await loadManifests(defaultManifestsDir());
+const declared = [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)];
+const rows = new Map();
+for (const entry of declared) rows.set(entry.capabilityId, { capabilityId: entry.capabilityId, defaultTier: entry.defaultTier, adapter: entry.adapter, enabled: entry.enabled });
+const persisted = {
+  async getCapability(capabilityId) { return rows.get(capabilityId) ?? null; },
+  async getRoleGrant() { return null; },
+  async listCapabilities() { return [...rows.values()]; },
+};
+const registry = await CapabilityRegistry.build({ declared, persisted });
+const policies = Object.fromEntries([...registry.enabledToolNames].map((toolName) => [toolName, {}]));
+try {
+  new PolicyRegistry({
+    mountedToolNames: ['__liveness_probe__'],
+    policies,
+    manifestToolNames: [...registry.enabledToolNames],
+  });
+  console.log('CAPABILITY_REGISTRY_CLOSURE missing rejection declarations=' + declared.length);
+} catch (error) {
+  if (error?.name !== 'PolicyMissingError' || error?.toolName !== '__liveness_probe__') throw error;
+  console.log('CAPABILITY_REGISTRY_CLOSURE PolicyMissingError tool=__liveness_probe__ declarations=' + declared.length);
+}
+`;
+  // `command()` intentionally uses a shell for cross-platform pnpm/git
+  // resolution. That shell consumes the multiline --eval payload on Windows,
+  // so this self-contained Node probe must bypass it.
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+    cwd: root,
+    encoding: 'utf8',
+    shell: false,
+  });
+  return {
+    status: result.status ?? 1,
+    output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+  };
+}
+
+export function checkCapabilityRegistryEvidence(result) {
+  if (result.status !== 0) return `capability registry closure probe failed: ${result.output.trim()}`;
+  const evidence = /CAPABILITY_REGISTRY_CLOSURE PolicyMissingError tool=__liveness_probe__ declarations=(\d+)/.exec(result.output);
+  if (evidence === null) return 'capability registry closure probe emitted no named PolicyMissingError rejection';
+  if (Number(evidence[1]) < 9) return `capability registry closure probe observed only ${evidence[1]} declarations; expected at least 9`;
+  return null;
+}
+
 function workspacePackages(root) {
   const roots = ['packages', 'services', 'apps'];
   return roots.flatMap((workspaceRoot) => {
@@ -236,6 +290,7 @@ export function runLivenessChecks(root, supplied = {}) {
   const workflow = supplied.workflow ?? (existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : '');
   const runLocal = supplied.runLocal ?? (existsSync(runLocalPath) ? readFileSync(runLocalPath, 'utf8') : '');
   const atlas = supplied.atlas ?? collectAtlasCoverageEvidence(root);
+  const capabilityRegistry = supplied.capabilityRegistry ?? collectCapabilityRegistryEvidence(root);
   return [
     result('territory pre-commit hook', checkHookEvidence(hook)),
     result('devteam control queue', checkControlQueue(queued)),
@@ -244,6 +299,7 @@ export function runLivenessChecks(root, supplied = {}) {
     result('workspace dist freshness', checkDistFreshness(packages)),
     result('CI test job builds before test', checkTestJobBuildOrder({ workflow, runLocal })),
     result('ATLAS index coverage', checkAtlasCoverage(atlas)),
+    result('capability registry closure', checkCapabilityRegistryEvidence(capabilityRegistry)),
   ];
 }
 
