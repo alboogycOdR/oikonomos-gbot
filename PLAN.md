@@ -3424,7 +3424,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-115
 **Title:** harness-factory defaultSdkQuery — resolve a working Claude CLI binary automatically
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** N9 (CLAUDE.md "All harness invocations go through packages/harness-factory. Direct query() calls elsewhere fail lint."), infra/lint/rules/no-direct-agent-sdk-query.mjs (the enforcing rule)
@@ -3443,7 +3443,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T18:17:14Z] [SV:CX] Added backwards-compatible default SDK Claude CLI resolution and mocked coverage; branch is rebased on current master and ready for protected-path adversarial review.
 **Artifacts:** packages/harness-factory/src/index.ts, packages/harness-factory/src/index.test.ts
 **Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 14 files, 102/102 tests passed; pnpm lint: passed; pnpm -r build: passed; pnpm -r test: passed on second full run (first hit an unrelated Grok fake-subprocess timeout; isolated rerun passed 12/12).
-**Review_Findings:** —
+- [2026-09-03T20:22:00Z] [ORCH] APPROVED, first-pass, protected path — reviewed by ORCH as different-model reviewer (vs CX/Codex). Fix is minimal, correct, and additive exactly as specified: `execFileSync` (not shell string — no injection surface), never overrides a caller-supplied path (verified: the "never overwrites" test asserts `execFileSync` isn't even called), fails silently to unchanged behavior on any resolution error. Test quality is genuinely high — mocks at the real boundary (`node:child_process` + the SDK's own `query` import) and drives the real `createHarness().query()` path, not an isolated helper. Independently re-ran: harness-factory tests (102/102, every pre-existing test untouched), full pnpm -r build (19/19), pnpm lint clean (confirms N9 itself wasn't violated), full pnpm -r test (271 assertions, zero failures). Merged --no-ff (46770d5). **Unblocks TASK-111 — all five prerequisites (106/112/113/114/115) are now done.**
+**Artifacts:** packages/harness-factory/src/index.ts, packages/harness-factory/src/index.test.ts
+**Review_Findings:** APPROVE, first-pass.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T18:17:14Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T20:22:00Z
