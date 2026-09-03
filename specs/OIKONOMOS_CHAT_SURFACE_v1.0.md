@@ -118,6 +118,17 @@ unchanged broker/policy/approvals path at whatever tier that action needs.
 All under existing auth (`control_api_session` cookie), existing
 `packages/db` connection discipline, existing OpenAPI doc generation.
 
+Corrected 2026-09-02 (TASK-106 blocked on this in the first draft — CX's
+finding was correct): this service has **no `routes/` directory**. Every
+route is registered inline in `buildApp()` in `services/control-api/src/
+app.ts`, and every route handler calls only through the `ControlApiDeps`
+port in `services/control-api/src/ports.ts` (OIK-084 "not the DB" — no
+route may import `pg`, hold a `Pool`, or embed SQL; `test/no-raw-sql.
+test.ts` is the liveness check enforcing this). The 6 new endpoints below
+go into `app.ts` following the existing route style exactly, backed by new
+port functions in `ports.ts` that wrap `packages/db`'s `threads.ts`/
+`messages.ts`/role functions — do not add a `routes/` directory.
+
 - `GET /roles` — list bots the user can talk to (id, name, description,
   avatar seed). Read from existing `roles` table; no schema change needed
   here beyond what TASK-Chat-1b adds (see below).

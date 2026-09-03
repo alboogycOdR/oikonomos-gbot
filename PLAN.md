@@ -3153,15 +3153,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
-**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b); WBS OIK-129, OIK-131
-**Owned_Paths:** services/control-api/src/routes/threads.ts, services/control-api/src/routes/roles.ts, services/control-api/src/index.ts, services/control-api/src/**/*.test.ts
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03; WBS OIK-129, OIK-131
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
 **Depends_On:** TASK-105
-**Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` exactly per spec §4. `POST /roles` creates a bot with the existing default-general-role T1_draft ceiling — reuse whatever role-creation/grant logic `packages/db`/`packages/policy` already expose for the default ceiling; do not hand-roll a new tier constant. `POST /threads/:id/messages` inserts the user message then creates a task+run via control-api's **existing** task-creation code path — grep for it before writing new run-lifecycle logic, this task must not duplicate it. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do — no route added here may skip auth. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH rather than editing those paths (protected, adversarial review required).
+**Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` (6 endpoints) exactly per spec §4. **Corrected 2026-09-03** [CX correctly caught this in the first pass]: this service has no `routes/` directory — register all 6 inline in `buildApp()` in `app.ts` following the existing route style, backed by new port functions added to `ports.ts` that wrap `packages/db`'s `threads.ts`/`messages.ts` and role functions (OIK-084 "not the DB" — no route may import `pg`, hold a `Pool`, or embed SQL; `test/no-raw-sql.test.ts` enforces this, do not weaken it). `POST /roles` creates a bot with the existing default-general-role T1_draft ceiling — reuse whatever role-creation/grant logic `packages/db`/`packages/policy` already expose for the default ceiling; do not hand-roll a new tier constant. `POST /threads/:id/messages` inserts the user message then creates a task+run via control-api's **existing** task-creation code path — grep for it before writing new run-lifecycle logic, this task must not duplicate it. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do — no route added here may skip auth. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH rather than editing those paths (protected, adversarial review required).
 **Acceptance_Criteria:**
-- [ ] All 5 new endpoints implemented and covered by the OpenAPI doc generation (existing `getOpenApiDocument` picks them up)
+- [ ] All 6 new endpoints implemented and covered by the OpenAPI doc generation (existing `getOpenApiDocument` picks them up)
 - [ ] Every new route rejects an unauthenticated request (no session cookie) with 401 — tested, not just "auth middleware is attached"
 - [ ] `POST /threads/:id/messages` provably creates a task+run reusing the existing creation path (test asserts on the same code path / shared helper, not a parallel reimplementation) and inserts the user message row
 - [ ] A bot message awaiting approval round-trips its nonce/action_render/status through `GET /threads/:id/messages`, tested against a real pending approval fixture
@@ -3170,12 +3170,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-02T18:48:01Z
 **Progress_Notes:**
 - [2026-09-03T03:34:49Z] [SV:CX] Verified the live router is src/app.ts and required DB port is src/ports.ts; both are outside Owned_Paths, so no implementation was attempted.
+- [2026-09-03T09:15:00Z] [ORCH] Unblocking. Both CX findings were correct — spec §4 wrongly assumed a `routes/` directory that doesn't exist (real pattern: everything inline in `app.ts` through the `ports.ts` port, OIK-084/no-raw-sql discipline), and the AC's "5" was a stale miscount against the Description's own 6 endpoints. Owned_Paths corrected to app.ts + ports.ts + test files; AC corrected to 6. Resume/reclaim on task/TASK-106-cx (note: worktree is on the now-merged task/TASK-105-cx branch — create the new branch per your own builder procedure, do not continue on the old one).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: Add services/control-api/src/app.ts and services/control-api/src/ports.ts to TASK-106 Owned_Paths; clarify six specified GET/POST endpoints versus AC stating five.
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T03:34:49Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T09:15:00Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
