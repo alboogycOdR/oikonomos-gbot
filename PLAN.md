@@ -3359,7 +3359,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (`loadManifests`), §4 (registration, `adapter?` field)
@@ -3373,13 +3373,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-113-s5
 **Started_At:** 2026-09-03T15:46:40Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T16:20:36Z] [SV:S5] Implemented loadManifests+InvalidManifestError (packages/connectors) and optional adapter? field on ConnectorRegistrationRows (packages/db), both per ADR-013 ┬º2/┬º4 exactly. All 4 acceptance criteria met and verified directly. Full recursive pnpm -r test/build/lint clean. Also found and cleaned up stray uncommitted TASK-110 leftovers in the worktree at session start (discarded, not part of this task, TASK-110 already done/merged) without touching anything outside Owned_Paths.
+**Artifacts:** packages/connectors/src/manifest/load.ts, packages/connectors/src/manifest/load.test.ts, packages/connectors/src/index.ts, packages/db/src/capabilities.ts, packages/db/src/capabilities.test.ts, dossiers/TASK-113.md
+**Test_Evidence:** pnpm --filter @oikonomos/connectors test: 12 files, 114 passed/4 skipped/0 failed. pnpm --filter @oikonomos/db test: 26 files, 116 passed/1 skipped/0 failed (integration suites ran against real Postgres). pnpm -r build: 17/18 workspaces clean. pnpm lint: clean. pnpm -r test (full recursive suite): every workspace green, zero FAIL/ERR_PNPM matches across full output.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T15:46:40Z
+**Updated_At:** 2026-09-03T16:20:36Z
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
