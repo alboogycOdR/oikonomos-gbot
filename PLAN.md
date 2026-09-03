@@ -3287,11 +3287,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
-**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
-**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (territory); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/package.json, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, services/control-api/package.json, services/control-api/src/**/*.test.ts
 **Depends_On:** TASK-106
 **Description:** **Opened 2026-09-03 after CX correctly found this missing while working TASK-106**: this codebase has never had a production task-execution path — `executeTaskRun` (services/worker/src/executeRun.ts) is real and correctly wired to the broker/harness-factory, but has only ever been called from tests (see `evals/harness/test/can-09-worker-liveness.test.ts` for the reference shape of a real broker-decided call). This task builds the first one, scoped narrowly to chat: a driver that (1) finds a chat-created task with no run yet (the `threads`/`messages`-tagged tasks TASK-106 creates), (2) assembles a **real** `BrokerDependencies` (packages/broker's interface) backed by real `packages/db`/`packages/policy`/`packages/audit` — there is no existing production constructor for this, build one, keep it inside this task's Owned_Paths; (3) calls `startTaskRun` then `executeTaskRun` with a real `queryFn` from an already-tested provider in `packages/agent-providers` (`ClaudeCodeProvider`, `CodexProvider`, or `GrokProvider` — pick whichever has the most reliable non-fake integration test today; keep the model choice cheap/bounded per CLAUDE.md's budget rule, Tier-0-appropriate); (4) on completion, calls `insertMessage` (TASK-105's function) to write the bot's reply with `role: "bot"` and the real `run_id` set, and finalizes the run via the existing `runLifecycle.ts` functions. Wire control-api (`app.ts`/`ports.ts`, same files TASK-106 touched — sequenced after it, not concurrent) so `POST /threads/:id/messages` triggers this driver after inserting the task, fire-and-forget (do not block the HTTP response on a full agent run completing). This task does **not** modify `packages/broker`, `packages/harness-factory`, or `packages/policy` themselves — it only constructs and calls their already-exported interfaces; if you find yourself needing to edit those packages, stop and report a blocker to ORCH (protected paths, adversarial review required). Real end-to-end execution means a real subprocess call to a real provider — this task legitimately costs real inference budget to test; keep test runs minimal (one short prompt) and note actual spend in the dossier.
 **Acceptance_Criteria:**
@@ -3304,9 +3304,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-03T07:38:33Z
 **Progress_Notes:**
 - [2026-09-03T10:53:34Z] [SV:CX] Recorded the precise production-composition ownership conflict in dossiers/TASK-111.md; no application code was changed.
+- [2026-09-03T11:25:00Z] [ORCH] Unblocking. CX's finding was correct and precise — confirmed services/control-api/package.json has no worker/broker/agent-providers/audit dependency, services/worker/package.json has no audit/approvals dependency, and index.ts (the real process entrypoint) was simply omitted from Owned_Paths. Added services/control-api/src/index.ts, services/control-api/package.json, services/worker/package.json to Owned_Paths. None of these are protected paths (packages/broker|policy|approvals|harness-factory unchanged — only manifest dependency declarations and non-protected service files). Resume on task/TASK-111-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: Production attachment requires services/control-api/src/index.ts and workspace manifest dependency changes outside TASK-111 Owned_Paths; without them, an owned driver has no production caller and cannot build the required real BrokerDependencies.
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T10:53:34Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T11:25:00Z
