@@ -3483,7 +3483,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
@@ -3496,15 +3496,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A subsequent real chat run against the new bot can complete a T0 action (e.g. `Read`) with **no** pending approval — tested against real Postgres end-to-end, same evidentiary shape as TASK-116's liveness test
 - [ ] Existing `POST /roles` behavior (role creation itself, response shape) is unchanged for callers — existing tests still pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-117-cx
+**Started_At:** 2026-09-03T21:48:27Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T21:48:27Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
