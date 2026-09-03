@@ -3332,7 +3332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (registry design), §3 (built-in tools table), §5 (construction-time closure checks C1–C7), §8.1–8.2 (liveness layers 1–2)
@@ -3351,12 +3351,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-03T16:20:36Z] [SV:CX] CapabilityRegistry, reviewed built-in declarations, closure checks, broker ports, real-manifest audit liveness coverage, and barrel docs are committed in d3fc850.
 - [2026-09-03T16:35:00Z] [ORCH] Unblocking. Real, pre-existing environment bug, not this task's fault — confirmed directly (`where.exe node` on this machine resolves to the system-default v23.10.0, not the .nvmrc-pinned v22). Fixed durably in scripts/dispatch.ps1 (both runner branches now prepend the pinned Node 22 install to PATH, same pattern as the DATABASE_URL forwarding fix) so every future dispatch gets the right runtime, not just this task. Resume on task/TASK-112-cx — your implementation commit (d3fc850) stands, just re-run the gates under the fixed environment.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-03T16:37:54Z] [SV:CX] CapabilityRegistry implementation is complete; resumed under Node 22, hardened C2 exact connector-prefix validation, and verified all gates.
+**Artifacts:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/capabilityRegistry.ts, packages/broker/src/capabilityRegistry.test.ts, packages/broker/src/index.ts, dossiers/TASK-112.md
+**Test_Evidence:** pnpm --filter @oikonomos/broker test: 11 files, 120 tests passed; pnpm --filter @oikonomos/broker build: passed; pnpm lint: passed; pnpm -r test: all 17 workspace suites completed without FAIL/ERR_PNPM; pnpm -r build: exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T16:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T16:37:54Z
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
