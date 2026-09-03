@@ -3293,7 +3293,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (5th pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3318,9 +3318,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T11:55:00Z] [ORCH] Unblocking (4th pass). CX's finding was correct: GrokProvider emits opaque plain text with no tool-call boundary events, so it cannot be adapted into a queryFn that demonstrably drives the broker's PreToolUse hook. Switched the recommended/required provider to `ClaudeCodeProvider` throughout this task (it emits real `ToolStartEvent`/`ToolEndEvent`, and is the SDK-native provider `executeRun.ts`'s default path already targets — the closest fit, likely less adapter work than Grok would have been, not more). Resume on task/TASK-111-cx.
 - [2026-09-03T12:49:22Z] [SV:CX] Recorded the Claude adapter and worker-package export blockers in the TASK-111 dossier; no application code changed.
 - [2026-09-03T13:15:00Z] [ORCH] Unblocking (5th pass). CX's refusal was correct and important — it declined to build something that would look like broker enforcement without actually being it, exactly the discipline CLAUDE.md non-negotiable #1 exists for. Verified directly: no packages/agent-providers wrapper can forward PreToolUse hooks (their SendPromptOptions has no hooks param). The real fix is simpler than what I'd asked for: call executeTaskRun with NO custom queryFn at all — composeHarness's own defaultSdkQuery (packages/harness-factory/src/index.ts:316, confirmed it lazily imports the real @anthropic-ai/claude-agent-sdk) is the actual hook-preserving production path already used everywhere. No provider adapter needed. Added services/worker/src/index.ts to Owned_Paths for the barrel export gap CX also flagged. Resume on task/TASK-111-cx.
+- [2026-09-03T13:23:25Z] [SV:CX] Implemented and committed the narrow completeRun/completeTaskRun transition, then stopped before driver/API work because the required @oikonomos/db barrel export is outside task territory.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T13:15:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts must export completeRun but is not in TASK-111 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T13:23:25Z
