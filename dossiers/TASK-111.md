@@ -58,3 +58,5 @@ Please add `packages/db/src/index.ts` to TASK-111 `Owned_Paths` (or have its own
 ## Required unblock (tool-to-capability composition)
 
 Please provide or assign an owned, authoritative production mapping from real Agent SDK/MCP tool names to persisted capability IDs (and the intended default allowed-tools/mount composition for zero-grant chat roles), or explicitly widen TASK-111 to the existing canonical registry/composition source if one exists. Once that authority is present, I can safely build the chat driver and fire-and-forget API attachment; until then, a driver can only deny unknown tools and cannot meet the real tool-call/audit acceptance criterion.
+
+- [2026-09-03T13:48:00Z] [CX] Regression verification after the barrel export: `pnpm --filter @oikonomos/db test` passed (26 files, 114 passed, 1 skipped); `pnpm --filter @oikonomos/worker test` passed (8 files, 30 passed, 1 skipped). The completion transition's existing db/worker lifecycle coverage remains green. An attempted `--runInBand` forwarding flag was rejected by Vitest 3 as unsupported; the native package test command above is the valid passing rerun.
