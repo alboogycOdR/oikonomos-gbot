@@ -3332,7 +3332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (registry design), §3 (built-in tools table), §5 (construction-time closure checks C1–C7), §8.1–8.2 (liveness layers 1–2)
@@ -3350,12 +3350,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-03T15:46:27Z
 **Progress_Notes:**
 - [2026-09-03T16:20:36Z] [SV:CX] CapabilityRegistry, reviewed built-in declarations, closure checks, broker ports, real-manifest audit liveness coverage, and barrel docs are committed in d3fc850.
+- [2026-09-03T16:35:00Z] [ORCH] Unblocking. Real, pre-existing environment bug, not this task's fault — confirmed directly (`where.exe node` on this machine resolves to the system-default v23.10.0, not the .nvmrc-pinned v22). Fixed durably in scripts/dispatch.ps1 (both runner branches now prepend the pinned Node 22 install to PATH, same pattern as the DATABASE_URL forwarding fix) so every future dispatch gets the right runtime, not just this task. Resume on task/TASK-112-cx — your implementation commit (d3fc850) stands, just re-run the gates under the fixed environment.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE: Node v23.10.0 is unsupported by eslint-visitor-keys; frozen installation fails and dashboard build dependencies cannot be resolved. Run full build under supported Node >=22.13 with a clean frozen install.
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T16:20:36Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T16:35:00Z
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
