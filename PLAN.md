@@ -3360,7 +3360,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (`loadManifests`), §4 (registration, `adapter?` field)
@@ -3378,10 +3378,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T16:20:36Z] [SV:S5] Implemented loadManifests+InvalidManifestError (packages/connectors) and optional adapter? field on ConnectorRegistrationRows (packages/db), both per ADR-013 ┬º2/┬º4 exactly. All 4 acceptance criteria met and verified directly. Full recursive pnpm -r test/build/lint clean. Also found and cleaned up stray uncommitted TASK-110 leftovers in the worktree at session start (discarded, not part of this task, TASK-110 already done/merged) without touching anything outside Owned_Paths.
 **Artifacts:** packages/connectors/src/manifest/load.ts, packages/connectors/src/manifest/load.test.ts, packages/connectors/src/index.ts, packages/db/src/capabilities.ts, packages/db/src/capabilities.test.ts, dossiers/TASK-113.md
 **Test_Evidence:** pnpm --filter @oikonomos/connectors test: 12 files, 114 passed/4 skipped/0 failed. pnpm --filter @oikonomos/db test: 26 files, 116 passed/1 skipped/0 failed (integration suites ran against real Postgres). pnpm -r build: 17/18 workspaces clean. pnpm lint: clean. pnpm -r test (full recursive suite): every workspace green, zero FAIL/ERR_PNPM matches across full output.
-**Review_Findings:** —
+- [2026-09-03T18:30:00Z] [ORCH] APPROVED, first-pass. Territory clean (6 files, all Owned_Paths). Verified `loadManifests` genuinely reuses `scanManifests`/`validateManifest` rather than reimplementing parsing, and returns real parsed content (its own test explicitly checks this, not just file names — matching ADR-013's own "corrections" §2 finding). `ConnectorRegistrationRows.adapter?` change is minimal and correctly defaults via `??`. Independently re-ran: connectors (114/118) + db (116/117) isolated clean, full pnpm -r build (18/18), pnpm lint clean, full pnpm -r test: one CAN-03 (banned-modes scanner) failure under load, isolated re-run 100% clean — confirmed pre-existing shared-resource contention flake (CX's concurrent TASK-112 dispatch was actively writing run logs during the sweep), not a regression. Merged --no-ff (e2ec317). Unlocks TASK-114 (with TASK-112 still in progress).
+**Artifacts:** packages/connectors/src/manifest/load.ts, packages/connectors/src/manifest/load.test.ts, packages/connectors/src/index.ts, packages/db/src/capabilities.ts, packages/db/src/capabilities.test.ts, dossiers/TASK-113.md
+**Review_Findings:** APPROVE, first-pass.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T16:20:36Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T18:30:00Z
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
