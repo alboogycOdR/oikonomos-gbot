@@ -3268,7 +3268,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
@@ -3286,10 +3286,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T13:23:25Z] [SV:S5] CreateBotDialog implemented (name+description, client-side empty/whitespace validation, no tier/capability field) and wired into BotSidebar's + New bot button. Made a documented territory judgement call: talks to POST /roles + POST /threads directly via a local fetch helper (mirrors lib/api.ts conventions, reuses its UnauthorizedError class read-only) rather than editing lib/api.ts, and uses window.location.reload() on success (same URL, no navigation) so ChatPage's existing mount effect lands the user on the new most-recently-updated thread ΓÇö rather than editing ChatPage.tsx/ChatShell.tsx, neither of which is in this task's Owned_Paths. Full rationale in dossier for ORCH to weigh.
 **Artifacts:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, dossiers/TASK-110.md
 **Test_Evidence:** apps/dashboard: vitest run CreateBotDialog.test.tsx+BotSidebar.test.tsx+ChatShell.test.tsx -> 3 files, 20 tests passed. pnpm -r build -> 17/17 packages built (incl. apps/dashboard tsc+vite build). pnpm lint -> clean. pnpm -r test (full recursive suite, twice) -> first run had one packages/db/roles.test.ts failure unrelated to this task's files; isolated re-run of that file passed 9/9, and a second full pnpm -r test run was clean across every package -- confirmed shared-Postgres contention flake per orchestrator_notes' documented pattern, not a regression.
-**Review_Findings:** —
+- [2026-09-03T15:30:00Z] [ORCH] APPROVED, first-pass. Territory clean (3 files, all Owned_Paths). S5's documented workaround (local fetch helper instead of editing out-of-territory lib/api.ts; window.location.reload() instead of editing ChatPage/ChatShell) is a legitimate, disciplined choice given the tight Owned_Paths I set, not a violation — correctly satisfies the letter and spirit of "lands in a working conversation without navigating away" (URL never changes). Verified directly: no tier/capability field anywhere in the form, empty/whitespace validation blocks the request before any fetch call (checked in the diff, not just the test claim). Independently re-ran: dashboard tests (57/57), full pnpm -r build (18/18), pnpm lint (clean), full pnpm -r test (269 assertions, zero failures, no flake this pass). Merged --no-ff (a7ac1fa). **Non-blocking follow-up for Chat-2 polish**: the local fetch helper duplicates lib/api.ts's conventions rather than reusing it, and a full page reload is a coarser UX than an SPA state transition — both are consequences of Owned_Paths being scoped too narrowly by me, not a builder shortcut; worth folding lib/api.ts's createRole/createThread exports and ChatPage state wiring into a later task rather than reworking this one. **Chat-1 (TASK-105–110) is now fully done** — only TASK-111 remains.
+**Review_Findings:** APPROVE, first-pass. Non-blocking: fetch-helper duplication + full-reload UX, both consequences of narrow Owned_Paths, not builder shortcuts — fold into Chat-2 polish.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T13:23:25Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T15:30:00Z
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
