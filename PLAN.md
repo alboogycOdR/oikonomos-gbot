@@ -3268,7 +3268,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
@@ -3282,13 +3282,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-110-s5
 **Started_At:** 2026-09-03T12:55:36Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T13:23:25Z] [SV:S5] CreateBotDialog implemented (name+description, client-side empty/whitespace validation, no tier/capability field) and wired into BotSidebar's + New bot button. Made a documented territory judgement call: talks to POST /roles + POST /threads directly via a local fetch helper (mirrors lib/api.ts conventions, reuses its UnauthorizedError class read-only) rather than editing lib/api.ts, and uses window.location.reload() on success (same URL, no navigation) so ChatPage's existing mount effect lands the user on the new most-recently-updated thread ΓÇö rather than editing ChatPage.tsx/ChatShell.tsx, neither of which is in this task's Owned_Paths. Full rationale in dossier for ORCH to weigh.
+**Artifacts:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, dossiers/TASK-110.md
+**Test_Evidence:** apps/dashboard: vitest run CreateBotDialog.test.tsx+BotSidebar.test.tsx+ChatShell.test.tsx -> 3 files, 20 tests passed. pnpm -r build -> 17/17 packages built (incl. apps/dashboard tsc+vite build). pnpm lint -> clean. pnpm -r test (full recursive suite, twice) -> first run had one packages/db/roles.test.ts failure unrelated to this task's files; isolated re-run of that file passed 9/9, and a second full pnpm -r test run was clean across every package -- confirmed shared-Postgres contention flake per orchestrator_notes' documented pattern, not a regression.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T12:55:36Z
+**Updated_At:** 2026-09-03T13:23:25Z
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
