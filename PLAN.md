@@ -3153,7 +3153,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03 (2nd pass); WBS OIK-129, OIK-131
@@ -3174,12 +3174,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T09:15:00Z] [ORCH] Unblocking. Both CX findings were correct — spec §4 wrongly assumed a `routes/` directory that doesn't exist (real pattern: everything inline in `app.ts` through the `ports.ts` port, OIK-084/no-raw-sql discipline), and the AC's "5" was a stale miscount against the Description's own 6 endpoints. Owned_Paths corrected to app.ts + ports.ts + test files; AC corrected to 6. Resume/reclaim on task/TASK-106-cx (note: worktree is on the now-merged task/TASK-105-cx branch — create the new branch per your own builder procedure, do not continue on the old one).
 - [2026-09-03T05:37:26Z] [SV:CX] Verified corrected app/ports/test scope; implementation is blocked by missing canonical task+run and default-role grant helpers.
 - [2026-09-03T10:15:00Z] [ORCH] Unblocking (2nd pass). CX's finding was correct and substantive, not a quick fix — there is genuinely no production run-execution path in this codebase (`executeTaskRun` is test-only today). Split that work out to new TASK-111. This task's scope reduced to task+message creation only (no run start); the "bot reply" half of Chat-1's product bar now depends on TASK-111 as well. Grant question resolved by NOT building a helper: a new role starts with zero grants, which is already the safe default everywhere else in the system. Resume on task/TASK-106-cx.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-03T06:19:31Z] [SV:CX] Implemented and committed six authenticated Chat-1b role/thread/message endpoints, approval projection, OpenAPI entries, and route coverage.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, dossiers/TASK-106.md
+**Test_Evidence:** pnpm --filter @oikonomos/control-api test: 110 passed; pnpm --filter @oikonomos/control-api build: passed; pnpm -r --reporter=silent test: passed; pnpm -r --reporter=silent build: passed; pnpm lint: passed; live Postgres zero-role-grants assertion passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T10:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T06:19:31Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
