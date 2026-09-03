@@ -3153,17 +3153,18 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
-**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03; WBS OIK-129, OIK-131
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03 (2nd pass); WBS OIK-129, OIK-131
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
 **Depends_On:** TASK-105
-**Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` (6 endpoints) exactly per spec §4. **Corrected 2026-09-03** [CX correctly caught this in the first pass]: this service has no `routes/` directory — register all 6 inline in `buildApp()` in `app.ts` following the existing route style, backed by new port functions added to `ports.ts` that wrap `packages/db`'s `threads.ts`/`messages.ts` and role functions (OIK-084 "not the DB" — no route may import `pg`, hold a `Pool`, or embed SQL; `test/no-raw-sql.test.ts` enforces this, do not weaken it). `POST /roles` creates a bot with the existing default-general-role T1_draft ceiling — reuse whatever role-creation/grant logic `packages/db`/`packages/policy` already expose for the default ceiling; do not hand-roll a new tier constant. `POST /threads/:id/messages` inserts the user message then creates a task+run via control-api's **existing** task-creation code path — grep for it before writing new run-lifecycle logic, this task must not duplicate it. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do — no route added here may skip auth. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH rather than editing those paths (protected, adversarial review required).
+**Description:** Add `GET/POST /roles`, `GET/POST /threads`, `GET/POST /threads/:id/messages` (6 endpoints) exactly per spec §4, inline in `buildApp()` in `app.ts` through `ports.ts` (no `routes/` dir; OIK-084 no-raw-sql discipline unchanged). **Scope correction 2026-09-03 (2nd pass) — CX's MISSING_DEPENDENCY finding was correct, this is a real gap, not a naming mismatch**: there is no production task-execution path anywhere in this codebase yet (`executeTaskRun` has only ever been called from tests — no assembled `BrokerDependencies`/harness runtime exists in production). Building that is out of scope for THIS task and is split into **TASK-111**. `POST /threads/:id/messages` in this task does only: insert the user message row, `createTask` (existing `@oikonomos/db` function, tagged to the thread's role), and return the created message — **do not call `startRun` or attempt to execute anything**. The task row's mere existence is what TASK-111 will later pick up. `POST /roles` creates a bot with **zero `role_grants` rows** — this is deliberately the safe/conservative default (OIK-131's "conservative ceiling" taken to its floor: no grant means no capability beyond broker-enforced T0 observation, which is already fail-closed everywhere else in the system): do not add a grant-seeding helper, do not touch `packages/policy`. `GET /threads/:id/messages` must include, for any bot message awaiting approval, that approval's `{nonce, action_render, status}` sourced from the existing approvals data (reuse ADR-004's actionRender — do not re-derive). All new routes require the existing session auth exactly like `/runs`/`/approvals` do. This task does not modify `packages/broker`, `packages/policy`, or `packages/approvals` — if you find yourself needing to, stop and report a blocker to ORCH.
 **Acceptance_Criteria:**
 - [ ] All 6 new endpoints implemented and covered by the OpenAPI doc generation (existing `getOpenApiDocument` picks them up)
 - [ ] Every new route rejects an unauthenticated request (no session cookie) with 401 — tested, not just "auth middleware is attached"
-- [ ] `POST /threads/:id/messages` provably creates a task+run reusing the existing creation path (test asserts on the same code path / shared helper, not a parallel reimplementation) and inserts the user message row
+- [ ] `POST /threads/:id/messages` inserts the user message row and creates a task via `createTask`, tested — and provably does NOT start a run (no `startRun`/`startTaskRun` call anywhere in this task's code, confirmed by grep/test)
+- [ ] `POST /roles` creates a role with zero `role_grants` rows, tested (query `role_grants` after creation, expect empty)
 - [ ] A bot message awaiting approval round-trips its nonce/action_render/status through `GET /threads/:id/messages`, tested against a real pending approval fixture
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-106-cx
@@ -3172,12 +3173,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T03:34:49Z] [SV:CX] Verified the live router is src/app.ts and required DB port is src/ports.ts; both are outside Owned_Paths, so no implementation was attempted.
 - [2026-09-03T09:15:00Z] [ORCH] Unblocking. Both CX findings were correct — spec §4 wrongly assumed a `routes/` directory that doesn't exist (real pattern: everything inline in `app.ts` through the `ports.ts` port, OIK-084/no-raw-sql discipline), and the AC's "5" was a stale miscount against the Description's own 6 endpoints. Owned_Paths corrected to app.ts + ports.ts + test files; AC corrected to 6. Resume/reclaim on task/TASK-106-cx (note: worktree is on the now-merged task/TASK-105-cx branch — create the new branch per your own builder procedure, do not continue on the old one).
 - [2026-09-03T05:37:26Z] [SV:CX] Verified corrected app/ports/test scope; implementation is blocked by missing canonical task+run and default-role grant helpers.
+- [2026-09-03T10:15:00Z] [ORCH] Unblocking (2nd pass). CX's finding was correct and substantive, not a quick fix — there is genuinely no production run-execution path in this codebase (`executeTaskRun` is test-only today). Split that work out to new TASK-111. This task's scope reduced to task+message creation only (no run start); the "bot reply" half of Chat-1's product bar now depends on TASK-111 as well. Grant question resolved by NOT building a helper: a new role starts with zero grants, which is already the safe default everywhere else in the system. Resume on task/TASK-106-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: POST /tasks creates only a task (no run), and public DB role APIs provide no generic default-T1 grant helper; ORCH must identify/authorize the canonical helpers or assign their implementation.
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T05:37:26Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T10:15:00Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
@@ -3215,11 +3217,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6 (Chat-1d)
 **Owned_Paths:** apps/dashboard/src/App.tsx, apps/dashboard/src/pages/**, apps/dashboard/src/lib/**, apps/dashboard/src/main.tsx
-**Depends_On:** TASK-106, TASK-107
-**Description:** Wire `<ChatShell>` (Chat-1c's components, do not modify `components/chat/**`) to the live endpoints from Chat-1b: sidebar from `GET /threads`, sending a message via `POST /threads/:id/messages`, transcript via `GET /threads/:id/messages` polled every ~2s while a run is in flight (stop polling once the run reaches a terminal state or no run is pending — do not poll forever on an idle thread). Re-route the app: `/` becomes the chat surface (default landing route, matching the product-shape bar in spec §1); existing `/runs`, `/approvals`, `/evidence` routes move under `/ops/*` prefix, reachable but out of primary navigation. Reuse `lib/api.ts`'s existing auth/session handling as-is.
+**Depends_On:** TASK-106, TASK-107, TASK-111
+**Description:** Wire `<ChatShell>` (Chat-1c's components, do not modify `components/chat/**`) to the live endpoints from Chat-1b: sidebar from `GET /threads`, sending a message via `POST /threads/:id/messages`, transcript via `GET /threads/:id/messages` polled every ~2s while a run is in flight (stop polling once the run reaches a terminal state or no run is pending — do not poll forever on an idle thread). Re-route the app: `/` becomes the chat surface (default landing route, matching the product-shape bar in spec §1); existing `/runs`, `/approvals`, `/evidence` routes move under `/ops/*` prefix, reachable but out of primary navigation. Reuse `lib/api.ts`'s existing auth/session handling as-is. Depends on TASK-111 (added 2026-09-03) because a real bot reply requires TASK-111's run-execution driver to actually be running for this task's live-reply AC to be verifiable end-to-end.
 **Acceptance_Criteria:**
 - [ ] Logging in and landing on `/` shows the chat surface with real threads from the database, not fixture data
-- [ ] Sending a message in the compose box results in a real task+run being created (verifiable via `/ops/runs`) and the bot's reply appearing in the pane once the run completes, without a page reload
+- [ ] Sending a message in the compose box results in a real task being created (verifiable via `/ops/runs` once TASK-111 picks it up and starts a run) and the bot's reply appearing in the pane once the run completes, without a page reload
 - [ ] Polling stops once the run is terminal or no run is in flight for that thread (tested — assert the poll interval clears)
 - [ ] `/ops/runs`, `/ops/approvals`, `/ops/evidence` still function exactly as `/runs`/`/approvals`/`/evidence` did before this task (regression check, not just "still compiles")
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
@@ -3265,11 +3267,36 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
 **Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx
 **Depends_On:** TASK-106, TASK-108, TASK-109
-**Description:** A "+ New bot" affordance in the sidebar (from Chat-1c/1d) opens a minimal dialog: name + description, submits to Chat-1b's `POST /roles`, and on success immediately creates/opens a thread for the new bot via `POST /threads` and navigates to it — matching spec §1's "no manifest, role definition, or routine authored by the user first" bar. No tier/capability picker in this dialog; the default ceiling is applied server-side (Chat-1b's responsibility, already built).
+**Description:** A "+ New bot" affordance in the sidebar (from Chat-1c/1d) opens a minimal dialog: name + description, submits to Chat-1b's `POST /roles`, and on success immediately creates/opens a thread for the new bot via `POST /threads` and navigates to it — matching spec §1's "no manifest, role definition, or routine authored by the user first" bar. No tier/capability picker in this dialog. **Corrected 2026-09-03**: the created role has zero `role_grants` (TASK-106's safe default, not a "T1_draft ceiling grant" — no grant-seeding exists or is being built for Chat-1).
 **Acceptance_Criteria:**
-- [ ] Creating a bot via the dialog results in a real `roles` row with the default T1_draft ceiling (not user-settable from this UI) — tested
+- [ ] Creating a bot via the dialog results in a real `roles` row with zero `role_grants` (no tier picker, no client-settable capability) — tested
 - [ ] Immediately after creation, the user lands in a working conversation with the new bot (thread created, compose box usable) without navigating away
 - [ ] Empty/whitespace-only bot name is rejected client-side with a visible message, no request sent
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T10:15:00Z
+
+### TASK-111
+**Title:** chat task→run execution driver (Chat-1g)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Depends_On:** TASK-106
+**Description:** **Opened 2026-09-03 after CX correctly found this missing while working TASK-106**: this codebase has never had a production task-execution path — `executeTaskRun` (services/worker/src/executeRun.ts) is real and correctly wired to the broker/harness-factory, but has only ever been called from tests (see `evals/harness/test/can-09-worker-liveness.test.ts` for the reference shape of a real broker-decided call). This task builds the first one, scoped narrowly to chat: a driver that (1) finds a chat-created task with no run yet (the `threads`/`messages`-tagged tasks TASK-106 creates), (2) assembles a **real** `BrokerDependencies` (packages/broker's interface) backed by real `packages/db`/`packages/policy`/`packages/audit` — there is no existing production constructor for this, build one, keep it inside this task's Owned_Paths; (3) calls `startTaskRun` then `executeTaskRun` with a real `queryFn` from an already-tested provider in `packages/agent-providers` (`ClaudeCodeProvider`, `CodexProvider`, or `GrokProvider` — pick whichever has the most reliable non-fake integration test today; keep the model choice cheap/bounded per CLAUDE.md's budget rule, Tier-0-appropriate); (4) on completion, calls `insertMessage` (TASK-105's function) to write the bot's reply with `role: "bot"` and the real `run_id` set, and finalizes the run via the existing `runLifecycle.ts` functions. Wire control-api (`app.ts`/`ports.ts`, same files TASK-106 touched — sequenced after it, not concurrent) so `POST /threads/:id/messages` triggers this driver after inserting the task, fire-and-forget (do not block the HTTP response on a full agent run completing). This task does **not** modify `packages/broker`, `packages/harness-factory`, or `packages/policy` themselves — it only constructs and calls their already-exported interfaces; if you find yourself needing to edit those packages, stop and report a blocker to ORCH (protected paths, adversarial review required). Real end-to-end execution means a real subprocess call to a real provider — this task legitimately costs real inference budget to test; keep test runs minimal (one short prompt) and note actual spend in the dossier.
+**Acceptance_Criteria:**
+- [ ] A task created via `POST /threads/:id/messages` (TASK-106) results in a real run being started and driven through `executeTaskRun` — the broker's PreToolUse hook demonstrably fires for at least one real tool call in a test (same evidentiary bar as CAN-09: an audit decision event, not just "the function was called")
+- [ ] On completion, a `messages` row with `role: 'bot'` and the correct `run_id` is inserted, readable via `GET /threads/:id/messages`
+- [ ] If the run needs a Tier-2+ action, it correctly produces a pending approval (existing approvals machinery, untouched) rather than executing — tested
+- [ ] `POST /threads/:id/messages`'s HTTP response does not block on the run completing (fire-and-forget, tested via timing or a fake driver seam)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** —
 **Started_At:** —

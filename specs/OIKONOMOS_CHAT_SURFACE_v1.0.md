@@ -144,12 +144,16 @@ port functions in `ports.ts` that wrap `packages/db`'s `threads.ts`/
   one-conversation-per-bot sidebar).
 - `GET /threads/:id/messages` — full transcript, ascending by `created_at`.
 - `POST /threads/:id/messages` — `{body}`. Inserts the user message, then
-  creates a task+run via the **existing** task-creation path (reuse
-  whatever `services/control-api` already exposes for task creation — do
-  not duplicate run-lifecycle logic here) targeted at the thread's
-  `role_id`, with the message body as the task's free-text intake (OIK-129
-  shape: no manifest required). Returns the created message immediately;
-  the bot's reply arrives asynchronously.
+  creates a task (`createTask`, existing function) targeted at the
+  thread's `role_id`, with the message body as the task's free-text
+  intake (OIK-129 shape: no manifest required). **Corrected 2026-09-03**:
+  there is no existing task→run→execution pipeline in this codebase —
+  `executeTaskRun` (services/worker) has only ever been called from tests.
+  TASK-111 builds that first production driver (real `BrokerDependencies`,
+  real provider call through `packages/agent-providers`, real broker
+  decision) and wires it in fire-and-forget after task creation. Returns
+  the created message immediately; the bot's reply arrives asynchronously
+  once TASK-111's driver picks up the task.
 - Reply delivery for v1: **polling**, not websockets — `GET
   /threads/:id/messages?after=<message_id>` the dashboard polls every
   ~2s while a run is in flight, matching the existing control-api
