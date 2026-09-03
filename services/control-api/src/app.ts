@@ -505,11 +505,14 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           return;
         }
         const message = await deps.insertMessage({ threadId: thread.id, role: "user", body });
-        await deps.createTask({
+        const task = await deps.createTask({
           roleId: thread.roleId,
           title: `Chat: ${body.slice(0, 120)}`,
           goal: body,
           requestedBy: `chat:thread:${thread.id}`,
+        });
+        void deps.runChatTask({ task, threadId: thread.id }).catch((error: unknown) => {
+          request.log.error(error, "chat run failed after message acceptance");
         });
         await reply.code(201).send(message);
       } catch (error) {

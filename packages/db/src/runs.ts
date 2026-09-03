@@ -312,6 +312,38 @@ export async function failRun(
 }
 
 /**
+ * Complete a run. Legal only from an open status; terminal, sets `ended_at`.
+ */
+export async function completeRun(
+  options: DatabaseOptions,
+  runId: string,
+): Promise<Run> {
+  const normalizedRunId = requireUuid(runId, "runId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RunRow>(
+      `UPDATE runs
+       SET status = 'completed', ended_at = now()
+       WHERE run_id = $1
+         AND status IN ('started', 'waiting_approval', 'resumed')
+       RETURNING ${runColumns}`,
+      [normalizedRunId],
+    );
+
+    const rowCount = result.rowCount ?? 0;
+    if (rowCount === 1 && result.rows[0] !== undefined) {
+      return toRun(result.rows[0]);
+    }
+    if (rowCount > 1) {
+      throw new Error(
+        `completeRun matched ${rowCount} rows for run ${normalizedRunId}; expected 0 or 1.`,
+      );
+    }
+    return raiseTransitionFailure(pool, normalizedRunId, "complete");
+  });
+}
+
+/**
  * Cancel a run. Legal only from an open status; terminal, sets `ended_at`.
  */
 export async function cancelRun(

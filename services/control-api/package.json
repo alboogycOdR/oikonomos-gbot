@@ -30,6 +30,7 @@
   "dependencies": {
     "@oikonomos/approvals": "workspace:*",
     "@oikonomos/db": "workspace:*",
+    "@oikonomos/worker": "workspace:*",
     "fastify": "^5.12.1"
   }
 }

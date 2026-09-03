@@ -1,5 +1,6 @@
 import {
   cancelRun,
+  completeRun,
   failRun,
   getRun,
   resumeRun,
@@ -56,6 +57,13 @@ export async function failTaskRun(
   return failRun(options, runId, failureNote);
 }
 
+export async function completeTaskRun(
+  options: DatabaseOptions,
+  runId: string,
+): Promise<Run> {
+  return completeRun(options, runId);
+}
+
 export async function cancelTaskRun(
   options: DatabaseOptions,
   runId: string,
@@ -73,10 +81,13 @@ if (import.meta.vitest) {
       ).rejects.toThrow(/connectionString/);
     });
 
-    it("startTaskRun/failTaskRun/cancelTaskRun propagate the connectionString guard", async () => {
+    it("startTaskRun/completeTaskRun/failTaskRun/cancelTaskRun propagate the connectionString guard", async () => {
       const options = { connectionString: "   " };
       await expect(
         startTaskRun(options, { taskId: "11111111-1111-1111-1111-111111111111", provider: "test" }),
+      ).rejects.toThrow(/connectionString/);
+      await expect(
+        completeTaskRun(options, "11111111-1111-1111-1111-111111111111"),
       ).rejects.toThrow(/connectionString/);
       await expect(
         failTaskRun(options, "11111111-1111-1111-1111-111111111111", "boom"),

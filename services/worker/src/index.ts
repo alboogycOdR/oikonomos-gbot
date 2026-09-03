@@ -6,6 +6,7 @@ export function ping(): string {
 
 export {
   cancelTaskRun,
+  completeTaskRun,
   failTaskRun,
   resumeInterruptedRun,
   startTaskRun,
@@ -21,6 +22,15 @@ export {
   type ExecuteTaskRunInput,
   type ExecuteTaskRunResult,
 } from "./executeRun.js";
+
+export {
+  createChatRunDriver,
+  destinationFor,
+  finalText,
+  type ChatRunDriver,
+  type ChatRunRequest,
+  type CreateChatRunDriverOptions,
+} from "./chatRunDriver.js";
 
 export {
   createGatedSubprocessProviders,

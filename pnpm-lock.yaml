@@ -345,6 +345,9 @@ importers:
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oikonomos/worker':
+        specifier: workspace:*
+        version: link:../worker
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
@@ -380,6 +383,12 @@ importers:
       '@oikonomos/agent-providers':
         specifier: workspace:*
         version: link:../../packages/agent-providers
+      '@oikonomos/approvals':
+        specifier: workspace:*
+        version: link:../../packages/approvals
+      '@oikonomos/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@oikonomos/broker':
         specifier: workspace:*
         version: link:../../packages/broker
