@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 import { isL2Policy, L2_PERMISSION_MODE, type L2Policy } from "./config.js";
 import type {
@@ -327,7 +328,44 @@ async function* lazySdkQuery(input: AgentSdkQueryInput): AsyncGenerator<unknown>
       "SDK_QUERY_MISSING",
     );
   }
-  yield* mod.query(input);
+  yield* mod.query(withSystemClaudeExecutable(input));
+}
+
+/**
+ * Prefer an up-to-date system Claude CLI when one is available. The Agent SDK
+ * remains the fallback so installations without a global CLI retain its
+ * default behaviour.
+ */
+function withSystemClaudeExecutable(input: AgentSdkQueryInput): AgentSdkQueryInput {
+  if (input.options?.pathToClaudeCodeExecutable !== undefined) {
+    return input;
+  }
+
+  const executable = resolveSystemClaudeExecutable();
+  if (executable === undefined) {
+    return input;
+  }
+
+  return {
+    ...input,
+    options: {
+      ...input.options,
+      pathToClaudeCodeExecutable: executable,
+    },
+  };
+}
+
+function resolveSystemClaudeExecutable(): string | undefined {
+  try {
+    const command = process.platform === "win32" ? "where" : "which";
+    const output = execFileSync(command, ["claude"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return output.split(/\r?\n/).map((path) => path.trim()).find(Boolean);
+  } catch {
+    return undefined;
+  }
 }
 
 if (import.meta.vitest) {
