@@ -3332,7 +3332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (registry design), §3 (built-in tools table), §5 (construction-time closure checks C1–C7), §8.1–8.2 (liveness layers 1–2)
@@ -3354,10 +3354,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T16:37:54Z] [SV:CX] CapabilityRegistry implementation is complete; resumed under Node 22, hardened C2 exact connector-prefix validation, and verified all gates.
 **Artifacts:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/capabilityRegistry.ts, packages/broker/src/capabilityRegistry.test.ts, packages/broker/src/index.ts, dossiers/TASK-112.md
 **Test_Evidence:** pnpm --filter @oikonomos/broker test: 11 files, 120 tests passed; pnpm --filter @oikonomos/broker build: passed; pnpm lint: passed; pnpm -r test: all 17 workspace suites completed without FAIL/ERR_PNPM; pnpm -r build: exit 0.
-**Review_Findings:** —
+- [2026-09-03T18:45:00Z] [ORCH] APPROVED, first-pass, protected path — reviewed as the different-model reviewer (ORCH/Sonnet-5 vs CX/Codex). Verified against ADR-013 §5 line by line: all 7 closure checks (C1–C7) implemented exactly as specified, including C6's precise "only rows under a declared adapter" semantics (not all adapters) and C2's exact-prefix connector validation. §6's call-time getCapability/getRoleGrant logic matches the pseudocode; the implementation adds one extra defensive equality check (adapter match) beyond the spec's letter — a strengthening, not a deviation, noted and accepted. `packages/broker/src/index.ts` diff is exactly the promised doc-comment update plus additive exports, no other logic touched — checked directly, not assumed. Liveness layer 2 test is genuine: real `handlePreToolUse` call, real audit event assertions, allow→remove-entry→deny proven end to end. Independently re-ran: broker tests (120/120), full pnpm -r build (18/18), pnpm lint (clean), full pnpm -r test (274 assertions, zero failures — the CAN-03 flake from TASK-113's review didn't even reproduce this run). Merged --no-ff (c525b30). NON-BLOCKING: the liveness test's real-manifest reader is a hand-rolled regex parser rather than reusing TASK-113's real `loadManifests`/`validateManifest` — a consequence of `packages/broker/package.json` not being in this task's Owned_Paths (my scoping gap, not a shortcut), so CX correctly avoided an out-of-territory dependency addition. Works correctly against the 3 real manifests today; worth swapping for the real parser as a `@oikonomos/connectors` devDependency in TASK-114 or a follow-up, not required now. Unlocks TASK-114 (both dependencies now done).
+**Artifacts:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/capabilityRegistry.ts, packages/broker/src/capabilityRegistry.test.ts, packages/broker/src/index.ts, dossiers/TASK-112.md
+**Review_Findings:** APPROVE, first-pass. Non-blocking: liveness test's manifest reader is a regex parser, not the real loadManifests (territory-driven, not a shortcut) — worth swapping in TASK-114 or later.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T16:37:54Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T18:45:00Z
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
