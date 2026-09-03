@@ -3287,7 +3287,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (territory); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3305,9 +3305,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-03T10:53:34Z] [SV:CX] Recorded the precise production-composition ownership conflict in dossiers/TASK-111.md; no application code was changed.
 - [2026-09-03T11:25:00Z] [ORCH] Unblocking. CX's finding was correct and precise — confirmed services/control-api/package.json has no worker/broker/agent-providers/audit dependency, services/worker/package.json has no audit/approvals dependency, and index.ts (the real process entrypoint) was simply omitted from Owned_Paths. Added services/control-api/src/index.ts, services/control-api/package.json, services/worker/package.json to Owned_Paths. None of these are protected paths (packages/broker|policy|approvals|harness-factory unchanged — only manifest dependency declarations and non-protected service files). Resume on task/TASK-111-cx.
+- [2026-09-03T11:00:59Z] [SV:CX] Current territory resolves the API attachment, but real Codex/Grok execution and successful run completion require unowned worker/DB execution seams.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T11:25:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/worker/src/executeRun.ts must route through a real Codex/Grok provider, and services/worker/src/runLifecycle.ts/@oikonomos/db lack a successful completion transition.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T11:00:59Z
