@@ -1,29 +1,27 @@
-// TASK-107 (Chat-1c): center conversation pane — message list, auto-scroll,
-// typing/in-flight indicator (spec §5). Static fixture data only.
-//
-// Inline approval rendering: spec §5 assigns a dedicated <ApprovalCard>
-// to Chat-1e (TASK-109), which owns ApprovalCard.tsx and its wiring point
-// here. Until that file exists this task renders `message.approval`
-// verbatim (never re-interpreted as Markdown/HTML, per spec §5's
-// ApprovalCard rule carried forward) as a plain fixture-only placeholder
-// so the three-column layout is visually complete for this task's review;
-// TASK-109 replaces this block with the real <ApprovalCard>.
+// TASK-107 (Chat-1c) / TASK-109 (Chat-1e): center conversation pane —
+// message list, auto-scroll, typing/in-flight indicator (spec §5), and
+// inline <ApprovalCard> rendering (spec §4, §5, §6, §7) for messages that
+// carry a pending/decided approval.
 import { useEffect, useRef } from "react";
 
 import type { BotSummary, ChatMessage } from "./types";
 import { MessageBubble } from "./MessageBubble";
+import { ApprovalCard } from "./ApprovalCard";
 
 export interface ConversationPaneProps {
   bot?: BotSummary;
   messages: ChatMessage[];
   /** True while a run is in flight for this thread (spec §5 "typing/in-flight indicator"). */
   isBotResponding?: boolean;
+  /** Called when the dashboard's session cookie has expired (401) during a decide. */
+  onUnauthorized?: () => void;
 }
 
 export function ConversationPane({
   bot,
   messages,
   isBotResponding = false,
+  onUnauthorized,
 }: ConversationPaneProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -57,20 +55,7 @@ export function ConversationPane({
           <div key={message.id} className="space-y-2">
             <MessageBubble message={message} botName={bot.name} />
             {message.approval ? (
-              <div
-                data-testid="inline-approval-placeholder"
-                className="ml-10 max-w-[70%] rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
-              >
-                <p className="mb-1 font-semibold uppercase tracking-wide">
-                  Approval needed
-                </p>
-                <pre className="whitespace-pre-wrap font-mono text-[11px] text-amber-100">
-                  {message.approval.actionRender}
-                </pre>
-                <p className="mt-1 text-amber-300/80">
-                  Status: {message.approval.status} — wired in TASK-109.
-                </p>
-              </div>
+              <ApprovalCard approval={message.approval} onUnauthorized={onUnauthorized} />
             ) : null}
           </div>
         ))}
