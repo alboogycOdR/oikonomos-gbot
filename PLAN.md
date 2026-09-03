@@ -3455,7 +3455,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-116
 **Title:** Permanent regression tests for the chat run driver's governed-execution claims
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** TASK-111's original AC1/AC2/AC3 (unmet by automated tests despite being proven true by a live run ORCH independently verified against production Postgres — see TASK-111 Review_Findings); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the evidentiary shape to match; ADR-005 (every mechanical control ships a liveness assertion)
@@ -3468,12 +3468,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Test is `describe.skip`-gated on `DATABASE_URL` presence, matching this project's existing convention, so it doesn't silently fail in an environment without one
 - [ ] No production code in chatRunDriver.ts/runLifecycle.ts/runs.ts changes — diff review will check this literally
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-116-s5
+**Started_At:** 2026-09-03T20:13:22Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T22:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T20:13:22Z
