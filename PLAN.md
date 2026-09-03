@@ -3287,7 +3287,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3302,10 +3302,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-111-cx
 **Started_At:** 2026-09-03T07:38:33Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-03T10:53:34Z] [SV:CX] Recorded the precise production-composition ownership conflict in dossiers/TASK-111.md; no application code was changed.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Production attachment requires services/control-api/src/index.ts and workspace manifest dependency changes outside TASK-111 Owned_Paths; without them, an owned driver has no production caller and cannot build the required real BrokerDependencies.
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T07:38:33Z
+**Updated_At:** 2026-09-03T10:53:34Z
