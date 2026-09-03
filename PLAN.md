@@ -3390,7 +3390,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §4 (registration CLI, "boot never writes authorization tables"), §8.3 (production-caller liveness), §8.4 (CI surrogate), §9 (manifests become protected — apply to CLAUDE.md)
@@ -3403,12 +3403,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `infra/ci/controls-live.mjs`'s new check exits non-zero with the probe tool named in output when the registry is genuinely inert (induced-inert test in `test-controls-live.mjs`), and exits 0 against the real current declarations
 - [ ] CLAUDE.md's protected-paths list includes `packages/connectors/manifests/**`; no other CLAUDE.md content changed (diff review will check this literally)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-114-cx
+**Started_At:** 2026-09-03T16:42:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T16:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T16:42:01Z
