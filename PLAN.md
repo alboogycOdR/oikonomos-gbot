@@ -1,8 +1,8 @@
 ---
-plan_version: 8.0
-last_updated: 2026-09-03T22:50:00Z
-overall_status: wave_complete
-orchestrator_notes: "Plan v8.0 - WAVE COMPLETE. Chat-1 (TASK-105-110, the full chat UI) plus ADR-013's capability-resolution foundation (TASK-112-115) plus TASK-111 (the real chat execution driver) plus TASK-116 (its regression tests) - sixteen tasks (105-116 inclusive), all done and merged. TASK-111 alone took 9 legitimate correction rounds across ~5 hours: a missing production task-execution path, a missing tool_name->capability_id authorization boundary (resolved via a dedicated Fable design pass, ADR-013, adversarially reviewed by ORCH against the real codebase - every factual claim checked and confirmed accurate), a stale bundled SDK CLI binary (empirically root-caused via a real smoke test), and an N9 lint-rule violation CX correctly refused to route around (fixed properly in packages/harness-factory itself via TASK-115, not worked around). The result is real: ORCH independently verified TASK-111's live claim directly against production Postgres (real policy.decision audit events for runtime.bash/T3_external, real pending-state, real completed runs, real honest bot replies) before approving, and TASK-116's permanent test asserts the exact same payload shape byte-for-byte. User's standing rule this session - never cut quality to hit a date, slip the date instead - held through all ten blockers; every one was either a genuine finding worth having or a mechanical gap fixed durably (dispatch.ps1 Node-22 pinning, DATABASE_URL forwarding) for every future dispatch, never a shortcut. Demoable end state: full styled chat UI (bot roster, conversation pane, compose box, inline approval cards, create-bot flow) wired to a real backend that really executes governed model calls. GB remains deactivated (user considering renewal); E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred. Awaiting user's next scope direction - no further tasks queued."
+plan_version: 9.0
+last_updated: 2026-09-03T23:20:00Z
+overall_status: in_progress
+orchestrator_notes: "Plan v9.0 - Wave Chat-1 + ADR-013 (TASK-105-116) complete and demoed live (dashboard dev proxy + control-api Windows entrypoint guard both fixed this pass - services/control-api/src/index.ts now uses the same fileURLToPath pattern TASK-114 proved). User cross-examined the real Grok Bot reference product across three rounds of direct questions before locking the next two waves - findings materially shaped scope: (1) our TASK-106 zero-grant default diverged from our own WBS OIK-131 intent AND the reference product's real behavior (new bot works immediately, T2+ still asks) - corrected in TASK-117; (2) no separate admin/permissions screen exists in the reference product, standing grants come from 'always allow' on the approval card itself - matches our own source-study finding independently, informs TASK-118 (fold into ApprovalCard, no new screen) over the originally-proposed standalone admin UI; (3) bot-to-bot messages use the acting bot's own permissions, already true by construction in our broker (no code change needed, confirmed twice now from independent angles); (4) single 1:1 bot delegation needs no approval, fan-out to multiple bots/a group does - new rule, feeds TASK-122; (5) no grant expiry, no unattended-run leniency - simplifies future E11 routines work, not acted on now (still deferred). Locked two waves: **Grants-1** (TASK-117/118/119 - default builtin grants at bot creation, Always-Allow standing grants from the approval card, a minimal permissions view with revoke) and **Chat-2 Core** (TASK-120/121/122 - group-thread schema, control-api endpoints, UI + the fan-out-approval rule). TASK-117 and TASK-120 have no dependencies and are eligible now; both protected-path-free. GB remains deactivated; E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred. Standing practice continues unchanged (full pnpm -r test per CLAUDE.md's amended review standard, isolated re-run before treating a lone failure as a regression, Node-22 PATH pin now baked into dispatch.ps1)."
 ---
 
 # Project Plan
@@ -3480,3 +3480,152 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-03T22:50:00Z
+
+### TASK-117
+**Title:** Default built-in capability grants at bot creation (Grants-1a)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Depends_On:** —
+**Description:** Not a protected path. On `POST /roles`, after creating the role, grant it every currently-registered `sdk:builtin` capability at that capability's own `default_tier` — do **not** invent a blanket ceiling constant or import `BUILTIN_TOOLS` from `packages/broker` (control-api has no dependency on `packages/broker` today and should not gain one for this). Instead: `Database.listCapabilities()` (already real, `packages/db/src/database.ts:91`), filter `adapter === 'sdk:builtin'`, and call `Database.upsertRoleGrant({roleId, capabilityId, maxTier: capability.defaultTier, constraints: {}})` for each — this is purely data-driven off whatever `register-capabilities` (TASK-114) has actually registered, so it stays correct if the built-in table ever changes. This makes T0 actions (Read/Glob/Grep) frictionless immediately, matching OIK-131's intent — T2+ actions (Edit/Write/Bash) are still gated by the existing per-call approval requirement, unchanged. Do not touch `CreateBotDialog.tsx` or any frontend file — this is entirely a control-api-side default.
+**Acceptance_Criteria:**
+- [ ] `POST /roles` results in real `role_grants` rows for every registered `sdk:builtin` capability, each at that capability's own `default_tier`, verified against real Postgres
+- [ ] The granted `max_tier` for each row exactly equals the capability's `default_tier` at grant time — not a hardcoded constant, tested by registering a capability with a non-default tier value and confirming the grant follows it
+- [ ] A subsequent real chat run against the new bot can complete a T0 action (e.g. `Read`) with **no** pending approval — tested against real Postgres end-to-end, same evidentiary shape as TASK-116's liveness test
+- [ ] Existing `POST /roles` behavior (role creation itself, response shape) is unchanged for callers — existing tests still pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-118
+**Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** Grok Bot reference product, confirmed 2026-09-03: a standing grant is created by choosing "always allow" on an approval card, not via a separate admin screen; capability+tier scoped (not destination-scoped — a deliberate v1 simplification, see PLAN.md TASK-118 note below and the session's own design discussion)
+**Owned_Paths:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/lib/api.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Depends_On:** TASK-117
+**Description:** Add a new control-api endpoint `POST /roles/:roleId/grants` — body `{capabilityId: string, maxTier: RiskTier}` — that calls `Database.upsertRoleGrant` (real, already exists). Auth-gated like every other route (global fail-closed preHandler already covers this — verify it does, do not add a `public: true` override). On `ApprovalCard`, add a fourth button, "Always Allow", alongside Approve/Reject: it must (1) call the existing `POST /approvals/:nonce/decide` with `{decision: "granted"}` exactly as "Approve" does today — reuse that call, do not duplicate it — then (2) call the new grants endpoint with the capability/tier read from the approval's own payload (the `ApprovalRender`/message data already carries `capabilityId`; if the tier isn't already present on that payload, add it — check `GET /threads/:id/messages`'s approval projection in `app.ts` and extend it if needed, it currently returns `{nonce, action_render, status}` only). The nonce discipline TASK-109 already proved (never in URL/history/storage) applies unchanged to this new call path. **v1 scope note, deliberate**: the grant is capability+tier scoped, not destination-scoped (a future task could narrow it if a real need shows up — do not build destination scoping now, it is out of scope for this task).
+**Acceptance_Criteria:**
+- [ ] `POST /roles/:roleId/grants` requires auth (401 without a session, tested) and writes a real `role_grants` row via `Database.upsertRoleGrant`
+- [ ] Clicking "Always Allow" both decides the current approval as granted AND results in a real standing grant, tested against real Postgres end-to-end
+- [ ] A second, later attempt at the same capability by the same bot (a fresh run) is no longer denied for lack of a grant — tested (mirrors TASK-117's own "no pending approval" proof, but via the always-allow path instead of a pre-seeded default)
+- [ ] The nonce discipline test (never in URL/history/storage) is extended to cover the "Always Allow" path, not just Approve/Reject
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-119
+**Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** Grok Bot reference product, confirmed 2026-09-03: no documented standalone permissions page exists in the reference product either (uninstall/disconnect is its only confirmed revoke path) — OIKONOMOS builds a minimal one anyway since capability grants (unlike connector installs) have no equivalent "disconnect" affordance today. Depends_On TASK-118 in addition to TASK-117 (added at plan-validation time) purely to serialize both tasks' shared touch on services/control-api/src/app.ts/ports.ts — not a functional dependency.
+**Owned_Paths:** packages/db/src/database.ts, packages/db/src/database.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx
+**Depends_On:** TASK-117, TASK-118
+**Description:** `Database` has `listRoleGrants(roleId)` and `upsertRoleGrant` but no revoke — add `public async revokeRoleGrant(roleId: string, capabilityId: string): Promise<void>` (a plain `DELETE FROM role_grants WHERE role_id = $1 AND capability_id = $2`, mirror the file's existing method style exactly). Add `GET /roles/:roleId/grants` (list, via `listRoleGrants`) and `DELETE /roles/:roleId/grants/:capabilityId` (revoke) to control-api, both auth-gated. On the frontend, extend `RightPanel`'s Members tab (or add a small detail view reachable from it — implementer's call, keep it minimal) to show the active bot's current grants (capability id + tier) with a revoke button per row, calling the new endpoints. This is the only piece of this wave that touches the dashboard's static-vs-live Members data (`ChatShell`/`ChatPage` currently pass `members={[]}` — wire real member/grant data here, but do not expand scope to routines or multi-bot membership, that is Chat-2's job).
+**Acceptance_Criteria:**
+- [ ] `revokeRoleGrant` deletes exactly the targeted `(role_id, capability_id)` row and no other, tested against real Postgres
+- [ ] `GET /roles/:roleId/grants` and `DELETE /roles/:roleId/grants/:capabilityId` are both auth-gated (401 tested) and exercise the real DB functions (not mocked) in at least one integration test
+- [ ] The dashboard's Members/permissions view shows real grants for the active bot (not fixture data) and a revoke click results in the row actually disappearing after the next real fetch — tested
+- [ ] A revoked capability, attempted again in a real chat run, correctly returns to the deny/approval-required path (mirrors TASK-117/118's evidentiary shape) — tested against real Postgres
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-120
+**Title:** Multi-bot group thread schema (Chat-2a)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8 (Chat-2, group threads); WBS OIK-150 (multi-agent thread with human visibility); Grok Bot reference product, confirmed 2026-09-03: bot-to-bot messages use the acting bot's own permissions (already true by construction in our broker — no change needed there), and a single 1:1 delegation ping needs no human approval while fan-out to several bots/a group does (a rule for TASK-122 to enforce, not this task)
+**Owned_Paths:** infra/postgres/migrations/**, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/messages.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
+**Depends_On:** —
+**Description:** Today's schema hard-limits one bot per thread (`threads.role_id` is `UNIQUE NOT NULL`) and `messages.role` is only `'user'|'bot'|'system'` — there is no way to record *which* bot in a multi-bot thread sent a message. This task adds the schema for real group threads without breaking the existing 1:1 model (TASK-105-110's UI and TASK-111's driver both assume it). Additive migration: a `thread_members` join table (`thread_id uuid REFERENCES threads(id)`, `role_id text REFERENCES roles(role_id)`, `PRIMARY KEY (thread_id, role_id)`) — every existing 1:1 thread gets exactly one row here (backfill in the same migration: `INSERT INTO thread_members SELECT id, role_id FROM threads`). Add `sender_role_id text REFERENCES roles(role_id)` (nullable) to `messages` — null means "the human user" (matches today's `role='user'` rows), set means "this bot sent it" (works alongside the existing `role='bot'` check, does not replace it). Do **not** relax `threads.role_id`'s existing `UNIQUE`/`NOT NULL` in this task — 1:1 threads keep using it as today; group threads are a **new** creation path (TASK-121's job) that leaves `threads.role_id` null and relies on `thread_members` instead, so `role_id` must become nullable here (update the column, keep the unique constraint but make it a partial index `WHERE role_id IS NOT NULL` so multiple null-role_id group threads can coexist). Add DB accessor functions: `addThreadMember`, `listThreadMembers`, `insertMessage` gains an optional `senderRoleId` field.
+**Acceptance_Criteria:**
+- [ ] Migration up creates `thread_members`, backfills one row per existing thread, and makes `threads.role_id` nullable with a partial unique index — migration down cleanly reverts, both tested
+- [ ] Every existing threads/messages test (TASK-105's own) still passes unmodified — 1:1 thread behavior is provably unaffected
+- [ ] `addThreadMember`/`listThreadMembers` round-trip correctly against real Postgres
+- [ ] `insertMessage` with a `senderRoleId` persists and reads back correctly alongside existing role='user'/'bot' rows
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-121
+**Title:** Group thread control-api endpoints (Chat-2b)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Depends_On:** TASK-120, TASK-119
+**Description:** Add `POST /threads/group` — body `{roleIds: string[], title?: string}`, requires 2+ roleIds — creates a thread with `role_id = null` and a `thread_members` row per bot (TASK-120's accessors). Extend `GET /threads` to include group threads (a thread with no single `role_id` needs a different summary shape — `botName`/`botDescription` don't apply; return `memberRoleIds`/`memberNames` instead, and the frontend, TASK-122, branches on which shape it got). Extend `GET /threads/:id/messages` to include `senderRoleId`/`senderName` per message so the client can attribute each line to the right bot. `POST /threads/:id/messages` on a group thread is **out of scope for this task** — posting into a group thread and triggering multiple bots is TASK-122's job alongside the fan-out-approval rule; this task is read/creation plumbing only.
+**Acceptance_Criteria:**
+- [ ] `POST /threads/group` creates a real thread + real `thread_members` rows for 2+ bots, rejects with a client error for fewer than 2, tested against real Postgres
+- [ ] `GET /threads` returns both 1:1 and group threads in one list, with the correct shape for each — tested
+- [ ] `GET /threads/:id/messages` on a group thread returns `senderRoleId`/`senderName` per message — tested
+- [ ] Existing 1:1 thread behavior on all three endpoints is provably unchanged — existing tests pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-122
+**Title:** Group thread UI + fan-out approval rule (Chat-2c)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; Grok Bot reference product, confirmed 2026-09-03: a single 1:1 bot-to-bot delegation ping needs no human approval; fan-out to several bots or a whole group does
+**Owned_Paths:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/lib/api.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** TASK-121
+**Description:** Frontend: a "New group" affordance (mirrors `CreateBotDialog`'s pattern) that multi-selects existing bots and calls `POST /threads/group` (TASK-121); `BotSidebar` shows group threads distinctly from 1:1 ones; `ConversationPane`/`MessageBubble` attribute each message to the correct bot by name (using `senderRoleId`/`senderName` from TASK-121) instead of assuming a single bot. Backend/driver: this is where the fan-out rule becomes real, not just documented — when `chatRunDriver` processes a run whose task originated from one bot messaging **multiple** other bots or an entire group in one action, that specific action requires a real approval (reuse the existing approval-issuance path, do not invent a new one) before any of the messages are sent; a single bot messaging exactly one other bot does not. Keep the mechanism narrow: this task does not need to solve general multi-agent orchestration, only gate the fan-out case per the confirmed rule.
+**Acceptance_Criteria:**
+- [ ] Creating a group thread via the UI results in a real thread with the selected bots as real `thread_members`, and the conversation pane correctly attributes each message to the right bot by name
+- [ ] A single bot messaging exactly one other bot completes without a pending approval (tested against real Postgres, same evidentiary shape as prior liveness tests)
+- [ ] A bot attempting to message multiple bots/a group in one action correctly produces a real pending approval instead of proceeding — tested against real Postgres, mutation-proof shape (deleting the fan-out check must redden the test)
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T23:20:00Z
