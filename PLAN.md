@@ -3153,7 +3153,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03 (2nd pass); WBS OIK-129, OIK-131
@@ -3175,12 +3175,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T05:37:26Z] [SV:CX] Verified corrected app/ports/test scope; implementation is blocked by missing canonical task+run and default-role grant helpers.
 - [2026-09-03T10:15:00Z] [ORCH] Unblocking (2nd pass). CX's finding was correct and substantive, not a quick fix — there is genuinely no production run-execution path in this codebase (`executeTaskRun` is test-only today). Split that work out to new TASK-111. This task's scope reduced to task+message creation only (no run start); the "bot reply" half of Chat-1's product bar now depends on TASK-111 as well. Grant question resolved by NOT building a helper: a new role starts with zero grants, which is already the safe default everywhere else in the system. Resume on task/TASK-106-cx.
 - [2026-09-03T06:19:31Z] [SV:CX] Implemented and committed six authenticated Chat-1b role/thread/message endpoints, approval projection, OpenAPI entries, and route coverage.
+- [2026-09-03T11:10:00Z] [ORCH] APPROVED, first-pass (post two-round unblock). Territory clean (4 files, all Owned_Paths). Verified the new preHandler-gated routes structurally cannot skip auth (global fail-closed hook, opt-out only via explicit `public: true`, none of the 6 new routes set it). Confirmed by source scan and independently re-run test: no `startRun`/`startTaskRun`/`executeTaskRun` reference anywhere in this diff. Independently re-ran: pnpm --filter control-api test (110/110, no-raw-sql guard intact, real-Postgres zero-role-grants assertion genuine), full pnpm -r build (18/18), full pnpm -r test (fully green, zero failures — not even the usual contention flake this run), pnpm lint clean. Merged --no-ff (f81b3c1). Unlocks TASK-111 (chat run driver) and, once that lands, TASK-108.
 **Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, dossiers/TASK-106.md
-**Test_Evidence:** pnpm --filter @oikonomos/control-api test: 110 passed; pnpm --filter @oikonomos/control-api build: passed; pnpm -r --reporter=silent test: passed; pnpm -r --reporter=silent build: passed; pnpm lint: passed; live Postgres zero-role-grants assertion passed.
-**Review_Findings:** —
+**Test_Evidence:** CX's own run (110/110, full green) + ORCH's independent re-run (same, full recursive suite clean including canaries).
+**Review_Findings:** APPROVE, first-pass.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T06:19:31Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T11:10:00Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
