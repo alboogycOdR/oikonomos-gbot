@@ -345,6 +345,9 @@ importers:
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oikonomos/worker':
+        specifier: workspace:*
+        version: link:../worker
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
@@ -377,9 +380,18 @@ importers:
 
   services/worker:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.233
+        version: 0.3.233(@anthropic-ai/sdk@0.117.1(zod@4.4.3))(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(zod@4.4.3)
       '@oikonomos/agent-providers':
         specifier: workspace:*
         version: link:../../packages/agent-providers
+      '@oikonomos/approvals':
+        specifier: workspace:*
+        version: link:../../packages/approvals
+      '@oikonomos/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@oikonomos/broker':
         specifier: workspace:*
         version: link:../../packages/broker

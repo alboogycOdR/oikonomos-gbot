@@ -24,6 +24,15 @@ export {
 } from "./executeRun.js";
 
 export {
+  createChatRunDriver,
+  destinationFor,
+  finalText,
+  type ChatRunDriver,
+  type ChatRunRequest,
+  type CreateChatRunDriverOptions,
+} from "./chatRunDriver.js";
+
+export {
   createGatedSubprocessProviders,
   type GatedCodexOptions,
   type GatedGrokOptions,

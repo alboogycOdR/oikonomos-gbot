@@ -46,6 +46,7 @@ import {
   type EditApprovalResult,
   type IssueApprovalRequest,
 } from "@oikonomos/approvals";
+import { createChatRunDriver, type ChatRunDriver } from "@oikonomos/worker";
 
 /**
  * The port every route handler is written against. Route-level tests
@@ -82,6 +83,7 @@ export interface ControlApiDeps {
    */
   editApproval(nonce: string, editedRequest: IssueApprovalRequest): Promise<EditApprovalResult>;
   getAuditEventsForRun(runId: string): Promise<AuditEvent[]>;
+  runChatTask(input: { task: Task; threadId: string }): Promise<void>;
 }
 
 /**
@@ -91,6 +93,7 @@ export interface ControlApiDeps {
  * touches a `Pool` directly, only the two packages' public functions.
  */
 export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDeps {
+  const chatRunDriver: ChatRunDriver = createChatRunDriver(options);
   return {
     createTask: (input) => dbCreateTask(options, input),
     createRole: (input) => dbCreateRole(options, input),
@@ -108,5 +111,6 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     editApproval: (nonce, editedRequest) =>
       approvalsEditApproval(nonce, editedRequest, { database: options }),
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),
+    runChatTask: (input) => chatRunDriver.run(input),
   };
 }

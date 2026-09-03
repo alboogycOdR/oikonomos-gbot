@@ -63,6 +63,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     decideApproval: async () => ({ decided: false, rowCount: 0 }),
     editApproval: async () => ({ edited: false, rowCount: 0 }),
     getAuditEventsForRun: async () => [],
+    runChatTask: async () => { calls.push("runChatTask"); },
     ...overrides,
   };
   return { deps, calls };
@@ -108,12 +109,13 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await app.close();
   });
 
-  it("posts a user message and creates a tagged task without starting a run", async () => {
+  it("posts a user message, creates a tagged task, and starts the run without blocking", async () => {
     const { deps, calls } = createDeps();
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const result = await app.inject({ method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "  Plan my day  " } });
     expect(result.statusCode).toBe(201);
-    expect(calls).toEqual(["listThreads", "insertMessage", "createTask"]);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toEqual(["listThreads", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
     await app.close();
   });
