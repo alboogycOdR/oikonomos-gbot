@@ -3291,7 +3291,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (4th pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3314,11 +3314,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T11:40:00Z] [ORCH] Unblocking (3rd pass). Two separate findings, both real. (1) Corrected a wrong assumption in the spec, not a territory gap: executeRun.ts already accepts a real queryFn as a parameter (the exact CAN-09 seam) — no provider is pre-adapted to that shape, so build a thin GrokProvider-to-AgentSdkQueryFn adapter inside chatRunDriver.ts (already owned); do not touch executeRun.ts. (2) Real gap: no success-completion transition exists anywhere (run_status enum has 'completed', nothing sets it). Added packages/db/src/runs.ts, packages/db/src/runs.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts to Owned_Paths for a narrow completeRun/completeTaskRun addition mirroring failRun exactly. packages/db is not a protected path. Resume on task/TASK-111-cx.
 - [2026-09-03T11:47:21Z] [SV:CX] Synced current territory and recorded the verified GrokProvider/AgentSdkQueryFn governance incompatibility in the dossier.
 - [2026-09-03T11:55:00Z] [ORCH] Unblocking (4th pass). CX's finding was correct: GrokProvider emits opaque plain text with no tool-call boundary events, so it cannot be adapted into a queryFn that demonstrably drives the broker's PreToolUse hook. Switched the recommended/required provider to `ClaudeCodeProvider` throughout this task (it emits real `ToolStartEvent`/`ToolEndEvent`, and is the SDK-native provider `executeRun.ts`'s default path already targets — the closest fit, likely less adapter work than Grok would have been, not more). Resume on task/TASK-111-cx.
+- [2026-09-03T12:49:22Z] [SV:CX] Recorded the Claude adapter and worker-package export blockers in the TASK-111 dossier; no application code changed.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T11:47:21Z
+**Blocked_Reason:** SPEC_AMBIGUITY: ClaudeCodeProvider cannot preserve harness PreToolUse hooks through its public SendPromptOptions API; task requires either default Agent SDK query use or a contract change. Worker barrel export is also outside Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T12:49:22Z
 **Updated_By:** SV
 **Updated_At:** 2026-09-03T11:00:59Z
