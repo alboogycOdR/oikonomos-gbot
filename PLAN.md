@@ -3241,7 +3241,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6, §7 (Chat-1e); ADR-004 (render provenance); TASK-058/082 precedent (mutation-proof authorization tests)
@@ -3260,10 +3260,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T12:49:22Z] [SV:S5] ApprovalCard.tsx implemented and wired into ConversationPane.tsx: verbatim action_render rendering (React-escaped <pre>, no HTML/Markdown interpretation), Approve/Reject reuse TASK-103's decideApproval endpoint pattern unchanged, nonce never leaves component state/POST body, 409-on-redecide handled gracefully with buttons removed + alert notice. Preserved old data-testid so out-of-territory ChatShell.test.tsx stays green. All 4 ACs met; full recursive pnpm -r test/build/lint all green.
 **Artifacts:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, dossiers/TASK-109.md
 **Test_Evidence:** pnpm --filter dashboard test: 15 files/50 tests passed (ApprovalCard.test.tsx 4/4 new). pnpm -r build: 18/18 packages clean. pnpm lint: clean. pnpm -r test (full recursive, all 21 workspace scripts): zero failures ΓÇö packages/db 114/1 skipped, packages/approvals 119/119 real-Postgres, services/control-api 110/110, packages/broker 106/106, services/worker 30/1 skipped, evals/harness 18/18, evals/golden 6/6.
-**Review_Findings:** —
+- [2026-09-03T14:56:00Z] [ORCH] APPROVED, first-pass. Territory clean (4 files, all Owned_Paths). Verified directly: `<pre>{approval.actionRender}</pre>` with no dangerouslySetInnerHTML/Markdown renderer, and the mutation test asserts no `<a>`/`<strong>` element appears from embedded syntax — genuine, not a source-text grep. Nonce discipline test checks URL/history/localStorage/sessionStorage all directly, matching TASK-103's standard exactly. Independently re-ran: dashboard tests (50/50), full pnpm -r build (18/18), pnpm lint (clean), full pnpm -r test (277 assertions, zero failures). Merged --no-ff (e838d39). NON-BLOCKING FINDING (not reworked): `onUnauthorized`/`onDecided` are accepted as props by `ApprovalCard`/`ConversationPane` but never actually passed down from `ChatPage`/`ChatShell` — a 401 during a decide fails safely to a generic error message rather than triggering re-login, and a decision doesn't proactively reconcile parent state (the next 2s poll does it instead). No security or correctness defect, just an incomplete wiring chain; worth a one-line fold-in whenever TASK-110 or a later task touches ChatShell's prop chain, not worth reopening this task for.
+**Review_Findings:** APPROVE, first-pass. Non-blocking: onUnauthorized/onDecided not wired through ChatShell/ChatPage (fails safe, no defect).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T12:49:22Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T14:56:00Z
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
