@@ -1,4 +1,5 @@
 import type { Writable } from "node:stream";
+import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { runStatuses, taskStatuses, type Approval, type RunStatus, type TaskStatus } from "@oikonomos/db";
@@ -83,6 +84,33 @@ const LOGIN_SCHEMA = {
   },
 } as const;
 
+const CREATE_ROLE_SCHEMA = {
+  type: "object",
+  required: ["name", "description"],
+  additionalProperties: false,
+  properties: { name: { type: "string" }, description: { type: "string" } },
+} as const;
+
+const CREATE_THREAD_SCHEMA = {
+  type: "object",
+  required: ["roleId"],
+  additionalProperties: false,
+  properties: { roleId: { type: "string" } },
+} as const;
+
+const CREATE_MESSAGE_SCHEMA = {
+  type: "object",
+  required: ["body"],
+  additionalProperties: false,
+  properties: { body: { type: "string" } },
+} as const;
+
+const LIST_MESSAGES_QUERY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: { after: { type: "string" } },
+} as const;
+
 const LIST_APPROVALS_QUERY_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -138,6 +166,10 @@ function serializeApproval(approval: Approval): Record<string, unknown> {
         ? null
         : approval.userContextEpoch.toString(),
   };
+}
+
+function serializeRole(role: { roleId: string; name: string; description: string }) {
+  return { id: role.roleId, name: role.name, description: role.description, avatarSeed: role.roleId };
 }
 
 function isRunStatus(value: string): value is RunStatus {
@@ -285,6 +317,18 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             },
           },
         },
+        "/roles": {
+          get: { summary: "List chat bots", operationId: "listRoles", responses: { "200": { description: "Chat bots" } } },
+          post: { summary: "Create a chat bot", operationId: "createRole", responses: { "201": { description: "Chat bot created" } } },
+        },
+        "/threads": {
+          get: { summary: "List chat threads", operationId: "listThreads", responses: { "200": { description: "Chat threads" } } },
+          post: { summary: "Create or return a chat thread", operationId: "createThread", responses: { "201": { description: "Chat thread" } } },
+        },
+        "/threads/{id}/messages": {
+          get: { summary: "List a chat transcript", operationId: "listThreadMessages", responses: { "200": { description: "Transcript messages" } } },
+          post: { summary: "Post a chat message", operationId: "createThreadMessage", responses: { "201": { description: "User message created" } } },
+        },
       },
       components: {
         ...base.components,
@@ -336,6 +380,138 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       try {
         const task = await deps.createTask(body);
         await reply.code(201).send(task);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get("/roles", async (_request, reply) => {
+    try {
+      const roles = await deps.listRoles({ tenantId: "basileia", status: "active" });
+      await reply.code(200).send(roles.map(serializeRole));
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Body: { name: string; description: string } }>(
+    "/roles",
+    { schema: { body: CREATE_ROLE_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const name = request.body.name.trim();
+        const description = request.body.description.trim();
+        if (name.length === 0) {
+          await reply.code(400).send({ error: "name must not be empty." });
+          return;
+        }
+        const role = await deps.createRole({
+          roleId: randomUUID(),
+          tenantId: "basileia",
+          name,
+          title: name,
+          description,
+        });
+        // Deliberately no role_grants write: a new chat bot begins fail-closed.
+        await reply.code(201).send(serializeRole(role));
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get("/threads", async (_request, reply) => {
+    try {
+      const [threads, roles] = await Promise.all([
+        deps.listThreads(),
+        deps.listRoles({ tenantId: "basileia", status: "active" }),
+      ]);
+      const rolesById = new Map(roles.map((role) => [role.roleId, role]));
+      const result = await Promise.all(
+        threads.map(async (thread) => {
+          const messages = await deps.listMessages(thread.id);
+          const lastMessage = messages.at(-1);
+          const role = rolesById.get(thread.roleId);
+          return {
+            id: thread.id,
+            roleId: thread.roleId,
+            botName: role?.name ?? thread.roleId,
+            botDescription: role?.description ?? "",
+            avatarSeed: thread.roleId,
+            title: thread.title,
+            lastMessagePreview: lastMessage?.body ?? "",
+            updatedAt: thread.updatedAt,
+          };
+        }),
+      );
+      await reply.code(200).send(result);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Body: { roleId: string } }>(
+    "/threads",
+    { schema: { body: CREATE_THREAD_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const thread = await deps.getOrCreateThreadForRole({ roleId: request.body.roleId });
+        await reply.code(201).send(thread);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string }; Querystring: { after?: string } }>(
+    "/threads/:id/messages",
+    { schema: { querystring: LIST_MESSAGES_QUERY_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const messages = await deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after });
+        const approvals = await deps.listPendingApprovals();
+        const approvalsByRunId = new Map(approvals.map((approval) => [approval.runId, approval]));
+        await reply.code(200).send(
+          messages.map((message) => {
+            const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
+            return {
+              ...message,
+              ...(approval === undefined
+                ? {}
+                : { approval: { nonce: approval.nonce, action_render: approval.actionRender, status: approval.status } }),
+            };
+          }),
+        );
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { body: string } }>(
+    "/threads/:id/messages",
+    { schema: { body: CREATE_MESSAGE_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const body = request.body.body.trim();
+        if (body.length === 0) {
+          await reply.code(400).send({ error: "body must not be empty." });
+          return;
+        }
+        const thread = (await deps.listThreads()).find((candidate) => candidate.id === request.params.id);
+        if (thread === undefined) {
+          await reply.code(404).send({ error: "thread not found" });
+          return;
+        }
+        const message = await deps.insertMessage({ threadId: thread.id, role: "user", body });
+        await deps.createTask({
+          roleId: thread.roleId,
+          title: `Chat: ${body.slice(0, 120)}`,
+          goal: body,
+          requestedBy: `chat:thread:${thread.id}`,
+        });
+        await reply.code(201).send(message);
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }

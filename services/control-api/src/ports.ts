@@ -8,14 +8,23 @@
  */
 import {
   createTask as dbCreateTask,
+  createRole as dbCreateRole,
+  getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
+  insertMessage as dbInsertMessage,
   getAuditEventsForRun as dbGetAuditEventsForRun,
   getRun as dbGetRun,
   listPendingApprovals as dbListPendingApprovals,
+  listMessages as dbListMessages,
+  listRoles as dbListRoles,
   listRuns as dbListRuns,
   listTasks as dbListTasks,
+  listThreads as dbListThreads,
   type AuditEvent,
   type DatabaseOptions,
   type NewTask,
+  type NewRole,
+  type NewThread,
+  type NewMessage,
   type PendingApprovalFilter,
   type Approval,
   type Run,
@@ -24,6 +33,10 @@ import {
   type Task,
   type TaskListFilter,
   type TaskListPage,
+  type Role,
+  type Thread,
+  type Message,
+  type MessageListOptions,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -44,6 +57,12 @@ import {
  */
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
+  createRole(input: NewRole): Promise<Role>;
+  listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
+  getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
+  listThreads(): Promise<Thread[]>;
+  insertMessage(input: NewMessage): Promise<Message>;
+  listMessages(threadId: string, options?: MessageListOptions): Promise<Message[]>;
   listTasks(filter?: TaskListFilter): Promise<TaskListPage>;
   listRuns(filter?: RunListFilter): Promise<RunListPage>;
   getRun(runId: string): Promise<Run | null>;
@@ -74,6 +93,12 @@ export interface ControlApiDeps {
 export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDeps {
   return {
     createTask: (input) => dbCreateTask(options, input),
+    createRole: (input) => dbCreateRole(options, input),
+    listRoles: (filter) => dbListRoles(options, filter),
+    getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
+    listThreads: () => dbListThreads(options),
+    insertMessage: (input) => dbInsertMessage(options, input),
+    listMessages: (threadId, listOptions) => dbListMessages(options, threadId, listOptions),
     listTasks: (filter) => dbListTasks(options, filter),
     listRuns: (filter) => dbListRuns(options, filter),
     getRun: (runId) => dbGetRun(options, runId),
