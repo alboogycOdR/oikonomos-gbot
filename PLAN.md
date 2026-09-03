@@ -3294,7 +3294,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (9th pass); docs/decisions/ADR-013-tool-capability-resolution.md (Fable design, resolves the SPEC_AMBIGUITY blocker below); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3327,12 +3327,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T19:40:00Z] [ORCH] Unblocking (8th pass, mechanical — same pattern as TASK-114's lockfile gap). Added pnpm-lock.yaml to Owned_Paths. Resume on task/TASK-111-cx.
 - [2026-09-03T17:57:08Z] [SV:CX] Implemented and committed chat task-to-run driver/API fire-and-forget attachment in 8d11b04; worker and control-api suites pass, but final lint rejects the task-mandated direct Agent SDK import.
 - [2026-09-03T19:50:00Z] [ORCH] Unblocking (9th pass). CX's refusal was correct and important — my 8th-pass instruction genuinely violated N9's own lint rule (packages/harness-factory is the only sanctioned Agent SDK import point). Root-caused properly this time: opened TASK-115 (packages/harness-factory, protected) to fix the CLI-version issue at its actual source — defaultSdkQuery auto-resolves a working system claude binary, so no caller ever needs to bypass N9. This task's queryFn instruction reverted to the original, simpler design: no custom queryFn at all, just call executeTaskRun plain. Your 8d11b04 driver/discovery/completion/fire-and-forget work stands — only remove the direct SDK import and its pass-through wrapper, nothing else needs to change. Depends_On now includes TASK-115; resume once it lands.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-03T20:07:03Z] [SV:CX] Chat task execution now uses harness-factory's sanctioned default SDK query; live governed tool and HTTP fire-and-forget paths verified.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/index.ts, services/worker/package.json, packages/db/src/runs.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, pnpm-lock.yaml, dossiers/TASK-111.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker test: 36 passed, 1 skipped; pnpm --filter @oikonomos/control-api test: 110 passed; pnpm -r build, pnpm -r test, and pnpm lint clean. Live authenticated Claude run persisted policy.decision runtime.bash/T3_external/require_approval; real POST /threads/:id/messages returned 201 in 182ms and asynchronously persisted a bot reply with run_id.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T18:20:45Z
+**Updated_At:** 2026-09-03T20:07:03Z
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
