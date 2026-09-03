@@ -48,3 +48,5 @@ Please resolve the provider-contract choice before implementation: either (a) re
 ## Required unblock (default-query route)
 
 Please add `packages/db/src/index.ts` to TASK-111 `Owned_Paths` (or have its owner export `completeRun`). Without that one-line barrel export, TypeScript cannot resolve `completeRun` from `@oikonomos/db`; deep-importing `src/runs` would violate the package's declared export boundary. Once granted, the remaining task-owned driver, API fire-and-forget attachment, and tests can proceed without any provider adapter or protected-package changes.
+
+- [2026-09-03T12:56:10Z] [CX] Targeted verification: `pnpm --filter @oikonomos/worker typecheck` exits 2 with `TS2305: Module '@oikonomos/db' has no exported member 'completeRun'` at `services/worker/src/runLifecycle.ts:3`. This is the expected and only current failure; it directly confirms the missing owned barrel export. The partial work is committed as `199014c feat(worker): add chat run completion transition [TASK-111]`; the worktree is clean.
