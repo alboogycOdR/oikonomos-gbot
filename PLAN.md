@@ -3424,7 +3424,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-115
 **Title:** harness-factory defaultSdkQuery — resolve a working Claude CLI binary automatically
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** N9 (CLAUDE.md "All harness invocations go through packages/harness-factory. Direct query() calls elsewhere fail lint."), infra/lint/rules/no-direct-agent-sdk-query.mjs (the enforcing rule)
@@ -3437,12 +3437,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Resolution failure (binary not found, resolver throws) does not throw or block the query — falls through to the SDK's own default behavior, tested
 - [ ] Every existing `packages/harness-factory` test still passes unmodified — this is additive, not a redesign
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-115-cx
+**Started_At:** 2026-09-03T17:59:42Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T19:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T17:59:42Z
