@@ -3214,7 +3214,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6 (Chat-1d)
@@ -3229,13 +3229,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-108-s5
 **Started_At:** 2026-09-03T11:00:28Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T11:47:21Z] [SV:S5] Wired <ChatShell> to live control-api: lib/api.ts thread/message/role client calls, pages/ChatPage.tsx (real threads/messages, send, 2s poll that clears on reply), App.tsx routing (/ -> chat, /runs|/approvals|/evidence redirect to /ops/*), LoginPage default landing updated. App.test.tsx untouched (outside Owned_Paths) and still green via redirect chain. AC2's bot-reply-appearing is verified only against this task's own mocked poll test, not a live run: TASK-111 (the reply-producing driver) is Status:blocked per PLAN.md as of this session, so ORCH needs a final live check once it lands; task-creation-on-send is fully wired and tested now.
+**Artifacts:** apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/App.tsx, apps/dashboard/src/pages/LoginPage.tsx, dossiers/TASK-108.md
+**Test_Evidence:** pnpm --filter dashboard test -- --run: 14 files/46 tests green (incl. 2 new ChatPage.test.tsx cases + unmodified App.test.tsx). pnpm -r build: 17/17 green. pnpm lint: clean. pnpm -r test (full recursive suite): all workspace packages green including services/control-api 110/110 (TASK-106's chat.routes.test.ts 7/7), no flakes this run.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T11:00:28Z
+**Updated_At:** 2026-09-03T11:47:21Z
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
