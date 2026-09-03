@@ -3455,7 +3455,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-116
 **Title:** Permanent regression tests for the chat run driver's governed-execution claims
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** TASK-111's original AC1/AC2/AC3 (unmet by automated tests despite being proven true by a live run ORCH independently verified against production Postgres — see TASK-111 Review_Findings); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the evidentiary shape to match; ADR-005 (every mechanical control ships a liveness assertion)
@@ -3470,10 +3470,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-116-s5
 **Started_At:** 2026-09-03T20:13:22Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T20:40:18Z] [SV:S5] Both acceptance criteria implemented as test-only additions, no production logic touched. (1) packages/db/src/runs.test.ts: new real-Postgres integration describe block for completeRun, mirroring the file's existing listRuns/listPendingApprovals shape ΓÇö proves 'started'->'completed' with ended_at set, and IllegalRunTransitionError on a second completeRun call. (2) services/worker/src/chatRunDriver.test.ts: new real (non-mocked) integration test driving createChatRunDriver(...).run(...) end-to-end ΓÇö real Postgres task/role/thread fixtures, OIKONOMOS_CAPABILITIES_ENABLED=true set/restored around the call, one real Claude Agent SDK call prompted to run `pwd` via Bash exactly once. Used ADR-013 ┬º7's explicitly-sanctioned zero-grant-deny alternative (freshly created, grant-less role) rather than seeding a role_grant + exercising the approval-pending park path, since the task description states either is acceptable. Verified against real Postgres afterward: one policy.decision audit event (capability=runtime.bash, tier=T3_external, payload.reason=role.grant_missing), one real bot-role message tied to run_id, run status='completed'. Worktree needed `pnpm install` (new workspace symlinks for @oikonomos/approvals, @oikonomos/connectors) and `pnpm -r build` (stale dist/ for db/broker) before tests would even resolve ΓÇö both routine, no source changes. Full pnpm -r test has two known pre-existing flakes under concurrent shared-Postgres load (roles.test.ts DDL deadlock; registerCapabilities.test.ts cross-file capability-row race) ΓÇö reproduced identically on stashed pre-TASK-116 code, confirming neither is caused by this change; both packages/db and services/worker pass 100% clean in isolation.
+**Artifacts:** packages/db/src/runs.test.ts, services/worker/src/chatRunDriver.test.ts
+**Test_Evidence:** pnpm --filter @oikonomos/db test (isolated): 26 files, 118 passed/1 skipped/0 failed, including new 'packages/db runs ΓÇö completeRun (TASK-116)' block (2/2 passed). pnpm --filter @oikonomos/worker test (isolated): 10 files, 37 passed/1 skipped/0 failed, including new chatRunDriver.test.ts real-SDK integration test (1/1 passed, ~14s, one real inference call ΓÇö real spend, single short Bash-attempt prompt, denied pre-execution by the broker so no actual shell command ran). pnpm -r build: 18/18 clean. pnpm lint: clean. pnpm -r test (full recursive, run twice): both runs hit the same 2 pre-existing cross-package Postgres-contention flakes (roles.test.ts ALTER TABLE deadlock; registerCapabilities.test.ts idempotency race) reproduced byte-identically on stashed pre-TASK-116 HEAD (e18a4eb) via `git stash` + rerun ΓÇö confirmed not a regression from this task's diff.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T20:13:22Z
+**Updated_At:** 2026-09-03T20:40:18Z
