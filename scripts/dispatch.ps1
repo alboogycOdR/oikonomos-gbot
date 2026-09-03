@@ -558,7 +558,18 @@ if ($ControlMode -eq "strict") {
         # First occurrence: TASK-100 (CX), 2026-09-02 -- builder correctly
         # self-blocked (MISSING_DEPENDENCY) rather than silently skipping the
         # DB-gated proof it was scoped to run.
-        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }"
+        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }",
+        # The default Windows 'node' on PATH (C:\Program Files\nodejs) is
+        # whatever was last installed system-wide -- v23.10.0 as of
+        # 2026-09-03, not the .nvmrc-pinned v22 this repo requires. A
+        # detached dispatch window inherits that same default PATH, so a
+        # clean `pnpm install`/build silently runs under the wrong Node and
+        # fails (eslint-visitor-keys and others reject v23). First occurrence:
+        # TASK-112 (CX), 2026-09-03 -- builder correctly self-blocked
+        # (TOOLING_FAILURE) rather than proceeding under the wrong runtime.
+        # Prepend the pinned install if present; no-op (falls through to
+        # whatever's already on PATH) if this machine doesn't have it there.
+        "if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { `$env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + `$env:Path }"
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += "Write-Host '[$Id] starting $TaskId ($ResumeOrClaim) in $Wt' -ForegroundColor Green"
@@ -644,7 +655,10 @@ if ($ControlMode -eq "strict") {
         "`$env:DEVTEAM_UNIT = '$Id'",
         # See the matching comment in the strict-mode branch above -- same
         # Windows env-propagation quirk, same non-secret-in-file fix.
-        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }"
+        "if (-not `$env:DATABASE_URL) { `$env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL','User') }",
+        # See the matching comment in the strict-mode branch above -- pins
+        # Node 22 over the system-default v23 that breaks a clean install/build.
+        "if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { `$env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + `$env:Path }"
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += @(
