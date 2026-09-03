@@ -3332,7 +3332,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (registry design), §3 (built-in tools table), §5 (construction-time closure checks C1–C7), §8.1–8.2 (liveness layers 1–2)
@@ -3348,13 +3348,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-112-cx
 **Started_At:** 2026-09-03T15:46:27Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-03T16:20:36Z] [SV:CX] CapabilityRegistry, reviewed built-in declarations, closure checks, broker ports, real-manifest audit liveness coverage, and barrel docs are committed in d3fc850.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** TOOLING_FAILURE: Node v23.10.0 is unsupported by eslint-visitor-keys; frozen installation fails and dashboard build dependencies cannot be resolved. Run full build under supported Node >=22.13 with a clean frozen install.
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T15:46:27Z
+**Updated_At:** 2026-09-03T16:20:36Z
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
