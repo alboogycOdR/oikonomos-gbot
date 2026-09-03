@@ -3179,7 +3179,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §2, §5, §6 (Chat-1c) — the visual bar, graded on rendered output, not just code
@@ -3197,12 +3197,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-02T18:42:28Z] [SV:S5] ChatShell + all Chat-1c components/tests/fixtures/preview-screenshot committed (f708c09, 22 files, 44/44 tests green, full pnpm -r build/test/lint green). Blocked only on committing apps/dashboard/package.json's 4 new Tailwind devDeps + pnpm-lock.yaml companion hunk: hooks/territory-precommit.js rejects package.json because its Owned_Paths entry in PLAN.md has an unseparated parenthetical annotation that breaks the comma-split glob parser (reproduced deterministically via node -e against real hooks/lib.js). Needs a PLAN.md Owned_Paths edit or hooks/lib.js parser fix, both outside my territory.
 - [2026-09-02T20:05:00Z] [ORCH] Unblocking. S5's TOOLING_FAILURE finding was correct — my own Owned_Paths entry for this task had an unseparated parenthetical that broke hooks/lib.js's comma-split glob parser. Confirmed the same defect was latent in TASK-106's Owned_Paths too (services/control-api/src/index.ts's parenthetical) and fixed that pre-emptively before CX reaches it. TASK-107's Owned_Paths now bare paths, root `pnpm-lock.yaml` added explicitly (S5 needs to commit its Tailwind-devDeps hunk; no other active task modifies it). Resume on the existing branch from the dossier stopping point — do not re-branch, do not redo the 22 files already committed at f708c09.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-03T03:34:49Z] [SV:S5] Resumed from ORCH's Owned_Paths fix (bare paths, pnpm-lock.yaml added). Committed the previously-blocked Tailwind devDependency + lockfile hunk (ec1be8b) ΓÇö hook now accepts it cleanly. Full re-verification with deps actually installed: pnpm -r build 17/17 green, dashboard tests 44/44 green, pnpm lint clean. pnpm -r test showed one packages/db failure (intakeNonces) outside my territory; isolated re-run confirmed shared-Postgres flake, 108/108 green. All Chat-1c acceptance criteria met.
+**Artifacts:** apps/dashboard/src/components/chat/**, apps/dashboard/tailwind.config.ts, apps/dashboard/postcss.config.js, apps/dashboard/src/index.css, apps/dashboard/package.json, pnpm-lock.yaml, dossiers/TASK-107.md
+**Test_Evidence:** pnpm -r build: 17/17 green. pnpm --filter dashboard test: 13 files/44 tests green. pnpm -r test: 1 failure in packages/db (intakeNonces.test.ts, outside Owned_Paths) ΓÇö isolated re-run pnpm --filter @oikonomos/db test: 22/22 files, 108/108 tests green, confirming shared-Postgres contention flake not a regression. pnpm lint: exit 0 clean. Branch task/TASK-107-s5 @ 5dcbc76.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T20:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T03:34:49Z
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
