@@ -3153,7 +3153,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b); WBS OIK-129, OIK-131
@@ -3168,13 +3168,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-106-cx
 **Started_At:** 2026-09-02T18:48:01Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-03T03:34:49Z] [SV:CX] Verified the live router is src/app.ts and required DB port is src/ports.ts; both are outside Owned_Paths, so no implementation was attempted.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Add services/control-api/src/app.ts and services/control-api/src/ports.ts to TASK-106 Owned_Paths; clarify six specified GET/POST endpoints versus AC stating five.
 **Updated_By:** SV
-**Updated_At:** 2026-09-02T18:48:01Z
+**Updated_At:** 2026-09-03T03:34:49Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
