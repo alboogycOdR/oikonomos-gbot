@@ -3294,7 +3294,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (6th pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3321,9 +3321,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T13:15:00Z] [ORCH] Unblocking (5th pass). CX's refusal was correct and important — it declined to build something that would look like broker enforcement without actually being it, exactly the discipline CLAUDE.md non-negotiable #1 exists for. Verified directly: no packages/agent-providers wrapper can forward PreToolUse hooks (their SendPromptOptions has no hooks param). The real fix is simpler than what I'd asked for: call executeTaskRun with NO custom queryFn at all — composeHarness's own defaultSdkQuery (packages/harness-factory/src/index.ts:316, confirmed it lazily imports the real @anthropic-ai/claude-agent-sdk) is the actual hook-preserving production path already used everywhere. No provider adapter needed. Added services/worker/src/index.ts to Owned_Paths for the barrel export gap CX also flagged. Resume on task/TASK-111-cx.
 - [2026-09-03T13:23:25Z] [SV:CX] Implemented and committed the narrow completeRun/completeTaskRun transition, then stopped before driver/API work because the required @oikonomos/db barrel export is outside task territory.
 - [2026-09-03T13:30:00Z] [ORCH] Unblocking (6th pass, mechanical). Missed the barrel export file again when adding runs.ts. Added packages/db/src/index.ts to Owned_Paths. Resume on task/TASK-111-cx.
+- [2026-09-03T14:55:31Z] [SV:CX] Exported completeRun from the db barrel and verified DB/worker lifecycle suites; real chat-driver composition cannot safely proceed without an authoritative Agent SDK tool-name to persisted capability-ID mapping.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T13:30:00Z
+**Blocked_Reason:** SPEC_AMBIGUITY: no authoritative production mapping exists from real Agent SDK/MCP tool_name values to persisted capabilities.capability_id values, so constructing real BrokerDependencies would require inventing the authorization boundary.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T14:55:31Z
