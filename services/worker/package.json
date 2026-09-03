@@ -17,6 +17,8 @@
   "files": ["dist"],
   "dependencies": {
     "@oikonomos/agent-providers": "workspace:*",
+    "@oikonomos/approvals": "workspace:*",
+    "@oikonomos/audit": "workspace:*",
     "@oikonomos/broker": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/harness-factory": "workspace:*"

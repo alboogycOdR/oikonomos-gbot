@@ -6,6 +6,7 @@ export function ping(): string {
 
 export {
   cancelTaskRun,
+  completeTaskRun,
   failTaskRun,
   resumeInterruptedRun,
   startTaskRun,

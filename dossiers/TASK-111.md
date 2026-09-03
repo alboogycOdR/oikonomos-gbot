@@ -40,3 +40,11 @@ Please either (a) expand TASK-111 territory to `services/worker/src/executeRun.t
 ## Required unblock (Claude route)
 
 Please resolve the provider-contract choice before implementation: either (a) revise TASK-111 to use harness-factory’s existing default Agent SDK query directly (the only current real PreToolUse-compatible execution path), removing the impossible ClaudeCodeProvider adapter requirement; or (b) authorize a design/API change that adds a hook-preserving Claude provider query surface, with the necessary protected-path review. Also add `services/worker/src/index.ts` to TASK-111 Owned_Paths (or explicitly authorize a supported production import path) so control-api can invoke the driver through the worker package boundary.
+
+## Work Log (2026-09-03 resumption, default-query route)
+
+- [2026-09-03T12:54:55Z] [CX] Synced the task branch with current `master` (which contains ORCH's fifth-pass correction) and reran preflight. All 13 current owned entries resolve; verbatim preflight output is retained in this session transcript. The default Agent SDK query route is implementable using existing public worker/harness APIs, and I began the narrow `completeRun`/`completeTaskRun` implementation plus the required service manifest dependencies. I then stopped at a package-boundary ownership gap: `runLifecycle.ts` can only import database APIs through `@oikonomos/db`, whose public barrel is `packages/db/src/index.ts`. `completeRun` therefore must be added to that barrel's run export list, but that file is absent from TASK-111 `Owned_Paths`. I reverted the accidental barrel edit immediately; it is clean. Current owned working changes are limited to `packages/db/src/runs.ts`, `services/worker/src/runLifecycle.ts`, `services/worker/src/index.ts`, and the two owned manifests. No provider call, credentials use, or inference spend occurred.
+
+## Required unblock (default-query route)
+
+Please add `packages/db/src/index.ts` to TASK-111 `Owned_Paths` (or have its owner export `completeRun`). Without that one-line barrel export, TypeScript cannot resolve `completeRun` from `@oikonomos/db`; deep-importing `src/runs` would violate the package's declared export boundary. Once granted, the remaining task-owned driver, API fire-and-forget attachment, and tests can proceed without any provider adapter or protected-package changes.
