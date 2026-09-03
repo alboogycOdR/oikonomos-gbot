@@ -20,3 +20,11 @@
 ## Required unblock
 
 Please expand TASK-111 territory to include the integration composition root(s) and required workspace manifests, or provide an existing production composition factory and a worker-dispatch attachment point. The smallest apparent set is `services/control-api/src/index.ts`, `services/control-api/package.json`, and `services/worker/package.json`; a task-owned composition root may be preferable if ORCH assigns one explicitly.
+
+## Work Log (continued)
+
+- [2026-09-03T10:57:14Z] [CX] Resumed after ORCH expanded the current shared territory to include `services/control-api/src/index.ts`, both service manifests, and the original driver/API files. Re-ran preflight against the updated task block: all 8 owned entries are present/new as expected. The original composition-root blocker is resolved, but implementation remains blocked by two precise, independently verified ownership/API gaps: (1) `services/worker/src/executeRun.ts` always drives `runtime.harness.query()` (the Claude Agent SDK path); its Codex/Grok provider instances are constructed but never invoked. A production Codex/Grok run therefore needs an owned change to that file (or an existing exported execution seam), whereas `chatRunDriver.ts` cannot pass a `CodexProvider`/`GrokProvider` as `AgentSdkQueryFn`. (2) `services/worker/src/runLifecycle.ts` and `@oikonomos/db` expose only start/resume/fail/cancel; there is no `completeRun`/`completeTaskRun`. Calling `cancelTaskRun` after a successful bot reply would persist the wrong lifecycle result and violate the task's completion requirement. `runLifecycle.ts` is outside TASK-111 territory; adding the missing DB completion transition would also require a protected `packages/db` change. No application code, inference call, or test fixture was added under this resumed dispatch.
+
+## Required unblock (continued)
+
+Please either (a) expand TASK-111 territory to `services/worker/src/executeRun.ts` and `services/worker/src/runLifecycle.ts`, and create/assign the required `@oikonomos/db` completion-transition work, or (b) provide existing exported seams for selecting a real Codex/Grok provider and completing a successful run. The present APIs cannot meet the real-provider and successful-terminal-lifecycle acceptance criteria without one of those changes.
