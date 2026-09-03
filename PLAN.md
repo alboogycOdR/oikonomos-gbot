@@ -3559,7 +3559,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8 (Chat-2, group threads); WBS OIK-150 (multi-agent thread with human visibility); Grok Bot reference product, confirmed 2026-09-03: bot-to-bot messages use the acting bot's own permissions (already true by construction in our broker — no change needed there), and a single 1:1 delegation ping needs no human approval while fan-out to several bots/a group does (a rule for TASK-122 to enforce, not this task)
 **Owned_Paths:** infra/postgres/migrations/**, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/messages.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
