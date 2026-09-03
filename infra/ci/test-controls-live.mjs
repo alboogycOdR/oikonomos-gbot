@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
+  checkCapabilityRegistryEvidence,
   checkCoverageEvidence,
   checkControlQueue,
   checkDistFreshness,
@@ -30,6 +31,10 @@ const hook = { status: 1, output: '[territory-precommit] COMMIT REJECTED\n' };
 const coverage = { status: 0, output: '% Coverage report from v8\nAll files | 100 | 100\n' };
 const config = { builders: { active: ['CX'], defined: { CX: { model: 'test-model' } } } };
 const packages = [{ name: 'packages/example', sourceFiles: [], distFiles: [] }];
+const capabilityRegistry = {
+  status: 0,
+  output: 'CAPABILITY_REGISTRY_CLOSURE PolicyMissingError tool=__liveness_probe__ declarations=9\n',
+};
 
 function mainCheckoutRoot() {
   const commonDir = spawnSync('git', ['rev-parse', '--git-common-dir'], {
@@ -72,6 +77,7 @@ function baseline() {
       workspaceGlobs: ['packages/*'],
       droppedPackages: [],
     },
+    capabilityRegistry: structuredClone(capabilityRegistry),
   };
 }
 
@@ -111,6 +117,12 @@ test('each liveness assertion rejects its induced inert state', () => {
       droppedPackages: [],
     };
   });
+  assertInducedFailure('capability registry closure', (evidence) => {
+    evidence.capabilityRegistry = {
+      status: 0,
+      output: 'CAPABILITY_REGISTRY_CLOSURE missing rejection declarations=9\n',
+    };
+  });
   const named = runLivenessChecks('/fixture', (() => {
     const evidence = baseline();
     evidence.atlas = {
@@ -127,6 +139,24 @@ test('each liveness assertion rejects its induced inert state', () => {
   assert.match(named.detail, /packages\/policy\/src\/index\.ts/);
   assert.match(named.detail, /packages\/broker\/src\/index\.ts/);
   assert.match(named.detail, /missing 2 tracked indexable file/);
+});
+
+test('capability registry closure requires the named probe and declaration floor', () => {
+  assert.equal(checkCapabilityRegistryEvidence(capabilityRegistry), null);
+  assert.match(
+    checkCapabilityRegistryEvidence({
+      status: 0,
+      output: 'CAPABILITY_REGISTRY_CLOSURE PolicyMissingError tool=other declarations=9\n',
+    }),
+    /no named PolicyMissingError/i,
+  );
+  assert.match(
+    checkCapabilityRegistryEvidence({
+      status: 0,
+      output: 'CAPABILITY_REGISTRY_CLOSURE PolicyMissingError tool=__liveness_probe__ declarations=8\n',
+    }),
+    /only 8 declarations/i,
+  );
 });
 
 test('control queue distinguishes a missing directory from an empty drained queue', () => {

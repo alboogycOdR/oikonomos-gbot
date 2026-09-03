@@ -18,18 +18,20 @@
   "dependencies": {
     "@oikonomos/agent-providers": "workspace:*",
     "@oikonomos/broker": "workspace:*",
+    "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
-    "@oikonomos/harness-factory": "workspace:*"
+    "@oikonomos/harness-factory": "workspace:*",
+    "pg": "^8.23.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "vitest run --config ../../packages/shared/vitest.config.ts --root ."
+    "test": "vitest run --config ../../packages/shared/vitest.config.ts --root .",
+    "register-capabilities": "node dist/registerCapabilities.js"
   },
   "devDependencies": {
     "@types/node": "^22.17.0",
     "@types/pg": "^8.21.0",
-    "pg": "^8.23.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
