@@ -90,7 +90,8 @@ function isValidDeclaration(entry: DeclaredTool): boolean {
   if (!entry.adapter.startsWith("mcp:")) return false;
   const server = entry.mcpServerName;
   if (server === undefined || server.length === 0) return false;
-  return new RegExp(`^mcp__${server.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}__[A-Za-z0-9_]+$`).test(entry.toolName);
+  const prefix = `mcp__${server}__`;
+  return entry.toolName.startsWith(prefix) && entry.toolName.length > prefix.length;
 }
 
 export interface CapabilityRegistryBuildInput {

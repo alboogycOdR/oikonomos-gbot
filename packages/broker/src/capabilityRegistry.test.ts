@@ -57,6 +57,12 @@ describe("CapabilityRegistry construction closure", () => {
       .rejects.toThrow(invalid.toolName);
   });
 
+  it("C2 compares connector server names exactly without restricting valid raw tool suffixes", async () => {
+    const valid = { ...gmail, toolName: "mcp__gmail__list-messages.v2" };
+    await expect(CapabilityRegistry.build({ declared: [valid], persisted: reader(rowsFor([valid])) }))
+      .resolves.toBeInstanceOf(CapabilityRegistry);
+  });
+
   it("C3 throws CapabilityNotRegisteredError with the missing capability", async () => {
     await expect(CapabilityRegistry.build({ declared: [gmail], persisted: reader([]) }))
       .rejects.toThrow(CapabilityNotRegisteredError);
