@@ -3153,7 +3153,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-106
 **Title:** control-api thread/message/role endpoints (Chat-1b)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b) — corrected 2026-09-03; WBS OIK-129, OIK-131
@@ -3171,12 +3171,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-03T03:34:49Z] [SV:CX] Verified the live router is src/app.ts and required DB port is src/ports.ts; both are outside Owned_Paths, so no implementation was attempted.
 - [2026-09-03T09:15:00Z] [ORCH] Unblocking. Both CX findings were correct — spec §4 wrongly assumed a `routes/` directory that doesn't exist (real pattern: everything inline in `app.ts` through the `ports.ts` port, OIK-084/no-raw-sql discipline), and the AC's "5" was a stale miscount against the Description's own 6 endpoints. Owned_Paths corrected to app.ts + ports.ts + test files; AC corrected to 6. Resume/reclaim on task/TASK-106-cx (note: worktree is on the now-merged task/TASK-105-cx branch — create the new branch per your own builder procedure, do not continue on the old one).
+- [2026-09-03T05:37:26Z] [SV:CX] Verified corrected app/ports/test scope; implementation is blocked by missing canonical task+run and default-role grant helpers.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T09:15:00Z
+**Blocked_Reason:** MISSING_DEPENDENCY: POST /tasks creates only a task (no run), and public DB role APIs provide no generic default-T1 grant helper; ORCH must identify/authorize the canonical helpers or assign their implementation.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T05:37:26Z
 
 ### TASK-107
 **Title:** chat design system + ChatShell primitives, static fixture data (Chat-1c)
