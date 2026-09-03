@@ -383,12 +383,18 @@ importers:
       '@oikonomos/broker':
         specifier: workspace:*
         version: link:../../packages/broker
+      '@oikonomos/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@oikonomos/harness-factory':
         specifier: workspace:*
         version: link:../../packages/harness-factory
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
     devDependencies:
       '@types/node':
         specifier: ^22.17.0
@@ -396,9 +402,6 @@ importers:
       '@types/pg':
         specifier: ^8.21.0
         version: 8.21.0
-      pg:
-        specifier: ^8.23.0
-        version: 8.23.0
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
