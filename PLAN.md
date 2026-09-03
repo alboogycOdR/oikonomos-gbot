@@ -3358,7 +3358,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-113
 **Title:** Connector manifest loader + registration adapter field (ADR-013 §2, §4)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §2 (`loadManifests`), §4 (registration, `adapter?` field)
@@ -3370,15 +3370,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `loadManifests` throws (does not silently skip) on a manifest that fails `validateManifest`, tested against a deliberately invalid fixture
 - [ ] `ConnectorRegistrationRows.adapter` is optional, defaults to `mcp:<connectorId>` when omitted, and is passed through unchanged when supplied — existing `registerConnector`/`seedInboxTriage` behavior is unaffected (their existing tests still pass unmodified)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-113-s5
+**Started_At:** 2026-09-03T15:46:40Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T16:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T15:46:40Z
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
