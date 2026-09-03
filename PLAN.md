@@ -3390,7 +3390,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §4 (registration CLI, "boot never writes authorization tables"), §8.3 (production-caller liveness), §8.4 (CI surrogate)
@@ -3411,7 +3411,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T17:18:07Z] [SV:CX] Explicit registration CLI, registry-closure CI probe, tests, and lockfile synchronization are complete; ORCH applied the CLAUDE.md-only change.
 **Artifacts:** services/worker/src/registerCapabilities.ts, services/worker/src/registerCapabilities.test.ts, services/worker/package.json, pnpm-lock.yaml, infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-114.md
 **Test_Evidence:** Node v22.23.2: worker test 33 passed/1 skipped; worker build passed; pnpm -r build passed; pnpm lint passed; pnpm -r test passed. controls-live registry closure PASS. Standalone controls test has known unrelated missing-main-ATLAS failure (21/22 pass).
-**Review_Findings:** —
+- [2026-09-03T19:22:00Z] [ORCH] APPROVED, first-pass, protected path — reviewed by ORCH (different model than CX). registerCapabilities.ts correctly mirrors seedInboxTriage.ts's real role-grant cross-product semantics (grant × tool, not invented), zero grants for builtins confirmed. Its entrypoint guard correctly uses `fileURLToPath(import.meta.url) === process.argv[1]` — the *correct* portable form of the Windows-broken pattern control-api's own index.ts still has (noted as a good future fix for that file, out of this task's scope). The CI probe genuinely imports real compiled `dist/` output from packages/broker and packages/connectors (not a mock), constructs a real CapabilityRegistry from real manifests, and asserts a real PolicyMissingError with the exact declaration-count floor (9 = 6 builtins + 3 Gmail tools). Independently ran the CLI for real against real Postgres, twice: confirmed 23 real capability rows including all 6 builtins under `sdk:builtin`, confirmed zero role_grants for any builtin capability, confirmed no drift/duplication on the second run. Independently re-ran `node --test infra/ci/test-controls-live.mjs`: 1 failure, confirmed pre-existing and unrelated by reproducing it on master itself before this merge (an ATLAS-coverage worktree-vs-main-checkout quirk, matches CX's own independent finding exactly). Full pnpm -r build (19/19), pnpm lint clean, full pnpm -r test (282 assertions, zero failures). Merged --no-ff (c70edae). **TASK-111 is now fully unblocked — all three prerequisite tasks (112/113/114) done.**
+**Artifacts:** services/worker/src/registerCapabilities.ts, services/worker/src/registerCapabilities.test.ts, services/worker/package.json, pnpm-lock.yaml, infra/ci/controls-live.mjs, infra/ci/test-controls-live.mjs, dossiers/TASK-114.md
+**Review_Findings:** APPROVE, first-pass. Verified real DB writes (23 capability rows, zero builtin grants) directly, not just test claims.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T17:18:07Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T19:22:00Z

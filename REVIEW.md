@@ -160,3 +160,4 @@ TASK-109 | S5 | approved | first-pass; non-blocking: onUnauthorized/onDecided pr
 TASK-110 | S5 | approved | first-pass; disciplined territory workaround (local fetch helper, full reload) noted as non-blocking, driven by narrow Owned_Paths not a shortcut | first-pass? yes
 TASK-113 | S5 | approved | first-pass; ADR-013 SS2/SS4 implemented exactly, real content returned not just filenames | first-pass? yes
 TASK-112 | CX | approved | first-pass, protected path, reviewed by different model (ORCH/Sonnet-5 vs CX/Codex); all C1-C7 checks verified line-by-line against ADR-013; non-blocking: liveness test uses regex manifest parser not real loadManifests (territory-driven) | first-pass? yes
+TASK-114 | CX | approved | first-pass, protected path, reviewed by different model (ORCH); verified real Postgres writes directly (23 capability rows, zero builtin grants); pre-existing unrelated ATLAS test flake confirmed reproducible on master | first-pass? yes
