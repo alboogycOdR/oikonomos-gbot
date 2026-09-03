@@ -3558,7 +3558,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8 (Chat-2, group threads); WBS OIK-150 (multi-agent thread with human visibility); Grok Bot reference product, confirmed 2026-09-03: bot-to-bot messages use the acting bot's own permissions (already true by construction in our broker — no change needed there), and a single 1:1 delegation ping needs no human approval while fan-out to several bots/a group does (a rule for TASK-122 to enforce, not this task)
@@ -3571,15 +3571,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `addThreadMember`/`listThreadMembers` round-trip correctly against real Postgres
 - [ ] `insertMessage` with a `senderRoleId` persists and reads back correctly alongside existing role='user'/'bot' rows
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-120-s5
+**Started_At:** 2026-09-03T21:48:59Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T21:48:59Z
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
