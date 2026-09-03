@@ -3269,7 +3269,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
 **Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx
