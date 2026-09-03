@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   createConnectorRegistrationStore,
@@ -9,6 +9,59 @@ import {
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+
+describe("ConnectorRegistrationRows.adapter (TASK-113 / ADR-013 §4)", () => {
+  function mockPoolClient() {
+    const queries: Array<{ text: string; values: unknown[] }> = [];
+    const client = {
+      query: vi.fn(async (text: string, values: unknown[] = []) => {
+        queries.push({ text, values });
+        if (text.startsWith("SELECT adapter")) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Pool;
+    return { pool, client, queries };
+  }
+
+  it("defaults the persisted adapter to mcp:<connectorId> when rows.adapter is omitted", async () => {
+    const { pool, queries } = mockPoolClient();
+    const store = createConnectorRegistrationStore(pool);
+    const rows: ConnectorRegistrationRows = {
+      connectorId: "gmail",
+      capabilities: [
+        { capabilityId: "gmail.read", description: "read", defaultTier: "T0_observe", enabled: true },
+      ],
+      roleGrants: [],
+    };
+
+    await store.register(rows);
+
+    const insert = queries.find((q) => q.text.includes("INSERT INTO capabilities"));
+    expect(insert?.values).toEqual(["gmail.read", "read", "T0_observe", "mcp:gmail", true]);
+  });
+
+  it("passes rows.adapter through unchanged when supplied", async () => {
+    const { pool, queries } = mockPoolClient();
+    const store = createConnectorRegistrationStore(pool);
+    const rows: ConnectorRegistrationRows = {
+      connectorId: "builtins",
+      adapter: "sdk:builtin",
+      capabilities: [
+        { capabilityId: "fs.read", description: "read", defaultTier: "T0_observe", enabled: true },
+      ],
+      roleGrants: [],
+    };
+
+    await store.register(rows);
+
+    const insert = queries.find((q) => q.text.includes("INSERT INTO capabilities"));
+    expect(insert?.values).toEqual(["fs.read", "read", "T0_observe", "sdk:builtin", true]);
+  });
+});
 
 function fixture(connectorId: string): ConnectorRegistrationRows {
   const capabilityId = `task-044.${connectorId}.read`;

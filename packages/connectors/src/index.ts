@@ -21,6 +21,7 @@ export {
   type ScanManifestsResult,
 } from "./manifest/scan.js";
 export { parseManifestsDir, runValidateCli, type CliIo } from "./manifest/cli.js";
+export { InvalidManifestError, loadManifests } from "./manifest/load.js";
 export {
   deregisterConnector,
   InvalidConnectorManifestError,
