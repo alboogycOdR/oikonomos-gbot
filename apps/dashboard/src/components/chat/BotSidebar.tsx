@@ -1,8 +1,18 @@
 // TASK-107 (Chat-1c): persistent left sidebar listing the user's bots
 // (spec §1.1, §5). Static fixture data only — GET /threads wiring is
 // Chat-1d (TASK-108).
+//
+// TASK-110 (Chat-1f): "+ New bot" now also opens a self-contained
+// `<CreateBotDialog>` (this task's own territory) in addition to still
+// calling the optional `onCreateBot` prop unchanged — BotSidebar.test.tsx
+// (TASK-107, outside this task's Owned_Paths) asserts `onCreateBot` fires
+// directly on click with no dialog involved, so that call is preserved
+// exactly as before.
+import { useState } from "react";
+
 import type { BotSummary } from "./types";
 import { Avatar } from "./Avatar";
+import { CreateBotDialog } from "./CreateBotDialog";
 
 function formatRelative(iso: string): string {
   const then = new Date(iso).getTime();
@@ -27,6 +37,8 @@ export function BotSidebar({
   onSelectBot,
   onCreateBot,
 }: BotSidebarProps) {
+  const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
+
   return (
     <aside
       aria-label="Your bots"
@@ -38,12 +50,19 @@ export function BotSidebar({
         </h1>
         <button
           type="button"
-          onClick={onCreateBot}
+          onClick={() => {
+            setCreateDialogOpen(true);
+            onCreateBot?.();
+          }}
           className="rounded-md bg-bubble-user px-2 py-1 text-xs font-medium text-white hover:opacity-90"
         >
           + New bot
         </button>
       </div>
+      <CreateBotDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+      />
       <ul className="flex-1 overflow-y-auto" role="listbox" aria-label="Bot threads">
         {bots.map((bot) => {
           const isActive = bot.id === activeBotId;
