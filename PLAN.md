@@ -3241,7 +3241,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6, §7 (Chat-1e); ADR-004 (render provenance); TASK-058/082 precedent (mutation-proof authorization tests)
@@ -3260,15 +3260,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T12:49:22Z] [SV:S5] ApprovalCard.tsx implemented and wired into ConversationPane.tsx: verbatim action_render rendering (React-escaped <pre>, no HTML/Markdown interpretation), Approve/Reject reuse TASK-103's decideApproval endpoint pattern unchanged, nonce never leaves component state/POST body, 409-on-redecide handled gracefully with buttons removed + alert notice. Preserved old data-testid so out-of-territory ChatShell.test.tsx stays green. All 4 ACs met; full recursive pnpm -r test/build/lint all green.
 **Artifacts:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, dossiers/TASK-109.md
 **Test_Evidence:** pnpm --filter dashboard test: 15 files/50 tests passed (ApprovalCard.test.tsx 4/4 new). pnpm -r build: 18/18 packages clean. pnpm lint: clean. pnpm -r test (full recursive, all 21 workspace scripts): zero failures ΓÇö packages/db 114/1 skipped, packages/approvals 119/119 real-Postgres, services/control-api 110/110, packages/broker 106/106, services/worker 30/1 skipped, evals/harness 18/18, evals/golden 6/6.
-**Review_Findings:** —
+- [2026-09-03T14:56:00Z] [ORCH] APPROVED, first-pass. Territory clean (4 files, all Owned_Paths). Verified directly: `<pre>{approval.actionRender}</pre>` with no dangerouslySetInnerHTML/Markdown renderer, and the mutation test asserts no `<a>`/`<strong>` element appears from embedded syntax — genuine, not a source-text grep. Nonce discipline test checks URL/history/localStorage/sessionStorage all directly, matching TASK-103's standard exactly. Independently re-ran: dashboard tests (50/50), full pnpm -r build (18/18), pnpm lint (clean), full pnpm -r test (277 assertions, zero failures). Merged --no-ff (e838d39). NON-BLOCKING FINDING (not reworked): `onUnauthorized`/`onDecided` are accepted as props by `ApprovalCard`/`ConversationPane` but never actually passed down from `ChatPage`/`ChatShell` — a 401 during a decide fails safely to a generic error message rather than triggering re-login, and a decision doesn't proactively reconcile parent state (the next 2s poll does it instead). No security or correctness defect, just an incomplete wiring chain; worth a one-line fold-in whenever TASK-110 or a later task touches ChatShell's prop chain, not worth reopening this task for.
+**Review_Findings:** APPROVE, first-pass. Non-blocking: onUnauthorized/onDecided not wired through ChatShell/ChatPage (fails safe, no defect).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T12:49:22Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-03T14:56:00Z
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
-**Status:** pending
-**Assigned_To:** CX
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §5, §6 (Chat-1f); WBS OIK-129, OIK-131
 **Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx
@@ -3279,23 +3280,24 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Immediately after creation, the user lands in a working conversation with the new bot (thread created, compose box usable) without navigating away
 - [ ] Empty/whitespace-only bot name is rejected client-side with a visible message, no request sent
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Branch:** task/TASK-110-s5
+**Started_At:** 2026-09-03T12:55:36Z
+**Progress_Notes:**
+- [2026-09-03T13:23:25Z] [SV:S5] CreateBotDialog implemented (name+description, client-side empty/whitespace validation, no tier/capability field) and wired into BotSidebar's + New bot button. Made a documented territory judgement call: talks to POST /roles + POST /threads directly via a local fetch helper (mirrors lib/api.ts conventions, reuses its UnauthorizedError class read-only) rather than editing lib/api.ts, and uses window.location.reload() on success (same URL, no navigation) so ChatPage's existing mount effect lands the user on the new most-recently-updated thread ΓÇö rather than editing ChatPage.tsx/ChatShell.tsx, neither of which is in this task's Owned_Paths. Full rationale in dossier for ORCH to weigh.
+**Artifacts:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, dossiers/TASK-110.md
+**Test_Evidence:** apps/dashboard: vitest run CreateBotDialog.test.tsx+BotSidebar.test.tsx+ChatShell.test.tsx -> 3 files, 20 tests passed. pnpm -r build -> 17/17 packages built (incl. apps/dashboard tsc+vite build). pnpm lint -> clean. pnpm -r test (full recursive suite, twice) -> first run had one packages/db/roles.test.ts failure unrelated to this task's files; isolated re-run of that file passed 9/9, and a second full pnpm -r test run was clean across every package -- confirmed shared-Postgres contention flake per orchestrator_notes' documented pattern, not a regression.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T10:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T13:23:25Z
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
 **Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
-**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (5th pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
-**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts, services/worker/src/index.ts, services/worker/package.json, packages/db/src/runs.ts, packages/db/src/runs.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, services/control-api/package.json, services/control-api/src/**/*.test.ts
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (6th pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts, services/worker/src/index.ts, services/worker/package.json, packages/db/src/runs.ts, packages/db/src/runs.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, services/control-api/package.json, services/control-api/src/**/*.test.ts
 **Depends_On:** TASK-106
 **Description:** **Opened 2026-09-03 after CX correctly found this missing while working TASK-106**: this codebase has never had a production task-execution path — `executeTaskRun` (services/worker/src/executeRun.ts) is real and correctly wired to the broker/harness-factory, but has only ever been called from tests (see `evals/harness/test/can-09-worker-liveness.test.ts` for the reference shape of a real broker-decided call). This task builds the first one, scoped narrowly to chat: a driver that (1) finds a chat-created task with no run yet (the `threads`/`messages`-tagged tasks TASK-106 creates), (2) assembles a **real** `BrokerDependencies` (packages/broker's interface) backed by real `packages/db`/`packages/policy`/`packages/audit` — there is no existing production constructor for this, build one, keep it inside this task's Owned_Paths; (3) calls `startTaskRun` then `executeTaskRun`. **Corrected 2026-09-03 (5th pass) — CX was right to refuse the 4th-pass instruction**: no `packages/agent-providers` wrapper (`ClaudeCodeProvider`, `CodexProvider`, `GrokProvider`) can preserve the broker's PreToolUse hook — their `SendPromptOptions` has no `hooks` parameter, and inventing one (or relying on `onPermissionRequest`/`canUseTool` alone) would violate CLAUDE.md non-negotiable #1 (PreToolUse is the enforcement point; `canUseTool`/`bypassPermissions`-style secondary gates are explicitly not sufficient). **Do not build any provider adapter.** Call `executeTaskRun` with **no `queryFn` override** — omitting it makes `composeHarness` fall back to its own `defaultSdkQuery` (`packages/harness-factory/src/index.ts:316`), which lazily imports the real `@anthropic-ai/claude-agent-sdk` and is the actual production, hook-preserving path already used everywhere hooks matter. This is simpler than the earlier instructions, not harder — no `packages/agent-providers` involvement needed at all for this task. If real execution needs credentials (e.g. an Anthropic API key/session) that aren't available to the worker process in this environment, that is a legitimate new blocker — report it, do not substitute a provider adapter to work around it. `services/worker/src/index.ts` (the package barrel) is now in Owned_Paths so `chatRunDriver` can be exported for control-api to import via `@oikonomos/worker`. (4) on completion, calls `insertMessage` (TASK-105's function) to write the bot's reply with `role: "bot"` and the real `run_id` set, and finalizes the run. **Corrected 2026-09-03 (3rd pass)**: `runLifecycle.ts`/`packages/db` expose only start/resume/fail/cancel — no successful-completion transition exists (the `run_status` enum already has `'completed'`, nothing sets it). Add a narrow `completeRun` to `packages/db/src/runs.ts` (mirror `failRun`'s shape exactly, just the `'completed'` status) and a matching `completeTaskRun` to `runLifecycle.ts` — do not touch any other run-lifecycle behavior. `packages/db` is not a protected path. Wire control-api (`app.ts`/`ports.ts`/`index.ts`) so `POST /threads/:id/messages` triggers this driver after inserting the task, fire-and-forget (do not block the HTTP response on a full agent run completing). This task does **not** modify `packages/broker`, `packages/harness-factory`, or `packages/policy` themselves — it only constructs and calls their already-exported interfaces; if you find yourself needing to edit those packages, stop and report a blocker to ORCH (protected paths, adversarial review required). Real end-to-end execution means a real subprocess call to a real provider — this task legitimately costs real inference budget to test; keep test runs minimal (one short prompt) and note actual spend in the dossier.
 **Acceptance_Criteria:**
@@ -3316,9 +3318,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T11:55:00Z] [ORCH] Unblocking (4th pass). CX's finding was correct: GrokProvider emits opaque plain text with no tool-call boundary events, so it cannot be adapted into a queryFn that demonstrably drives the broker's PreToolUse hook. Switched the recommended/required provider to `ClaudeCodeProvider` throughout this task (it emits real `ToolStartEvent`/`ToolEndEvent`, and is the SDK-native provider `executeRun.ts`'s default path already targets — the closest fit, likely less adapter work than Grok would have been, not more). Resume on task/TASK-111-cx.
 - [2026-09-03T12:49:22Z] [SV:CX] Recorded the Claude adapter and worker-package export blockers in the TASK-111 dossier; no application code changed.
 - [2026-09-03T13:15:00Z] [ORCH] Unblocking (5th pass). CX's refusal was correct and important — it declined to build something that would look like broker enforcement without actually being it, exactly the discipline CLAUDE.md non-negotiable #1 exists for. Verified directly: no packages/agent-providers wrapper can forward PreToolUse hooks (their SendPromptOptions has no hooks param). The real fix is simpler than what I'd asked for: call executeTaskRun with NO custom queryFn at all — composeHarness's own defaultSdkQuery (packages/harness-factory/src/index.ts:316, confirmed it lazily imports the real @anthropic-ai/claude-agent-sdk) is the actual hook-preserving production path already used everywhere. No provider adapter needed. Added services/worker/src/index.ts to Owned_Paths for the barrel export gap CX also flagged. Resume on task/TASK-111-cx.
+- [2026-09-03T13:23:25Z] [SV:CX] Implemented and committed the narrow completeRun/completeTaskRun transition, then stopped before driver/API work because the required @oikonomos/db barrel export is outside task territory.
+- [2026-09-03T13:30:00Z] [ORCH] Unblocking (6th pass, mechanical). Missed the barrel export file again when adding runs.ts. Added packages/db/src/index.ts to Owned_Paths. Resume on task/TASK-111-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-03T13:15:00Z
+**Updated_At:** 2026-09-03T13:30:00Z
