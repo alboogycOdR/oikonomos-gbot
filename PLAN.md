@@ -3288,7 +3288,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (3rd pass); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3309,11 +3309,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-03T11:25:00Z] [ORCH] Unblocking. CX's finding was correct and precise — confirmed services/control-api/package.json has no worker/broker/agent-providers/audit dependency, services/worker/package.json has no audit/approvals dependency, and index.ts (the real process entrypoint) was simply omitted from Owned_Paths. Added services/control-api/src/index.ts, services/control-api/package.json, services/worker/package.json to Owned_Paths. None of these are protected paths (packages/broker|policy|approvals|harness-factory unchanged — only manifest dependency declarations and non-protected service files). Resume on task/TASK-111-cx.
 - [2026-09-03T11:00:59Z] [SV:CX] Current territory resolves the API attachment, but real Codex/Grok execution and successful run completion require unowned worker/DB execution seams.
 - [2026-09-03T11:40:00Z] [ORCH] Unblocking (3rd pass). Two separate findings, both real. (1) Corrected a wrong assumption in the spec, not a territory gap: executeRun.ts already accepts a real queryFn as a parameter (the exact CAN-09 seam) — no provider is pre-adapted to that shape, so build a thin GrokProvider-to-AgentSdkQueryFn adapter inside chatRunDriver.ts (already owned); do not touch executeRun.ts. (2) Real gap: no success-completion transition exists anywhere (run_status enum has 'completed', nothing sets it). Added packages/db/src/runs.ts, packages/db/src/runs.test.ts, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts to Owned_Paths for a narrow completeRun/completeTaskRun addition mirroring failRun exactly. packages/db is not a protected path. Resume on task/TASK-111-cx.
+- [2026-09-03T11:47:21Z] [SV:CX] Synced current territory and recorded the verified GrokProvider/AgentSdkQueryFn governance incompatibility in the dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T11:40:00Z
+**Blocked_Reason:** SPEC_AMBIGUITY: GrokProvider emits opaque plain text only and cannot forward real tool calls to Agent SDK PreToolUse hooks, so the mandated real-Grok adapter cannot demonstrate broker audit decisions or approval parking.
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T11:47:21Z
 **Updated_By:** SV
 **Updated_At:** 2026-09-03T11:00:59Z
