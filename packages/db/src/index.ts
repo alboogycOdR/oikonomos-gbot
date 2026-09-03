@@ -99,12 +99,15 @@ export {
   handoffKinds,
 } from "./roleMessages.js";
 export {
+  addThreadMember,
   createThread,
   getOrCreateThreadForRole,
   getThreadsForRole,
+  listThreadMembers,
   listThreads,
   type NewThread,
   type Thread,
+  type ThreadMember,
 } from "./threads.js";
 export {
   insertMessage,

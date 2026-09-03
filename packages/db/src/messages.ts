@@ -10,6 +10,7 @@ export interface NewMessage {
   role: MessageRole;
   body: string;
   runId?: string | null;
+  senderRoleId?: string | null;
 }
 
 export interface Message {
@@ -18,6 +19,12 @@ export interface Message {
   role: MessageRole;
   body: string;
   runId: string | null;
+  // Optional (rather than `string | null`) so existing object literals built
+  // before TASK-120 — e.g. control-api fixtures — remain valid without a
+  // ripple edit outside this task's Owned_Paths; toMessage() below always
+  // populates it (as null for pre-existing rows), so real values from the DB
+  // are never actually missing this key.
+  senderRoleId?: string | null;
   createdAt: Date;
 }
 
@@ -31,11 +38,12 @@ interface MessageRow extends QueryResultRow {
   role: MessageRole;
   body: string;
   run_id: string | null;
+  sender_role_id: string | null;
   created_at: Date;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const messageColumns = "id, thread_id, role, body, run_id, created_at";
+const messageColumns = "id, thread_id, role, body, run_id, sender_role_id, created_at";
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -55,7 +63,15 @@ function requireRole(value: MessageRole): MessageRole {
 }
 
 function toMessage(row: MessageRow): Message {
-  return { id: row.id, threadId: row.thread_id, role: row.role, body: row.body, runId: row.run_id, createdAt: row.created_at };
+  return {
+    id: row.id,
+    threadId: row.thread_id,
+    role: row.role,
+    body: row.body,
+    runId: row.run_id,
+    senderRoleId: row.sender_role_id,
+    createdAt: row.created_at,
+  };
 }
 
 async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
@@ -73,14 +89,18 @@ export async function insertMessage(options: DatabaseOptions, input: NewMessage)
   const role = requireRole(input.role);
   const body = requireNonEmpty(input.body, "body");
   const runId = input.runId === undefined || input.runId === null ? null : requireUuid(input.runId, "runId");
+  const senderRoleId =
+    input.senderRoleId === undefined || input.senderRoleId === null
+      ? null
+      : requireNonEmpty(input.senderRoleId, "senderRoleId");
 
   return withPool(options, async (pool) => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const result = await client.query<MessageRow>(
-        `INSERT INTO messages (thread_id, role, body, run_id) VALUES ($1, $2, $3, $4) RETURNING ${messageColumns}`,
-        [threadId, role, body, runId],
+        `INSERT INTO messages (thread_id, role, body, run_id, sender_role_id) VALUES ($1, $2, $3, $4, $5) RETURNING ${messageColumns}`,
+        [threadId, role, body, runId, senderRoleId],
       );
       const row = result.rows[0];
       if (row === undefined) throw new Error("insertMessage did not return a persisted row.");
@@ -130,6 +150,9 @@ if (import.meta.vitest) {
       await expect(insertMessage(live, { threadId, role: "other" as MessageRole, body: "hi" })).rejects.toThrow(/role/);
       await expect(insertMessage(live, { threadId, role: "user", body: " " })).rejects.toThrow(/body/);
       await expect(listMessages(live, threadId, { after: "invalid" })).rejects.toThrow(/after/);
+      await expect(
+        insertMessage(live, { threadId, role: "bot", body: "hi", senderRoleId: " " }),
+      ).rejects.toThrow(/senderRoleId/);
     });
   });
 }
