@@ -3294,7 +3294,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-111
 **Title:** chat task→run execution driver (Chat-1g)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4 (Chat-1b addendum, 2026-09-03) — corrected 2026-09-03 (7th pass); docs/decisions/ADR-013-tool-capability-resolution.md (Fable design, resolves the SPEC_AMBIGUITY blocker below); WBS OIK-038 (run lifecycle), OIK-041 HIGH-2 (production caller of composeHarness); CAN-09 (evals/harness/test/can-09-worker-liveness.test.ts) as the reference shape for real broker-decided execution
@@ -3309,7 +3309,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `POST /threads/:id/messages`'s HTTP response does not block on the run completing (fire-and-forget, tested via timing or a fake driver seam)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-111-cx
-**Started_At:** 2026-09-03T07:38:33Z
+**Started_At:** 2026-09-03T17:23:11Z
 **Progress_Notes:**
 - [2026-09-03T10:53:34Z] [SV:CX] Recorded the precise production-composition ownership conflict in dossiers/TASK-111.md; no application code was changed.
 - [2026-09-03T11:25:00Z] [ORCH] Unblocking. CX's finding was correct and precise — confirmed services/control-api/package.json has no worker/broker/agent-providers/audit dependency, services/worker/package.json has no audit/approvals dependency, and index.ts (the real process entrypoint) was simply omitted from Owned_Paths. Added services/control-api/src/index.ts, services/control-api/package.json, services/worker/package.json to Owned_Paths. None of these are protected paths (packages/broker|policy|approvals|harness-factory unchanged — only manifest dependency declarations and non-protected service files). Resume on task/TASK-111-cx.
@@ -3327,8 +3327,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** — (resolved via ADR-013; now sequenced behind TASK-112/113/114 instead)
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T14:55:31Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T17:23:11Z
 
 ### TASK-112
 **Title:** CapabilityRegistry — process-level tool-name → capability resolver (ADR-013 §2–3, §5)
