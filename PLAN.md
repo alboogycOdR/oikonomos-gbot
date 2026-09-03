@@ -3424,7 +3424,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-115
 **Title:** harness-factory defaultSdkQuery — resolve a working Claude CLI binary automatically
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** N9 (CLAUDE.md "All harness invocations go through packages/harness-factory. Direct query() calls elsewhere fail lint."), infra/lint/rules/no-direct-agent-sdk-query.mjs (the enforcing rule)
@@ -3439,10 +3439,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-115-cx
 **Started_At:** 2026-09-03T17:59:42Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T18:17:14Z] [SV:CX] Added backwards-compatible default SDK Claude CLI resolution and mocked coverage; branch is rebased on current master and ready for protected-path adversarial review.
+**Artifacts:** packages/harness-factory/src/index.ts, packages/harness-factory/src/index.test.ts
+**Test_Evidence:** pnpm --filter @oikonomos/harness-factory test: 14 files, 102/102 tests passed; pnpm lint: passed; pnpm -r build: passed; pnpm -r test: passed on second full run (first hit an unrelated Grok fake-subprocess timeout; isolated rerun passed 12/12).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T17:59:42Z
+**Updated_At:** 2026-09-03T18:17:14Z
