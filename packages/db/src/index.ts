@@ -37,6 +37,7 @@ export {
 } from "./approvals.js";
 export {
   cancelRun,
+  completeRun,
   failRun,
   getRun,
   IllegalRunTransitionError,
