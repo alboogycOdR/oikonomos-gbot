@@ -3257,12 +3257,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-03T11:53:11Z
 **Progress_Notes:**
 - [2026-09-03T14:40:00Z] [S5] `ApprovalCard.tsx` renders `action_render` verbatim via a `<pre>` plain-text child only (React-escaped, no dangerouslySetInnerHTML/Markdown parser). Approve/Reject reuse `decideApproval` from `lib/api.ts` unchanged (TASK-103's existing call pattern); nonce only ever lives in the `ApprovalRender` prop and the outbound POST body. 409 handled gracefully — buttons removed, `role="alert"` notice shown. Wired into `ConversationPane.tsx`, replacing TASK-107's fixture placeholder; kept the old `data-testid="inline-approval-placeholder"` on purpose since `ChatShell.test.tsx` (outside this task's Owned_Paths) asserts on it — avoided an OWNERSHIP_CONFLICT by not needing to touch that file. Noted (not blocking): `types.ts`'s `ApprovalRender.status` union (TASK-107) is narrower than the server's real `ApprovalStatus` enum — `ChatPage.tsx` (TASK-108) already narrows it before this component ever sees it, so the real `expired`/`invalidated`/`consumed` server values can't reach here as an *initial* prop today; none of this task's AC depend on that widening. Full detail in dossiers/TASK-109.md.
+- [2026-09-03T12:49:22Z] [SV:S5] ApprovalCard.tsx implemented and wired into ConversationPane.tsx: verbatim action_render rendering (React-escaped <pre>, no HTML/Markdown interpretation), Approve/Reject reuse TASK-103's decideApproval endpoint pattern unchanged, nonce never leaves component state/POST body, 409-on-redecide handled gracefully with buttons removed + alert notice. Preserved old data-testid so out-of-territory ChatShell.test.tsx stays green. All 4 ACs met; full recursive pnpm -r test/build/lint all green.
 **Artifacts:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, dossiers/TASK-109.md
-**Test_Evidence:** `pnpm --filter dashboard test`: 15 files/50 tests passed (new ApprovalCard.test.tsx 4/4; ChatShell.test.tsx's pre-existing approval assertion still green). `pnpm -r build`: 18/18 packages clean. `pnpm lint`: clean. `pnpm -r test` (full recursive, per CLAUDE.md amendment): all 21 workspace test scripts passed, zero failures (packages/db 114/1 skipped, packages/approvals 119/119 real-Postgres, services/control-api 110/110, packages/broker 106/106, services/worker 30/1 skipped, evals/harness 18/18, evals/golden 6/6).
+**Test_Evidence:** pnpm --filter dashboard test: 15 files/50 tests passed (ApprovalCard.test.tsx 4/4 new). pnpm -r build: 18/18 packages clean. pnpm lint: clean. pnpm -r test (full recursive, all 21 workspace scripts): zero failures ΓÇö packages/db 114/1 skipped, packages/approvals 119/119 real-Postgres, services/control-api 110/110, packages/broker 106/106, services/worker 30/1 skipped, evals/harness 18/18, evals/golden 6/6.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-09-03T14:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T12:49:22Z
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
