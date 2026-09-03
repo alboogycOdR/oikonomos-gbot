@@ -1,0 +1,6 @@
+# TASK-112 Dossier
+
+## Work Log
+
+- [2026-09-03T16:20:00Z] [CX] Preflight completed: `packages/broker/src/capabilityRegistry.ts` NEW; `packages/broker/src/capabilityRegistry.test.ts` NEW; `packages/broker/src/builtinTools.ts` NEW; `packages/broker/src/builtinTools.test.ts` NEW; `packages/broker/src/index.ts` FILE (590 lines); `packages/broker/src/registry.test.ts` FILE (131 lines). Implemented initial registry/table and focused test coverage; next: run broker test/typecheck, address failures, then repository checks.
+- [2026-09-03T15:56:03Z] [CX] Completed CapabilityRegistry, reviewed built-in table, closure/port/liveness tests, and barrel documentation. `pnpm --filter @oikonomos/broker test` passed (119 tests); broker typecheck and lint passed. The retry of `pnpm -r test` cleared a transient packages/db deadlock. Repository-wide build remains locally blocked by dependency installation under Node v23.10.0: normal frozen install rejects `eslint-visitor-keys` engine constraints and the dashboard build cannot resolve its installed type dependencies after the forced refresh. No unrelated package files were changed. Next: reviewer should run the full build under supported Node >=22.13 (not Node 23) with a clean frozen install.
