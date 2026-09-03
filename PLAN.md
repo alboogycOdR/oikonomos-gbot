@@ -3241,7 +3241,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6, §7 (Chat-1e); ADR-004 (render provenance); TASK-058/082 precedent (mutation-proof authorization tests)
@@ -3249,19 +3249,20 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Depends_On:** TASK-108
 **Description:** Render `action_render` verbatim as plain text inside the conversation (never interpreted as Markdown/HTML — same rule TASK-082 enforced for the Telegram gateway; an agent-controlled `canonicalJson(input)` value could otherwise inject a rendered link). Approve/Edit/Reject buttons call the existing `POST /approvals/:nonce/decide` unchanged. Card shows status (pending/granted/rejected/expired) and disables its own buttons once decided, reflecting the real 409-on-redecide behavior TASK-103 already handles in the ops approvals page — reuse that call pattern rather than reinventing it.
 **Acceptance_Criteria:**
-- [ ] A pending approval surfaced in a thread renders `action_render` verbatim (a mutation test: feed a render string containing Markdown/HTML syntax and assert it appears as literal text, not interpreted)
-- [ ] Approve/Reject call the real decide endpoint with the real nonce; the nonce never appears in the URL bar, browser history, or persisted client storage — tested (same standard TASK-103 already proved for the ops approvals page)
-- [ ] A second decide attempt on an already-decided approval is handled gracefully (409), tested
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+- [x] A pending approval surfaced in a thread renders `action_render` verbatim (a mutation test: feed a render string containing Markdown/HTML syntax and assert it appears as literal text, not interpreted)
+- [x] Approve/Reject call the real decide endpoint with the real nonce; the nonce never appears in the URL bar, browser history, or persisted client storage — tested (same standard TASK-103 already proved for the ops approvals page)
+- [x] A second decide attempt on an already-decided approval is handled gracefully (409), tested
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-109-s5
 **Started_At:** 2026-09-03T11:53:11Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-03T14:40:00Z] [S5] `ApprovalCard.tsx` renders `action_render` verbatim via a `<pre>` plain-text child only (React-escaped, no dangerouslySetInnerHTML/Markdown parser). Approve/Reject reuse `decideApproval` from `lib/api.ts` unchanged (TASK-103's existing call pattern); nonce only ever lives in the `ApprovalRender` prop and the outbound POST body. 409 handled gracefully — buttons removed, `role="alert"` notice shown. Wired into `ConversationPane.tsx`, replacing TASK-107's fixture placeholder; kept the old `data-testid="inline-approval-placeholder"` on purpose since `ChatShell.test.tsx` (outside this task's Owned_Paths) asserts on it — avoided an OWNERSHIP_CONFLICT by not needing to touch that file. Noted (not blocking): `types.ts`'s `ApprovalRender.status` union (TASK-107) is narrower than the server's real `ApprovalStatus` enum — `ChatPage.tsx` (TASK-108) already narrows it before this component ever sees it, so the real `expired`/`invalidated`/`consumed` server values can't reach here as an *initial* prop today; none of this task's AC depend on that widening. Full detail in dossiers/TASK-109.md.
+**Artifacts:** apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, dossiers/TASK-109.md
+**Test_Evidence:** `pnpm --filter dashboard test`: 15 files/50 tests passed (new ApprovalCard.test.tsx 4/4; ChatShell.test.tsx's pre-existing approval assertion still green). `pnpm -r build`: 18/18 packages clean. `pnpm lint`: clean. `pnpm -r test` (full recursive, per CLAUDE.md amendment): all 21 workspace test scripts passed, zero failures (packages/db 114/1 skipped, packages/approvals 119/119 real-Postgres, services/control-api 110/110, packages/broker 106/106, services/worker 30/1 skipped, evals/harness 18/18, evals/golden 6/6).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-03T11:53:11Z
+**Updated_By:** S5
+**Updated_At:** 2026-09-03T14:40:00Z
 
 ### TASK-110
 **Title:** "Create bot" flow (Chat-1f)
