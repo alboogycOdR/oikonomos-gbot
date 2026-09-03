@@ -208,3 +208,86 @@ export async function decideApproval(
   }
   return (await response.json()) as DecideApprovalResult;
 }
+
+/**
+ * TASK-108 (Chat-1d) — thread/message/role client calls wiring
+ * `<ChatShell>` (Chat-1c, `components/chat/**`, not modified here) to the
+ * real control-api endpoints added by Chat-1b (`services/control-api/src/
+ * app.ts`: `GET /roles`, `GET /threads`, `GET /threads/:id/messages`,
+ * `POST /threads/:id/messages`). Shapes below mirror the server's real
+ * serialization exactly (see `app.ts`'s `/threads` and
+ * `/threads/:id/messages` handlers) rather than `components/chat/types.ts`,
+ * which is Chat-1c's fixture-facing shape — this task maps between the two
+ * in `pages/ChatPage.tsx`, not here, so a future server-shape change only
+ * requires touching one file.
+ */
+export interface Role {
+  id: string;
+  name: string;
+  description: string;
+  avatarSeed: string;
+}
+
+export async function listRoles(): Promise<Role[]> {
+  return request<Role[]>("/roles");
+}
+
+export interface Thread {
+  id: string;
+  roleId: string;
+  botName: string;
+  botDescription: string;
+  avatarSeed: string;
+  title: string | null;
+  lastMessagePreview: string;
+  updatedAt: string;
+}
+
+export async function listThreads(): Promise<Thread[]> {
+  return request<Thread[]>("/threads");
+}
+
+export type ThreadMessageRole = "user" | "bot" | "system";
+
+/**
+ * `approval`, when present, carries the server's real field name
+ * (`action_render`, not `actionRender` — see `app.ts`'s
+ * `/threads/:id/messages` handler, which builds this object literally).
+ * Inline approval rendering itself is Chat-1e (TASK-109)'s scope; this
+ * task only needs the transcript fields, so the type is kept loose here
+ * rather than asserting a shape this task does not exercise.
+ */
+export interface ThreadMessage {
+  id: string;
+  threadId: string;
+  role: ThreadMessageRole;
+  body: string;
+  runId: string | null;
+  createdAt: string;
+  approval?: { nonce: string; action_render: string; status: string };
+}
+
+export interface ListThreadMessagesParams {
+  after?: string;
+}
+
+export async function listThreadMessages(
+  threadId: string,
+  params: ListThreadMessagesParams = {},
+): Promise<ThreadMessage[]> {
+  const query = new URLSearchParams();
+  if (params.after !== undefined) {
+    query.set("after", params.after);
+  }
+  const qs = query.toString();
+  return request<ThreadMessage[]>(
+    `/threads/${encodeURIComponent(threadId)}/messages${qs.length > 0 ? `?${qs}` : ""}`,
+  );
+}
+
+export async function sendThreadMessage(threadId: string, body: string): Promise<ThreadMessage> {
+  return request<ThreadMessage>(`/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
