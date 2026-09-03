@@ -3214,7 +3214,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-108
 **Title:** wire ChatShell to live API + routing (Chat-1d)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §4, §5, §6 (Chat-1d)
@@ -3227,15 +3227,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Polling stops once the run is terminal or no run is in flight for that thread (tested — assert the poll interval clears)
 - [ ] `/ops/runs`, `/ops/approvals`, `/ops/evidence` still function exactly as `/runs`/`/approvals`/`/evidence` did before this task (regression check, not just "still compiles")
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-108-s5
+**Started_At:** 2026-09-03T11:00:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-02T19:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-03T11:00:28Z
 
 ### TASK-109
 **Title:** inline ApprovalCard in chat (Chat-1e)
