@@ -3390,7 +3390,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-114
 **Title:** Worker composition root + registration CLI + CI liveness probe (ADR-013 §4, §8.3–8.4)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-013-tool-capability-resolution.md §4 (registration CLI, "boot never writes authorization tables"), §8.3 (production-caller liveness), §8.4 (CI surrogate), §9 (manifests become protected — apply to CLAUDE.md)
@@ -3405,10 +3405,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-114-cx
 **Started_At:** 2026-09-03T16:42:01Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-03T17:00:48Z] [SV:CX] Committed worker registration CLI and CI registry-closure probe in eac530c; CLAUDE.md edit was rejected by the territory hook and discarded.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: installed territory hook prohibits builder commits to CLAUDE.md despite TASK-114 listing it; supervisor must add packages/connectors/manifests/** to the protected-path list. Supervisor should also sync pnpm-lock.yaml for the new worker connector dependency.
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T16:42:01Z
+**Updated_At:** 2026-09-03T17:00:48Z
