@@ -18,7 +18,10 @@ export function LoginPage() {
     try {
       await login(token);
       const from = (location.state as { from?: Location } | null)?.from;
-      navigate(from !== undefined ? `${from.pathname}${from.search}` : "/runs", {
+      // TASK-108 (Chat-1d): default landing changed from /runs to / (the
+      // chat surface, spec §5); `from` still wins whenever RequireAuth
+      // captured a real deep link (e.g. /ops/runs) to return to.
+      navigate(from !== undefined ? `${from.pathname}${from.search}` : "/", {
         replace: true,
       });
     } catch {
