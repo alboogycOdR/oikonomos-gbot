@@ -4099,25 +4099,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-140
 **Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
-**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-030 (capability-level kill switch) and OIK-112 (drill); packages/broker/src/capabilityRegistry.ts (`enabledToolNames`, built and tested at construction time only); packages/harness-factory/src/hooks/pretooluse.ts (every tool call POSTs live to `POST /v1/broker/pretooluse` — no per-run caching at the hook layer, confirmed by reading it directly)
-**Owned_Paths:** packages/broker/src/**, docs/runbooks/kill-switch-drill.md
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-030/OIK-112; packages/broker/src/index.ts line 384 (`dependencies.getCapability(request.toolName)` — called fresh on every single decision, confirmed by CX's own trace and by ORCH re-reading it directly: the decision path already does a live per-decision DB read, no caching layer exists to fight); packages/db/src/database.ts's `getCapability`/`upsertCapability` (only a broad upsert exists today, no narrow enable/disable toggle); services/worker/src/executeRun.ts line 105 (`handlePreToolUse` is called in-process with injected `BrokerDependencies` — the real production path has no HTTP hop at all; `packages/harness-factory/src/hooks/pretooluse.ts`'s `POST /v1/broker/pretooluse` L1 adapter is a different, unused-in-this-path harness variant, not where the fix belongs)
+**Owned_Paths:** packages/broker/src/**, packages/db/src/database.ts, packages/db/src/database.test.ts, docs/runbooks/kill-switch-drill.md
 **Depends_On:** —
-**Description:** This is smaller than the WBS label suggests but not a no-op — investigate before building. `CapabilityRegistry.enabledToolNames` is built once from manifest+registered-row data (constructor time, `capabilityRegistry.ts`), and no code anywhere writes to a capability's `enabled` column after initial registration (confirmed: no `UPDATE ... enabled` anywhere in `packages/db`). So today, flipping a capability off has no live path — only a fresh process restart after a manifest edit and re-registration would pick it up, which is not a kill switch, it's a redeploy. First determine, by tracing the real request path from `POST /v1/broker/pretooluse` (wherever that route is actually implemented — find it, it wasn't in `packages/broker/src` by grep, check `services/control-api` or wherever the broker HTTP server itself lives) through to `CapabilityRegistry`, whether the registry instance is process-lifetime-static or re-constructed per request/interval. Then build the smallest correct live path: a DB function to flip a capability's (or, for the platform-wide case, every capability's) `enabled` flag, plus whatever the decision path needs to actually observe that flip without a process restart (a live DB check at decision time, or a short-TTL/invalidatable in-memory cache — pick the one that fits the existing architecture, don't invent a new caching layer if a live per-decision DB read is cheap enough and already the pattern elsewhere). Then write and run a real drill: enable a capability, prove a tool call using it is allowed, flip it off, prove the *very next* tool call using it is denied — same running process, no restart — then write `docs/runbooks/kill-switch-drill.md` documenting the real procedure (not a hypothetical one) for a human operator to pull the switch platform-wide in production.
+**Description:** CX's own investigation (see dossiers/TASK-140.md) found the real gap is narrower than first scoped, and the earlier Owned_Paths were wrong — widened here after confirming no collision with TASK-137/TASK-138 (both connectors-only, untouched by this). The live-read path already exists and needs no new caching/invalidation mechanism — `getCapability` is called fresh per decision, already in the real (non-HTTP, in-process) production path. What's actually missing: `packages/db/src/database.ts` has no method to flip a capability's `enabled` flag post-registration (only the broad `upsertCapability`, which isn't the right shape for a fast, auditable toggle) — add a narrow `setCapabilityEnabled(capabilityId, enabled)` (or equivalent) plus a platform-wide variant (or a loop over all registered capability IDs, whichever is the smaller correct diff), both tested against real Postgres matching this package's existing convention. Then run and document a real drill in `packages/broker`'s own tests: enable a capability, call `handlePreToolUse` with real injected dependencies and confirm allow; flip it off via the new DB method; call `handlePreToolUse` again in the same process, same dependencies object, and confirm deny — no restart, no new registry construction. Then the platform-wide case the same way. Then write `docs/runbooks/kill-switch-drill.md` documenting the exact, just-proven procedure (which DB call(s) an operator runs, what to verify) — not a hypothetical one.
 **Acceptance_Criteria:**
-- [ ] A capability enabled at drill start is provably usable (a real `pretooluse` decision returns allow) before the flip
-- [ ] After flipping that capability's `enabled` flag off, the very next `pretooluse` decision for it returns deny — same process, no restart — tested
-- [ ] The platform-wide case (flip every capability off at once) is also tested, not just the single-capability case
-- [ ] `docs/runbooks/kill-switch-drill.md` documents the real, just-proven procedure — not a hypothetical one
+- [ ] `packages/db`: a new, tested DB method flips a single capability's `enabled` flag (real Postgres)
+- [ ] `packages/db`: a new, tested DB method (or documented equivalent) flips every capability's `enabled` flag platform-wide (real Postgres)
+- [ ] `packages/broker`: a real same-process test proves a capability enabled at drill start is usable (`handlePreToolUse` returns allow), then after the DB flip the very next `handlePreToolUse` call with the same dependencies returns deny — no restart, no new registry/dependencies construction
+- [ ] The platform-wide flip is also proven the same way, not just the single-capability case
+- [ ] `docs/runbooks/kill-switch-drill.md` documents the real, just-proven procedure
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-140-cx
 **Started_At:** 2026-09-04T17:34:07Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T18:20:00Z] [SV:CX] Pre-flight ownership check ran clean against original Owned_Paths (packages/broker/src/**, docs/runbooks/kill-switch-drill.md). Investigated the real request path before writing code (no out-of-territory edits made) and correctly self-diagnosed a real OWNERSHIP_CONFLICT: the live kill switch needs a packages/db capability-toggle accessor plus proof it reaches the real (non-HTTP, in-process) executeRun.ts decision path — neither was in scope. Findings recorded in dossiers/TASK-140.md.
+- [2026-09-04T18:30:00Z] [ORCH] Unblocked: widened Owned_Paths to packages/db/src/database.ts + database.test.ts (verified no collision with TASK-137/TASK-138, both connectors-only). CX's trace also corrected the task's own premise — `getCapability` is already called live per-decision (no caching gap to fix), and the real production path is executeRun.ts's in-process `handlePreToolUse` call, not the HTTP L1 adapter. Description and acceptance criteria rewritten accordingly. Resuming on task/TASK-140-cx.
+**Artifacts:** dossiers/TASK-140.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T17:34:07Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:30:00Z
