@@ -4406,7 +4406,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-149
 **Title:** Mobile Wave 2b — push-notification client integration (env-gated FCM)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-145 (the POST /devices registration endpoint and broadcast semantics this consumes); WORKFLOW_MOBILE_W1_W2_2026-09-04.md (no real Firebase credential exists yet — everything ships env/config-gated and fake-tested; real on-device push is a later infra step)
@@ -4421,13 +4421,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `flutter analyze` + `flutter test` exit 0; nothing outside apps/mobile/**
 **Branch:** task/TASK-149-s5
 **Started_At:** 2026-09-04T22:15:01Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T22:22:15Z] [SV:S5] Implemented push client integration: PushPort abstraction (NoopPushPort/FirebasePushPort), PushRegistrar (token obtain/register/rotate + foreground message forwarding), ApiClient.registerDevice, config gate in main.dart, wired into login/roster screens with a SnackBar for foreground notifications. Added firebase_core/firebase_messaging deps. All logic testable via FakePushPort; no real Firebase in any test.
+**Artifacts:** apps/mobile/lib/push/push_port.dart, apps/mobile/lib/push/noop_push_port.dart, apps/mobile/lib/push/firebase_push_port.dart, apps/mobile/lib/push/push_message.dart, apps/mobile/lib/push/device_platform.dart, apps/mobile/lib/push/push_registrar.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/main.dart, apps/mobile/lib/screens/login_screen.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/push/push_registrar_test.dart, apps/mobile/test/support/fake_push_port.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/screens/roster_screen_test.dart, apps/mobile/pubspec.yaml, apps/mobile/pubspec.lock, dossiers/TASK-149.md
+**Test_Evidence:** flutter analyze: No issues found. flutter test: 59/59 passed (up from 52 baseline). Covers: dormant-default boot parity (no /devices call), token registration + rotation re-registration, registration-failure swallowing, foreground message decode/forward for both trigger types with SnackBar rendering, ApiClient.registerDevice success/error paths.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T22:15:01Z
+**Updated_At:** 2026-09-04T22:22:15Z
 
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
