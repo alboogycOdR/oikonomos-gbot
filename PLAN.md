@@ -4335,7 +4335,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (reference UX: the Grok Bot screenshots — roster with avatar/last-message/timestamp, create-bot with name + color/shape picker); TASK-144 (the API/SSE client this consumes); apps/dashboard/src/components/chat/BotSidebar.tsx, CreateBotDialog.tsx, ChatPage.tsx (the web equivalents — mirror behavior and endpoints, not DOM structure)
@@ -4347,15 +4347,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Chat: history loads, a streamed event appears without refresh, leaving the screen closes the subscription — tested
 - [ ] Create-bot: picker, POST /roles, roster shows the new bot — tested
 - [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-147-s5
+**Started_At:** 2026-09-04T19:50:52Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T19:50:52Z
 
 ### TASK-148
 **Title:** Mobile Wave 2a — approval cards, routines tab, auto-review settings screen
