@@ -3742,7 +3742,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** TASK-122's own next_step/Review_Findings — the real, honestly-documented gap left after that task: `ComposeBox` is correctly disabled for a group thread in the live UI rather than shipping a broken send, because `POST /threads/:id/messages` only handles 1:1 threads today
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, services/worker/src/index.ts
 **Depends_On:** TASK-122
 **Description:** `POST /threads/:id/messages` today assumes a single owning `roleId` (it looks up the thread's bot to start a `chatRunDriver` run against). For a group thread (`role_id IS NULL`, real `thread_members`), posting a human message should persist it (with `senderRoleId` null — matches "no single sender = the human user", TASK-120's own convention) and needs a real dispatch story for which bot(s) respond — reuse TASK-122's `deliverBotToBotMessage`/fan-out approval mechanism where it applies rather than inventing a second delivery path; keep the v1 behavior narrow (e.g. the human's message fans out to the group's members via the same approval gate TASK-122 already built for bot-to-bot fan-out, since a human posting into a multi-bot group is the same fan-out shape). On the frontend, remove `ChatShell`'s `ComposeBox` group-disable once the endpoint is real and tested.
 **Acceptance_Criteria:**
@@ -3753,10 +3753,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-126-cx
 **Started_At:** 2026-09-04T07:07:51Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T07:09:53Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — TASK-122's `deliverBotToBotMessage` is not exported from `services/worker/src/index.ts`, so control-api (which already depends on `@oikonomos/worker`) has no way to reuse it.
+- [2026-09-04T09:22:00Z] [ORCH] Triaged: legitimate — worker's barrel already exports `chatRunDriver`'s other public surface (`createChatRunDriver`, `destinationFor`, `finalText`) from the same file; `deliverBotToBotMessage`/`CHAT_FANOUT_CAPABILITY_ID`/its request-result types simply weren't added when TASK-122 introduced them (TASK-122's own Owned_Paths never included `index.ts`, so it couldn't have). Added `services/worker/src/index.ts` to Owned_Paths (additive export only — no other active task touches it). Resume on task/TASK-126-cx.
+**Artifacts:** dossiers/TASK-126.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T07:07:51Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T09:22:00Z
