@@ -4137,7 +4137,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-139
 **Title:** Generalize connector merging to N connectors + wire Calendar/Drive grant-derived mounting (Connectors-2c)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-128 (the exact pattern to mirror for grant-derived mounting, done for Gmail); services/worker/src/chatRunDriver.ts (`resolveGrantedGmailConnector`, `resolveGrantedWorkspaceConnector`, `combineConnectorContexts` — currently pairwise-only, built for exactly two connectors); TASK-137/138 (the new Calendar/Drive session minters this task wires in)
@@ -4154,13 +4154,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-139-cx9
 **Started_At:** 2026-09-04T17:57:16Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T18:11:51Z] [SV:CX9] Implemented N-ary connector merging plus Calendar/Drive grant-derived mounting and barrel exports; committed 409eea4.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/connectors/src/mcp/index.ts, packages/connectors/src/index.ts, dossiers/TASK-139.md
+**Test_Evidence:** PASS: pnpm --filter @oikonomos/worker test -- -t "TASK-139" (2 passed; real Postgres Calendar/Drive fixture-MCP proof); pnpm --filter @oikonomos/connectors test (15 files, 129 passed, 4 skipped); pnpm --filter @oikonomos/connectors build; pnpm --filter @oikonomos/worker typecheck; pnpm lint. Full worker suite hit unrelated shared-Postgres deadlock/registration snapshot concurrency failures.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T17:57:16Z
+**Updated_At:** 2026-09-04T18:11:51Z
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
