@@ -24,6 +24,8 @@ import {
   listTasks as dbListTasks,
   listThreads as dbListThreads,
   listAllThreadsWithMembers as dbListAllThreadsWithMembers,
+  listDeviceTokens as dbListDeviceTokens,
+  registerDeviceToken as dbRegisterDeviceToken,
   type AuditEvent,
   type Capability,
   type DatabaseOptions,
@@ -48,6 +50,8 @@ import {
   type GroupThread,
   type Message,
   type MessageListOptions,
+  type DeviceToken,
+  type RegisterDeviceTokenInput,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -63,6 +67,7 @@ import {
   startTaskRun,
   type ChatRunDriver,
 } from "@oikonomos/worker";
+import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
 /**
  * The port every route handler is written against. Route-level tests
@@ -107,8 +112,56 @@ export interface ControlApiDeps {
    */
   editApproval(nonce: string, editedRequest: IssueApprovalRequest): Promise<EditApprovalResult>;
   getAuditEventsForRun(runId: string): Promise<AuditEvent[]>;
+  registerDeviceToken(input: RegisterDeviceTokenInput): Promise<DeviceToken>;
   runChatTask(input: { task: Task; threadId: string }): Promise<void>;
   requestGroupFanout(input: { task: Task; memberRoleIds: readonly string[]; body: string }): Promise<{ runId: string }>;
+}
+
+export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
+  /** Tests inject a collecting transport; production resolves the env-gated FCM transport. */
+  pushTransport?: PushTransportPort;
+}
+
+export interface PushNotificationDeps {
+  runChatTask(input: { task: Task; threadId: string }): Promise<void>;
+  listRuns(filter: RunListFilter): Promise<RunListPage>;
+  listPendingApprovals(): Promise<Approval[]>;
+  listDeviceTokens(): Promise<DeviceToken[]>;
+  pushTransport: PushTransportPort;
+}
+
+/**
+ * Wait for the chat driver before observing the persisted run. The control
+ * API owns this derived notification, leaving approval and worker packages
+ * untouched. Transport failures are deliberately isolated from the run.
+ */
+export async function notifyAfterChatRun(
+  input: { task: Task; threadId: string },
+  dependencies: PushNotificationDeps,
+): Promise<void> {
+  await dependencies.runChatTask(input);
+  // Per-user identity does not exist yet. Broadcast to every registered
+  // device is therefore the honest shared-token model; replace this with
+  // user-scoped targets when per-user auth ships.
+  const [{ runs }, approvals, devices] = await Promise.all([
+    dependencies.listRuns({ taskId: input.task.taskId, limit: 1 }),
+    dependencies.listPendingApprovals(),
+    dependencies.listDeviceTokens(),
+  ]);
+  const run = runs[0];
+  if (run === undefined) return;
+  const notification: PushNotification = {
+    type: approvals.some((approval) => approval.runId === run.runId) ? "approval-pending" : "run-completed",
+    runId: run.runId,
+  };
+  await Promise.all(devices.map(async ({ token }) => {
+    try {
+      await dependencies.pushTransport.send(token, notification);
+    } catch {
+      // Provider errors can echo a token or credential, so log no error details.
+      console.error("push notification delivery failed");
+    }
+  }));
 }
 
 /**
@@ -117,8 +170,16 @@ export interface ControlApiDeps {
  * opens its own connection via `createDatabaseStore` — this file never
  * touches a `Pool` directly, only the two packages' public functions.
  */
-export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDeps {
+export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
   const chatRunDriver: ChatRunDriver = createChatRunDriver(options);
+  const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
+  const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
+    runChatTask: (request) => chatRunDriver.run(request),
+    listRuns: (filter) => dbListRuns(options, filter),
+    listPendingApprovals: () => dbListPendingApprovals(options),
+    listDeviceTokens: () => dbListDeviceTokens(options),
+    pushTransport,
+  });
   return {
     createTask: (input) => dbCreateTask(options, input),
     createRoutine: (input) => dbCreateRoutine(options, input),
@@ -145,7 +206,8 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     editApproval: (nonce, editedRequest) =>
       approvalsEditApproval(nonce, editedRequest, { database: options }),
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),
-    runChatTask: (input) => chatRunDriver.run(input),
+    registerDeviceToken: (input) => dbRegisterDeviceToken(options, input),
+    runChatTask: notify,
     requestGroupFanout: async ({ task, memberRoleIds, body }) => {
       const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group" });
       await deliverBotToBotMessage(options, {

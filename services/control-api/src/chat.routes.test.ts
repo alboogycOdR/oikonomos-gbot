@@ -108,6 +108,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     decideApproval: async () => ({ decided: false, rowCount: 0 }),
     editApproval: async () => ({ edited: false, rowCount: 0 }),
     getAuditEventsForRun: async () => [],
+    registerDeviceToken: async (input) => ({ ...input, createdAt: new Date(), lastSeenAt: new Date() }),
     runChatTask: async () => { calls.push("runChatTask"); },
     requestGroupFanout: async () => { calls.push("requestGroupFanout"); return { runId: randomUUID() }; },
     ...overrides,
@@ -132,9 +133,27 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "GET" as const, url: `/roles/${roleId}/routines` },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
+      { method: "POST" as const, url: "/devices", payload: { token: "opaque-test-target", platform: "android" } },
     ];
     for (const request of requests) expect((await app.inject(request)).statusCode).toBe(401);
     expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("registers a device only after the standard auth gate", async () => {
+    const registered: Array<{ token: string; platform: string }> = [];
+    const { deps } = createDeps({
+      registerDeviceToken: async (input) => {
+        registered.push(input);
+        return { ...input, createdAt: new Date(), lastSeenAt: new Date() };
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    expect((await app.inject({ method: "POST", url: "/devices", payload: { token: "opaque-test-target", platform: "android" } })).statusCode).toBe(401);
+    const response = await app.inject({ method: "POST", url: "/devices", headers: authHeaders(), payload: { token: "opaque-test-target", platform: "android" } });
+    expect(response.statusCode).toBe(201);
+    expect(JSON.parse(response.body)).toEqual({ registered: true });
+    expect(registered).toEqual([{ token: "opaque-test-target", platform: "android" }]);
     await app.close();
   });
 

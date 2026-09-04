@@ -68,6 +68,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     decideApproval: async () => ({ decided: false, rowCount: 0 }),
     editApproval: async () => ({ edited: false, rowCount: 0 }),
     getAuditEventsForRun: async () => [],
+    registerDeviceToken: async (input) => ({ ...input, createdAt: new Date(), lastSeenAt: new Date() }),
     runChatTask: async () => {},
     requestGroupFanout: async () => ({ runId: randomUUID() }),
     ...overrides,
