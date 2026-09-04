@@ -22,6 +22,8 @@
  * disconnected.
  */
 
+import { UnauthorizedError } from "./api";
+
 const BASE_URL: string =
   (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
 
@@ -100,6 +102,9 @@ export function subscribeToThreadMessages(
         },
       );
       if (closed) return;
+      if (response.status === 401) {
+        throw new UnauthorizedError();
+      }
       if (!response.ok || response.body === null) {
         throw new Error(`stream request failed with ${response.status}`);
       }
@@ -108,12 +113,21 @@ export function subscribeToThreadMessages(
       if (closed) return;
       // AbortError is this module's own close()/reconnect churn, not a
       // real failure — never surface it to onError.
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        onError?.(error);
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      onError?.(error);
+      if (error instanceof UnauthorizedError) {
+        // No session can come back on its own — further reconnect
+        // attempts would just keep hammering the endpoint with 401s
+        // until the caller re-authenticates and opens a fresh
+        // subscription. Matches the old polling loop's behavior of
+        // stopping outright on an auth failure.
+        return;
       }
     }
-    // The stream ended (server closed it) or errored: reconnect unless
-    // close() has already been called.
+    // The stream ended (server closed it) or errored (non-auth):
+    // reconnect unless close() has already been called.
     scheduleReconnect();
   }
 

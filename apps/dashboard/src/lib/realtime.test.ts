@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { UnauthorizedError } from "./api";
 import { subscribeToThreadMessages, type RealtimeMessage } from "./realtime";
 
 /** Builds a `ReadableStream<Uint8Array>` that emits the given raw SSE text in one chunk. */
@@ -162,6 +163,21 @@ describe("subscribeToThreadMessages (TASK-129 RT-01)", () => {
     push(frame("m1", makeMessage()));
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1));
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    sub.close();
+  });
+
+  it("stops reconnecting (does not retry) after a 401", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 401, body: null });
+    const onError = vi.fn();
+    const sub = subscribeToThreadMessages("t1", vi.fn(), onError, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      reconnectDelayMs: 10,
+    });
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(onError).toHaveBeenCalledWith(expect.any(UnauthorizedError));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     sub.close();
   });
 });
