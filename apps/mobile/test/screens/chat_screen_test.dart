@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:oikonomos_mobile/api/api_client.dart';
 import 'package:oikonomos_mobile/api/models.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
@@ -31,7 +32,11 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
   return client;
 }
 
-Map<String, dynamic> _messageJson(String id, {String role = 'bot', String body = 'hello'}) {
+Map<String, dynamic> _messageJson(
+  String id, {
+  String role = 'bot',
+  String body = 'hello',
+}) {
   return {
     'id': id,
     'threadId': 'thread-1',
@@ -41,6 +46,17 @@ Map<String, dynamic> _messageJson(String id, {String role = 'bot', String body =
     'createdAt': '2026-09-04T00:00:0${id}Z',
   };
 }
+
+Map<String, dynamic> _approvalMessage(String id) => {
+      ..._messageJson(id, body: 'I need your decision.'),
+      'approval': {
+        'nonce': 'raw-secret-nonce',
+        'action_render': 'Run rm -rf /tmp/demo',
+        'status': 'pending',
+        'capability_id': 'shell.execute',
+        'max_tier': 'T3',
+      },
+    };
 
 void main() {
   testWidgets('loads history and shows it with no live event yet', (
@@ -52,7 +68,9 @@ void main() {
     fake.queueHangingStream(200);
 
     await tester.pumpWidget(
-      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -66,7 +84,9 @@ void main() {
     final streamController = fake.queueControlledStream(200);
 
     await tester.pumpWidget(
-      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -90,9 +110,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('leaving the screen closes the SSE subscription', (
-    tester,
-  ) async {
+  testWidgets('leaving the screen closes the SSE subscription', (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
@@ -151,7 +169,9 @@ void main() {
     fake.queueJson(200, _messageJson('2', role: 'user', body: 'hello bot'));
 
     await tester.pumpWidget(
-      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -164,5 +184,128 @@ void main() {
     final sendRequest = fake.requests.last;
     expect(sendRequest.method, 'POST');
     expect(sendRequest.url.path, '/threads/thread-1/messages');
+  });
+
+  testWidgets(
+    'renders an approval card and approves through the real endpoint shape',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [_approvalMessage('approval-1')]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, {'decided': true, 'approval': {}});
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('approval-card-approval-1')), findsOneWidget);
+      expect(find.text('Capability: shell.execute'), findsOneWidget);
+      expect(find.text('Run rm -rf /tmp/demo'), findsOneWidget);
+      expect(find.text('raw-secret-nonce'), findsNothing);
+
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+
+      final request = fake.requests.last;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/approvals/raw-secret-nonce/decide');
+      expect(request, isA<http.Request>());
+      expect(jsonDecode((request as http.Request).body), {
+        'decision': 'granted',
+        'decidedBy': 'mobile:operator',
+      });
+      expect(find.text('Status: approved'), findsOneWidget);
+    },
+  );
+
+  testWidgets('reflects a duplicate approval decision without crashing', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, [_approvalMessage('approval-2')]);
+    fake.queueHangingStream(200);
+    fake.queueJson(409, {'decided': false});
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deny'));
+    await tester.pumpAndSettle();
+
+    final request = fake.requests.last;
+    expect(request.method, 'POST');
+    expect(request.url.path, '/approvals/raw-secret-nonce/decide');
+    expect(request, isA<http.Request>());
+    expect(jsonDecode((request as http.Request).body)['decision'], 'rejected');
+    expect(
+      find.text('Status: Already decided or no longer valid.'),
+      findsOneWidget,
+    );
+    expect(find.text('Approve'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('loads read-only routines when the routines tab opens', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(200, [
+      {
+        'routineId': 'routine-1',
+        'name': 'Daily briefing',
+        'schedule': '0 8 * * *',
+        'lastFireAt': '2026-09-04T08:00:00Z',
+        'nextFireAt': '2026-09-05T08:00:00Z',
+      },
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Routines'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Daily briefing'), findsOneWidget);
+    expect(find.textContaining('Schedule: 0 8 * * *'), findsOneWidget);
+    expect(fake.requests.last.url.path, '/roles/role-1/routines');
+  });
+
+  testWidgets('shows auto-review settings without a usage figure', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bot-settings-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Auto-review'), findsOneWidget);
+    expect(
+      find.text('Require approval for risky shell, MCP, and computer actions.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Usage'), findsNothing);
   });
 }

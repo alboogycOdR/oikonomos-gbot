@@ -20,7 +20,10 @@ void main() {
               'control_api_session=abc123; Path=/; HttpOnly; SameSite=Strict',
         },
       );
-      final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
+      final client = ApiClient(
+        baseUrl: 'http://localhost:3000',
+        httpClient: fake,
+      );
 
       expect(client.isAuthenticated, isFalse);
       await client.login('shared-token');
@@ -35,7 +38,10 @@ void main() {
     test('throws UnauthorizedError on a 401 and stores nothing', () async {
       final fake = FakeHttpClient();
       fake.queueJson(401, {'error': 'invalid token'});
-      final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
+      final client = ApiClient(
+        baseUrl: 'http://localhost:3000',
+        httpClient: fake,
+      );
 
       await expectLater(
         () => client.login('bad-token'),
@@ -44,22 +50,28 @@ void main() {
       expect(client.isAuthenticated, isFalse);
     });
 
-    test('throws ApiException with the server message on other failures', () async {
-      final fake = FakeHttpClient();
-      fake.queueJson(400, {'error': 'malformed request'});
-      final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
+    test(
+      'throws ApiException with the server message on other failures',
+      () async {
+        final fake = FakeHttpClient();
+        fake.queueJson(400, {'error': 'malformed request'});
+        final client = ApiClient(
+          baseUrl: 'http://localhost:3000',
+          httpClient: fake,
+        );
 
-      await expectLater(
-        () => client.login(''),
-        throwsA(
-          isA<ApiException>().having(
-            (e) => e.message,
-            'message',
-            'malformed request',
+        await expectLater(
+          () => client.login(''),
+          throwsA(
+            isA<ApiException>().having(
+              (e) => e.message,
+              'message',
+              'malformed request',
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   });
 
   group('ApiClient authenticated calls', () {
@@ -69,7 +81,10 @@ void main() {
         {'authenticated': true},
         headers: {'set-cookie': 'control_api_session=abc123; Path=/'},
       );
-      final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
+      final client = ApiClient(
+        baseUrl: 'http://localhost:3000',
+        httpClient: fake,
+      );
       await client.login('shared-token');
       return client;
     }
@@ -94,26 +109,30 @@ void main() {
       expect(rolesRequest.headers['cookie'], 'control_api_session=abc123');
     });
 
-    test('createRole posts name/description and returns the created role', () async {
-      final fake = FakeHttpClient();
-      final client = await loggedIn(fake);
-      fake.queueJson(200, {
-        'id': 'role-2',
-        'name': 'Analyst',
-        'description': 'Numbers',
-        'avatarSeed': 'seed-2',
-      });
+    test(
+      'createRole posts name/description and returns the created role',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {
+          'id': 'role-2',
+          'name': 'Analyst',
+          'description': 'Numbers',
+          'avatarSeed': 'seed-2',
+        });
 
-      final role = await client.createRole('Analyst', 'Numbers');
-      expect(role.id, 'role-2');
+        final role = await client.createRole('Analyst', 'Numbers');
+        expect(role.id, 'role-2');
 
-      final request = fake.requests.last;
-      expect(request.method, 'POST');
-      expect(request.url.path, '/roles');
-      expect(request, isA<http.Request>());
-      final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
-      expect(body, {'name': 'Analyst', 'description': 'Numbers'});
-    });
+        final request = fake.requests.last;
+        expect(request.method, 'POST');
+        expect(request.url.path, '/roles');
+        expect(request, isA<http.Request>());
+        final body =
+            jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+        expect(body, {'name': 'Analyst', 'description': 'Numbers'});
+      },
+    );
 
     test('createThread posts roleId and returns the new thread id', () async {
       final fake = FakeHttpClient();
@@ -133,7 +152,8 @@ void main() {
       expect(request.method, 'POST');
       expect(request.url.path, '/threads');
       expect(request, isA<http.Request>());
-      final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+      final body =
+          jsonDecode((request as http.Request).body) as Map<String, dynamic>;
       expect(body, {'roleId': 'role-2'});
     });
 
@@ -168,47 +188,100 @@ void main() {
       expect((threads[1] as GroupThread).memberNames, ['Concierge', 'Analyst']);
     });
 
-    test('listThreadMessages passes the after cursor as a query param', () async {
+    test(
+      'listThreadMessages passes the after cursor as a query param',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, [
+          {
+            'id': 'msg-1',
+            'threadId': 'thread-1',
+            'role': 'user',
+            'body': 'hello',
+            'runId': null,
+            'createdAt': '2026-09-04T00:00:00Z',
+          },
+        ]);
+
+        final messages = await client.listThreadMessages(
+          'thread-1',
+          after: 'msg-0',
+        );
+        expect(messages, hasLength(1));
+        expect(messages.single.body, 'hello');
+
+        final request = fake.requests.last;
+        expect(request.url.path, '/threads/thread-1/messages');
+        expect(request.url.queryParameters['after'], 'msg-0');
+      },
+    );
+
+    test(
+      'sendThreadMessage posts the body and returns the created message',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {
+          'id': 'msg-2',
+          'threadId': 'thread-1',
+          'role': 'user',
+          'body': 'hi there',
+          'runId': null,
+          'createdAt': '2026-09-04T00:02:00Z',
+        });
+
+        final message = await client.sendThreadMessage('thread-1', 'hi there');
+        expect(message.body, 'hi there');
+
+        final request = fake.requests.last;
+        expect(request.method, 'POST');
+        expect(request.url.path, '/threads/thread-1/messages');
+      },
+    );
+
+    test(
+      'decideApproval uses the single-use decide endpoint and handles a no-op',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {'decided': true, 'approval': {}});
+        fake.queueJson(409, {'decided': false});
+
+        expect(
+          await client.decideApproval('nonce / private', 'granted'),
+          isTrue,
+        );
+        expect(
+          await client.decideApproval('nonce / private', 'granted'),
+          isFalse,
+        );
+
+        final first = fake.requests[1] as http.Request;
+        expect(first.url.path, '/approvals/nonce%20%2F%20private/decide');
+        expect(jsonDecode(first.body), {
+          'decision': 'granted',
+          'decidedBy': 'mobile:operator',
+        });
+      },
+    );
+
+    test('listRoutines parses read-only routine data', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
       fake.queueJson(200, [
         {
-          'id': 'msg-1',
-          'threadId': 'thread-1',
-          'role': 'user',
-          'body': 'hello',
-          'runId': null,
-          'createdAt': '2026-09-04T00:00:00Z',
+          'routineId': 'routine-1',
+          'name': 'Daily briefing',
+          'schedule': '0 8 * * *',
+          'lastFireAt': '2026-09-04T08:00:00Z',
+          'nextFireAt': '2026-09-05T08:00:00Z',
         },
       ]);
 
-      final messages = await client.listThreadMessages('thread-1', after: 'msg-0');
-      expect(messages, hasLength(1));
-      expect(messages.single.body, 'hello');
-
-      final request = fake.requests.last;
-      expect(request.url.path, '/threads/thread-1/messages');
-      expect(request.url.queryParameters['after'], 'msg-0');
-    });
-
-    test('sendThreadMessage posts the body and returns the created message', () async {
-      final fake = FakeHttpClient();
-      final client = await loggedIn(fake);
-      fake.queueJson(200, {
-        'id': 'msg-2',
-        'threadId': 'thread-1',
-        'role': 'user',
-        'body': 'hi there',
-        'runId': null,
-        'createdAt': '2026-09-04T00:02:00Z',
-      });
-
-      final message = await client.sendThreadMessage('thread-1', 'hi there');
-      expect(message.body, 'hi there');
-
-      final request = fake.requests.last;
-      expect(request.method, 'POST');
-      expect(request.url.path, '/threads/thread-1/messages');
+      final routines = await client.listRoutines('role 1');
+      expect(routines.single.name, 'Daily briefing');
+      expect(fake.requests.last.url.path, '/roles/role%201/routines');
     });
 
     test('a 401 on any authenticated call throws UnauthorizedError', () async {
