@@ -82,6 +82,12 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       [roleId],
     );
     await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+    // TASK-120 added thread_members (FK to threads); this cleanup predates
+    // that table and must delete from it first or the threads DELETE below
+    // violates thread_members_thread_id_fkey. A stray pre-TASK-120 thread
+    // left by an interrupted run got picked up by TASK-120's own one-time
+    // migration backfill, which is exactly how this surfaced for real.
+    await pool.query(`DELETE FROM thread_members WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM threads WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
