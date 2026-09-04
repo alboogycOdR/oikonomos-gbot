@@ -4447,7 +4447,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-151
 **Title:** Fix the recurring registerCapabilities idempotency flake (concurrency-isolate the test)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/registerCapabilities.test.ts ("registerCapabilities PostgreSQL idempotency — leaves the complete declaration inventory byte-identical on a second registration", the failing case); services/worker/src/killSwitchDrill.test.ts (TASK-140 — flips EVERY capability's `enabled` flag platform-wide via `setAllCapabilitiesEnabled` and restores in a `finally`, a prime suspect for cross-test interference on the shared `capabilities` table); PLAN.md TASK-128/136/139/146 Test_Evidence entries (four separate tasks whose evidence this flake has muddied)
@@ -4466,7 +4466,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T21:32:49Z] [SV:CX9] Isolated registerCapabilities integration data in a per-run PostgreSQL schema; confirmed chatRunDriver fixture writes were the actual flake source, not the kill switch.
 **Artifacts:** services/worker/src/registerCapabilities.test.ts, dossiers/TASK-151.md
 **Test_Evidence:** Focused registration and kill-switch tests passed; pnpm --filter @oikonomos/worker test passed 5 consecutive unfiltered runs (each 13 files, 64 passed, 1 skipped); pnpm -r test, pnpm -r build, and pnpm lint completed successfully.
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass. **CX9 refuted ORCH's own stated hypothesis, with evidence — which is exactly what the task asked for and the most valuable thing in this diff.** I had suspected TASK-140's kill-switch drill (it mutates every capability row platform-wide, a plausible culprit). CX9 tested that and found the failure diff showed Gmail manifest *descriptions* being overwritten by `chatRunDriver.test.ts`'s fixture values — not `enabled` flags — so the real contention was a different concurrent test entirely, and the kill-switch drill was innocent and left untouched. A builder that had simply implemented the supervisor's guess would have "fixed" the wrong file and left the flake live. Fix is the right shape: a per-run disposable Postgres schema with `LIKE ... INCLUDING ALL` table clones plus re-created FK constraints, pool `search_path` scoped to it, dropped in teardown — genuine data isolation, not the suite serialisation the task explicitly warned against. Both load-bearing assertions verified untouched: byte-identical inventory idempotency, and the platform-wide kill-switch coverage (killSwitchDrill.test.ts has zero changes). ORCH independently re-ran the full unfiltered worker suite 3 consecutive times on CX9's branch: 64 passed every time, zero failures — corroborating the dossier's claimed 5. This closes a flake that had muddied test evidence across TASK-128/136/139/146 and caused one false-blocked report. Merged --no-ff.
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T21:32:49Z
