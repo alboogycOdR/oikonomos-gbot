@@ -19,7 +19,7 @@ import {
 // yet re-exported from the package barrel (`index.ts` is outside this
 // task's `Owned_Paths` — see the dossier) — imported directly from the
 // module instead.
-import { failRun, cancelRun, listOpenRuns, openRunStatuses } from "./runs.js";
+import { failRun, cancelRun, listOpenRuns, openRunStatuses, parkRun } from "./runs.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -359,6 +359,88 @@ integration("packages/db runs — listOpenRuns (TASK-133 / OIK-106)", () => {
       { taskId: "00000000-0000-0000-0000-000000000000" },
     );
     expect(unrelated).toHaveLength(0);
+  });
+});
+
+// TASK-136: parkRun is the accessor a real RunParkPort implementation calls
+// to transition a chat run to waiting_approval when a tool-use hits a
+// pending approval — previously the only way a row ever reached this status
+// was a test forging it directly with SQL (see the `listOpenRuns` fixture
+// above and TASK-135's dossier finding).
+integration("packages/db runs — parkRun (TASK-136)", () => {
+  let pool: Pool;
+  const roleId = "task-136-parkrun-suite";
+  let taskId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    const task = await createTask(
+      { connectionString: connectionString! },
+      { roleId, title: "parkRun fixture", goal: "g", requestedBy: "alister" },
+    );
+    taskId = task.taskId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("transitions a started run to waiting_approval", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    expect(run.status).toBe("started");
+
+    const parked = await parkRun({ connectionString: connectionString! }, run.runId);
+    expect(parked.runId).toBe(run.runId);
+    expect(parked.status).toBe("waiting_approval");
+    // MUTATION-PROOF: parkRun must not touch ended_at/session_ref/etc — it
+    // is not a terminal transition, unlike completeRun/failRun/cancelRun.
+    expect(parked.endedAt).toBeNull();
+  });
+
+  it("transitions a resumed run to waiting_approval too (idempotent kill/resume/park cycles)", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    await pool.query(`UPDATE runs SET status = 'resumed' WHERE run_id = $1`, [run.runId]);
+
+    const parked = await parkRun({ connectionString: connectionString! }, run.runId);
+    expect(parked.status).toBe("waiting_approval");
+  });
+
+  it("throws IllegalRunTransitionError parking an already-parked run (no silent double-park)", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    await parkRun({ connectionString: connectionString! }, run.runId);
+
+    await expect(
+      parkRun({ connectionString: connectionString! }, run.runId),
+    ).rejects.toThrow(IllegalRunTransitionError);
+    await expect(
+      parkRun({ connectionString: connectionString! }, run.runId),
+    ).rejects.toMatchObject({ runId: run.runId, fromStatus: "waiting_approval" });
+  });
+
+  it("throws IllegalRunTransitionError parking a terminal run", async () => {
+    const run = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    const completed = await completeRun({ connectionString: connectionString! }, run.runId);
+    expect(completed.status).toBe("completed");
+
+    await expect(
+      parkRun({ connectionString: connectionString! }, run.runId),
+    ).rejects.toThrow(IllegalRunTransitionError);
+  });
+
+  it("throws RunNotFoundError parking an unknown run", async () => {
+    await expect(
+      parkRun({ connectionString: connectionString! }, "00000000-0000-0000-0000-000000000000"),
+    ).rejects.toThrow(/was not found/);
   });
 });
 

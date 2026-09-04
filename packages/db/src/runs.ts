@@ -286,6 +286,47 @@ export async function resumeRun(
 }
 
 /**
+ * Park a run awaiting a human approval decision (TASK-136) — the concrete
+ * accessor `chatRunDriver.ts`'s real `RunParkPort` calls so a chat run that
+ * hits a pending approval actually transitions its DB `status` to
+ * `waiting_approval`, closing the gap TASK-135 documented (nothing in
+ * production ever wrote this status before). Legal only from `started` or
+ * `resumed` — parking an already-parked run is a no-op transition this
+ * module rejects rather than silently allows, since `withPark` in
+ * `packages/harness-factory` only ever calls `park()` once per denied
+ * tool-use attempt and a second call against an already-`waiting_approval`
+ * run would indicate a caller bug worth surfacing, not swallowing.
+ */
+export async function parkRun(
+  options: DatabaseOptions,
+  runId: string,
+): Promise<Run> {
+  const normalizedRunId = requireUuid(runId, "runId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RunRow>(
+      `UPDATE runs
+       SET status = 'waiting_approval'
+       WHERE run_id = $1
+         AND status IN ('started', 'resumed')
+       RETURNING ${runColumns}`,
+      [normalizedRunId],
+    );
+
+    const rowCount = result.rowCount ?? 0;
+    if (rowCount === 1 && result.rows[0] !== undefined) {
+      return toRun(result.rows[0]);
+    }
+    if (rowCount > 1) {
+      throw new Error(
+        `parkRun matched ${rowCount} rows for run ${normalizedRunId}; expected 0 or 1.`,
+      );
+    }
+    return raiseTransitionFailure(pool, normalizedRunId, "park");
+  });
+}
+
+/**
  * Fail a run. Legal only from an open status; terminal, sets `ended_at`
  * and `failure_note`.
  */
