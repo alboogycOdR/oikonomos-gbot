@@ -1,8 +1,8 @@
 ---
-plan_version: 10.2
-last_updated: 2026-09-04T19:05:00Z
+plan_version: 10.3
+last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 6 DONE except TASK-143. TASK-141 (OIK-103/104) and TASK-139 (connector merging + Calendar/Drive mounting) both merged — Connectors-2 fully complete. TASK-143 (OIK-110/111 budgets) FROZEN after 5 consecutive blocks, the last one architectural rather than territorial: withBudgetSink decorates AgentProvider, but the primary Claude Agent SDK chat path (chatRunDriver -> composeHarness -> AgentSdkQueryFn) never goes through AgentProvider at all — AgentProvider/withBudgetSink only covers the secondary Codex/Grok subprocess-routing path (ADR-011). Zero cost-tracking exists anywhere in packages/harness-factory for the SDK path (AgentSdkQueryFn's stream is typed AsyncIterable<unknown>, no cost/usage shape defined). Real next step, NOT scheduled yet: research the Claude Agent SDK's own query-stream shape (likely a final `result` message carrying `total_cost_usd`) and design a proper interception point before OIK-110/111 can be re-scoped as a real, boundable task — this needs an investigation/design pass, not another live-blocker cycle. Branch task/TASK-143-cx preserved (dossier-only commits) for whenever that design work happens. All three builders (S5, CX9, CX) idle. Real findings from this wave for the pack feedback doc: never grant docs/** to a builder; control.py drain can replay a superseded control block onto an active resumed task; dispatch prompt's intro line ('do not re-claim or re-branch') contradicts its own step 2 for a newly-claimed task. GB remains deactivated."
+orchestrator_notes: "Mobile program locked and decomposed (WORKFLOW_MOBILE_W1_W2_2026-09-04.md): Flutter client (user decision), mobile-UI-first with shared-token auth (user decision), apps/mobile single-owner-at-a-time territory model. Wave 1 dispatching now: TASK-144 (S5, Flutter skeleton+API client+login — held until the freshly-installed C:/tool/flutter SDK finishes first-run bootstrap), TASK-145 (CX, push backend — device_tokens registry, injected PushTransportPort, env-gated FCM, broadcast semantics documented), TASK-146 (CX9, TASK-139's two flagged fast-follows). Wave 2 pending+gated: TASK-147 (S5, roster/chat/create-bot, dep 144), TASK-148 (CX9, approvals/routines/settings screens, dep 147), TASK-149 (S5, FCM client, dep 145+148), TASK-150 (CX, cost-interception design pass in harness-factory — the pass that re-scopes frozen TASK-143; protected path, CX/CX9 only). Two LATENT ISOLATION warnings vs frozen TASK-143 are known and acceptable: blocked tasks are never dispatched, and its stale Owned_Paths get rewritten when TASK-150's design output re-scopes it. Deferred, named: group-chat screen, real FCM creds/on-device testing, APK toolchain, per-user auth, per-user push targeting, Usage%%. ORCH now on Fable 5 (architecture-tier, distinct from all builder models). GB remains deactivated."
 ---
 
 # Project Plan
@@ -4251,3 +4251,178 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** OTHER: Architectural gap larger than this task's scope — withBudgetSink's design (decorating AgentProvider) does not cover the primary Claude Agent SDK chat path, which has zero cost-tracking of any kind today. Needs a dedicated investigation/design task before OIK-110/111 can be properly re-scoped, not another territory widen.
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T19:05:00Z
+
+### TASK-144
+**Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (locked decisions: Flutter, shared-token auth for now, single-owner territory model); apps/dashboard/src/lib/api.ts and apps/dashboard/src/lib/realtime.ts (the TS client this Dart client mirrors — same endpoints, same SSE Last-Event-ID resume semantics); services/control-api/src/auth.ts (POST /auth/login issues the httpOnly session cookie; a native client stores and replays that cookie itself); apps/dashboard/src/pages/LoginPage.tsx (the honest "single shared access token" login this screen mirrors)
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** —
+**Description:** Create the Flutter project at `apps/mobile/` (Dart, deliberately outside the pnpm workspace — its own `pubspec.yaml`, its own `.gitignore` covering Flutter build artifacts; do NOT touch the repo root .gitignore or any package.json). **Flutter SDK is at `C:\tool\flutter\bin\flutter` — installed by ORCH, not on PATH; invoke it by full path**, same convention as the pinned Node 22. No Android/iOS toolchain exists on this machine: your build/test gate is `flutter analyze` + `flutter test` (widget/VM tests), NOT an APK — do not attempt device builds. Build three things: (1) a typed Dart API client for control-api — configurable base URL (no CORS constraint for a native client; default `http://localhost:3000`), `POST /auth/login` exchanging the shared token for the session cookie, cookie stored and replayed on every subsequent request, plus typed calls for `GET /roles`, `GET /threads`, `GET /threads/:id/messages`, `POST /roles`, message send; (2) an SSE client for `GET /threads/:id/stream` mirroring `realtime.ts`'s semantics exactly — Last-Event-ID resume, clean teardown on unsubscribe, stop-on-401; (3) a login screen mirroring LoginPage.tsx's shape (single access-token field, error on bad token, lands on a placeholder home on success). Unit-test the API client and SSE client against a fake HTTP transport (no live server needed); widget-test the login screen. Never log or persist the raw access token beyond what login submission requires — the cookie is the stored credential (non-negotiable 4 applies to the shared token exactly as to any secret).
+**Acceptance_Criteria:**
+- [ ] `apps/mobile/` is a valid Flutter project: `C:\tool\flutter\bin\flutter analyze` exits 0
+- [ ] Dart API client: login (cookie captured), roles/threads/messages list, role create, message send — all covered by tests against a fake transport
+- [ ] SSE client: delivers events, resumes with Last-Event-ID after a dropped connection without duplicating or losing events, tears down cleanly, stops on 401 — tested
+- [ ] Login screen widget test: bad token shows an error, good token navigates
+- [ ] No raw token in any log statement or persisted store; `flutter test` exits 0
+- [ ] No file outside apps/mobile/** touched (repo root .gitignore included)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-145
+**Title:** Push-notification backend — device registry, transport port, event triggers
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
+**Owned_Paths:** infra/postgres/migrations/**, packages/db/src/deviceTokens.ts, packages/db/src/deviceTokens.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/pushTransport.ts, services/control-api/src/pushTransport.test.ts, services/control-api/src/**/*.test.ts
+**Depends_On:** —
+**Description:** Backend half of mobile push, fully testable with zero Firebase credentials. (1) Migration + `packages/db/src/deviceTokens.ts`: a `device_tokens` table (token, platform, created_at, last_seen_at) with register (idempotent upsert by token), list, and remove-on-permanent-failure operations — real-Postgres tests matching the package's conventions. (2) `services/control-api/src/pushTransport.ts`: a `PushTransportPort` interface (`send(deviceToken, notification)`) with two implementations — a no-op/collecting fake for tests and composition-when-unconfigured, and an FCM HTTP adapter that reads its service-account config from env, is env-gated (absent config means transport disabled, control-api starts and runs normally — push is additive, never load-bearing), and never logs a token or credential (non-negotiable 4). (3) Routes: `POST /devices` (register, behind the standard auth gate) and the trigger wiring in `ports.ts`: when an approval is created and when a chat run completes, fan the notification out to every registered device via the port. **Broadcast to all devices is the deliberate, documented semantics** (see workflow doc) — add the code comment saying why and when it changes (per-user auth). A transport failure must never fail the underlying operation (approval creation/run completion succeed regardless — push errors are logged sans-token and swallowed). Real FCM adapter is exercised only against a fake fetch in tests.
+**Acceptance_Criteria:**
+- [ ] `device_tokens` migration + db module: register (idempotent), list, remove — real-Postgres tests
+- [ ] `POST /devices` registers a device behind the auth gate (401 unauthenticated — matches every other route's gate test)
+- [ ] Approval-created and chat-run-completed each trigger one send per registered device via the injected port — tested with the collecting fake
+- [ ] A throwing transport does NOT fail approval creation or run completion — tested
+- [ ] Unconfigured FCM env means transport disabled, control-api boots and serves normally — tested
+- [ ] No device token, FCM key, or credential in any log/error/fixture — reviewed directly
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-146
+**Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** PLAN.md TASK-139 Review_Findings (both findings recorded there verbatim); services/worker/src/executeRun.ts (`connectorMount()` derives `ConnectorMount.connectorId` solely from `connector.manifest.connector_id` — only the FIRST merged connector's identity survives); services/worker/src/chatRunDriver.ts (`combineConnectorContexts` keeps `manifest: first.manifest`)
+**Owned_Paths:** services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Close TASK-139's two recorded non-blocking findings before any caller starts trusting the inaccurate field. (1) Under a multi-connector mount (e.g. Gmail+Calendar+Drive), `ExecuteTaskRunResult.connector.connectorId` reports only the first connector. Fix the shape honestly — carry every mounted connector's identity (e.g. a `connectorIds` list or per-connector mounts), don't just relabel the first. Currently no production caller reads the field (confirmed in TASK-139's review), so the shape change is safe now and only now — check every consumer compile-time and fix any test fixtures. (2) TASK-139's grant-isolation mutation-proof test directly asserts only Calendar-granted/Drive-absent; add the independent reverse assertion (Drive granted, Calendar absent means no Calendar tools mounted) so the property is tested, not inferred by symmetry.
+**Acceptance_Criteria:**
+- [ ] A run mounting 3 connectors reports all 3 identities in its result — tested
+- [ ] Reverse-direction isolation (Drive-granted, Calendar-absent) independently asserted, mutation-proof
+- [ ] Existing TASK-116/117/128/139 tests pass unmodified (except fixtures the shape change forces — each named in the dossier)
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-147
+**Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (reference UX: the Grok Bot screenshots — roster with avatar/last-message/timestamp, create-bot with name + color/shape picker); TASK-144 (the API/SSE client this consumes); apps/dashboard/src/components/chat/BotSidebar.tsx, CreateBotDialog.tsx, ChatPage.tsx (the web equivalents — mirror behavior and endpoints, not DOM structure)
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** TASK-144
+**Description:** The core product loop on mobile, using TASK-144's client. (1) Roster screen: list the user's bots (roles + their threads) with avatar (color/shape from `avatarSeed` or role data — match what the web derives), name, last-message preview, timestamp; tap opens the chat. (2) Chat screen: message history (initial fetch) + live updates via the SSE client — no polling; send box posts and the run's reply arrives via the stream; switching threads/leaving the screen tears the subscription down (TASK-144's client makes this testable — assert it). (3) Create-bot flow: name + color/shape picker (the screenshots' 12-swatch/8-shape grid is the reference; a reasonable subset is fine, note the choice), `POST /roles`, new bot appears in the roster. Widget-test each screen against a fake client; no live server required.
+**Acceptance_Criteria:**
+- [ ] Roster renders real roles/threads data with avatar/name/preview/timestamp; tap navigates — widget-tested
+- [ ] Chat: history loads, a streamed event appears without refresh, leaving the screen closes the subscription — tested
+- [ ] Create-bot: picker, POST /roles, roster shows the new bot — tested
+- [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-148
+**Title:** Mobile Wave 2a — approval cards, routines tab, auto-review settings screen
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (the "Usage %" figure is explicitly OUT — blocked on the frozen budget work; ship settings without it); apps/dashboard/src/components/chat/ApprovalCard.tsx (approve/deny data + endpoints); services/control-api routes GET /approvals (pending list), POST /approvals/:nonce/decide, GET+POST /roles/:roleId/routines, require-approval-rules routes (see src/app.ts); the Grok Bot screenshots (settings screen: "Auto-review — Require approval for risky shell, MCP, and computer actions" — reuse that plain-language framing for UI copy)
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** TASK-147
+**Description:** Sequential handover of apps/mobile ownership from S5 (per the workflow doc's single-owner territory model — TASK-147 must be merged before this starts; you own the whole app for this task). (1) Approval cards inline in TASK-147's chat screen: a pending approval renders as a card (capability, payload summary, approve/deny buttons) driven by the same endpoints the web ApprovalCard uses; deciding updates the card state; the nonce is single-use — a second decide is a no-op server-side, reflect that gracefully. Never render or log the raw nonce beyond what the decide call needs. (2) Routines tab (read-only): list a bot's routines (name, schedule, last/next fire) from GET /roles/:roleId/routines. (3) Settings screen: per-bot auto-review rules (list existing require-approval rules; creation UI only if the existing routes support it — check src/app.ts, do not add backend routes, they are out of territory), plus static app info. NO usage figure. Widget-test everything against the fake client; extend it as needed.
+**Acceptance_Criteria:**
+- [ ] A pending approval appears as an inline card in chat; approve and deny each hit the real endpoint shape and update state — tested
+- [ ] Double-decide is handled gracefully (server no-op reflected, no crash/duplicate) — tested
+- [ ] Routines tab renders real routine data read-only — tested
+- [ ] Settings screen shows auto-review rules; no usage figure anywhere
+- [ ] `flutter analyze` + `flutter test` exit 0; nothing outside apps/mobile/**
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-149
+**Title:** Mobile Wave 2b — push-notification client integration (env-gated FCM)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** TASK-145 (the POST /devices registration endpoint and broadcast semantics this consumes); WORKFLOW_MOBILE_W1_W2_2026-09-04.md (no real Firebase credential exists yet — everything ships env/config-gated and fake-tested; real on-device push is a later infra step)
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** TASK-145, TASK-148
+**Description:** Client half of push. Integrate `firebase_messaging` behind a config gate: when Firebase config is absent (the current reality — no google-services.json/plist exists and none may be committed), the app runs exactly as before with push code dormant — tested. When configured: obtain the FCM device token, register it via `POST /devices` (authenticated with the session cookie), re-register on token rotation, and surface a foreground notification for the two backend triggers (approval created, run completed). Abstract the messaging layer behind a port so all registration/rotation/foreground-display logic is testable with a fake — no real Firebase in any test. Never log the device token in full. Document in the README-level comment what remains for real devices (Firebase project, config files, APNs — explicitly out of scope).
+**Acceptance_Criteria:**
+- [ ] Absent Firebase config means the app boots and behaves identically to TASK-148's state — tested
+- [ ] Token obtained means registered via POST /devices with the session cookie; rotation re-registers — tested against fakes
+- [ ] Foreground notification path renders for both trigger types — tested
+- [ ] No Firebase credential/config file committed; no full device token in logs
+- [ ] `flutter analyze` + `flutter test` exit 0; nothing outside apps/mobile/**
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
+
+### TASK-150
+**Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** PLAN.md TASK-143 (frozen; its Progress_Notes carry the full architectural finding: `withBudgetSink` decorates `AgentProvider`, which the primary SDK chat path never touches); packages/harness-factory/src/ports.ts (`AgentSdkQueryFn` — stream typed `AsyncIterable<unknown>`, no cost shape anywhere); packages/harness-factory/src/index.ts (`defaultSdkQuery` — the real `@anthropic-ai/claude-agent-sdk` `query()` binding); packages/agent-providers/src/budget.ts (the existing pattern to mirror: fail-closed decorator, `BudgetReport` shape); branch task/TASK-143-cx (CX's own preserved investigation dossier)
+**Owned_Paths:** packages/harness-factory/src/budgetTap.ts, packages/harness-factory/src/budgetTap.test.ts, packages/harness-factory/src/index.ts
+**Depends_On:** —
+**Description:** Design-and-prototype, deliberately narrow — NOT the full OIK-110/111 build. Answer the question that froze TASK-143: how does per-run cost get observed on the primary SDK path? (1) Research, against the actual `@anthropic-ai/claude-agent-sdk` package in node_modules (read its types/dist — its stream's final `result` message carries usage/cost fields; verify the exact shape empirically, do not trust recall), what cost signal the query stream emits. (2) Build `withBudgetTap(queryFn, sink)` in packages/harness-factory: a decorator around `AgentSdkQueryFn` mirroring `withBudgetSink`'s contract — passes every event through unchanged, detects the terminal cost-bearing message, reports `{costUsd, tokens?}` to the injected sink before yielding it, fails closed if the sink throws (turn errors rather than completing unaccounted — same rationale as budget.ts). Handle streams that end without a cost message (report nothing, note it — some paths/tests use fake queryFns). Unit-test with fake streams shaped like the real SDK messages you verified. (3) Export it from the harness-factory barrel; do NOT wire it into compose.ts or any production call site — composition is the follow-up build task, and this protected package's diff stays minimal by design. Record the verified SDK message shape and the recommended composition point in the dossier: that document is what re-scopes OIK-110/111.
+**Acceptance_Criteria:**
+- [ ] Dossier records the empirically-verified SDK cost-message shape (field names, where in the stream, version examined)
+- [ ] `withBudgetTap` passes events through unchanged, reports cost to the sink before the terminal yield, fails closed on sink error — tested with realistic fake streams
+- [ ] A cost-less stream completes with the sink un-called and the case handled explicitly — tested
+- [ ] No production call site modified; barrel export added; `pnpm -r test`, `pnpm -r build`, `pnpm lint` exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:30:00Z
