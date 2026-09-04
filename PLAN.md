@@ -4075,7 +4075,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-138
 **Title:** Google Drive connector session minter (Connectors-2b)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/connectors/google-drive.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-drive.yaml; TASK-127 (the exact pattern to mirror)
@@ -4090,13 +4090,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-138-cx9
 **Started_At:** 2026-09-04T17:33:49Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T17:40:11Z] [SV:CX9] Implemented a self-contained Google Drive session minter using the shared OAuth token provider, with safe secret-resolution handling and session-pool compatibility tests.
+**Artifacts:** packages/connectors/src/mcp/googleDriveSessionMinter.ts, packages/connectors/src/mcp/googleDriveSessionMinter.test.ts, dossiers/TASK-138.md
+**Test_Evidence:** Focused connector test: 4/4 pass; pnpm --filter @oikonomos/connectors typecheck pass; pnpm -r test exit 0; pnpm -r build exit 0; pnpm lint exit 0; git diff --check clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T17:33:49Z
+**Updated_At:** 2026-09-04T17:40:11Z
 
 ### TASK-140
 **Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
