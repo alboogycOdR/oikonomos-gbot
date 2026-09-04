@@ -3,11 +3,13 @@ import {
   completeRun,
   failRun,
   getRun,
+  listRuns,
   resumeRun,
   startRun,
   type DatabaseOptions,
   type NewRun,
   type Run,
+  type RunStatus,
 } from "@oikonomos/db";
 
 /**
@@ -71,6 +73,91 @@ export async function cancelTaskRun(
   return cancelRun(options, runId);
 }
 
+/**
+ * Statuses a run can still be sitting in when a worker process dies mid-run
+ * — mirrors `packages/db/src/runs.ts`'s private `OPEN_STATUSES`. That list
+ * is not yet re-exported from `@oikonomos/db`'s package barrel
+ * (`packages/db/src/index.ts` sits outside this task's `Owned_Paths`, so it
+ * cannot be edited here — see the TASK-133 dossier), so this is a
+ * deliberate, narrow duplication of the same three literal values rather
+ * than an ownership violation. If `packages/db`'s barrel export is ever
+ * added, this array should be replaced with the imported one.
+ */
+const OPEN_RUN_STATUSES: readonly RunStatus[] = [
+  "started",
+  "waiting_approval",
+  "resumed",
+];
+
+export interface ReconcileOutcome {
+  runId: string;
+  outcome: "resumed" | "resume_failed";
+  /** Present only when `outcome` is `"resume_failed"`. */
+  error?: string;
+}
+
+/**
+ * Boot-time reconciliation (OIK-106): find every run left in an open,
+ * non-terminal status with no live process still executing it — the
+ * fingerprint of a run orphaned by a prior worker process's death — and
+ * resume each one via `resumeInterruptedRun`.
+ *
+ * Deliberately callable on its own (AC3): a real worker-process entrypoint
+ * calls this once at startup, but nothing here depends on process boot, so
+ * it is fully testable in isolation against a real database.
+ *
+ * A run whose resume fails (e.g. a concurrent transition already moved it
+ * to a terminal status between the scan and the resume attempt) is recorded
+ * as `resume_failed` rather than thrown — one orphaned run's failure must
+ * not stop reconciliation of the rest. Completed/failed/cancelled runs are
+ * never touched: they are never fetched in the first place, since the scan
+ * itself is scoped to `OPEN_RUN_STATUSES`.
+ *
+ * Scope note (explicit, not silently ignored): this does not coordinate
+ * across multiple concurrent worker-process instances — two worker
+ * processes racing to reconcile at the same time could both attempt to
+ * resume the same run. `resumeRun`'s underlying `UPDATE ... WHERE status IN
+ * (...)` is still atomic per-row (only one of the two racing calls can
+ * actually flip the row), so a race cannot corrupt state, but nothing here
+ * prevents the redundant attempt. Multi-instance coordination is out of
+ * this task's scope (single-worker-instance deployment only).
+ *
+ * `filter.tenantId`/`filter.taskId` narrow the scan the same way they
+ * narrow `listRuns` itself — real worker boot always calls this
+ * unfiltered (a boot-time scan legitimately means "every open run in the
+ * database"), while tests scope it to their own fixture's `taskId` so they
+ * never touch another test's unrelated runs.
+ */
+export async function reconcileInterruptedRuns(
+  options: DatabaseOptions,
+  filter: { tenantId?: string; taskId?: string } = {},
+): Promise<ReconcileOutcome[]> {
+  const orphaned: Run[] = [];
+  for (const status of OPEN_RUN_STATUSES) {
+    let cursor: string | undefined;
+    do {
+      const page = await listRuns(options, { ...filter, status, limit: 200, cursor });
+      orphaned.push(...page.runs);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+  }
+
+  const outcomes: ReconcileOutcome[] = [];
+  for (const run of orphaned) {
+    try {
+      await resumeInterruptedRun(options, run.runId);
+      outcomes.push({ runId: run.runId, outcome: "resumed" });
+    } catch (error) {
+      outcomes.push({
+        runId: run.runId,
+        outcome: "resume_failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return outcomes;
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
@@ -94,6 +181,12 @@ if (import.meta.vitest) {
       ).rejects.toThrow(/connectionString/);
       await expect(
         cancelTaskRun(options, "11111111-1111-1111-1111-111111111111"),
+      ).rejects.toThrow(/connectionString/);
+    });
+
+    it("reconcileInterruptedRuns propagates the connectionString guard", async () => {
+      await expect(
+        reconcileInterruptedRuns({ connectionString: "   " }),
       ).rejects.toThrow(/connectionString/);
     });
   });
