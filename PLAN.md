@@ -3483,7 +3483,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
@@ -3501,12 +3501,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T04:14:50Z] [SV:CX] Blocked before source changes: the required T0 chat-run proof cannot run because chatRunDriver mounts only Bash.
 - [2026-09-04T05:55:00Z] [ORCH] Unblocking. Real finding — chatRunDriver.ts is currently hard-coded to `["Bash(*)"]` only, so AC #3 was untestable as scoped. Added services/worker/src/chatRunDriver.ts + its test to Owned_Paths; extend the mounted set to `["Bash(*)", "Read(*)"]` (minimal, matches this task's scope). This also directly serves the wave's goal — a T0 grant is meaningless if nothing but Bash is ever attempted. Resume on task/TASK-117-cx.
+- [2026-09-04T04:52:54Z] [SV:CX] Implemented and committed c6b60dd: role creation now grants all registered sdk:builtin capabilities at their live default tier; Read(*) is mounted and T0 Read liveness coverage added.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T05:55:00Z
+**Blocked_Reason:** SYNC_MISMATCH: Shared DB/runtime lifecycle deletes or cannot find newly started runs; pre-existing TASK-116 Bash liveness and TASK-117 Read liveness both fail identically. Shared schema also previously showed TASK-120 partial-index mismatch.
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T04:52:54Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
