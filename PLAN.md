@@ -4406,7 +4406,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-149
 **Title:** Mobile Wave 2b — push-notification client integration (env-gated FCM)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-145 (the POST /devices registration endpoint and broadcast semantics this consumes); WORKFLOW_MOBILE_W1_W2_2026-09-04.md (no real Firebase credential exists yet — everything ships env/config-gated and fake-tested; real on-device push is a later infra step)
@@ -4419,15 +4419,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Foreground notification path renders for both trigger types — tested
 - [ ] No Firebase credential/config file committed; no full device token in logs
 - [ ] `flutter analyze` + `flutter test` exit 0; nothing outside apps/mobile/**
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-149-s5
+**Started_At:** 2026-09-04T22:15:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T22:15:01Z
 
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
