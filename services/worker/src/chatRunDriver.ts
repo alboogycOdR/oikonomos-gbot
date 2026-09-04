@@ -217,6 +217,7 @@ export function combineConnectorContexts(
   if (first === undefined) return undefined;
   return {
     manifest: first.manifest,
+    connectorIds: Object.freeze([...new Set(definedContexts.flatMap((context) => context.connectorIds ?? [context.manifest.connector_id]))]),
     mcpServers: Object.assign({}, ...definedContexts.map((context) => context.mcpServers)),
     allowedTools: definedContexts.flatMap((context) => context.allowedTools),
   };
