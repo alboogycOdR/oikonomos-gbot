@@ -4380,7 +4380,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-148
 **Title:** Mobile Wave 2a — approval cards, routines tab, auto-review settings screen
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (the "Usage %" figure is explicitly OUT — blocked on the frozen budget work; ship settings without it); apps/dashboard/src/components/chat/ApprovalCard.tsx (approve/deny data + endpoints); services/control-api routes GET /approvals (pending list), POST /approvals/:nonce/decide, GET+POST /roles/:roleId/routines, require-approval-rules routes (see src/app.ts); the Grok Bot screenshots (settings screen: "Auto-review — Require approval for risky shell, MCP, and computer actions" — reuse that plain-language framing for UI copy)
@@ -4393,15 +4393,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Routines tab renders real routine data read-only — tested
 - [ ] Settings screen shows auto-review rules; no usage figure anywhere
 - [ ] `flutter analyze` + `flutter test` exit 0; nothing outside apps/mobile/**
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-148-cx9
+**Started_At:** 2026-09-04T22:05:41Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T22:05:41Z
 
 ### TASK-149
 **Title:** Mobile Wave 2b — push-notification client integration (env-gated FCM)
