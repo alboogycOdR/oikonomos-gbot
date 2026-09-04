@@ -3738,7 +3738,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-126
 **Title:** Compose into a group thread (Chat-2d, fast-follow)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** TASK-122's own next_step/Review_Findings — the real, honestly-documented gap left after that task: `ComposeBox` is correctly disabled for a group thread in the live UI rather than shipping a broken send, because `POST /threads/:id/messages` only handles 1:1 threads today
@@ -3751,12 +3751,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Existing 1:1 `POST /threads/:id/messages` behavior is provably unchanged — existing tests pass unmodified
 - [ ] `ComposeBox` is enabled for group threads in the live UI once the endpoint is real — tested through the real component tree, not just the endpoint in isolation
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-126-cx
+**Started_At:** 2026-09-04T07:07:51Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T09:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T07:07:51Z
