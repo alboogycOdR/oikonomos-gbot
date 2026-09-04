@@ -3645,7 +3645,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-123
 **Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** TASK-118's own Review_Findings — the real, documented gap left after that task: roleId/capabilityId/maxTier never reach ApprovalCard through the live component tree, so "Always Allow" is correct but invisible in the running app
@@ -3659,10 +3659,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-123-cx
 **Started_At:** 2026-09-04T05:22:51Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T05:28:28Z] [SV:CX] Live chat now maps API approval capability/tier data and the active bot role ID into ApprovalCard; Always Allow is visible and targets the real role.
+**Artifacts:** apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-123.md
+**Test_Evidence:** Focused dashboard tests: 7/7 passed. pnpm lint clean; pnpm -r build clean across 17 projects; pnpm -r test clean (dashboard 62 tests; all recursive targets passed).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T05:22:51Z
+**Updated_At:** 2026-09-04T05:28:28Z
