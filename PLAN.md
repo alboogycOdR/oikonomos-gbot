@@ -4342,7 +4342,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (reference UX: the Grok Bot screenshots — roster with avatar/last-message/timestamp, create-bot with name + color/shape picker); TASK-144 (the API/SSE client this consumes); apps/dashboard/src/components/chat/BotSidebar.tsx, CreateBotDialog.tsx, ChatPage.tsx (the web equivalents — mirror behavior and endpoints, not DOM structure)
@@ -4373,8 +4373,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Also fix while in there (non-blocking on their own):** the `createRole`/`createThread` API tests are named as asserting the request body but only assert method and path — make them match their names; and the dossier's per-file test counts are off by one in four files (the 35 total is correct).
 
 Note for the dossier: it states teardown is "widget-tested". After this round that will be true; right now it is the one overstatement in an otherwise exemplary work log.
+**Review_Findings (round 2, after the prompt fix):** APPROVE — merged. Both round-1 findings genuinely addressed this time, once the corrected dispatch template actually surfaced them. **The teardown assertion is now mutation-proven, not merely reworded — ORCH verified it empirically rather than by reading:** I temporarily removed `_subscription?.close()` from `ChatScreen.dispose()` and re-ran the suite; the teardown test went red (as did the live-event test), then restored the source and confirmed a clean diff. That is the standard this task's first round failed — an assertion that cannot fail on the bug it names is not coverage — and it now passes it. The fix is the right shape: a controlled stream with `hasListener` asserted true before pop and false after, so it keys on the observable consequence of the close rather than on the widget disappearing. Roster reload after create-bot is now covered too, and the createRole/createThread API tests assert the request body their names always promised. Final verification, all re-run by ORCH: `flutter analyze` clean, `flutter test` 36/36 (up from 35), territory clean with nothing outside apps/mobile/** and its own dossier, and the stale PLAN.md ORCH cleared twice never entered the branch. Architecture from round 1 stands as reviewed: real SSE with no polling, leak-free subscription lifecycle, contract-accurate POST bodies, zero log statements. Merged --no-ff. **Unlocks TASK-148 and, together with the already-merged TASK-145, TASK-149.**
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T22:04:06Z
 
 ### TASK-148
