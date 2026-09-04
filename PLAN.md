@@ -4301,6 +4301,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T19:38:46Z] [SV:CX] Preflight completed; implementation stopped before code changes because approval-created notifications require an unowned worker/approval callback.
 - [2026-09-04T21:50:00Z] [ORCH] Unblocked by redesign, not widening: chatRunDriver.ts is owned by ACTIVE TASK-146 — widening would be a live collision. Instead the triggers move entirely into ports.ts around the awaited runChatTask: on resolve, derive the event from the run's own state (pending approvals ⇒ approval-pending push; else run-completed push). Architecturally cleaner anyway — push stays a control-api concern, worker untouched. Description/AC revised. Resuming on task/TASK-145-cx.
+- [2026-09-04T23:10:00Z] [ORCH] Session died without emitting a control block (transcript ends mid-diff while writing services/control-api/src/sse.test.ts; no codex process alive; no .done marker). Cause not established — I am not guessing at one. **Substantial UNCOMMITTED work is intact in your worktree and must not be lost:** 010_device_tokens.up/down.sql, packages/db/src/deviceTokens.ts + test, and edits to control-api app.ts/ports.ts/sse.test.ts/chat.routes.test.ts. The dispatcher's resume path deliberately does not refresh a worktree that is on a branch, so those files are still there. **FIRST ACTION on resume: `git status`, review what is already written, and COMMIT it before doing anything else** — do not restart from scratch, do not `git checkout .`, do not discard. Then continue from there.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -4353,6 +4354,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Branch:** task/TASK-147-s5
 **Started_At:** 2026-09-04T19:50:52Z
 **Progress_Notes:** —
+- [2026-09-04T23:10:00Z] [ORCH] Session died without emitting a control block (no claude process alive for this dispatch; no .done marker; transcript empty). Cause not established — I am not guessing at one. **Substantial UNCOMMITTED work is intact in your worktree and must not be lost:** apps/mobile/lib/screens/chat_screen.dart and create_bot_screen.dart (both new), plus edits to api_client.dart, login_screen.dart and their tests. The dispatcher's resume path deliberately does not refresh a worktree that is on a branch, so those files are still there. **FIRST ACTION on resume: `git status`, review what is already written, and COMMIT it before doing anything else** — do not restart from scratch, do not `git checkout .`, do not discard. Then continue. (Separately: ORCH discarded a stale staged PLAN.md in this worktree — that was orchestration state, never yours to carry; do not re-add it.)
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
