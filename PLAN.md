@@ -3599,7 +3599,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
@@ -3612,15 +3612,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `GET /threads/:id/messages` on a group thread returns `senderRoleId`/`senderName` per message — tested
 - [ ] Existing 1:1 thread behavior on all three endpoints is provably unchanged — existing tests pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-121-cx
+**Started_At:** 2026-09-04T05:45:53Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:45:53Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
