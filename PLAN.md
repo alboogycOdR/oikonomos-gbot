@@ -3765,7 +3765,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-127
 **Title:** Gmail connector session minter — real OAuth-authenticated MCP config (Connectors-1a)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CAPABILITY_RESOLUTION_PROBLEM_STATEMENT.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E9/ADR-013 (manifest-driven capabilities); ADR-013's own "next" pointer — packages/connectors already has `mcpConfigFromManifest` (resolves a manifest's MCP server URL) and `createGmailOAuthTokenProvider` (real Google OAuth refresh-token exchange, fully built and tested) but nothing composes them, and neither is exported from the package barrel; `createConnectorSessionPool` (also fully built) has no registered minter for any real connector
@@ -3780,13 +3780,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-127-s5
 **Started_At:** 2026-09-04T07:56:11Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-04T08:04:26Z] [SV:S5] Implemented createGmailConnectorSessionMinter, composing mcpConfigFromManifest + createGmailOAuthTokenProvider into a ConnectorSessionMinter; exported it plus mcpConfigFromManifest/createGmailOAuthTokenProvider/mcp types from the package barrel.
+**Artifacts:** packages/connectors/src/mcp/gmailSessionMinter.ts, packages/connectors/src/mcp/gmailSessionMinter.test.ts, packages/connectors/src/mcp/index.ts, packages/connectors/src/index.ts, dossiers/TASK-127.md
+**Test_Evidence:** S5: connectors 119/119 (4 skipped), pnpm -r build 17/17, lint clean, full pnpm -r test clean. ORCH independently re-ran (fresh subagent): identical results, plus a dedicated secret-hygiene sweep of the full diff — no real secret/token/credential literal found anywhere, every fixture is an assembled-at-runtime fake sentinel (e.g. `["fake-client-","id-not-real"].join("")`), including a test that explicitly asserts the client secret never leaks into a rendered error.
+**Review_Findings:** APPROVE, first-pass. Composition is clean: lazy-cached token provider (built once, reused across mint calls, matching the pool's re-mint semantics without redundant OAuth secret resolution), correctly narrows the `mcpConfigFromManifest` union to the http case before attaching headers, freezes every returned object. Both new barrel export diffs (`mcp/index.ts`, top-level `index.ts`) are additive-only, nothing reordered or removed. Every acceptance criterion — including the security-critical "never leak a token/secret" one — verified directly by reading the diff, not just accepting the builder's claim. Merged --no-ff. **Unlocks TASK-128.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T07:56:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T10:12:00Z
 
 ### TASK-128
 **Title:** Wire real manifest-connector tools into live chat runs (Connectors-1b)
