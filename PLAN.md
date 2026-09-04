@@ -3925,7 +3925,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-133
 **Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-106); `services/worker/src/runLifecycle.ts`'s `resumeInterruptedRun` (already built and tested — its own comment names this exact scenario, "resume after a killed process returns to the correct state" — but nothing calls it); `packages/db/src/runs.ts`'s `runStatuses`/open-status concept (`started`/`waiting_approval`/`resumed` are non-terminal; the module's own `OPEN_STATUSES` list is private — export it, or add an equivalent query, rather than hand-duplicating the literal array)
@@ -3937,12 +3937,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A completed/failed/cancelled run is never touched by the reconciliation step — tested (mutation-proof: removing the status filter must make this test fail by attempting to resume a terminal run)
 - [ ] The reconciliation step is callable independently of full worker-process boot (so it's actually testable, not just "trust it runs on startup")
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-133-s5
+**Started_At:** 2026-09-04T14:14:47Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T14:14:47Z
