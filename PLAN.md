@@ -1,8 +1,8 @@
 ---
-plan_version: 9.2
-last_updated: 2026-09-04T09:15:00Z
+plan_version: 9.3
+last_updated: 2026-09-04T09:40:00Z
 overall_status: in_progress
-orchestrator_notes: "Both locked waves are now DONE: **Grants-1** (TASK-117/118/119/123/124 - default builtin grants, Always-Allow standing grants, permissions view with revoke, both UI-wiring fast-follows) and **Chat-2 Core** (TASK-120/121/122/125 - group-thread schema, DB accessors, control-api endpoints, UI + fan-out-approval rule, incl. its own DB-accessor prerequisite fast-follow). Every task first-pass or resolved-on-resubmit; two real cross-cutting bugs found and fixed directly on master during this wave (packages/db listThreads threw on any group thread instead of filtering them - 8cfe5e5; a stray comment collided with a negative-control test - c0c70ce), plus one real cross-package regression caught by the full-suite standard (chatRunDriver.test.ts vs TASK-120's thread_members FK - e357fbf). One fast-follow open: **TASK-126** (compose-into-group-thread, CX dispatched) - the last honestly-documented gap, ComposeBox safely disabled rather than shipping a broken send. S5 is idle pending either TASK-126's review needs or the next wave. No next wave locked yet beyond TASK-126 - the longer-horizon backlog (connector/OAuth wiring for real capabilities beyond built-ins, real-time push, still-deferred E9.2/E9.3/E9.4/E11/E12) awaits user direction. GB remains deactivated. Standing practice continues unchanged (full pnpm -r test per CLAUDE.md's amended review standard, isolated re-run before treating a lone failure as a regression)."
+orchestrator_notes: "Both prior waves DONE: **Grants-1** (TASK-117/118/119/123/124) and **Chat-2 Core** (TASK-120/121/122/125). TASK-126 (compose-into-group-thread fast-follow) in flight on CX. User confirmed continuing with the next wave — locked **Connectors-1** (TASK-127/128): wire real Gmail MCP connectivity into a live chat run. Investigated before decomposing rather than assuming from scratch: the low-level primitives (mcpConfigFromManifest, createGmailOAuthTokenProvider - real Google OAuth refresh-token exchange, already built+tested; createConnectorSessionPool; executeTaskRun's own ConnectorContext param) already exist and are unit-tested in isolation, but nothing composes them (no auth header ever attached to the resolved MCP config) and nothing wires them into chatRunDriver (hardcoded to Bash/Read only, never passes `connector` to executeTaskRun). TASK-127 (packages/connectors, S5, no deps) composes the minter + exports it; TASK-128 (services/worker/chatRunDriver, CX, depends on TASK-127) makes real role_grants drive real per-run tool mounting. Scope is deliberately narrow: gmail only (google-calendar/google-drive manifests exist but get no minter yet - explicit future fast-follow), read/draft only (email.send stays enabled:false in the manifest per its own wave-1 note, unchanged by this wave). Neither task touches a protected path (packages/connectors/manifests/** and packages/harness-factory/** are untouched - both tasks work in already-unprotected src/service code), so no adversarial-review-model requirement applies, but CX authored/S5-reviewed-or-vice-versa still holds structurally since I (ORCH, Sonnet 5) am reviewing CX's (Codex) TASK-128 - cross-model by construction. Caveat for the human record: CLAUDE.md's model-discipline table calls for opus-5 at decompose time; this decomposition ran on interactive Sonnet 5 (no in-session model switch available) - flagged to the user, not blocking, given their explicit go-ahead. Real production Gmail secrets (OAuth client id/secret/refresh token) are a deployment/ops concern (OIK-119/120/121, still deferred) - both tasks test against fake resolvers/mock HTTP servers only, never a real Google endpoint or real credential, matching CLAUDE.md non-negotiable 4 and this package's own N4 convention. GB remains deactivated. Standing practice continues unchanged (full pnpm -r test, isolated re-run before treating a lone failure as a regression)."
 ---
 
 # Project Plan
@@ -3762,3 +3762,52 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T09:22:00Z
+
+### TASK-127
+**Title:** Gmail connector session minter — real OAuth-authenticated MCP config (Connectors-1a)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_CAPABILITY_RESOLUTION_PROBLEM_STATEMENT.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E9/ADR-013 (manifest-driven capabilities); ADR-013's own "next" pointer — packages/connectors already has `mcpConfigFromManifest` (resolves a manifest's MCP server URL) and `createGmailOAuthTokenProvider` (real Google OAuth refresh-token exchange, fully built and tested) but nothing composes them, and neither is exported from the package barrel; `createConnectorSessionPool` (also fully built) has no registered minter for any real connector
+**Owned_Paths:** packages/connectors/src/mcp/**, packages/connectors/src/sessions/**, packages/connectors/src/index.ts
+**Depends_On:** —
+**Description:** Real Gmail connectivity has all its low-level primitives built and unit-tested in isolation but nothing wires them together. `McpHttpServerConfig` already has an optional `headers` field (packages/connectors/src/mcp/types.ts) — `mcpConfigFromManifest` never sets it. Add a `createGmailConnectorSessionMinter(options)` (or similarly named) function that: resolves the Gmail manifest's MCP server config via `mcpConfigFromManifest`, resolves a real access token via `createGmailOAuthTokenProvider().getAccessToken()`, and returns an `McpHttpServerConfig` with `headers: { authorization: "Bearer <token>" }` set — shaped exactly as `ConnectorSessionMinter` (packages/connectors/src/sessions/types.ts) expects, so it can be passed straight into `createConnectorSessionPool({ mint })`. Export `mcpConfigFromManifest`, `createGmailOAuthTokenProvider`, `createGmailConnectorSessionMinter`, and their types from `packages/connectors/src/index.ts` (currently only `createConnectorSessionPool` itself is exported — the pieces it needs to be composed with are not). **Never let a resolved token, header value, or client secret reach a log, error message, or test fixture (CLAUDE.md non-negotiable 4 / this package's own N4 convention, already followed throughout `oauthTokenProvider.ts` — match it exactly).** Tests must use a fake `SecretResolver`/fake `fetch`, never a real Google endpoint or a real credential — same pattern `oauthTokenProvider.test.ts` already establishes.
+**Acceptance_Criteria:**
+- [ ] `createGmailConnectorSessionMinter` produces an `McpHttpServerConfig` with a real (test-fixture) bearer token in `headers.authorization`, tested with a fake resolver/fetch
+- [ ] The minter's shape satisfies `ConnectorSessionMinter` and works when passed directly into `createConnectorSessionPool({ mint })` — tested (acquire returns a handle whose `mcpServers` carries the auth header)
+- [ ] `mcpConfigFromManifest`, `createGmailOAuthTokenProvider`, and the new minter are exported from `packages/connectors/src/index.ts`
+- [ ] No test, fixture, log statement, or error message anywhere in this diff contains a literal token, client secret, or resolved header value — reviewed directly, not just asserted
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T09:40:00Z
+
+### TASK-128
+**Title:** Wire real manifest-connector tools into live chat runs (Connectors-1b)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** TASK-127 (session minter); services/worker/src/executeRun.ts's own `ConnectorContext`/`connector` parameter (already accepts `mcpServers`/`allowedTools`, fully built and used elsewhere — just never populated by `chatRunDriver`); ADR-013 §7 (role grants gate capability access)
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** TASK-127
+**Description:** `chatRunDriver.ts` today hardcodes `mountedToolNames`/`allowedTools` to `["Bash", "Read"]` for every chat run and never passes `executeTaskRun`'s optional `connector` parameter — so even a bot with a real, granted manifest capability (e.g. `email.list`, T0, grantable via TASK-117's default-builtin-grants precedent, though gmail capabilities are manifest-declared, not built-in, so still require an explicit grant) has no way to actually invoke it; the tool is never mounted. Before starting a run, resolve the acting role's real grants (`database.listRoleGrants(roleId)`, already exists) against the loaded connector manifests (`loadManifests`, already imported) to find any granted, enabled, non-built-in capability. For each such capability's connector, acquire a session from a `createConnectorSessionPool` instance (seeded with TASK-127's `createGmailConnectorSessionMinter` for `connector_id: gmail`, and only that connector for now — `google-calendar`/`google-drive` manifests exist but have no minter yet, that's a future fast-follow, not this task) and pass its `mcpServers` plus the manifest's declared `mcp__gmail__*` tool names as `executeTaskRun`'s `connector` context. Extend `PolicyRegistry`'s `mountedToolNames`/`policies` to include only the tools the role is actually granted for this run — never mount an ungranted connector's tools (defense in depth alongside the broker's own tier check). A role with no manifest-connector grants behaves exactly as today (Bash/Read only, unchanged).
+**Acceptance_Criteria:**
+- [ ] A role with a real `email.list` grant can complete a real chat run that calls `mcp__gmail__list_messages` against a real (test-fixture) HTTP MCP server, with a `policy.decision` audit event showing `verdict: allow` for `email.list` — tested against real Postgres, no real Google network call (mock MCP server, matching TASK-116/117's own liveness-test pattern)
+- [ ] A role with NO manifest-connector grants behaves identically to today (only Bash/Read mounted, gmail tools absent from `allowedTools`) — existing TASK-116/117 tests pass unmodified
+- [ ] A role granted `email.list` but NOT `email.send` cannot invoke `mcp__gmail__send_message` — tested (mutation-proof: removing the per-run allowlist filtering must redden this test)
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T09:40:00Z
