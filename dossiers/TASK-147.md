@@ -93,3 +93,45 @@ reads this dossier + the `devteam-control` block).
 - `C:\tool\flutter\bin\flutter test` → 35/35 passed (api_client: 10,
   sse_client: 5, chat_screen: 4, create_bot_screen: 2, login_screen: 4,
   roster_screen: 5, avatar: 5)
+
+- [2026-09-05T00:35:00Z] [S5] Rework round 1 addressed (both findings +
+  both non-blocking notes). Territory firewall required a working-copy
+  refresh of the local PLAN.md (uncommitted, read-only — same pattern the
+  prior session used) plus writing `.devteam/inflight/S5.json` (gitignored
+  dispatcher state) since the general Owned_Paths check reads the local
+  PLAN.md directly rather than the dossier's inflight-aware fallback; no
+  PLAN.md content was ever staged/committed.
+  1. `chat_screen_test.dart`'s teardown test now uses
+     `queueControlledStream` instead of a hanging stream, asserts
+     `hasListener` is true while subscribed, pops, then asserts
+     `hasListener` is false — an assertion that genuinely fails if
+     `dispose()` stops calling `subscription.close()`. Closing the
+     controller after pop (post-dispose, no listener left) would hang
+     exactly like the bug fixed in round 0, so the close is
+     fire-and-forget (`unawaited`) rather than deleted outright.
+  2. `roster_screen_test.dart` gained
+     "creating a bot and returning reloads the roster with it": empty
+     roster -> tap New bot -> submit (POST /roles, POST /threads) ->
+     roster's `_openCreateBot` reload path (GET /threads) -> new tile
+     visible. Hit two real snags while writing it: (a) the reload
+     response's `lastMessagePreview` must be a `String`, not `null` (the
+     model requires it) — a null value throws inside `_load()`'s try
+     block and is silently swallowed by its `catch (_)`, which is exactly
+     why the roster looked merely "still empty" rather than erroring
+     loudly; (b) the reload's GET /threads response must be queued
+     *before* the submit tap, not after — `_load()` runs as part of the
+     same `pumpAndSettle()` that resolves the submit/pop, so queuing it
+     afterward left the fake with no response for it (also caught and
+     swallowed by the same `catch (_)`). Worth flagging: that
+     `catch (_) { _error = 'Could not load bots.' }` swallowing renders
+     silently as an empty-looking roster rather than a visible error
+     state in these scenarios — not this task's scope to change, but a
+     real debuggability gap noted for whoever next touches `_load()`.
+  3. Non-blocking notes fixed too: `createRole`/`createThread` API tests
+     now decode and assert the actual POST body (previously only
+     method+path, despite what their names claimed).
+  4. Dossier per-file test count correction for the record: this round's
+     full run is 36/36 (was 35/35 pre-rework, +1 for the new roster
+     reload test).
+  `flutter analyze`: No issues found! `flutter test`: 36/36 passed.
+  Handing back to `needs_review`.
