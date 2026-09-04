@@ -4101,7 +4101,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-140
 **Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-030/OIK-112; packages/broker/src/index.ts line 384 (`dependencies.getCapability(request.toolName)` — called fresh on every single decision, confirmed by CX's own trace and by ORCH re-reading it directly: the decision path already does a live per-decision DB read, no caching layer exists to fight); packages/db/src/database.ts's `getCapability`/`upsertCapability` (only a broad upsert exists today, no narrow enable/disable toggle); services/worker/src/executeRun.ts line 105 (`handlePreToolUse` is called in-process with injected `BrokerDependencies` — the real production path has no HTTP hop at all; `packages/harness-factory/src/hooks/pretooluse.ts`'s `POST /v1/broker/pretooluse` L1 adapter is a different, unused-in-this-path harness variant, not where the fix belongs)
@@ -4120,9 +4120,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T18:20:00Z] [SV:CX] Pre-flight ownership check ran clean against original Owned_Paths (packages/broker/src/**, docs/runbooks/kill-switch-drill.md). Investigated the real request path before writing code (no out-of-territory edits made) and correctly self-diagnosed a real OWNERSHIP_CONFLICT: the live kill switch needs a packages/db capability-toggle accessor plus proof it reaches the real (non-HTTP, in-process) executeRun.ts decision path — neither was in scope. Findings recorded in dossiers/TASK-140.md.
 - [2026-09-04T18:30:00Z] [ORCH] Unblocked: widened Owned_Paths to packages/db/src/database.ts + database.test.ts (verified no collision with TASK-137/TASK-138, both connectors-only). CX's trace also corrected the task's own premise — `getCapability` is already called live per-decision (no caching gap to fix), and the real production path is executeRun.ts's in-process `handlePreToolUse` call, not the HTTP L1 adapter. Description and acceptance criteria rewritten accordingly. Resuming on task/TASK-140-cx.
+- [2026-09-04T17:40:11Z] [SV:CX] Traced the live decision path and recorded the preflight evidence plus exact ownership gap in the TASK-140 dossier.
 **Artifacts:** dossiers/TASK-140.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T18:30:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: a real live kill-switch requires a packages/db capability-toggle accessor/tests and control-api or broker HTTP route/composition files, none of which are in TASK-140 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:40:11Z
