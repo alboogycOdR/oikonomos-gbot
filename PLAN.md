@@ -3967,7 +3967,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-109); TASK-132's real firing mechanism (this task feeds it real `next_fire_at` values, doesn't touch firing itself); `apps/dashboard/src/components/chat/RightPanel.tsx`'s existing read-only Routines tab (`ChatPage.tsx` currently passes `routines={[]}` hardcoded — this task is what finally gives it real data)
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, services/control-api/package.json, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, pnpm-lock.yaml
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, services/control-api/package.json, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, pnpm-lock.yaml, packages/db/src/routines.ts, packages/db/src/routines.test.ts
 **Depends_On:** TASK-132, TASK-131
 **Description:** **Scope deliberately narrowed to cron only — natural-language schedule parsing is out of scope for this task, not silently dropped.** The WBS's "cron + NL description" is real future work; this task covers the cron half, which is what actually determines `next_fire_at` and is required before NL parsing means anything. `role_routines.schedule` (text) already exists in the schema; add real `POST /roles/:roleId/routines` (body: `{name, schedule, definition?}` — validate `schedule` as a real 5-field cron expression, reject anything else with a clear 400, not a silent no-op) and `GET /roles/:roleId/routines` endpoints using `createRoutine`/`listRoutines` (`packages/db/src/routines.ts`, already built). Computing `next_fire_at` from a cron expression needs a real parser — `cron-parser` is already resolved in `pnpm-lock.yaml` (a transitive dependency of `pg-boss`, TASK-130); promote it to a direct dependency of `services/control-api` (or wherever the create-routine handler actually lives) rather than relying on an unstable transitive resolution. Wire `ChatPage.tsx`'s `routines={[]}` to real data from `GET /roles/:roleId/routines` for the active bot, closing the gap TASK-123/124 already established the fast-follow pattern for (a real mechanism invisible in the live UI defeats the point).
 **Acceptance_Criteria:**
@@ -3981,12 +3981,16 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T15:00:48Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — cron-parser needs to be a direct dependency of services/control-api (where the routine-creation handler actually lives), but I granted worker's package.json instead by mistake.
 - [2026-09-04T17:02:00Z] [ORCH] My own mis-scoping — corrected to services/control-api/package.json (removed the wrong worker grant). No collision (TASK-135 doesn't touch control-api). Resuming CX.
+- [2026-09-04T15:03:08Z] [SV:CX] Blocked again: SYNC_MISMATCH — worktree's own PLAN.md predated the correction (dispatch.ps1 correctly does not force-reset a worktree sitting on a real branch, so it can go stale relative to master between dispatches). Correctly self-diagnosed rather than proceeding on stale metadata.
+- [2026-09-04T17:05:00Z] [ORCH] Merged master into the CX worktree directly (clean, no conflicts) to bring its local PLAN.md current. Resuming CX.
+- [2026-09-04T15:05:36Z] [SV:CX] Blocked a third time: OWNERSHIP_CONFLICT — `createRoutine`'s INSERT has no `next_fire_at` column at all, and `recordRoutineFire` is the wrong tool (it would incorrectly stamp a fire status at creation time, not just set the initial schedule). Correctly declined to misuse the firing API for creation-time state.
+- [2026-09-04T17:08:00Z] [ORCH] Triaged: legitimate, verified directly against createRoutine's real SQL — confirmed the gap. Added packages/db/src/routines.ts + its test to Owned_Paths (no collision, TASK-132 already merged). Guidance: extend `NewRoutine` with an optional `nextFireAt?: Date | null`, threaded into the INSERT as a plain creation-time field — additive, state-neutral, no change to `recordRoutineFire`'s own fire-event semantics. Resuming CX.
 **Artifacts:** dossiers/TASK-134.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T17:02:00Z
+**Updated_At:** 2026-09-04T17:08:00Z
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
