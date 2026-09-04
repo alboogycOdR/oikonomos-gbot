@@ -15,6 +15,11 @@ import {
   listRuns,
   startRun,
 } from "./index.js";
+// `listOpenRuns`/`openRunStatuses` (OIK-106) are new in this task and not
+// yet re-exported from the package barrel (`index.ts` is outside this
+// task's `Owned_Paths` — see the dossier) — imported directly from the
+// module instead.
+import { failRun, cancelRun, listOpenRuns, openRunStatuses } from "./runs.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -282,6 +287,78 @@ integration("packages/db runs — completeRun (TASK-116)", () => {
     await expect(
       completeRun({ connectionString: connectionString! }, run.runId),
     ).rejects.toMatchObject({ runId: run.runId, fromStatus: "completed" });
+  });
+});
+
+// TASK-133 / OIK-106: listOpenRuns is the accessor a boot-time worker
+// reconciliation step uses to find runs orphaned by a killed process.
+integration("packages/db runs — listOpenRuns (TASK-133 / OIK-106)", () => {
+  let pool: Pool;
+  const roleId = "task-133-listopenruns-suite";
+  let taskId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    const task = await createTask(
+      { connectionString: connectionString! },
+      { roleId, title: "listOpenRuns fixture", goal: "g", requestedBy: "alister" },
+    );
+    taskId = task.taskId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("returns only runs in an open status (started/waiting_approval/resumed), never a terminal one", async () => {
+    const started = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    const resumed = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    await pool.query(`UPDATE runs SET status = 'waiting_approval' WHERE run_id = $1`, [
+      resumed.runId,
+    ]);
+    const toResume = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    await pool.query(`UPDATE runs SET status = 'resumed' WHERE run_id = $1`, [toResume.runId]);
+
+    const toComplete = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    const completed = await completeRun({ connectionString: connectionString! }, toComplete.runId);
+
+    const toFail = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    const failed = await failRun({ connectionString: connectionString! }, toFail.runId, "boom");
+
+    const toCancel = await startRun({ connectionString: connectionString! }, { taskId, provider: "claude" });
+    const cancelled = await cancelRun({ connectionString: connectionString! }, toCancel.runId);
+
+    const open = await listOpenRuns({ connectionString: connectionString! }, { taskId });
+    const openIds = open.map((r) => r.runId);
+
+    expect(openIds).toContain(started.runId);
+    expect(openIds).toContain(resumed.runId);
+    expect(openIds).toContain(toResume.runId);
+    // MUTATION-PROOF (AC2): removing the status filter from listOpenRuns'
+    // WHERE clause would make these three assertions fail by including a
+    // terminal run.
+    expect(openIds).not.toContain(completed.runId);
+    expect(openIds).not.toContain(failed.runId);
+    expect(openIds).not.toContain(cancelled.runId);
+    expect(open.every((r) => openRunStatuses.includes(r.status))).toBe(true);
+  });
+
+  it("scopes by taskId and rejects an invalid one", async () => {
+    const unrelated = await listOpenRuns(
+      { connectionString: connectionString! },
+      { taskId: "00000000-0000-0000-0000-000000000000" },
+    );
+    expect(unrelated).toHaveLength(0);
   });
 });
 

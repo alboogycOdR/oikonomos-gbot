@@ -32,6 +32,15 @@ const OPEN_STATUSES: readonly RunStatus[] = [
   "resumed",
 ];
 
+/**
+ * Public alias for `OPEN_STATUSES` (OIK-106) — a boot-time reconciliation
+ * step needs to know which statuses count as "orphaned, still open" without
+ * hand-duplicating the literal array (ADR-013 precedent: don't rebuild what
+ * the module already knows). The array itself stays private and immutable;
+ * this is a read-only view onto the same values.
+ */
+export const openRunStatuses: readonly RunStatus[] = OPEN_STATUSES;
+
 export interface NewRun {
   taskId: string;
   provider: string;
@@ -506,6 +515,66 @@ export async function listRuns(
   });
 }
 
+export interface OpenRunListFilter {
+  tenantId?: string;
+  taskId?: string;
+  /** Safety cap on how many open runs a single call can return; default and
+   * max both generous for boot-time reconciliation (expected to be a small
+   * set — a whole worker process's worth of in-flight runs), not paginated
+   * like `listRuns` since reconciliation needs the complete open set in one
+   * pass, not a page of it. */
+  limit?: number;
+}
+
+const DEFAULT_OPEN_RUN_LIMIT = 500;
+const MAX_OPEN_RUN_LIMIT = 2000;
+
+/**
+ * All runs currently sitting in an open, non-terminal status
+ * (`started`/`waiting_approval`/`resumed`) — the exact set a boot-time
+ * reconciliation step (OIK-106) needs to find runs orphaned by a killed
+ * worker process. Unlike `listRuns`, this is not filterable by an arbitrary
+ * single `status` — it always means "every open status" — and returns the
+ * full open set in one call rather than a paginated page, since
+ * reconciliation must see every orphan in one pass.
+ */
+export async function listOpenRuns(
+  options: DatabaseOptions,
+  filter: OpenRunListFilter = {},
+): Promise<Run[]> {
+  const limit =
+    filter.limit === undefined
+      ? DEFAULT_OPEN_RUN_LIMIT
+      : Math.min(Math.max(1, Math.trunc(filter.limit)), MAX_OPEN_RUN_LIMIT);
+
+  const conditions: string[] = [`status = ANY($1::run_status[])`];
+  const params: unknown[] = [[...OPEN_STATUSES]];
+
+  if (filter.tenantId !== undefined) {
+    params.push(requireNonEmpty(filter.tenantId, "tenantId"));
+    conditions.push(`tenant_id = $${params.length}`);
+  }
+  if (filter.taskId !== undefined) {
+    params.push(requireUuid(filter.taskId, "taskId"));
+    conditions.push(`task_id = $${params.length}`);
+  }
+
+  const where = conditions.join(" AND ");
+  params.push(limit);
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RunRow>(
+      `SELECT ${runColumns}
+       FROM runs
+       WHERE ${where}
+       ORDER BY started_at ASC, run_id ASC
+       LIMIT $${params.length}`,
+      params,
+    );
+    return result.rows.map(toRun);
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
@@ -531,6 +600,9 @@ if (import.meta.vitest) {
       await expect(
         listRuns(options),
       ).rejects.toThrow(/connectionString/);
+      await expect(
+        listOpenRuns(options),
+      ).rejects.toThrow(/connectionString/);
     });
 
     it("rejects a status filter on listRuns that is not in runStatuses", async () => {
@@ -552,6 +624,16 @@ if (import.meta.vitest) {
       await expect(
         listRuns({ connectionString: "postgres://x" }, { cursor: "not-base64json" }),
       ).rejects.toThrow(/cursor/);
+    });
+
+    it("rejects an invalid taskId filter on listOpenRuns", async () => {
+      await expect(
+        listOpenRuns({ connectionString: "postgres://x" }, { taskId: "not-a-uuid" }),
+      ).rejects.toThrow(/UUID/);
+    });
+
+    it("openRunStatuses is exactly the resume/fail/cancel-eligible set", () => {
+      expect(openRunStatuses).toEqual(["started", "waiting_approval", "resumed"]);
     });
 
     it("rejects an empty provider on startRun", async () => {
