@@ -70,7 +70,7 @@ describe("inbox-triage end-to-end — governed worker run (TASK-055)", () => {
     expect(Object.keys(sdkServers ?? {})).toEqual([GMAIL_SERVER]);
     expect(sdkServers?.[GMAIL_SERVER]?.type).toBe("http");
     expect(result.connector).toEqual({
-      connectorId: "gmail",
+      connectorIds: ["gmail"],
       mcpServerNames: [GMAIL_SERVER],
     });
     expect(result.runtime.harness.config.allowedTools).toEqual([
