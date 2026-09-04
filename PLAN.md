@@ -3860,13 +3860,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-130-cx
 **Started_At:** 2026-09-04T13:36:37Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T13:48:45Z] [SV:CX] Checkpoint: implemented pg-boss 12.30.0 heartbeat queue with real Postgres lifecycle coverage (4/4 focused tests pass). Build/lint clean. Full pnpm -r test blocked by unrelated shared-DB flakes CX correctly declined to treat as real without confirmation — resuming to verify.
+**Artifacts:** services/worker/src/jobs/workerJobQueue.ts, services/worker/src/jobs/workerJobQueue.test.ts, services/worker/src/index.ts, services/worker/package.json, pnpm-lock.yaml, dossiers/TASK-130.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T13:36:37Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T13:52:00Z
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
