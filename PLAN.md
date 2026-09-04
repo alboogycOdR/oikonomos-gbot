@@ -3630,7 +3630,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; Grok Bot reference product, confirmed 2026-09-03: a single 1:1 bot-to-bot delegation ping needs no human approval; fan-out to several bots or a whole group does
@@ -3642,15 +3642,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A single bot messaging exactly one other bot completes without a pending approval (tested against real Postgres, same evidentiary shape as prior liveness tests)
 - [ ] A bot attempting to message multiple bots/a group in one action correctly produces a real pending approval instead of proceeding — tested against real Postgres, mutation-proof shape (deleting the fan-out check must redden the test)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-122-s5
+**Started_At:** 2026-09-04T06:43:54Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T06:43:54Z
 
 ### TASK-123
 **Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
