@@ -4217,11 +4217,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
-**Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111
-**Owned_Paths:** packages/db/src/spend.ts, packages/db/src/spend.test.ts, packages/db/src/index.ts, infra/postgres/migrations/**, packages/broker/src/**, services/worker/src/executeRun.ts, services/worker/src/executeRun.test.ts
+**Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111; services/worker/src/subprocessProviders.ts (CX's own finding — the real production `AgentProvider` construction site, not `executeRun.ts` as originally guessed)
+**Owned_Paths:** packages/db/src/spend.ts, packages/db/src/spend.test.ts, packages/db/src/index.ts, infra/postgres/migrations/**, packages/broker/src/**, services/worker/src/executeRun.ts, services/worker/src/executeRun.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/subprocessProviders.test.ts
 **Depends_On:** —
 **Description:** Investigate before building, same discipline as this session's other "built but never wired" discoveries. `withBudgetSink` (packages/agent-providers) is fully built and tested but nothing composes it at any real call site, and no DB schema exists to persist per-routine or platform spend. CLAUDE.md places enforcement at the broker ("Per-routine budgets enforced by the broker from week 5"), not at the agent-providers layer — so the design is: (1) a new migration + `packages/db` module recording spend (at minimum: routine/run identifier, provider, model, costUsd, tokens, timestamp — derive the exact shape from `BudgetReport`'s existing fields rather than inventing a new one); (2) compose `withBudgetSink(provider, sink)` at the real provider construction site (`packages/harness-factory` or wherever `AgentProvider` instances are actually built for a run — find it, do not guess) with a `BudgetSink` that writes to the new spend table; (3) a broker-level check (packages/broker, matching TASK-140's precedent of a live per-decision DB read, not a cached/stale one) that denies a tool call when a routine's accumulated spend exceeds its configured budget, or when platform-wide spend exceeds the R30,000/month ceiling. Investigate whether a routine's per-routine budget ceiling has anywhere to live today (likely `role_routines.definition jsonb`, check `packages/db/src/routines.ts`) before inventing a new column. If the real scope turns out larger than one task, split OIK-110 (per-routine) and OIK-111 (platform ceiling) into two — say so honestly in the dossier rather than cutting corners to fit one task.
 **Acceptance_Criteria:**
@@ -4237,9 +4237,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T18:12:36Z] [SV:CX] Blocked before code: worktree is detached at dispatch commit 6752c6b and task/TASK-143-cx is absent, while dispatch explicitly forbids re-branching.
 - [2026-09-04T18:35:00Z] [ORCH] Unblocked: a genuine dispatch-prompt-template ambiguity, not a builder error — the prompt's own intro line ("claimed by the dispatcher before this session started - do not re-claim or re-branch") reads as "never create a branch," while step 2 correctly says "If newly claimed: create branch task/TASK-143-cx." CX correctly refused to guess rather than risk an unauthorized action. Created `task/TASK-143-cx` from master tip myself; worth flagging in the pack feedback doc as a real prompt-clarity gap (the intro sentence means "don't re-CLAIM in PLAN.md," not "don't branch," and should say so explicitly). Redispatching CX.
 - [2026-09-04T18:17:44Z] [SV:CX] Investigated live provider path: withBudgetSink has no call sites; real AgentProvider construction is services/worker/src/subprocessProviders.ts, outside assigned territory. Dossier committed as 113a3fe.
+- [2026-09-04T18:45:00Z] [ORCH] Unblocked: widened Owned_Paths to services/worker/src/subprocessProviders.ts + .test.ts (verified no collision with TASK-139's chatRunDriver.ts scope). Corrected the description's guess (executeRun.ts) — CX's own finding is the real composition site. Resuming on task/TASK-143-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: TASK-143 must modify services/worker/src/subprocessProviders.ts (and likely its focused test) to compose withBudgetSink at the actual production AgentProvider construction site, but those paths are not in Owned_Paths.
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T18:17:44Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:45:00Z
