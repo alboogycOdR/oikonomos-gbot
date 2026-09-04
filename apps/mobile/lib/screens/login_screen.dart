@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
+import '../push/noop_push_port.dart';
+import '../push/push_port.dart';
 import 'roster_screen.dart';
 
 /// TASK-144 (Mobile Wave 1a) — mirrors
@@ -13,9 +15,20 @@ import 'roster_screen.dart';
 /// way, so it cannot linger in memory or be surfaced by a later screenshot
 /// / state dump.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.apiClient});
+  const LoginScreen({
+    super.key,
+    required this.apiClient,
+    this.pushPort = const NoopPushPort(),
+  });
 
   final ApiClient apiClient;
+
+  /// TASK-149 (Mobile Wave 2b) — threaded through to [RosterScreen], the
+  /// landing screen after login, which is where push registration begins
+  /// (registration needs the session cookie [ApiClient.login] just
+  /// captured). Defaults to the dormant [NoopPushPort] so every prior test
+  /// of this screen is unaffected.
+  final PushPort pushPort;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -60,7 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => RosterScreen(apiClient: widget.apiClient),
+          builder: (_) => RosterScreen(
+            apiClient: widget.apiClient,
+            pushPort: widget.pushPort,
+          ),
         ),
       );
     } on UnauthorizedError {

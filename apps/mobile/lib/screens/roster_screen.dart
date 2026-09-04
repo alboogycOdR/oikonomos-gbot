@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
 import '../api/models.dart';
+import '../push/device_platform.dart';
+import '../push/noop_push_port.dart';
+import '../push/push_message.dart';
+import '../push/push_port.dart';
+import '../push/push_registrar.dart';
 import '../widgets/avatar.dart';
 import 'chat_screen.dart';
 import 'create_bot_screen.dart';
@@ -17,9 +22,19 @@ import 'login_screen.dart';
 /// (WORKFLOW_MOBILE_W1_W2_2026-09-04.md's deferred list) rather than
 /// rendered with a shape this screen doesn't understand.
 class RosterScreen extends StatefulWidget {
-  const RosterScreen({super.key, required this.apiClient});
+  const RosterScreen({
+    super.key,
+    required this.apiClient,
+    this.pushPort = const NoopPushPort(),
+  });
 
   final ApiClient apiClient;
+
+  /// TASK-149 (Mobile Wave 2b) — defaults to the dormant [NoopPushPort] so
+  /// every prior test of this screen (constructed without a `pushPort`
+  /// argument) is unaffected: registration never fires and no additional
+  /// HTTP request is ever queued/expected.
+  final PushPort pushPort;
 
   @override
   State<RosterScreen> createState() => _RosterScreenState();
@@ -29,11 +44,38 @@ class _RosterScreenState extends State<RosterScreen> {
   List<SingleThread> _bots = [];
   bool _loading = true;
   String? _error;
+  late final PushRegistrar _pushRegistrar;
 
   @override
   void initState() {
     super.initState();
+    _pushRegistrar = PushRegistrar(
+      apiClient: widget.apiClient,
+      port: widget.pushPort,
+      devicePlatform: currentDevicePlatform,
+      onMessage: _showPushMessage,
+    );
+    _pushRegistrar.initialize();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _pushRegistrar.dispose();
+    super.dispose();
+  }
+
+  /// TASK-149 (Mobile Wave 2b) — foreground display for the two backend
+  /// triggers (approval created, run completed). A `null` decode result
+  /// (unrecognized payload shape) is silently dropped rather than shown.
+  void _showPushMessage(PushMessage message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: const Key('push-notification-snackbar'),
+        content: Text(message.displayText),
+      ),
+    );
   }
 
   Future<void> _load() async {

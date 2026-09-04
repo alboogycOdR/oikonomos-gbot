@@ -89,6 +89,37 @@ void main() {
       return client;
     }
 
+    test(
+      'registerDevice posts token/platform and replays the cookie',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(201, {'registered': true});
+
+        await client.registerDevice('fcm-token-abc', 'android');
+
+        final request = fake.requests.last as http.Request;
+        expect(request.method, 'POST');
+        expect(request.url.path, '/devices');
+        expect(request.headers['cookie'], 'control_api_session=abc123');
+        expect(
+          jsonDecode(request.body),
+          {'token': 'fcm-token-abc', 'platform': 'android'},
+        );
+      },
+    );
+
+    test('registerDevice throws ApiException on a server rejection', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(400, {'error': 'platform must be one of: android, ios, web.'});
+
+      await expectLater(
+        () => client.registerDevice('fcm-token-abc', 'bogus'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
     test('listRoles parses the role list and replays the cookie', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);

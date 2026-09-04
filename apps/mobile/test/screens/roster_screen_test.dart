@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oikonomos_mobile/api/api_client.dart';
+import 'package:oikonomos_mobile/push/push_message.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
 import 'package:oikonomos_mobile/screens/roster_screen.dart';
 
 import '../support/fake_http_client.dart';
+import '../support/fake_push_port.dart';
 
 Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
   fake.queueJson(
@@ -187,5 +189,127 @@ void main() {
     expect(find.byType(CreateBotScreen), findsNothing);
     expect(find.byKey(const Key('bot-tile-thread-new')), findsOneWidget);
     expect(find.text('Helper'), findsOneWidget);
+  });
+
+  group('TASK-149 push notifications', () {
+    testWidgets(
+      'with the default (dormant) push port, boot behaves exactly as before'
+      ' — no /devices call is ever made',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJson(200, <Object?>[]);
+
+        await tester.pumpWidget(
+          MaterialApp(home: RosterScreen(apiClient: client)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('roster-empty')), findsOneWidget);
+        // Only login + the roster's own GET /threads were ever requested.
+        expect(fake.requests, hasLength(2));
+      },
+    );
+
+    testWidgets(
+      'a foreground approval-pending message surfaces a snackbar',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJson(200, <Object?>[]);
+        final port = FakePushPort(initialToken: null);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RosterScreen(apiClient: client, pushPort: port),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        port.emitMessage(
+          const PushMessage(
+            type: PushMessageType.approvalPending,
+            runId: 'run-1',
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 750));
+
+        expect(
+          find.byKey(const Key('push-notification-snackbar')),
+          findsOneWidget,
+        );
+        expect(
+          find.text('A new approval is waiting for you.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a foreground run-completed message surfaces a snackbar',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJson(200, <Object?>[]);
+        final port = FakePushPort(initialToken: null);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RosterScreen(apiClient: client, pushPort: port),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        port.emitMessage(
+          const PushMessage(type: PushMessageType.runCompleted, runId: 'run-2'),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 750));
+
+        expect(find.text('A run just completed.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a configured port registers the initial token via POST /devices',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJson(200, <Object?>[]);
+        fake.queueJson(201, {'registered': true});
+        final port = FakePushPort(initialToken: 'token-abc');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RosterScreen(apiClient: client, pushPort: port),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final devicesRequest = fake.requests.firstWhere(
+          (r) => r.url.path == '/devices',
+        );
+        expect(devicesRequest.method, 'POST');
+      },
+    );
+
+    testWidgets('disposing the screen disposes the push port', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      final port = FakePushPort(initialToken: null);
+
+      await tester.pumpWidget(
+        MaterialApp(home: RosterScreen(apiClient: client, pushPort: port)),
+      );
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+
+      expect(port.disposed, isTrue);
+    });
   });
 }
