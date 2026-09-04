@@ -4342,7 +4342,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (reference UX: the Grok Bot screenshots — roster with avatar/last-message/timestamp, create-bot with name + color/shape picker); TASK-144 (the API/SSE client this consumes); apps/dashboard/src/components/chat/BotSidebar.tsx, CreateBotDialog.tsx, ChatPage.tsx (the web equivalents — mirror behavior and endpoints, not DOM structure)
