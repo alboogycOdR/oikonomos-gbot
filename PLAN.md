@@ -4137,7 +4137,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-139
 **Title:** Generalize connector merging to N connectors + wire Calendar/Drive grant-derived mounting (Connectors-2c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-128 (the exact pattern to mirror for grant-derived mounting, done for Gmail); services/worker/src/chatRunDriver.ts (`resolveGrantedGmailConnector`, `resolveGrantedWorkspaceConnector`, `combineConnectorContexts` — currently pairwise-only, built for exactly two connectors); TASK-137/138 (the new Calendar/Drive session minters this task wires in)
@@ -4152,15 +4152,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A role with NO manifest-connector grants behaves identically to today (existing TASK-116/117/128 tests pass unmodified)
 - [ ] `mcpConfigFromManifest`, `createGoogleCalendarConnectorSessionMinter`, `createGoogleDriveConnectorSessionMinter` exported from the connectors barrels
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-139-cx9
+**Started_At:** 2026-09-04T17:57:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:57:16Z
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
