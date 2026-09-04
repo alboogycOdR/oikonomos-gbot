@@ -2,7 +2,7 @@ import type { Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { riskTiers, runStatuses, taskStatuses, type Approval, type RunStatus, type TaskStatus } from "@oikonomos/db";
+import { riskTiers, runStatuses, taskStatuses, type Approval, type Message, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -36,6 +36,18 @@ export interface BuildAppOptions {
    * unauthenticated.
    */
   authToken?: string;
+  /**
+   * TASK-129 (RT-01): interval the `/threads/:id/stream` SSE route polls
+   * `deps.listMessages` at, in ms. There is no cross-route pub/sub bus in
+   * `ControlApiDeps` (OIK-084's port boundary — adding one is out of this
+   * task's Owned_Paths), so "push" here is a short server-side poll loop
+   * fanned out over one held-open connection per subscribed client,
+   * rather than a client-side `setInterval` re-fetching the whole
+   * transcript every 2s. Defaults small enough in production (300ms) that
+   * AC1's "no 2-second polling delay" holds; tests override it to
+   * something even smaller/deterministic.
+   */
+  sseIntervalMs?: number;
 }
 
 const NEW_TASK_SCHEMA = {
@@ -191,6 +203,60 @@ function serializeApproval(approval: Approval): Record<string, unknown> {
       approval.userContextEpoch === null || approval.userContextEpoch === undefined
         ? null
         : approval.userContextEpoch.toString(),
+  };
+}
+
+/**
+ * TASK-129 (RT-01): shared shaping of a transcript message, used by both
+ * `GET /threads/:id/messages` (unmodified endpoint/behavior — this is a
+ * pure extraction, no field added/removed/renamed) and the new
+ * `/threads/:id/stream` SSE route, so the two never drift into two
+ * different wire shapes for the same message.
+ */
+function shapeMessage(
+  message: Message,
+  approvalsByRunId: Map<string, Approval>,
+  defaultTierByCapabilityId: Map<string, string>,
+  roleNameById: Map<string, string>,
+): Record<string, unknown> {
+  const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
+  return {
+    ...message,
+    senderRoleId: message.senderRoleId ?? null,
+    senderName:
+      message.senderRoleId === null || message.senderRoleId === undefined
+        ? null
+        : roleNameById.get(message.senderRoleId) ?? message.senderRoleId,
+    ...(approval === undefined
+      ? {}
+      : {
+          approval: {
+            nonce: approval.nonce,
+            action_render: approval.actionRender,
+            status: approval.status,
+            capability_id: approval.capabilityId,
+            max_tier: defaultTierByCapabilityId.get(approval.capabilityId) ?? null,
+          },
+        }),
+  };
+}
+
+async function loadMessageShapingContext(
+  deps: ControlApiDeps,
+): Promise<{
+  approvalsByRunId: Map<string, Approval>;
+  defaultTierByCapabilityId: Map<string, string>;
+  roleNameById: Map<string, string>;
+}> {
+  const [approvals, capabilities, roles] = await Promise.all([
+    deps.listPendingApprovals(),
+    deps.listCapabilities(),
+    deps.listRoles({ tenantId: "basileia", status: "active" }),
+  ]);
+  return {
+    approvalsByRunId: new Map(approvals.map((approval) => [approval.runId, approval])),
+    defaultTierByCapabilityId: new Map(capabilities.map((capability) => [capability.capabilityId, capability.defaultTier])),
+    roleNameById: new Map(roles.map((role) => [role.roleId, role.name])),
   };
 }
 
@@ -588,13 +654,10 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     { schema: { querystring: LIST_MESSAGES_QUERY_SCHEMA } },
     async (request, reply) => {
       try {
-        const [messages, approvals, capabilities, roles] = await Promise.all([
+        const [messages, context] = await Promise.all([
           deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
-          deps.listPendingApprovals(),
-          deps.listCapabilities(),
-          deps.listRoles({ tenantId: "basileia", status: "active" }),
+          loadMessageShapingContext(deps),
         ]);
-        const approvalsByRunId = new Map(approvals.map((approval) => [approval.runId, approval]));
         // TASK-118: the grants a client can request via "Always Allow"
         // are capability+tier scoped, but `Approval` itself never
         // persisted the tier it was raised at (packages/db/src/
@@ -602,38 +665,111 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         // capability's own registered `defaultTier` is the only tier
         // source available here, and is exactly what TASK-117's
         // built-in-grant path already uses as its ceiling.
-        const defaultTierByCapabilityId = new Map(
-          capabilities.map((capability) => [capability.capabilityId, capability.defaultTier]),
-        );
-        const roleNameById = new Map(roles.map((role) => [role.roleId, role.name]));
         await reply.code(200).send(
-          messages.map((message) => {
-            const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
-            return {
-              ...message,
-              senderRoleId: message.senderRoleId ?? null,
-              senderName: message.senderRoleId === null || message.senderRoleId === undefined
-                ? null
-                : roleNameById.get(message.senderRoleId) ?? message.senderRoleId,
-              ...(approval === undefined
-                ? {}
-                : {
-                    approval: {
-                      nonce: approval.nonce,
-                      action_render: approval.actionRender,
-                      status: approval.status,
-                      capability_id: approval.capabilityId,
-                      max_tier: defaultTierByCapabilityId.get(approval.capabilityId) ?? null,
-                    },
-                  }),
-            };
-          }),
+          messages.map((message) =>
+            shapeMessage(message, context.approvalsByRunId, context.defaultTierByCapabilityId, context.roleNameById),
+          ),
         );
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }
     },
   );
+
+  /**
+   * TASK-129 (RT-01): replaces `ChatPage`'s client-side 2s
+   * `setInterval`/`GET /threads/:id/messages` polling loop with a
+   * held-open SSE stream. Still driven by a server-side poll of
+   * `deps.listMessages` (see `BuildAppOptions.sseIntervalMs` above for
+   * why), but the client no longer polls at all — it holds one
+   * connection open per active thread and receives events as this loop
+   * discovers them, which is the actual behavior change the spec calls
+   * for. `GET /threads/:id/messages` above is completely unmodified in
+   * observable behavior (AC4) — this is a new, additive route.
+   *
+   * Resume semantics (AC3 "dropped connection reconnects, no
+   * duplicate/missed messages"): each event is framed with `id: <message
+   * id>`, the same exclusive cursor `listMessages`'s own `after` option
+   * already uses (`packages/db/src/messages.ts`). A reconnecting client
+   * sends `Last-Event-ID` (browsers do this automatically for
+   * `EventSource`; `realtime.ts` does it explicitly for its own fetch-based
+   * reader) and this route resumes the poll loop from exactly that id —
+   * no message before it is ever resent, no message after it is skipped.
+   */
+  app.get<{ Params: { id: string } }>("/threads/:id/stream", async (request, reply) => {
+    const threadId = request.params.id;
+    const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === threadId);
+    if (thread === undefined) {
+      await reply.code(404).send({ error: "thread not found" });
+      return;
+    }
+
+    // Bypass Fastify's own reply lifecycle: this handler never calls
+    // reply.send() — it holds the connection open and writes frames to
+    // it directly until the client disconnects.
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    res.write(":ok\n\n");
+
+    const lastEventIdHeader = request.headers["last-event-id"];
+    let cursor: string | undefined = Array.isArray(lastEventIdHeader) ? lastEventIdHeader[0] : lastEventIdHeader;
+    let closed = false;
+    let polling = false;
+    const pollIntervalMs = options.sseIntervalMs ?? 300;
+
+    const poll = async () => {
+      if (closed || polling) return;
+      polling = true;
+      try {
+        const [messages, context] = await Promise.all([
+          deps.listMessages(threadId, cursor === undefined ? {} : { after: cursor }),
+          loadMessageShapingContext(deps),
+        ]);
+        for (const message of messages) {
+          cursor = message.id;
+          if (closed) break;
+          const shaped = shapeMessage(
+            message,
+            context.approvalsByRunId,
+            context.defaultTierByCapabilityId,
+            context.roleNameById,
+          );
+          res.write(`id: ${message.id}\ndata: ${JSON.stringify(shaped)}\n\n`);
+        }
+      } catch (error) {
+        request.log.error(error, "SSE poll failed for thread stream");
+      } finally {
+        polling = false;
+      }
+    };
+
+    void poll();
+    const pollTimer = setInterval(() => {
+      void poll();
+    }, pollIntervalMs);
+    // Keeps intermediary proxies/load balancers from idling the
+    // connection out on a quiet thread; SSE comment lines are invisible
+    // to `EventSource`/`realtime.ts`'s frame parser.
+    const heartbeatTimer = setInterval(() => {
+      if (!closed) res.write(":hb\n\n");
+    }, 15000);
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(pollTimer);
+      clearInterval(heartbeatTimer);
+      res.end();
+    };
+    request.raw.on("close", cleanup);
+    reply.raw.on("error", cleanup);
+  });
 
   app.post<{ Params: { id: string }; Body: { body: string } }>(
     "/threads/:id/messages",

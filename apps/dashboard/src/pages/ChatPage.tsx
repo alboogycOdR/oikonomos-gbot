@@ -14,6 +14,7 @@ import {
   type ThreadMessage,
 } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
+import { subscribeToThreadMessages, type RealtimeMessage } from "../lib/realtime";
 
 /**
  * TASK-122 (Chat-2c) — `BotSummary`/`ChatMessage` (components/chat/types.ts)
@@ -39,14 +40,14 @@ export interface GroupAwareChatMessage extends ChatMessage {
  * "bots" for `<ChatShell>`'s props: v1 is one thread per bot (spec §3), so
  * `thread.id` is used as the shell's `botId`.
  *
- * Polling (spec §4 "Reply delivery for v1: polling, not websockets"):
- * after a send, poll `GET /threads/:id/messages` every ~2s while a reply
- * is in flight; stop as soon as a bot message newer than the just-sent
- * user message appears, or the thread is switched away from. No run is
- * ever polled at idle load — only immediately after this tab sent a
- * message and hasn't seen the reply yet.
+ * TASK-129 (RT-01): reply delivery is now real push — a held-open SSE
+ * subscription (`lib/realtime.ts`) against the active thread, replacing
+ * the previous `setInterval`/`GET /threads/:id/messages` 2s poll. The
+ * initial transcript load on thread-switch still uses
+ * `GET /threads/:id/messages` unmodified (spec: only the poll *loop* is
+ * removed, not the endpoint) — the subscription only carries messages
+ * that arrive *after* it opens.
  */
-const POLL_INTERVAL_MS = 2000;
 
 function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
   if (isGroupThread(thread)) {
@@ -109,10 +110,10 @@ export function ChatPage() {
   const [isBotResponding, setIsBotResponding] = useState(false);
 
   // Tracks the createdAt of the most recent user message we're awaiting a
-  // reply to, so polling knows when a *newer* bot message is the reply
-  // (not stale) and can stop itself (AC3).
+  // reply to, so the subscription knows when a *newer* pushed bot message
+  // is the reply (not a stale/unrelated one) and can clear
+  // `isBotResponding`.
   const pendingSinceRef = useRef<string | null>(null);
-  const pollThreadIdRef = useRef<string | undefined>(undefined);
 
   const handleAuthError = useCallback(
     (err: unknown): boolean => {
@@ -189,7 +190,6 @@ export function ChatPage() {
           [botId]: [...(prev[botId] ?? []), toChatMessage(sent)],
         }));
         pendingSinceRef.current = sent.createdAt;
-        pollThreadIdRef.current = botId;
         setIsBotResponding(true);
       } catch (err) {
         if (!handleAuthError(err)) {
@@ -200,43 +200,48 @@ export function ChatPage() {
     [handleAuthError],
   );
 
-  // Polling effect: active only while isBotResponding is true for the
-  // thread that triggered it. Stops (clears the interval) the moment a
-  // bot message newer than pendingSinceRef arrives, or the run is no
-  // longer in flight in any other observable way (thread switch, unmount).
+  /**
+   * TASK-129 (RT-01): push subscription for whichever thread is active.
+   * Opens one held-open SSE stream per active thread and tears it down
+   * (no leaked connection) the moment the active thread changes or this
+   * component unmounts — mirrors the discipline the old poll-interval
+   * cleanup test held this codebase to (AC2).
+   */
   useEffect(() => {
-    if (!isBotResponding) return undefined;
-    const threadId = pollThreadIdRef.current;
-    if (threadId === undefined) return undefined;
+    if (activeBotId === undefined) return undefined;
+    const threadId = activeBotId;
 
-    const intervalId = setInterval(() => {
-      void (async () => {
-        try {
-          const messages = await listThreadMessages(threadId);
-          setMessagesByBotId((prev) => ({ ...prev, [threadId]: messages.map(toChatMessage) }));
-          const pendingSince = pendingSinceRef.current;
-          const reply = messages.find(
-            (message) =>
-              message.role === "bot" &&
-              (pendingSince === null || message.createdAt > pendingSince),
-          );
-          if (reply !== undefined) {
-            pendingSinceRef.current = null;
-            setIsBotResponding(false);
-          }
-        } catch (err) {
-          if (handleAuthError(err)) {
-            setIsBotResponding(false);
-          }
-          // transient poll errors don't stop polling on their own — the
-          // next tick retries; UnauthorizedError above is the one case
-          // that must stop it, since no further poll can succeed.
+    const subscription = subscribeToThreadMessages(
+      threadId,
+      (raw: RealtimeMessage) => {
+        const incoming = toChatMessage(raw as unknown as ThreadMessage);
+        setMessagesByBotId((prev) => {
+          const existing = prev[threadId] ?? [];
+          const index = existing.findIndex((message) => message.id === incoming.id);
+          const next =
+            index === -1
+              ? [...existing, incoming]
+              : existing.map((message, i) => (i === index ? incoming : message));
+          return { ...prev, [threadId]: next };
+        });
+        const pendingSince = pendingSinceRef.current;
+        if (raw.role === "bot" && (pendingSince === null || raw.createdAt > pendingSince)) {
+          pendingSinceRef.current = null;
+          setIsBotResponding(false);
         }
-      })();
-    }, POLL_INTERVAL_MS);
+      },
+      (err) => {
+        if (handleAuthError(err)) {
+          setIsBotResponding(false);
+        }
+        // Transient stream errors reconnect on their own (lib/realtime.ts
+        // AC3); UnauthorizedError above is the one case with no possible
+        // recovery without a fresh login.
+      },
+    );
 
-    return () => clearInterval(intervalId);
-  }, [isBotResponding, handleAuthError]);
+    return () => subscription.close();
+  }, [activeBotId, handleAuthError]);
 
   const activeBot = bots.find((bot) => bot.id === activeBotId);
 
