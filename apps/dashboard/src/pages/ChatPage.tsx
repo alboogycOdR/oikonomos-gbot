@@ -3,15 +3,35 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatShell } from "../components/chat/ChatShell";
 import type { BotSummary, ChatMessage } from "../components/chat/types";
 import {
+  isGroupThread,
   listRoles,
   listThreadMessages,
   listThreads,
   sendThreadMessage,
   UnauthorizedError,
+  type GroupThread,
   type Thread,
   type ThreadMessage,
 } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
+
+/**
+ * TASK-122 (Chat-2c) — `BotSummary`/`ChatMessage` (components/chat/types.ts)
+ * are not this task's Owned_Paths, so group-thread awareness is carried as
+ * a locally-declared structural extension rather than a type edit there.
+ * Every consumer that cares (`ChatShell`, `BotSidebar`, `ConversationPane`
+ * — all this task's territory) declares the same shape locally; plain
+ * `BotSummary`/`ChatMessage` consumers ignore the extra fields untyped,
+ * exactly as TypeScript's structural typing intends.
+ */
+export interface GroupAwareBotSummary extends BotSummary {
+  isGroup?: boolean;
+  memberNames?: string[];
+}
+export interface GroupAwareChatMessage extends ChatMessage {
+  senderRoleId?: string | null;
+  senderName?: string | null;
+}
 
 /**
  * TASK-108 (Chat-1d) — mounts `<ChatShell>` (Chat-1c, unmodified) at `/`
@@ -28,7 +48,23 @@ import { useAuth } from "../lib/AuthContext";
  */
 const POLL_INTERVAL_MS = 2000;
 
-function toBotSummary(thread: Thread): BotSummary {
+function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
+  if (isGroupThread(thread)) {
+    return {
+      id: thread.id,
+      // No single role owns a group thread; RightPanel/ApprovalCard
+      // degrade safely on an undefined roleId, same accepted pattern as
+      // TASK-123/124's own documented gaps.
+      roleId: undefined,
+      name: thread.title ?? thread.memberNames.join(", "),
+      description: `Group · ${thread.memberNames.join(", ")}`,
+      avatarSeed: thread.id,
+      lastMessagePreview: thread.lastMessagePreview,
+      updatedAt: thread.updatedAt,
+      isGroup: true,
+      memberNames: thread.memberNames,
+    };
+  }
   return {
     id: thread.id,
     roleId: thread.roleId,
@@ -40,13 +76,15 @@ function toBotSummary(thread: Thread): BotSummary {
   };
 }
 
-function toChatMessage(message: ThreadMessage): ChatMessage {
+function toChatMessage(message: ThreadMessage): GroupAwareChatMessage {
   return {
     id: message.id,
     threadId: message.threadId,
     role: message.role,
     body: message.body,
     createdAt: message.createdAt,
+    senderRoleId: message.senderRoleId ?? null,
+    senderName: message.senderName ?? null,
     ...(message.approval === undefined
       ? {}
       : {
@@ -63,8 +101,8 @@ function toChatMessage(message: ThreadMessage): ChatMessage {
 
 export function ChatPage() {
   const { markUnauthenticated } = useAuth();
-  const [bots, setBots] = useState<BotSummary[]>([]);
-  const [messagesByBotId, setMessagesByBotId] = useState<Record<string, ChatMessage[]>>({});
+  const [bots, setBots] = useState<GroupAwareBotSummary[]>([]);
+  const [messagesByBotId, setMessagesByBotId] = useState<Record<string, GroupAwareChatMessage[]>>({});
   const [activeBotId, setActiveBotId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

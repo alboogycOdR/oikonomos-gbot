@@ -17,6 +17,19 @@ import { ComposeBox } from "./ComposeBox";
 import { ConversationPane } from "./ConversationPane";
 import { RightPanel } from "./RightPanel";
 
+/**
+ * TASK-122 (Chat-2c) — see ChatPage.tsx's own comment: `BotSummary` is not
+ * this task's territory, so group-thread awareness is a local structural
+ * extension, not a `types.ts` edit. Composing directly into a group
+ * thread is out of this task's scope (posting into a group thread and
+ * fanning a message out to its members is control-api/`app.ts`'s job —
+ * not this task's Owned_Paths); `ComposeBox` is disabled for a group bot
+ * rather than left silently broken against a 1:1-only endpoint.
+ */
+interface GroupAwareBotSummary extends BotSummary {
+  isGroup?: boolean;
+}
+
 export interface ChatShellProps {
   bots: BotSummary[];
   messagesByBotId: Record<string, ChatMessage[]>;
@@ -44,7 +57,7 @@ export function ChatShell({
     initialActiveBotId ?? bots[0]?.id,
   );
 
-  const activeBot = bots.find((bot) => bot.id === activeBotId);
+  const activeBot: GroupAwareBotSummary | undefined = bots.find((bot) => bot.id === activeBotId);
   const messages = activeBotId ? (messagesByBotId[activeBotId] ?? []) : [];
 
   const handleSelectBot = (botId: string) => {
@@ -67,7 +80,7 @@ export function ChatShell({
           isBotResponding={isBotResponding}
         />
         <ComposeBox
-          disabled={isBotResponding || !activeBot}
+          disabled={isBotResponding || !activeBot || activeBot.isGroup === true}
           onSend={(body) => activeBotId && onSend?.(activeBotId, body)}
         />
       </div>

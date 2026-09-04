@@ -8,6 +8,18 @@ import type { BotSummary, ChatMessage } from "./types";
 import { MessageBubble } from "./MessageBubble";
 import { ApprovalCard } from "./ApprovalCard";
 
+/**
+ * TASK-122 (Chat-2c) — `ChatMessage`/`BotSummary` (components/chat/types.ts)
+ * are outside this task's Owned_Paths; group-thread attribution is carried
+ * as a local structural extension, same pattern as ChatPage.tsx/
+ * ChatShell.tsx. `MessageBubble.tsx` is untouched — it already accepts an
+ * arbitrary per-call `botName`, so per-message attribution only needs the
+ * right value picked here, not a new prop there.
+ */
+interface GroupAwareChatMessage extends ChatMessage {
+  senderName?: string | null;
+}
+
 export interface ConversationPaneProps {
   bot?: BotSummary;
   messages: ChatMessage[];
@@ -51,9 +63,12 @@ export function ConversationPane({
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        {messages.map((message) => (
+        {(messages as GroupAwareChatMessage[]).map((message) => (
           <div key={message.id} className="space-y-2">
-            <MessageBubble message={message} botName={bot.name} />
+            <MessageBubble
+              message={message}
+              botName={message.role === "bot" ? (message.senderName ?? bot.name) : bot.name}
+            />
             {message.approval ? (
               <ApprovalCard
                 approval={message.approval}
