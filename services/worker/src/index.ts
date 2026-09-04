@@ -24,9 +24,13 @@ export {
 } from "./executeRun.js";
 
 export {
+  CHAT_FANOUT_CAPABILITY_ID,
   createChatRunDriver,
+  deliverBotToBotMessage,
   destinationFor,
   finalText,
+  type BotToBotMessageRequest,
+  type BotToBotMessageResult,
   type ChatRunDriver,
   type ChatRunRequest,
   type CreateChatRunDriverOptions,

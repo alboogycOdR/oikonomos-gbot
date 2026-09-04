@@ -20,11 +20,9 @@ import { RightPanel } from "./RightPanel";
 /**
  * TASK-122 (Chat-2c) — see ChatPage.tsx's own comment: `BotSummary` is not
  * this task's territory, so group-thread awareness is a local structural
- * extension, not a `types.ts` edit. Composing directly into a group
- * thread is out of this task's scope (posting into a group thread and
- * fanning a message out to its members is control-api/`app.ts`'s job —
- * not this task's Owned_Paths); `ComposeBox` is disabled for a group bot
- * rather than left silently broken against a 1:1-only endpoint.
+ * extension, not a `types.ts` edit. TASK-126 made the group compose
+ * endpoint real, so groups intentionally use the same enabled
+ * `ComposeBox` path as 1:1 threads.
  */
 interface GroupAwareBotSummary extends BotSummary {
   isGroup?: boolean;
@@ -80,7 +78,7 @@ export function ChatShell({
           isBotResponding={isBotResponding}
         />
         <ComposeBox
-          disabled={isBotResponding || !activeBot || activeBot.isGroup === true}
+          disabled={isBotResponding || !activeBot}
           onSend={(body) => activeBotId && onSend?.(activeBotId, body)}
         />
       </div>
