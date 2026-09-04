@@ -41,6 +41,12 @@ export {
   type EnvironmentOptions,
   type RunIdentity,
 } from "./environment.js";
+export {
+  BudgetTapError,
+  withBudgetTap,
+  type BudgetTapReport,
+  type BudgetTapSink,
+} from "./budgetTap.js";
 
 export type {
   AgentSdkQueryFn,
