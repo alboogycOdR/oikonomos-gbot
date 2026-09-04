@@ -1,0 +1,32 @@
+# Flutter/Dart build artifacts — apps/mobile is deliberately outside the
+# pnpm workspace (TASK-144), so it keeps its own .gitignore rather than
+# relying on / touching the repo root's.
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Platform build output (no Android/iOS toolchain on this machine per
+# TASK-144's Description — these are ignored defensively in case a
+# future wave scaffolds them).
+android/
+ios/
+linux/
+macos/
+windows/
+web/
+
+# Coverage
+coverage/
+
+# Local env / secrets — never commit an access token or API base URL
+# override that might carry one.
+.env
+.env.*
