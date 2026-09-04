@@ -34,3 +34,5 @@
            services/control-api/src/sse.test.ts
 [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
 ```
+
+- [2026-09-04T21:11:20Z] [CX] Resumed the dispatcher-preserved worktree, reviewed the revised composition design, and committed the complete implementation as `4473b15 feat(push): add device registry and notifications [TASK-145]`. Added migration 010 and the DB device-token module (idempotent registration, listing, permanent-failure removal), authenticated `POST /devices`, env-gated FCM HTTP transport plus collecting/disabled fakes, and post-run control-api notification derivation. Push delivery broadcasts to all registered devices with the per-user-auth limitation documented in code; provider errors log only a fixed message and are swallowed. Verified direct source search finds no logging of device tokens, FCM keys, or credentials. Tests run with Node v22.23.2: `pnpm --filter @oikonomos/db test` — 28 files, 139 passed/2 skipped; `pnpm --filter @oikonomos/control-api test` — 10 files, 140 passed; `pnpm -r test` — exit 0; `pnpm -r build` — exit 0; `pnpm lint` — exit 0. Worktree clean and ready for review.
