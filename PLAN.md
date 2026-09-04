@@ -4024,7 +4024,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-135's own honestly-documented finding — `packages/harness-factory/src/compose.ts`'s `RunParkPort`/`withPark` already exists and is wired all the way through `executeRun.ts`'s `park` option, and `PARK_REASONS` already includes `"approval_pending"` (confirmed by reading the source directly, not assumed) — but `chatRunDriver.ts` never supplies a `park` implementation, so a chat run that hits a pending approval today never actually transitions its DB `status` to `waiting_approval`. TASK-133/135's whole durable-resume mechanism is real, tested, and correct, but currently has nothing to act on in production because no chat run ever reaches the state it reconciles.
-**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, packages/db/src/runs.ts, packages/db/src/runs.test.ts
 **Depends_On:** TASK-135
 **Description:** **Investigate before implementing — this task's scope may need narrowing once the real shape is understood, same discipline as TASK-135.** At minimum: wire a real `RunParkPort` into `chatRunDriver.ts`'s `executeTaskRun` call whose `park()` implementation transitions the run's DB status to `waiting_approval` (a real `packages/db/src/runs.ts` accessor may be needed if one doesn't already cleanly support this transition from `started` — check `resumeRun`'s own status-transition list first). The harder question, to investigate and answer honestly rather than guess at: what does "resuming" a parked *chat* run actually mean once a human grants the approval — does the same Agent SDK session (`sessionRef`) genuinely continue mid-turn once the now-allowed tool call is retried, or does completing a chat run after approval need its own explicit re-entry path distinct from `resumeInterruptedRun`'s DB-only transition? If the full resume-and-continue-the-conversation mechanism turns out to be substantially bigger than wiring the park callback itself, it is legitimate to scope this task to "the run correctly reaches and is marked `waiting_approval`, proven end to end with a real chat run and a real pending approval" and open a further fast-follow for the continue-after-approval half — do not silently build a partial mechanism without saying so.
 **Acceptance_Criteria:**
@@ -4034,10 +4034,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-136-s5
 **Started_At:** 2026-09-04T15:23:55Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T15:26:10Z] [SV:S5] Blocked: OWNERSHIP_CONFLICT — confirmed via full-file read + grep that no `packages/db/src/runs.ts` accessor ever writes `waiting_approval` as a target status today (only ever appears as a legal *source* status other transitions check from); the project's own N-rule forbids raw SQL outside packages/db, so this genuinely cannot be worked around from services/worker alone.
+- [2026-09-04T17:31:00Z] [ORCH] Triaged: legitimate, independently re-confirmed the same grep result myself before granting. No collision (TASK-133/134 both already merged, nothing else active touches runs.ts). Added packages/db/src/runs.ts + its test to Owned_Paths. Resuming S5.
+**Artifacts:** dossiers/TASK-136.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T15:23:55Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T17:31:00Z
