@@ -1,7 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import { Database, type Approval, type Capability, type DatabaseOptions, type Message, type Role, type RoleGrant, type Task, type Thread } from "@oikonomos/db";
+import {
+  Database,
+  insertMessage,
+  listAllThreadsWithMembers,
+  listThreadMembers,
+  type Approval,
+  type Capability,
+  type DatabaseOptions,
+  type GroupThread,
+  type Message,
+  type Role,
+  type RoleGrant,
+  type Task,
+  type Thread,
+} from "@oikonomos/db";
 
 import { buildApp } from "./app.js";
 import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
@@ -16,6 +30,10 @@ function authHeaders() {
 
 function makeThread(): Thread {
   return { id: threadId, roleId, title: null, createdAt: new Date(), updatedAt: new Date() };
+}
+
+function makeGroupThread(): GroupThread {
+  return { id: "22222222-2222-2222-2222-222222222222", title: "Planning", createdAt: new Date(), updatedAt: new Date(), memberRoleIds: [roleId, "second-bot"] };
 }
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
@@ -65,6 +83,8 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     listRoles: async () => { calls.push("listRoles"); return [makeRole()]; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
+    createGroupThread: async (input) => ({ ...makeGroupThread(), title: input.title ?? null, memberRoleIds: input.roleIds }),
+    listAllThreadsWithMembers: async () => [makeThread()],
     insertMessage: async (input) => { calls.push("insertMessage"); return makeMessage(input); },
     listMessages: async () => { calls.push("listMessages"); return [makeMessage()]; },
     listTasks: async () => ({ tasks: [], nextCursor: null }),
@@ -89,6 +109,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "POST" as const, url: "/roles", payload: { name: "Bot", description: "d" } },
       { method: "GET" as const, url: "/threads" },
       { method: "POST" as const, url: "/threads", payload: { roleId } },
+      { method: "POST" as const, url: "/threads/group", payload: { roleIds: [roleId, "second-bot"] } },
       { method: "POST" as const, url: `/roles/${roleId}/grants`, payload: { capabilityId: "email.send", maxTier: "T3_external" } },
       { method: "GET" as const, url: `/roles/${roleId}/grants` },
       { method: "DELETE" as const, url: `/roles/${roleId}/grants/email.send` },
@@ -143,6 +164,36 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await app.close();
   });
 
+  it("creates group threads and lists 1:1 and group summaries with their distinct shapes", async () => {
+    const groupThread = makeGroupThread();
+    const { deps } = createDeps({
+      createGroupThread: async (input) => ({ ...groupThread, title: input.title ?? null, memberRoleIds: input.roleIds }),
+      listAllThreadsWithMembers: async () => [makeThread(), groupThread],
+      listRoles: async () => [makeRole(), makeRole({ roleId: "second-bot", name: "Second bot", description: "Also helpful" })],
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const created = await app.inject({ method: "POST", url: "/threads/group", headers: authHeaders(), payload: { roleIds: [roleId, "second-bot"], title: " Planning " } });
+    expect(created.statusCode).toBe(201);
+    expect(JSON.parse(created.body)).toMatchObject({ title: "Planning", memberRoleIds: [roleId, "second-bot"] });
+
+    const listed = JSON.parse((await app.inject({ method: "GET", url: "/threads", headers: authHeaders() })).body);
+    expect(listed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: threadId, roleId, botName: "Chat bot", botDescription: "Helpful" }),
+      expect.objectContaining({ id: groupThread.id, memberRoleIds: [roleId, "second-bot"], memberNames: ["Chat bot", "Second bot"] }),
+    ]));
+    expect(listed.find((thread: { id: string }) => thread.id === groupThread.id)).not.toHaveProperty("botName");
+    await app.close();
+  });
+
+  it("rejects malformed group-thread requests before calling the port", async () => {
+    const { deps, calls } = createDeps();
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({ method: "POST", url: "/threads/group", headers: authHeaders(), payload: { roleIds: [roleId] } });
+    expect(response.statusCode).toBe(400);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
   it("posts a user message, creates a tagged task, and starts the run without blocking", async () => {
     const { deps, calls } = createDeps();
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
@@ -186,6 +237,19 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const result = await app.inject({ method: "GET", url: `/threads/${threadId}/messages`, headers: authHeaders() });
     expect(JSON.parse(result.body)[0].approval.max_tier).toBeNull();
+    await app.close();
+  });
+
+  it("attributes group-thread messages to their sender role and name", async () => {
+    const senderRoleId = "second-bot";
+    const { deps } = createDeps({
+      listMessages: async () => [makeMessage({ role: "bot", senderRoleId })],
+      listRoles: async () => [makeRole({ roleId: senderRoleId, name: "Second bot" })],
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({ method: "GET", url: `/threads/${makeGroupThread().id}/messages`, headers: authHeaders() });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)[0]).toMatchObject({ senderRoleId, senderName: "Second bot" });
     await app.close();
   });
 
@@ -456,4 +520,60 @@ integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () 
       }
     },
   );
+});
+
+integration("Group-thread control-api routes — real Postgres (TASK-121)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("creates real memberships, lists 1:1 and group summaries, and attributes a group message", async () => {
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const createRole = async (name: string) => {
+        const response = await app.inject({
+          method: "POST", url: "/roles", headers: authHeaders(),
+          payload: { name, description: `${name} fixture` },
+        });
+        expect(response.statusCode).toBe(201);
+        return JSON.parse(response.body) as { id: string; name: string };
+      };
+      const first = await createRole(`Group first ${randomUUID()}`);
+      const second = await createRole(`Group second ${randomUUID()}`);
+
+      const oneToOneResponse = await app.inject({
+        method: "POST", url: "/threads", headers: authHeaders(), payload: { roleId: first.id },
+      });
+      expect(oneToOneResponse.statusCode).toBe(201);
+
+      const groupResponse = await app.inject({
+        method: "POST", url: "/threads/group", headers: authHeaders(),
+        payload: { roleIds: [first.id, second.id], title: "Real group fixture" },
+      });
+      expect(groupResponse.statusCode).toBe(201);
+      const group = JSON.parse(groupResponse.body) as { id: string; memberRoleIds: string[] };
+      expect(group.memberRoleIds).toEqual([first.id, second.id]);
+      expect((await listThreadMembers(options, group.id)).map((member) => member.roleId)).toEqual(
+        expect.arrayContaining([first.id, second.id]),
+      );
+      expect((await listAllThreadsWithMembers(options)).find((thread) => thread.id === group.id)).toMatchObject({
+        memberRoleIds: expect.arrayContaining([first.id, second.id]),
+      });
+
+      await insertMessage(options, { threadId: group.id, role: "bot", body: "Hello from the second bot", senderRoleId: second.id });
+      const listed = JSON.parse((await app.inject({ method: "GET", url: "/threads", headers: authHeaders() })).body) as Array<Record<string, unknown>>;
+      expect(listed).toEqual(expect.arrayContaining([
+        expect.objectContaining({ roleId: first.id, botName: first.name }),
+        expect.objectContaining({ id: group.id, memberRoleIds: expect.arrayContaining([first.id, second.id]), memberNames: expect.arrayContaining([first.name, second.name]) }),
+      ]));
+      const groupSummary = listed.find((thread) => thread.id === group.id) as { memberRoleIds: string[]; memberNames: string[] };
+      const namesByRoleId = new Map([[first.id, first.name], [second.id, second.name]]);
+      expect(groupSummary.memberRoleIds.map((memberRoleId) => namesByRoleId.get(memberRoleId))).toEqual(groupSummary.memberNames);
+
+      const messages = JSON.parse((await app.inject({ method: "GET", url: `/threads/${group.id}/messages`, headers: authHeaders() })).body);
+      expect(messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({ body: "Hello from the second bot", senderRoleId: second.id, senderName: second.name }),
+      ]));
+    } finally {
+      await app.close();
+    }
+  });
 });

@@ -10,6 +10,7 @@ import {
   Database,
   createTask as dbCreateTask,
   createRole as dbCreateRole,
+  createGroupThread as dbCreateGroupThread,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
   insertMessage as dbInsertMessage,
   getAuditEventsForRun as dbGetAuditEventsForRun,
@@ -20,12 +21,14 @@ import {
   listRuns as dbListRuns,
   listTasks as dbListTasks,
   listThreads as dbListThreads,
+  listAllThreadsWithMembers as dbListAllThreadsWithMembers,
   type AuditEvent,
   type Capability,
   type DatabaseOptions,
   type NewTask,
   type NewRole,
   type NewThread,
+  type NewGroupThread,
   type NewMessage,
   type PendingApprovalFilter,
   type Approval,
@@ -38,6 +41,7 @@ import {
   type Role,
   type RoleGrant,
   type Thread,
+  type GroupThread,
   type Message,
   type MessageListOptions,
 } from "@oikonomos/db";
@@ -69,6 +73,8 @@ export interface ControlApiDeps {
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
+  createGroupThread(input: NewGroupThread): Promise<GroupThread>;
+  listAllThreadsWithMembers(): Promise<Array<Thread | GroupThread>>;
   insertMessage(input: NewMessage): Promise<Message>;
   listMessages(threadId: string, options?: MessageListOptions): Promise<Message[]>;
   listTasks(filter?: TaskListFilter): Promise<TaskListPage>;
@@ -112,6 +118,8 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     listRoles: (filter) => dbListRoles(options, filter),
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),
+    createGroupThread: (input) => dbCreateGroupThread(options, input),
+    listAllThreadsWithMembers: () => dbListAllThreadsWithMembers(options),
     insertMessage: (input) => dbInsertMessage(options, input),
     listMessages: (threadId, listOptions) => dbListMessages(options, threadId, listOptions),
     listTasks: (filter) => dbListTasks(options, filter),
