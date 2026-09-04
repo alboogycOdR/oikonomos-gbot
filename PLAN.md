@@ -3869,7 +3869,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
@@ -3881,12 +3881,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A role with NO `send_to_role` grant cannot invoke it — a real `policy.decision` deny event, tested
 - [ ] The typed-handoff path (`handoffKind`/`factRef`) is reachable through the tool, not just the untyped free-text path — tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-131-cx9
+**Started_At:** 2026-09-04T13:36:49Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T15:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T13:36:49Z
