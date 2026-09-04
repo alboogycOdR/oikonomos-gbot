@@ -4281,7 +4281,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
@@ -4305,9 +4305,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T21:12:08Z] [SV:CX] Implemented device registry, authenticated registration route, env-gated FCM transport, and broadcast post-chat-run push triggers; committed and documented verification.
 **Artifacts:** infra/postgres/migrations/010_device_tokens.up.sql, infra/postgres/migrations/010_device_tokens.down.sql, packages/db/src/deviceTokens.ts, packages/db/src/deviceTokens.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/pushTransport.ts, services/control-api/src/pushTransport.test.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, dossiers/TASK-145.md
 **Test_Evidence:** Node v22.23.2: pnpm --filter @oikonomos/db test (28 files, 139 passed/2 skipped); pnpm --filter @oikonomos/control-api test (10 files, 140 passed); pnpm -r test exit 0; pnpm -r build exit 0; pnpm lint exit 0.
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass — and notably, this survived its session being killed mid-write: the resumed builder committed the preserved work exactly as instructed rather than restarting, so nothing was lost. Territory clean (13 files, all Owned_Paths). The trigger redesign I specified after CX's original ownership block is implemented faithfully: `notifyAfterChatRun` lives entirely in `ports.ts`, awaits `runChatTask`, then derives the event from the run's own persisted state (pending approvals for that run -> approval-pending, else run-completed) — worker and approvals packages untouched, which was the whole point of moving the trigger rather than widening territory into TASK-146's active files. Broadcast semantics carry the required inline rationale naming per-user auth as the condition for change, so the limitation is documented where a future reader will hit it, not buried. Fail-safe is real and per-device: each `send` is individually try/caught, so one bad token cannot suppress the rest or fail the run. N4 swept directly across the whole diff — every error message carries only HTTP status codes or generic text, no token, key, or credential value anywhere, including the FCM OAuth failure paths. Every acceptance criterion has a dedicated test: the db module's single test is a deliberate full-lifecycle case (idempotent re-register preserving createdAt, list, remove) rather than three fragments, and ports.test.ts covers all four trigger/gating cases by name. ORCH independently re-ran against real Postgres: control-api 140/140, db 139/141 (2 pre-existing skips), full `pnpm -r build` and `pnpm lint` clean. Merged --no-ff. **Unlocks TASK-149** (still also needs TASK-148).
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T21:12:08Z
 
 ### TASK-146
