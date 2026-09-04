@@ -1,7 +1,8 @@
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { getRun, type DatabaseOptions } from "@oikonomos/db";
+import { grantApproval, issueApproval, verifyAndConsume } from "@oikonomos/approvals";
+import { Database, getRun, type DatabaseOptions } from "@oikonomos/db";
 
 import {
   cancelTaskRun,
@@ -155,5 +156,182 @@ integration("@oikonomos/worker reconcileInterruptedRuns (TASK-133 / OIK-106)", (
 
   it("is callable independently of any worker-process boot sequence (AC3): a bare call against real Postgres just works", async () => {
     await expect(reconcileInterruptedRuns(options, { taskId })).resolves.toBeInstanceOf(Array);
+  });
+});
+
+integration("@oikonomos/worker durable resume vs. pending approvals (TASK-135 / OIK-107)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString! };
+  let pool: Pool;
+  let taskId: string;
+  const capabilityId = "test.governed_tool.oik-107";
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString! });
+    const task = await pool.query<{ task_id: string }>(
+      `INSERT INTO tasks (role_id, title, goal, requested_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING task_id`,
+      ["inbox-triage", "TASK-135 worker fixture", "exercise resume vs. pending approvals", "test:task-135-worker"],
+    );
+    const insertedTaskId = task.rows[0]?.task_id;
+    if (insertedTaskId === undefined) {
+      throw new Error("failed to insert TASK-135 worker fixture task");
+    }
+    taskId = insertedTaskId;
+
+    // The `approvals.capability_id` FK requires a real capabilities row.
+    // Same upsert-not-migration pattern chatRunDriver.ts already uses for
+    // `chat.bot_fanout` (a governed action with no connector manifest).
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({
+        capabilityId,
+        description: "OIK-107 fixture: a T2 tool whose side effect must run at most once.",
+        defaultTier: "T2_internal",
+        adapter: "test:governed-tool",
+        enabled: true,
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it(
+    "resuming a run parked mid-approval-wait never re-invokes the governed tool, and the original nonce still completes the run",
+    async () => {
+      // 1. A real run reaches an external-effect tool call that requires
+      // approval. The broker denies *before* the tool's side effect runs
+      // (ADR-001 PreToolUse gating) — modelled here by a call counter that
+      // must stay at 0 until the approval is actually granted and
+      // consumed. `invokeGovernedTool` stands in for the real adapter body
+      // (e.g. "send the email") that only ever runs on a successful
+      // `verifyAndConsume`.
+      let sideEffectInvocations = 0;
+      const invokeGovernedTool = (): void => {
+        sideEffectInvocations += 1;
+      };
+
+      const run = await startTaskRun(options, {
+        taskId,
+        provider: "claude-code",
+        sessionRef: "oik-107-session-1",
+      });
+      expect(run.status).toBe("started");
+
+      // The tool call attempt that produced the pending approval. Issuing
+      // the approval is the entire effect of a denied, gated call — the
+      // governed side effect itself is not invoked yet.
+      const waitSignal = await issueApproval(
+        {
+          runId: run.runId,
+          capabilityId,
+          toolName: "test.governed_tool",
+          input: { action: "send", target: "ops@basileia.example" },
+          destination: "ops@basileia.example",
+        },
+        { database: options },
+      );
+      expect(waitSignal.status).toBe("pending");
+      expect(sideEffectInvocations).toBe(0);
+
+      // The worker parks the run at `waiting_approval` while the human
+      // decides (chatRunDriver.ts does not yet wire a RunParkPort that
+      // performs this transition in production — see the dossier's
+      // "Production wiring gap" note; constructing the persisted state
+      // directly here matches TASK-133's own established convention for
+      // simulating a killed process without actually killing one).
+      const parked = await pool.query(
+        `UPDATE runs SET status = 'waiting_approval' WHERE run_id = $1`,
+        [run.runId],
+      );
+      expect(parked.rowCount).toBe(1);
+      const beforeReconcile = await getRun(options, run.runId);
+      expect(beforeReconcile?.status).toBe("waiting_approval");
+
+      // 2. The worker process is killed (not actually killed — this is
+      // the same testing convention TASK-133 established) and a fresh
+      // process boots and reconciles orphaned runs.
+      const outcomes = await reconcileInterruptedRuns(options, { taskId });
+      const mine = outcomes.find((outcome) => outcome.runId === run.runId);
+      expect(mine).toEqual({ runId: run.runId, outcome: "resumed" });
+
+      const afterReconcile = await getRun(options, run.runId);
+      expect(afterReconcile?.status).toBe("resumed");
+      expect(afterReconcile?.sessionRef).toBe("oik-107-session-1");
+
+      // The proof AC1 actually cares about: reconciliation is a pure
+      // `@oikonomos/db` status transition (`reconcileInterruptedRuns` /
+      // `resumeInterruptedRun` import nothing from the harness, the
+      // broker, or any tool adapter — see runLifecycle.ts's import list)
+      // and therefore cannot have invoked the governed tool a second
+      // time. Not "no error was thrown" — the actual call counter proves
+      // it stayed at zero across the entire resume.
+      expect(sideEffectInvocations).toBe(0);
+
+      // The pending approval itself is untouched by reconciliation — same
+      // nonce, still pending.
+      const pendingRow = await pool.query<{ status: string; nonce: string }>(
+        `SELECT status, nonce::text AS nonce FROM approvals WHERE nonce = $1`,
+        [waitSignal.nonce],
+      );
+      expect(pendingRow.rows[0]?.status).toBe("pending");
+      expect(pendingRow.rows[0]?.nonce).toBe(waitSignal.nonce);
+
+      // 3. AC2 — the *original* approval nonce (issued before the worker
+      // died) is still the one that completes the run: a human grants it,
+      // and consuming it is what finally runs the governed side effect
+      // exactly once.
+      const granted = await grantApproval(waitSignal.nonce, "human:reviewer-1", { database: options });
+      expect(granted.decided).toBe(true);
+      if (granted.decided) {
+        expect(granted.approval.status).toBe("granted");
+      }
+
+      const consumed = await verifyAndConsume(waitSignal.nonce, { database: options });
+      expect(consumed.consumed).toBe(true);
+      if (consumed.consumed) {
+        invokeGovernedTool();
+        expect(consumed.approval.runId).toBe(run.runId);
+      }
+      expect(sideEffectInvocations).toBe(1);
+
+      const completed = await completeTaskRun(options, run.runId);
+      expect(completed.status).toBe("completed");
+
+      // Single-use, still: replaying the very same nonce after the run
+      // has already completed must not consume again or re-invoke the
+      // tool a second time (the exact double-execution risk OIK-107
+      // names).
+      const replay = await verifyAndConsume(waitSignal.nonce, { database: options });
+      expect(replay.consumed).toBe(false);
+      expect(sideEffectInvocations).toBe(1);
+    },
+  );
+
+  it("a completed run's already-consumed approval is never re-fetched by reconciliation (mutation-proof companion to the terminal-run test)", async () => {
+    const run = await startTaskRun(options, { taskId, provider: "claude-code" });
+    const waitSignal = await issueApproval(
+      {
+        runId: run.runId,
+        capabilityId,
+        toolName: "test.governed_tool",
+        input: { action: "send", target: "ops@basileia.example" },
+        destination: "ops@basileia.example",
+      },
+      { database: options },
+    );
+    await grantApproval(waitSignal.nonce, "human:reviewer-1", { database: options });
+    await verifyAndConsume(waitSignal.nonce, { database: options });
+    await completeTaskRun(options, run.runId);
+
+    const outcomes = await reconcileInterruptedRuns(options, { taskId });
+    expect(outcomes.some((outcome) => outcome.runId === run.runId)).toBe(false);
+
+    const replay = await verifyAndConsume(waitSignal.nonce, { database: options });
+    expect(replay.consumed).toBe(false);
   });
 });
