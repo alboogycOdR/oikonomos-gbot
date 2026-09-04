@@ -4280,7 +4280,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
@@ -4297,13 +4297,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-145-cx
 **Started_At:** 2026-09-04T19:36:20Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T19:38:46Z] [SV:CX] Preflight completed; implementation stopped before code changes because approval-created notifications require an unowned worker/approval callback.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Approval creation occurs in services/worker/src/chatRunDriver.ts via packages/approvals/src/issue.ts, outside TASK-145 Owned_Paths. Add an approval-created callback there or widen ownership before implementation.
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T19:36:20Z
+**Updated_At:** 2026-09-04T19:38:46Z
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
