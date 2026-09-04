@@ -1,0 +1,5 @@
+# TASK-125 — Group-thread DB accessors
+
+## Work Log
+
+- [2026-09-04T05:52:22Z] [CX] Started on `task/TASK-125-cx`. Preflight against the dispatcher main checkout reported: `FILE packages/db/src/threads.ts -> exists, 193 line(s), 7638 bytes`; `FILE packages/db/src/threads.test.ts -> exists, 223 line(s), 12337 bytes`. Blocked before implementation: the required public accessors cannot be consumed by TASK-121 under the current territory. `packages/db/package.json` exports only `.` to `dist/index.js`/`dist/index.d.ts`; control-api imports database APIs solely from `@oikonomos/db`; and `packages/db/src/index.ts` is the existing barrel that exports the current thread APIs. TASK-125 does not own `packages/db/src/index.ts`, so exporting `createGroupThread`, `listAllThreadsWithMembers`, and their types would violate Owned_Paths. Creating them only in `threads.ts` would leave the package entrypoint—and therefore TASK-121—unable to import them. Requested resolution: add `packages/db/src/index.ts` to TASK-125 Owned_Paths, then resume.
