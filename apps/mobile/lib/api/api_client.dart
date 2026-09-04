@@ -221,6 +221,21 @@ class ApiClient {
         .toList();
   }
 
+  /// TASK-149 (Mobile Wave 2b) — `POST /devices`, authenticated with the
+  /// session cookie like every other call. `platform` must be one of the
+  /// wire values `packages/db/src/deviceTokens.ts`'s `devicePlatforms`
+  /// accepts (`"android" | "ios" | "web"`) — see
+  /// `lib/push/device_platform.dart`. The device token is passed straight
+  /// through to the request body and never logged by this method or any
+  /// caller.
+  Future<void> registerDevice(String token, String platform) async {
+    await _request(
+      'POST',
+      '/devices',
+      body: {'token': token, 'platform': platform},
+    );
+  }
+
   void close() {
     _client.close();
   }
