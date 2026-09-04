@@ -93,6 +93,7 @@ describe("chat run driver governance helpers", () => {
     expect(combineConnectorContexts(gmail)).toMatchObject({ allowedTools: ["mcp__gmail__list"], mcpServers: { gmail: expect.anything() } });
     expect(combineConnectorContexts(gmail, workspace)).toMatchObject({ allowedTools: ["mcp__gmail__list", "mcp__workspace__list"] });
     expect(combineConnectorContexts(gmail, workspace, calendar, drive)).toMatchObject({
+      connectorIds: ["gmail", "workspace", "google-calendar", "google-drive"],
       allowedTools: ["mcp__gmail__list", "mcp__workspace__list", "mcp__google-calendar__list", "mcp__google-drive__list"],
       mcpServers: { gmail: expect.anything(), workspace: expect.anything(), "google-calendar": expect.anything(), "google-drive": expect.anything() },
     });
@@ -552,7 +553,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         const otherServerName = serverName === "google-calendar" ? "google-drive" : "google-calendar";
         const connector = sdkOptions.mcpServers?.[serverName];
         if (connector === undefined) throw new Error(`TASK-139 expected ${serverName} to be mounted`);
-        if (toolName.includes("calendar")) expect(sdkOptions.mcpServers?.[otherServerName]).toBeUndefined();
+        expect(sdkOptions.mcpServers?.[otherServerName]).toBeUndefined();
         expect(sdkOptions.allowedTools).toContain(`${toolName}(*)`);
         const allowed = await callMountedTool(
           input,
@@ -584,16 +585,20 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     };
 
     try {
-      // Calendar has a grant; Drive does not. The absent mount assertion in
+      // Calendar has a grant; Drive does not. The absent-mount assertion in
       // runWith is mutation-proof: removing the per-connector grant filter
       // mounts Drive and makes this test fail before the tool call.
       await runWith("mcp__google-calendar__list_events");
       const grantDatabase = new Database(options);
       try {
+        await pool.query("DELETE FROM role_grants WHERE role_id = $1 AND capability_id = 'calendar.list'", [roleId]);
         await grantDatabase.upsertRoleGrant({ roleId, capabilityId: "drive.search", maxTier: "T0_observe", constraints: {} });
       } finally {
         await grantDatabase.close();
       }
+      // Reverse direction is independently asserted: Drive has a grant while
+      // Calendar does not. A filter removal mounts Calendar and reddens the
+      // unconditional absent-mount assertion in runWith.
       await runWith("mcp__google-drive__search_files");
       expect(calls).toEqual(["list_events", "search_files"]);
     } finally {

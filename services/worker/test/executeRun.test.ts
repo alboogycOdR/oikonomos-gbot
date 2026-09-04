@@ -5,7 +5,8 @@ import { CodexProvider, GrokProvider } from "@oikonomos/agent-providers";
 import { L2_PERMISSION_MODE } from "@oikonomos/harness-factory";
 import { describe, expect, it } from "vitest";
 
-import { executeTaskRun, toScopedAllowedTool, WorkerExecutionError } from "../src/executeRun.js";
+import { combineConnectorContexts } from "../src/chatRunDriver.js";
+import { executeTaskRun, toScopedAllowedTool, WorkerExecutionError, type ConnectorContext } from "../src/executeRun.js";
 import { createGatedSubprocessProviders } from "../src/subprocessProviders.js";
 
 import {
@@ -115,13 +116,42 @@ describe("executeTaskRun — production caller", () => {
       connector: gmailConnectorContext(),
     });
 
-    expect(result.connector).toEqual({ connectorId: "gmail", mcpServerNames: ["gmail"] });
+    expect(result.connector).toEqual({ connectorIds: ["gmail"], mcpServerNames: ["gmail"] });
     expect(result.runtime.harness.config.allowedTools).toEqual([
       "Read(src/**)",
       `${GMAIL_LIST_TOOL}(*)`,
       `${GMAIL_DRAFT_TOOL}(*)`,
     ]);
     expect(Object.keys((capture.mcpServers as object) ?? {})).toEqual(["gmail"]);
+  });
+
+  it("reports every identity for a run mounting three connectors (TASK-146)", async () => {
+    const context = (id: string): ConnectorContext => ({
+      manifest: { connector_id: id, mcp_server: { name: id }, tools: [] },
+      mcpServers: { [id]: { transport: "http", url: `http://${id}.fixture.invalid/mcp` } },
+      allowedTools: [`mcp__${id}__list`],
+    });
+    const connector = combineConnectorContexts(
+      context("gmail"),
+      context("google-calendar"),
+      context("google-drive"),
+    );
+    if (connector === undefined) throw new Error("TASK-146 expected a merged connector context");
+
+    const result = await executeTaskRun({
+      prompt: "inspect mounted connectors",
+      run: workerRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createWorkerBrokerDeps(createDecisionLog()),
+      auditSink: createCompletionSink(),
+      queryFn: workerQueryFn,
+      connector,
+    });
+
+    expect(result.connector).toEqual({
+      connectorIds: ["gmail", "google-calendar", "google-drive"],
+      mcpServerNames: ["gmail", "google-calendar", "google-drive"],
+    });
   });
 
   it("passes mcpServers into composeHarness and nowhere else", () => {

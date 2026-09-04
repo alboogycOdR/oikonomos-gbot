@@ -53,13 +53,15 @@ export interface ConnectorManifestSlice {
  */
 export interface ConnectorContext {
   readonly manifest: ConnectorManifestSlice;
+  /** All mounted identities when this context is composed from multiple connectors. */
+  readonly connectorIds?: readonly string[];
   readonly mcpServers: McpServers;
   readonly allowedTools: readonly string[];
 }
 
 /** Names only — never urls, headers, or other secret material (N4). */
 export interface ConnectorMount {
-  readonly connectorId: string;
+  readonly connectorIds: readonly string[];
   readonly mcpServerNames: readonly string[];
 }
 
@@ -120,7 +122,9 @@ function connectorMount(connector: ConnectorContext | undefined): ConnectorMount
     return undefined;
   }
   return {
-    connectorId: connector.manifest.connector_id,
+    connectorIds: Object.freeze(connector.connectorIds === undefined
+      ? [connector.manifest.connector_id]
+      : [...connector.connectorIds]),
     mcpServerNames: Object.freeze([...Object.keys(connector.mcpServers)]),
   };
 }
@@ -229,6 +233,15 @@ function assertConnectorContext(connector: ConnectorContext): void {
   if (!isNonEmptyString(id) || !isNonEmptyString(serverName)) {
     throw new WorkerExecutionError(
       "connector context requires manifest.connector_id and manifest.mcp_server.name",
+      "INVALID_CONNECTOR",
+    );
+  }
+  if (
+    connector.connectorIds !== undefined
+    && (!Array.isArray(connector.connectorIds) || connector.connectorIds.some((connectorId) => !isNonEmptyString(connectorId)))
+  ) {
+    throw new WorkerExecutionError(
+      "connector context connectorIds must be non-empty strings",
       "INVALID_CONNECTOR",
     );
   }
