@@ -4099,7 +4099,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-140
 **Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-030 (capability-level kill switch) and OIK-112 (drill); packages/broker/src/capabilityRegistry.ts (`enabledToolNames`, built and tested at construction time only); packages/harness-factory/src/hooks/pretooluse.ts (every tool call POSTs live to `POST /v1/broker/pretooluse` — no per-run caching at the hook layer, confirmed by reading it directly)
@@ -4112,12 +4112,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The platform-wide case (flip every capability off at once) is also tested, not just the single-capability case
 - [ ] `docs/runbooks/kill-switch-drill.md` documents the real, just-proven procedure — not a hypothetical one
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-140-cx
+**Started_At:** 2026-09-04T17:34:07Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T18:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:34:07Z
