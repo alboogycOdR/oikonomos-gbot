@@ -4215,7 +4215,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111
@@ -4229,12 +4229,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Platform-wide spend exceeding the R30,000/month ceiling denies further tool calls across every routine — tested
 - [ ] Fail-closed on a budget-check failure (DB unreachable, malformed record) — matches CLAUDE.md non-negotiable 3, tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-143-cx
+**Started_At:** 2026-09-04T18:10:06Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T18:10:06Z
