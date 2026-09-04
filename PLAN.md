@@ -3901,7 +3901,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-132
 **Title:** OIK-108 — wire pg-boss to actually fire real routines
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-108); TASK-130's `WorkerJobQueue` (the pg-boss plumbing this task consumes); `services/worker/src/scheduler/scheduler.ts`'s existing `fireRoutine(fire: RoutineFire, ports: RoutineFirePorts)` and `packages/db/src/routines.ts`'s `createRoutine`/`listRoutines`/`recordRoutineFire` (both already built and tested — do not reimplement, wire to them)
@@ -3913,15 +3913,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A routine whose target environment is down is recorded as `missed`, not queued (exercises `RoutineFirePorts.environmentIsUp` returning false) — tested
 - [ ] `recordRoutineFire` is called with the correct outcome in both cases, and `last_fire_at`/`next_fire_at`/`last_fire_status` reflect it — tested against real Postgres, not asserted from the call alone
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-132-cx
+**Started_At:** 2026-09-04T14:14:04Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T14:14:04Z
 
 ### TASK-133
 **Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
