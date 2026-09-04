@@ -4412,7 +4412,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-143 (frozen; its Progress_Notes carry the full architectural finding: `withBudgetSink` decorates `AgentProvider`, which the primary SDK chat path never touches); packages/harness-factory/src/ports.ts (`AgentSdkQueryFn` — stream typed `AsyncIterable<unknown>`, no cost shape anywhere); packages/harness-factory/src/index.ts (`defaultSdkQuery` — the real `@anthropic-ai/claude-agent-sdk` `query()` binding); packages/agent-providers/src/budget.ts (the existing pattern to mirror: fail-closed decorator, `BudgetReport` shape); branch task/TASK-143-cx (CX's own preserved investigation dossier)
@@ -4431,9 +4431,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T19:58:30Z] [SV:CX9] Stopped before implementation: assigned branch task/TASK-150-cx9 is absent locally and among fetched refs; worktree remains on unrelated task/TASK-146-cx9.
 - [2026-09-04T22:15:00Z] [ORCH] Unblocked, and the ROOT CAUSE is now fixed rather than worked around. This is the third occurrence of the same defect (TASK-143/CX, TASK-150/CX9 — both Codex units; S5 never hit it): the dispatch prompt's opening line read "...claimed by the dispatcher before this session started - do not re-claim or re-branch", which parses as an absolute prohibition on branch creation and directly contradicts its own step 2 ("If newly claimed: create branch"). Both builders correctly refused to guess rather than risk an unauthorised action — that is the behaviour we want, the prompt was wrong. Rewrote scripts/dispatch.ps1's template: the intro now says "do NOT edit PLAN.md to claim it again... This says nothing about git branches: creating your task branch is your job, see step 2", and step 2 explicitly authorises `git checkout -b`, tells the builder to check with `git rev-parse --verify` rather than assume, and states that a missing branch is never a reason to block. Syntax-verified. Branch task/TASK-150-cx9 created by ORCH for this run; the fix means future dispatches will not need this. Also going into DEVDEPARTMENT_FEEDBACK_2026-09-04.md as a pack-level defect.
 - [2026-09-04T20:05:30Z] [SV:CX9] Implemented and committed SDK stream budget tap with focused tests; production call sites remain untouched.
+- [2026-09-04T22:25:00Z] [ORCH] Environment repair, not a task defect — and CX9's diagnosis was exactly right: cron-parser was present in the pnpm store but unlinked in this worktree (services/control-api/node_modules had no cron-parser entry). This is the known stale-workspace-link pattern that follows a `git merge master` bringing in a new dependency without a relink; it has now hit three different worktrees this session. Fixed directly: `pnpm install` with the pinned Node 22 (the shell default v23.10.0 violates some engines fields), then verified `pnpm -r build` green across all 19 workspaces before resuming. Nothing in this task's own territory was at fault. Resuming on task/TASK-150-cx9.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: services/control-api declares cron-parser@^5.10.0, but TypeScript cannot resolve it during pnpm -r build; the package exists in the pnpm store but is not linked/resolvable in this worktree.
-**Updated_By:** SV
+**Blocked_Reason:** —
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T20:05:30Z
