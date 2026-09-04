@@ -4049,7 +4049,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-137
 **Title:** Google Calendar connector session minter (Connectors-2a)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/connectors/google-calendar.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-calendar.yaml; TASK-127 (the exact pattern to mirror — `createGmailConnectorSessionMinter` composing `mcpConfigFromManifest` + a generic `createOAuthTokenProvider`-based wrapper)
@@ -4064,13 +4064,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-137-s5
 **Started_At:** 2026-09-04T17:33:10Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T17:40:11Z] [SV:S5] Implemented createGoogleCalendarConnectorSessionMinter mirroring TASK-127 Gmail pattern: mcpConfigFromManifest + local thin OAuth wrapper over the generic createOAuthTokenProvider (oauthTokenProvider.ts not in Owned_Paths, so wrapper kept local). Barrels (mcp/index.ts, src/index.ts) untouched per description, reserved for TASK-139. 6 new tests (bearer token shape, custom serverName, provider reuse, pool integration, secret non-leak on failure, TypeError when no oauth.resolve given).
+**Artifacts:** packages/connectors/src/mcp/googleCalendarSessionMinter.ts, packages/connectors/src/mcp/googleCalendarSessionMinter.test.ts, dossiers/TASK-137.md
+**Test_Evidence:** pnpm test -- googleCalendarSessionMinter (packages/connectors): 6/6 new tests pass; full connectors suite 14 files/125 passed/4 skipped. pnpm -r build: exit 0, 17/17 workspaces. pnpm lint (root eslint .): exit 0. pnpm -r test (full recursive, run twice): green except pre-existing unrelated flakes under shared compose Postgres load ΓÇö run1: 2 timeouts in packages/approvals/src/editApproval.test.ts; run2: 1 timeout in packages/db/src/runs.test.ts ΓÇö neither touches packages/connectors or this task's diff (git diff --stat mainco/master shows only the 2 new files); isolated rerun of the approvals failing test passes cleanly in ~5s alone, confirming contention not regression.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T17:33:10Z
+**Updated_At:** 2026-09-04T17:40:11Z
 
 ### TASK-138
 **Title:** Google Drive connector session minter (Connectors-2b)
