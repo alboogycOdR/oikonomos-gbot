@@ -4447,7 +4447,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-151
 **Title:** Fix the recurring registerCapabilities idempotency flake (concurrency-isolate the test)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/registerCapabilities.test.ts ("registerCapabilities PostgreSQL idempotency — leaves the complete declaration inventory byte-identical on a second registration", the failing case); services/worker/src/killSwitchDrill.test.ts (TASK-140 — flips EVERY capability's `enabled` flag platform-wide via `setAllCapabilitiesEnabled` and restores in a `finally`, a prime suspect for cross-test interference on the shared `capabilities` table); PLAN.md TASK-128/136/139/146 Test_Evidence entries (four separate tasks whose evidence this flake has muddied)
@@ -4462,10 +4462,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-151-cx9
 **Started_At:** 2026-09-04T21:20:59Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T21:32:49Z] [SV:CX9] Isolated registerCapabilities integration data in a per-run PostgreSQL schema; confirmed chatRunDriver fixture writes were the actual flake source, not the kill switch.
+**Artifacts:** services/worker/src/registerCapabilities.test.ts, dossiers/TASK-151.md
+**Test_Evidence:** Focused registration and kill-switch tests passed; pnpm --filter @oikonomos/worker test passed 5 consecutive unfiltered runs (each 13 files, 64 passed, 1 skipped); pnpm -r test, pnpm -r build, and pnpm lint completed successfully.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T21:20:59Z
+**Updated_At:** 2026-09-04T21:32:49Z
