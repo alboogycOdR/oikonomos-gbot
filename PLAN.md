@@ -4254,7 +4254,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-144
 **Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (locked decisions: Flutter, shared-token auth for now, single-owner territory model); apps/dashboard/src/lib/api.ts and apps/dashboard/src/lib/realtime.ts (the TS client this Dart client mirrors — same endpoints, same SSE Last-Event-ID resume semantics); services/control-api/src/auth.ts (POST /auth/login issues the httpOnly session cookie; a native client stores and replays that cookie itself); apps/dashboard/src/pages/LoginPage.tsx (the honest "single shared access token" login this screen mirrors)
@@ -4270,13 +4270,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No file outside apps/mobile/** touched (repo root .gitignore included)
 **Branch:** task/TASK-144-s5
 **Started_At:** 2026-09-04T19:36:08Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T19:46:25Z] [SV:S5] Flutter skeleton + Dart API client (login/roles/threads incl. group discrimination/messages/send) + SSE client (Last-Event-ID resume, stop-on-401, clean teardown) + login screen mirroring LoginPage.tsx, all built by hand under apps/mobile/** (outside pnpm workspace, own pubspec.yaml/.gitignore). flutter analyze: 0 issues. flutter test: 17/17 passed. No file outside apps/mobile/** touched.
+**Artifacts:** apps/mobile/pubspec.yaml, apps/mobile/.gitignore, apps/mobile/analysis_options.yaml, apps/mobile/lib/api/models.dart, apps/mobile/lib/api/exceptions.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/realtime/sse_client.dart, apps/mobile/lib/screens/login_screen.dart, apps/mobile/lib/screens/home_screen.dart, apps/mobile/lib/main.dart, apps/mobile/test/support/fake_http_client.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/realtime/sse_client_test.dart, apps/mobile/test/screens/login_screen_test.dart
+**Test_Evidence:** C:\tool\flutter\bin\flutter analyze -> 'No issues found! (ran in 7.1s)'. C:\tool\flutter\bin\flutter test -> '00:02 +17: All tests passed!' (9 api_client_test + 5 sse_client_test + 3 login_screen_test).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T19:36:08Z
+**Updated_At:** 2026-09-04T19:46:25Z
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
