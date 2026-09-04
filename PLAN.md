@@ -3905,7 +3905,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-132
 **Title:** OIK-108 — wire pg-boss to actually fire real routines
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-108); TASK-130's `WorkerJobQueue` (the pg-boss plumbing this task consumes); `services/worker/src/scheduler/scheduler.ts`'s existing `fireRoutine(fire: RoutineFire, ports: RoutineFirePorts)` and `packages/db/src/routines.ts`'s `createRoutine`/`listRoutines`/`recordRoutineFire` (both already built and tested — do not reimplement, wire to them)
@@ -3923,12 +3923,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T14:14:04Z] [SV:CX] Blocked: SPEC_AMBIGUITY — no persisted environment-health accessor for `environmentIsUp`, no routine-to-task-payload field mapping defined. Correctly declined to invent product semantics unilaterally.
 - [2026-09-04T16:45:00Z] [ORCH] Resolved both ambiguities (see Description). Resuming CX on task/TASK-132-cx.
-**Artifacts:** dossiers/TASK-132.md
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T14:24:25Z] [SV:CX] Finished: durable pg-boss routine polling with real DB scheduler ports, end-to-end active/hidden-role coverage. typecheck/test/build/lint all clean.
+**Artifacts:** services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/workerJobQueue.ts, services/worker/src/jobs/workerJobQueue.test.ts, dossiers/TASK-132.md
+**Test_Evidence:** CX: worker 40/40, build/lint/full-suite clean. ORCH independently re-ran: focused workerJobQueue 6/6; `pnpm --filter @oikonomos/worker test` surfaced 3 failures (the documented registerCapabilities flake plus 2 chatRunDriver.test.ts failures with a new-looking signature — RunNotFoundError, role_grants FK violation); full `pnpm -r test` showed only the registerCapabilities flake, chatRunDriver clean. Isolated re-run of chatRunDriver.test.ts alone: 10/10 clean — confirms shared-Postgres concurrency noise from running worker's full package suite together, not a regression (TASK-132's diff never touches chatRunDriver.ts).
+**Review_Findings:** APPROVE, first-pass. `routineJob.ts` correctly implements the resolved ambiguities (role-status proxy for environmentIsUp, name/definition.goal/routine:<id> task mapping); reuses `RoleRunScheduler.fireRoutine` rather than reimplementing firing logic. `workerJobQueue.ts` integration is clean: opt-in via `routinePolling` config (doesn't affect the heartbeat-only case), real durable cron via pg-boss's own `boss.schedule`, plus a direct `enqueueRoutinePoll()` for tests/bootstraps. Tests are rigorous — both AC1 (real due routine → real queued task, asserted via `listTasks`) and AC2 (hidden role → missed, asserted via zero tasks created) proven against real Postgres, and AC3 checked precisely (missed vs queued have correctly different `lastFireAt` mutation behavior, not just "some status got set"). Merged --no-ff. **Unlocks OIK-109 (cron/NL scheduling UI) as the natural next step, not yet scheduled.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:45:00Z
+**Updated_At:** 2026-09-04T16:38:00Z
 
 ### TASK-133
 **Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
