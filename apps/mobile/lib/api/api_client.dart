@@ -21,8 +21,8 @@ import 'models.dart';
 /// secret.
 class ApiClient {
   ApiClient({required String baseUrl, http.Client? httpClient})
-    : baseUrl = _stripTrailingSlash(baseUrl),
-      _client = httpClient ?? http.Client();
+      : baseUrl = _stripTrailingSlash(baseUrl),
+        _client = httpClient ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
@@ -94,11 +94,7 @@ class ApiClient {
     throw ApiException(message);
   }
 
-  Future<dynamic> _request(
-    String method,
-    String path, {
-    Object? body,
-  }) async {
+  Future<dynamic> _request(String method, String path, {Object? body}) async {
     final uri = Uri.parse('$baseUrl$path');
     late final http.Response response;
     switch (method) {
@@ -154,9 +150,7 @@ class ApiClient {
   Future<List<ThreadSummary>> listThreads() async {
     final json = await _request('GET', '/threads') as List<dynamic>;
     return json
-        .map(
-          (entry) => ThreadSummary.fromJson(entry as Map<String, dynamic>),
-        )
+        .map((entry) => ThreadSummary.fromJson(entry as Map<String, dynamic>))
         .toList();
   }
 
@@ -165,12 +159,10 @@ class ApiClient {
     String? after,
   }) async {
     final query = after == null ? '' : '?after=${Uri.encodeComponent(after)}';
-    final json =
-        await _request(
-              'GET',
-              '/threads/${Uri.encodeComponent(threadId)}/messages$query',
-            )
-            as List<dynamic>;
+    final json = await _request(
+      'GET',
+      '/threads/${Uri.encodeComponent(threadId)}/messages$query',
+    ) as List<dynamic>;
     return json
         .map((entry) => ThreadMessage.fromJson(entry as Map<String, dynamic>))
         .toList();
@@ -197,6 +189,36 @@ class ApiClient {
   Future<String> createThread(String roleId) async {
     final json = await _request('POST', '/threads', body: {'roleId': roleId});
     return (json as Map<String, dynamic>)['id'] as String;
+  }
+
+  /// Decides an approval using the same body and single-use semantics as
+  /// the dashboard. A 409 is an expected result: another client may already
+  /// have consumed this nonce, so callers can disable the card gracefully.
+  Future<bool> decideApproval(String nonce, String decision) async {
+    final uri = Uri.parse(
+      '$baseUrl/approvals/${Uri.encodeComponent(nonce)}/decide',
+    );
+    final response = await _client.post(
+      uri,
+      headers: _headers(),
+      body: jsonEncode({'decision': decision, 'decidedBy': 'mobile:operator'}),
+    );
+    _captureCookie(response);
+    if (response.statusCode == 409) return false;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    return true;
+  }
+
+  Future<List<Routine>> listRoutines(String roleId) async {
+    final json = await _request(
+      'GET',
+      '/roles/${Uri.encodeComponent(roleId)}/routines',
+    ) as List<dynamic>;
+    return json
+        .map((entry) => Routine.fromJson(entry as Map<String, dynamic>))
+        .toList();
   }
 
   void close() {

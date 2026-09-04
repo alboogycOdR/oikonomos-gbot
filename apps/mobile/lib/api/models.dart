@@ -137,6 +137,33 @@ class ApprovalRef {
   }
 }
 
+/// A scheduled routine returned by `GET /roles/:roleId/routines`.
+class Routine {
+  const Routine({
+    required this.id,
+    required this.name,
+    required this.schedule,
+    required this.lastFireAt,
+    required this.nextFireAt,
+  });
+
+  final String id;
+  final String name;
+  final String? schedule;
+  final String? lastFireAt;
+  final String? nextFireAt;
+
+  factory Routine.fromJson(Map<String, dynamic> json) {
+    return Routine(
+      id: json['routineId'] as String,
+      name: json['name'] as String,
+      schedule: json['schedule'] as String?,
+      lastFireAt: json['lastFireAt'] as String?,
+      nextFireAt: json['nextFireAt'] as String?,
+    );
+  }
+}
+
 class ThreadMessage {
   const ThreadMessage({
     required this.id,
