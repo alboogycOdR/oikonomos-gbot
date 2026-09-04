@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:oikonomos_mobile/api/api_client.dart';
 import 'package:oikonomos_mobile/api/exceptions.dart';
 import 'package:oikonomos_mobile/api/models.dart';
@@ -107,6 +110,31 @@ void main() {
       final request = fake.requests.last;
       expect(request.method, 'POST');
       expect(request.url.path, '/roles');
+      expect(request, isA<http.Request>());
+      final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+      expect(body, {'name': 'Analyst', 'description': 'Numbers'});
+    });
+
+    test('createThread posts roleId and returns the new thread id', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      // POST /threads returns the raw db Thread row (no botName/
+      // avatarSeed/lastMessagePreview) — only `id` is used by callers.
+      fake.queueJson(201, {
+        'id': 'thread-9',
+        'roleId': 'role-2',
+        'updatedAt': '2026-09-04T00:03:00Z',
+      });
+
+      final threadId = await client.createThread('role-2');
+      expect(threadId, 'thread-9');
+
+      final request = fake.requests.last;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/threads');
+      expect(request, isA<http.Request>());
+      final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+      expect(body, {'roleId': 'role-2'});
     });
 
     test('listThreads discriminates single vs group threads', () async {

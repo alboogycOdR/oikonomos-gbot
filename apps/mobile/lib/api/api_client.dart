@@ -27,6 +27,14 @@ class ApiClient {
   final String baseUrl;
   final http.Client _client;
 
+  /// TASK-147 (Mobile Wave 1b) — exposes the same [http.Client] instance
+  /// this class was constructed with, so a single request client (real
+  /// or, in widget tests, a [FakeHttpClient]) is shared between plain
+  /// REST calls here and the held-open SSE subscription
+  /// (`subscribeToThreadMessages`), rather than the SSE layer silently
+  /// opening a second, un-injectable `http.Client()` of its own.
+  http.Client get httpClient => _client;
+
   String? _sessionCookie;
 
   /// True once a session cookie has been captured by a successful [login].
@@ -175,6 +183,20 @@ class ApiClient {
       body: {'body': body},
     );
     return ThreadMessage.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// TASK-147 (Mobile Wave 1b) — `POST /threads`, the second call of the
+  /// create-bot sequence (mirrors
+  /// `apps/dashboard/src/components/chat/CreateBotDialog.tsx`'s
+  /// `postJson<CreatedThread>("/threads", { roleId })`). The server
+  /// (`services/control-api/src/app.ts`) returns the raw db `Thread` row
+  /// here, not the shaped `GET /threads` entry (no `botName`/
+  /// `avatarSeed`/`lastMessagePreview`) — only the new thread's `id` is
+  /// needed by callers, who reload the roster via [listThreads] for the
+  /// fully shaped entry, same as the web dialog's full-page reload.
+  Future<String> createThread(String roleId) async {
+    final json = await _request('POST', '/threads', body: {'roleId': roleId});
+    return (json as Map<String, dynamic>)['id'] as String;
   }
 
   void close() {
