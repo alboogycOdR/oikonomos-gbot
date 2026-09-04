@@ -24,14 +24,17 @@ void main() {
   testWidgets('BotAvatar renders initials and an accessible label', (
     tester,
   ) async {
+    final handle = tester.ensureSemantics();
     await tester.pumpWidget(
       const MaterialApp(
         home: BotAvatar(seed: 'seed-1', name: 'Concierge'),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.text('CO'), findsOneWidget);
     expect(find.bySemanticsLabel('Concierge avatar'), findsOneWidget);
+    handle.dispose();
   });
 
   testWidgets('BotAvatar color override wins over the seed-derived color', (

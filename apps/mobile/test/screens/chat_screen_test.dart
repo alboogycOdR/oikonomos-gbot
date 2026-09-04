@@ -78,9 +78,15 @@ void main() {
 
     expect(find.text('live reply'), findsOneWidget);
 
-    // Dispose cleanly instead of letting the controller dangle.
-    await tester.pumpWidget(const SizedBox());
+    // Close the controller *before* disposing the widget: the stream still
+    // has an active listener at this point, so `close()`'s returned Future
+    // completes once the `onDone` event is delivered (as it would for a
+    // real dropped connection). Closing after disposal — once
+    // `ChatScreen.dispose()` has already cancelled the subscription — would
+    // leave the single-subscription controller with no listener to ever
+    // deliver the done event to, and `close()` would never complete.
     await streamController.close();
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('leaving the screen closes the SSE subscription', (

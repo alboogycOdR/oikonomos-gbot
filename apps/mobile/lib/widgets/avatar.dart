@@ -72,25 +72,28 @@ class BotAvatar extends StatelessWidget {
     final resolvedColor = color ?? colorForSeed(seed);
     return Semantics(
       label: '$name avatar',
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: resolvedColor,
-          shape: shape == AvatarShape.circle
-              ? BoxShape.circle
-              : BoxShape.rectangle,
-          borderRadius: shape == AvatarShape.roundedSquare
-              ? BorderRadius.circular(size * 0.25)
-              : null,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          initialsOf(name),
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: size * 0.35,
+      container: true,
+      child: ExcludeSemantics(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: resolvedColor,
+            shape: shape == AvatarShape.circle
+                ? BoxShape.circle
+                : BoxShape.rectangle,
+            borderRadius: shape == AvatarShape.roundedSquare
+                ? BorderRadius.circular(size * 0.25)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            initialsOf(name),
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: size * 0.35,
+            ),
           ),
         ),
       ),
