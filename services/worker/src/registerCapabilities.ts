@@ -30,9 +30,11 @@ function rowsFromManifest(manifest: ConnectorManifest): ConnectorRegistrationRow
   };
 }
 
-function rowsFromBuiltins(): ConnectorRegistrationRows {
-  const capabilities = new Map<string, ConnectorRegistrationRows["capabilities"][number]>();
+function rowsFromBuiltins(): readonly ConnectorRegistrationRows[] {
+  const rowsByAdapter = new Map<string, Map<string, ConnectorRegistrationRows["capabilities"][number]>>();
   for (const tool of BUILTIN_TOOLS) {
+    const capabilities = rowsByAdapter.get(tool.adapter) ?? new Map<string, ConnectorRegistrationRows["capabilities"][number]>();
+    rowsByAdapter.set(tool.adapter, capabilities);
     capabilities.set(tool.capabilityId, {
       capabilityId: tool.capabilityId,
       description: `Agent SDK tool ${tool.toolName}.`,
@@ -40,13 +42,14 @@ function rowsFromBuiltins(): ConnectorRegistrationRows {
       enabled: tool.enabled,
     });
   }
-  return {
-    connectorId: "builtins",
-    adapter: "sdk:builtin",
+  return [...rowsByAdapter.entries()].map(([adapter, capabilities]) => ({
+    // The store requires an identifier even when adapter ownership is explicit.
+    connectorId: adapter === "sdk:builtin" ? "builtins" : adapter.slice("mcp:".length),
+    adapter,
     capabilities: [...capabilities.values()],
-    // Built-ins are capabilities, not a grant source. Existing grants remain untouched.
+    // Declarations are capabilities, not a grant source. Existing grants remain untouched.
     roleGrants: [],
-  };
+  }));
 }
 
 export interface RegisterCapabilitiesOptions {
@@ -63,7 +66,7 @@ export async function registerCapabilities(options: RegisterCapabilitiesOptions)
   for (const manifest of manifests) {
     await options.store.register(rowsFromManifest(manifest));
   }
-  await options.store.register(rowsFromBuiltins());
+  for (const rows of rowsFromBuiltins()) await options.store.register(rows);
 }
 
 async function main(): Promise<void> {

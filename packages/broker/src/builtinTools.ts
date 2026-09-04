@@ -11,4 +11,12 @@ export const BUILTIN_TOOLS = Object.freeze([
   { toolName: "Edit", capabilityId: "fs.write", defaultTier: "T2_internal", adapter: "sdk:builtin", enabled: true },
   { toolName: "Write", capabilityId: "fs.write", defaultTier: "T2_internal", adapter: "sdk:builtin", enabled: true },
   { toolName: "Bash", capabilityId: "runtime.bash", defaultTier: "T3_external", adapter: "sdk:builtin", enabled: true },
+  {
+    toolName: "mcp__workspace__send_to_role",
+    capabilityId: "workspace.send_to_role",
+    defaultTier: "T1_draft",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
 ] as const satisfies readonly DeclaredTool[]);

@@ -23,6 +23,7 @@
     "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/harness-factory": "workspace:*",
+    "@oikonomos/workspace": "workspace:*",
     "pg": "^8.23.0",
     "pg-boss": "12.30.0"
   },

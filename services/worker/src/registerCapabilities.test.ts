@@ -33,15 +33,21 @@ describe("registerCapabilities", () => {
       "google-calendar",
       "google-drive",
       "builtins",
+      "workspace",
     ]);
-    const builtins = store.registrations.at(-1);
+    const builtins = store.registrations.find((rows) => rows.connectorId === "builtins");
     expect(builtins).toMatchObject({ adapter: "sdk:builtin", roleGrants: [] });
     expect(builtins?.capabilities).toEqual(expect.arrayContaining([
       expect.objectContaining({ capabilityId: "fs.read", defaultTier: "T0_observe" }),
       expect.objectContaining({ capabilityId: "fs.write", defaultTier: "T2_internal" }),
       expect.objectContaining({ capabilityId: "runtime.bash", defaultTier: "T3_external" }),
     ]));
-    expect(builtins?.capabilities).toHaveLength(new Set(BUILTIN_TOOLS.map((tool) => tool.capabilityId)).size);
+    expect(builtins?.capabilities).toHaveLength(new Set(BUILTIN_TOOLS.filter((tool) => tool.adapter === "sdk:builtin").map((tool) => tool.capabilityId)).size);
+    expect(store.registrations.find((rows) => rows.connectorId === "workspace")).toMatchObject({
+      adapter: "mcp:workspace",
+      roleGrants: [],
+      capabilities: [expect.objectContaining({ capabilityId: "workspace.send_to_role", defaultTier: "T1_draft" })],
+    });
   });
 
   it("is never called from a service process entrypoint", async () => {
@@ -66,7 +72,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
     const result = await pool.query(
       `SELECT capability_id, description, default_tier, adapter, enabled
        FROM capabilities
-       WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin')
+       WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace')
        ORDER BY adapter, capability_id`,
     );
     const grants = await pool.query(
@@ -74,7 +80,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
        FROM role_grants
        WHERE capability_id IN (
          SELECT capability_id FROM capabilities
-         WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin')
+         WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace')
        )
        ORDER BY role_id, capability_id`,
     );
@@ -112,6 +118,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
         expect.objectContaining({ adapter: "mcp:google-calendar" }),
         expect.objectContaining({ adapter: "mcp:google-drive" }),
         expect.objectContaining({ adapter: "sdk:builtin", capability_id: "runtime.bash" }),
+        expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.send_to_role", default_tier: "T1_draft" }),
       ]),
     });
   });

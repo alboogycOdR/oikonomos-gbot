@@ -407,6 +407,9 @@ importers:
       '@oikonomos/harness-factory':
         specifier: workspace:*
         version: link:../../packages/harness-factory
+      '@oikonomos/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       pg:
         specifier: ^8.23.0
         version: 8.23.0
