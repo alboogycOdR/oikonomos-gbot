@@ -2,6 +2,10 @@ export { envKeyFromSecretRef, envSecretResolver } from "./envSecretResolver.js";
 export { McpManifestConfigError, type McpManifestConfigErrorCode } from "./errors.js";
 export { mcpConfigFromManifest } from "./fromManifest.js";
 export {
+  createGmailConnectorSessionMinter,
+  type CreateGmailConnectorSessionMinterOptions,
+} from "./gmailSessionMinter.js";
+export {
   createGmailOAuthTokenProvider,
   createOAuthTokenProvider,
   GMAIL_OAUTH_CLIENT_ID_REF,
