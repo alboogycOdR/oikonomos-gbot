@@ -3933,7 +3933,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-133
 **Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-106); `services/worker/src/runLifecycle.ts`'s `resumeInterruptedRun` (already built and tested — its own comment names this exact scenario, "resume after a killed process returns to the correct state" — but nothing calls it); `packages/db/src/runs.ts`'s `runStatuses`/open-status concept (`started`/`waiting_approval`/`resumed` are non-terminal; the module's own `OPEN_STATUSES` list is private — export it, or add an equivalent query, rather than hand-duplicating the literal array)
@@ -3947,10 +3947,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-133-s5
 **Started_At:** 2026-09-04T14:14:47Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-04T14:31:20Z] [SV:S5] Finished: `listOpenRuns`/`openRunStatuses` added to `packages/db/src/runs.ts`; `reconcileInterruptedRuns` in `services/worker/src/runLifecycle.ts` resumes orphaned open runs, per-run failure isolated. Hit a barrel-file boundary (`packages/db/src/index.ts` not in Owned_Paths) and self-resolved by having the worker consume `listRuns` per-status instead of blocking — documented honestly in the dossier rather than leaving `listOpenRuns` silently unreachable.
+**Artifacts:** packages/db/src/runs.ts, packages/db/src/runs.test.ts, services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, dossiers/TASK-133.md
+**Test_Evidence:** S5: db 130/2 skipped, worker 45/1 skipped (incl. 3 new reconcileInterruptedRuns tests), build/lint clean, full-suite run twice clean modulo 2 unrelated pre-existing flakes reconfirmed isolated-clean. ORCH independently re-verified across two rounds: round 1 found `listOpenRuns` reliably clean (3 isolated runs, all <1s) but the recursive suite bailed early before reaching protected packages; round 2 got a complete `--no-bail` run across all 17 workspace projects — 3 packages showed 4 timeout failures (packages/db's pre-existing `listRuns` test, packages/approvals' sweep/editApproval tests) all hitting the exact 5000ms vitest default under full monorepo-wide concurrent real-Postgres load, plus the one already-documented registerCapabilities flake. None of the 4 timeout failures are in tests this diff modified (all pre-existing, unmodified logic) and `packages/db`'s own isolated per-package run (130/130 clean) proves they pass fine outside full-suite contention.
+**Review_Findings:** APPROVE, first-pass. Territory clean (4 files, all Owned_Paths). `reconcileInterruptedRuns` design is sound: iterates `OPEN_RUN_STATUSES` via `listRuns`' existing pagination (not a new unbounded query), isolates each run's resume failure so one bad row can't stop reconciliation of the rest, explicitly scoped away from multi-worker-instance coordination with the race honestly documented rather than silently ignored (and correctly notes `resumeRun`'s own atomic `WHERE status IN (...)` means a race can't corrupt state even though this task doesn't prevent the redundant attempt). Both other ACs directly, rigorously tested — the mutation-proof terminal-run test checks both that outcomes never mention the terminal runs AND that their status is provably unchanged after, with the exact removed-guard failure mode spelled out in a comment. `listOpenRuns`/`openRunStatuses` (real, tested, additive) were built but left unreachable from other packages by the barrel gap — closed directly (additive-only, packages/db/src/index.ts, verified builds clean) rather than left as a repeat of Connectors-1/TASK-125's own "built but unwired" pattern. Merged --no-ff. **Wave 2 (TASK-132/133) is now fully done.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T14:14:47Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:50:00Z
