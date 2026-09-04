@@ -103,6 +103,15 @@ export {
   handoffKinds,
 } from "./roleMessages.js";
 export {
+  devicePlatforms,
+  listDeviceTokens,
+  registerDeviceToken,
+  removeDeviceToken,
+  type DevicePlatform,
+  type DeviceToken,
+  type RegisterDeviceTokenInput,
+} from "./deviceTokens.js";
+export {
   addThreadMember,
   createGroupThread,
   createThread,

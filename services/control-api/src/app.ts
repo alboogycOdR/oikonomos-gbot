@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { riskTiers, runStatuses, taskStatuses, type Approval, type Message, type RunStatus, type TaskStatus } from "@oikonomos/db";
+import { devicePlatforms, riskTiers, runStatuses, taskStatuses, type Approval, type DevicePlatform, type Message, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -153,6 +153,16 @@ const CREATE_MESSAGE_SCHEMA = {
   required: ["body"],
   additionalProperties: false,
   properties: { body: { type: "string" } },
+} as const;
+
+const REGISTER_DEVICE_SCHEMA = {
+  type: "object",
+  required: ["token", "platform"],
+  additionalProperties: false,
+  properties: {
+    token: { type: "string", minLength: 1 },
+    platform: { type: "string", enum: devicePlatforms },
+  },
 } as const;
 
 const LIST_MESSAGES_QUERY_SCHEMA = {
@@ -481,6 +491,20 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
       const session = createSessionToken(authToken);
       await reply.header("set-cookie", buildSessionCookie(session)).code(200).send({ authenticated: true });
+    },
+  );
+
+  app.post<{ Body: { token: string; platform: DevicePlatform } }>(
+    "/devices",
+    { schema: { body: REGISTER_DEVICE_SCHEMA } },
+    async (request, reply) => {
+      try {
+        await deps.registerDeviceToken(request.body);
+        // A registration response never reflects the bearer token back.
+        await reply.code(201).send({ registered: true });
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
     },
   );
 
