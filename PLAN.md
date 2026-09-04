@@ -3956,3 +3956,51 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T16:50:00Z
+
+### TASK-134
+**Title:** OIK-109 — real cron routine scheduling (create/list + fire-time computation)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-109); TASK-132's real firing mechanism (this task feeds it real `next_fire_at` values, doesn't touch firing itself); `apps/dashboard/src/components/chat/RightPanel.tsx`'s existing read-only Routines tab (`ChatPage.tsx` currently passes `routines={[]}` hardcoded — this task is what finally gives it real data)
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, services/worker/package.json, pnpm-lock.yaml
+**Depends_On:** TASK-132, TASK-131
+**Description:** **Scope deliberately narrowed to cron only — natural-language schedule parsing is out of scope for this task, not silently dropped.** The WBS's "cron + NL description" is real future work; this task covers the cron half, which is what actually determines `next_fire_at` and is required before NL parsing means anything. `role_routines.schedule` (text) already exists in the schema; add real `POST /roles/:roleId/routines` (body: `{name, schedule, definition?}` — validate `schedule` as a real 5-field cron expression, reject anything else with a clear 400, not a silent no-op) and `GET /roles/:roleId/routines` endpoints using `createRoutine`/`listRoutines` (`packages/db/src/routines.ts`, already built). Computing `next_fire_at` from a cron expression needs a real parser — `cron-parser` is already resolved in `pnpm-lock.yaml` (a transitive dependency of `pg-boss`, TASK-130); promote it to a direct dependency of `services/control-api` (or wherever the create-routine handler actually lives) rather than relying on an unstable transitive resolution. Wire `ChatPage.tsx`'s `routines={[]}` to real data from `GET /roles/:roleId/routines` for the active bot, closing the gap TASK-123/124 already established the fast-follow pattern for (a real mechanism invisible in the live UI defeats the point).
+**Acceptance_Criteria:**
+- [ ] `POST /roles/:roleId/routines` creates a real routine with a correctly-computed `next_fire_at` from a real cron expression — tested against real Postgres
+- [ ] An invalid cron expression is rejected with a 400 before touching the database — tested
+- [ ] `GET /roles/:roleId/routines` returns real routines for a role — tested
+- [ ] The live Routines tab shows real routine data for the active bot — tested through the real component tree, not just the endpoint in isolation
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:56:00Z
+
+### TASK-135
+**Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-107 — "Resumes into waiting_approval, never re-executes"); TASK-133's `reconcileInterruptedRuns`/`resumeInterruptedRun` (already scans and resumes `waiting_approval` runs as part of its open-status set — this task is specifically about proving/hardening the approval-wait case, which TASK-133 didn't specifically end-to-end test)
+**Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** TASK-133, TASK-131
+**Description:** TASK-133's reconciliation already resumes any open-status run, `waiting_approval` included — but nothing specifically proves the property OIK-107 cares about: that resuming a run that was mid-approval-wait does not re-issue the tool call that produced the pending approval (which would be a real double-execution/double-charge risk for an external-effect tool). Investigate first — this may already hold by construction (an Agent SDK session resume continues from its own paused state, it doesn't replay prior turns), in which case this task is primarily about writing the real end-to-end proof, not new production code; if it does NOT already hold, fix it. Construct a real run genuinely parked in `waiting_approval` (a real T2/T3 tool call that produced a real pending approval, matching TASK-116/117's own liveness pattern), simulate the worker dying (do not actually kill a process — this is the same testing convention TASK-133 already established), call the reconciliation path, and prove the underlying tool was never invoked a second time and the original approval is still the one that, when consumed, completes the run.
+**Acceptance_Criteria:**
+- [ ] A run genuinely parked in `waiting_approval` (real pending approval row) is resumed via reconciliation without re-invoking the tool that created the approval — tested against real Postgres, real proof the tool wasn't called twice (not just "no error")
+- [ ] The original approval nonce is still the one that, once approved, completes the run — tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:56:00Z
