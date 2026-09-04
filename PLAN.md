@@ -3603,7 +3603,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, services/control-api/package.json, pnpm-lock.yaml
 **Depends_On:** TASK-120, TASK-119, TASK-125
 **Description:** Add `POST /threads/group` — body `{roleIds: string[], title?: string}`, requires 2+ roleIds — creates a thread with `role_id = null` and a `thread_members` row per bot (TASK-120's accessors). Extend `GET /threads` to include group threads (a thread with no single `role_id` needs a different summary shape — `botName`/`botDescription` don't apply; return `memberRoleIds`/`memberNames` instead, and the frontend, TASK-122, branches on which shape it got). Extend `GET /threads/:id/messages` to include `senderRoleId`/`senderName` per message so the client can attribute each line to the right bot. `POST /threads/:id/messages` on a group thread is **out of scope for this task** — posting into a group thread and triggering multiple bots is TASK-122's job alongside the fan-out-approval rule; this task is read/creation plumbing only.
 **Acceptance_Criteria:**
@@ -3621,9 +3621,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** dossiers/TASK-121.md
 **Test_Evidence:** CX: chat.routes.test.ts 22/22 passed (real Postgres). ORCH: independent re-verification pending (see next tick).
 **Review_Findings:** REWORK requested (not yet a full review — this is blocked-task triage). Finding: add cleanup to the new group-thread integration test so it doesn't leak roles/threads/members into shared Postgres.
+- [2026-09-04T06:31:14Z] [SV:CX] Blocked again: cleanup rework needs a real Postgres client in the test, but `pg` isn't a control-api dependency and no fixture-scoped delete accessors exist in `@oikonomos/db`.
+- [2026-09-04T08:36:00Z] [ORCH] Triaged: legitimate — matches the exact pattern already established in `services/worker/src/chatRunDriver.test.ts` (imports `Pool` from `pg` directly for its own cleanup; worker already depends on `pg` ^8.23.0, same version packages/db uses). Added `services/control-api/package.json` and `pnpm-lock.yaml` to Owned_Paths (test-only devDependency addition, no other active task touches either file right now — a deliberate single-tick exception to "shared files get their own task", not a standing grant). Resume on task/TASK-121-cx: add `pg` as a devDependency, `pnpm install` to update the lockfile, then implement cleanup mirroring `chatRunDriver.test.ts`'s `cleanup()` (delete messages → thread_members → threads → roles, in FK order, in a `finally`).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T08:31:00Z
+**Updated_At:** 2026-09-04T08:36:00Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
