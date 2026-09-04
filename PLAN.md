@@ -1,8 +1,8 @@
 ---
-plan_version: 9.6
-last_updated: 2026-09-04T17:52:00Z
+plan_version: 9.7
+last_updated: 2026-09-04T18:05:00Z
 overall_status: in_progress
-orchestrator_notes: "Four waves DONE this session: Grants-1, Chat-2 Core, Connectors-1, and now RT-01+E11's full routine-scheduling/durable-resume story (TASK-129 through TASK-136 — real-time push, pg-boss, routine firing, cron creation, durable resume on both the general and approval-wait cases, and the RunParkPort wiring that makes the whole resume mechanism reachable in production). E10's remaining scope (send_to_role broker tool, TASK-131) is also done; only the two-role e2e demo (OIK-103) and Fable review (OIK-104) remain unscheduled from that epic. A 4th builder, CX9 (second Codex login), was onboarded and proven out this session — see docs/BUILDER_REGISTRY.md. Two real, honestly-documented gaps remain open for future waves, not silently dropped: (1) continue-after-approval — resuming a chat run's *live* Agent SDK session once a human grants a parked approval, distinct from the DB-only resume TASK-133/136 built; (2) OIK-110/111 (per-routine budgets, spend ceiling) were in the original WORKFLOW_RT01_E10_E11 plan but not yet scheduled. Recurring pattern this session (7+ occurrences): a barrel-file (packages/db/src/index.ts) or shared config (package.json/pnpm-lock.yaml) gap forces an Owned_Paths widen after a task starts — documented as a real, generalizable finding in DEVDEPARTMENT_FEEDBACK_2026-09-04.md for the pack itself, not just patched ad hoc each time. GB remains deactivated. Standing practice continues unchanged (full pnpm -r test, isolated re-run before treating a lone failure as a regression, direct verification of builder claims and of infra/environment state — including fixing stale pnpm workspace links directly when found — before trusting a claim)."
+orchestrator_notes: "Wave 5 dispatched: Connectors-2 (TASK-137 Calendar minter/S5, TASK-138 Drive minter/CX9 — both mirror TASK-127, deliberately barred from touching the shared connectors barrel files, which TASK-139 will wire in Wave 2 once both land) plus OIK-112 kill-switch drill (TASK-140/CX, protected-path packages/broker — investigation found the kill switch isn't actually live yet: CapabilityRegistry.enabledToolNames is constructor-time-only, nothing ever UPDATEs a capability's enabled column post-registration, so this task builds the missing live-flip path, not just a drill of an existing one). WORKFLOW_CONNECTORS2_FASTFOLLOWS_BROWSERROUTINES_2026-09-04.md has the full program: Wave 2 (TASK-139 generalize connector merging + wire Calendar/Drive grant-derived mounting, CX/CX9 only — protected-adjacent; TASK-141 OIK-103/104 two-role handoff demo + my own Fable review), Wave 3 investigation-first (OIK-110/111 budgets, continue-after-approval, and OIK-113/114's first real slice — an OpenSandbox client wrapper + connectivity proof against the already-deployed clawsrv server, explicitly narrower than the full browser-routine-recording epic). DEVDEPARTMENT_FEEDBACK_2026-09-04.md (pack feedback, 7 findings) already committed/pushed. GB remains deactivated."
 ---
 
 # Project Plan
@@ -4046,3 +4046,78 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T17:52:00Z
+
+### TASK-137
+**Title:** Google Calendar connector session minter (Connectors-2a)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/connectors/google-calendar.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-calendar.yaml; TASK-127 (the exact pattern to mirror — `createGmailConnectorSessionMinter` composing `mcpConfigFromManifest` + a generic `createOAuthTokenProvider`-based wrapper)
+**Owned_Paths:** packages/connectors/src/mcp/googleCalendarSessionMinter.ts, packages/connectors/src/mcp/googleCalendarSessionMinter.test.ts
+**Depends_On:** —
+**Description:** Mirror TASK-127 exactly, for Google Calendar instead of Gmail. Add `createGoogleCalendarConnectorSessionMinter(options)`: resolves `packages/connectors/manifests/google-calendar.yaml`'s MCP server config via the existing `mcpConfigFromManifest`, resolves a real access token via the generic `createOAuthTokenProvider` (do not duplicate Gmail's OAuth exchange logic — Gmail's own `createGmailOAuthTokenProvider` is already a thin wrapper over this generic provider; write Calendar's the same way), returns an `McpHttpServerConfig` shaped exactly as `ConnectorSessionMinter` expects. **Do NOT touch `packages/connectors/src/mcp/index.ts` or `packages/connectors/src/index.ts`** — those barrel files are shared with TASK-138 (running concurrently) and TASK-139 (a dedicated single-owner integration task) will wire both connectors' exports in afterward; keep this task's new file self-contained and export nothing from the shared barrels. Same secret-hygiene bar as TASK-127 (CLAUDE.md non-negotiable 4): no real token, header value, or client secret in any log, error message, or test fixture — fake `SecretResolver`/fake `fetch` only.
+**Acceptance_Criteria:**
+- [ ] `createGoogleCalendarConnectorSessionMinter` produces an `McpHttpServerConfig` with a real (test-fixture) bearer token in `headers.authorization`, tested with a fake resolver/fetch
+- [ ] The minter's shape satisfies `ConnectorSessionMinter` and works when passed directly into `createConnectorSessionPool({ mint })` — tested
+- [ ] No literal token, client secret, or resolved header value anywhere in the diff — reviewed directly
+- [ ] Neither `packages/connectors/src/mcp/index.ts` nor `packages/connectors/src/index.ts` is modified by this task
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:05:00Z
+
+### TASK-138
+**Title:** Google Drive connector session minter (Connectors-2b)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** docs/connectors/google-drive.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-drive.yaml; TASK-127 (the exact pattern to mirror)
+**Owned_Paths:** packages/connectors/src/mcp/googleDriveSessionMinter.ts, packages/connectors/src/mcp/googleDriveSessionMinter.test.ts
+**Depends_On:** —
+**Description:** Mirror TASK-127 exactly, for Google Drive instead of Gmail. Add `createGoogleDriveConnectorSessionMinter(options)`, same shape and same generic-`createOAuthTokenProvider` reuse as TASK-137's Calendar minter (built concurrently by a different builder — do not coordinate file-level with it, your Owned_Paths are disjoint by design). **Do NOT touch `packages/connectors/src/mcp/index.ts` or `packages/connectors/src/index.ts`** — shared barrels, reserved for TASK-139 (single-owner integration task, Wave 2). Same secret-hygiene bar as TASK-127: no real token, header value, or client secret in any log, error message, or test fixture.
+**Acceptance_Criteria:**
+- [ ] `createGoogleDriveConnectorSessionMinter` produces an `McpHttpServerConfig` with a real (test-fixture) bearer token in `headers.authorization`, tested with a fake resolver/fetch
+- [ ] The minter's shape satisfies `ConnectorSessionMinter` and works when passed directly into `createConnectorSessionPool({ mint })` — tested
+- [ ] No literal token, client secret, or resolved header value anywhere in the diff — reviewed directly
+- [ ] Neither `packages/connectors/src/mcp/index.ts` nor `packages/connectors/src/index.ts` is modified by this task
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:05:00Z
+
+### TASK-140
+**Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-030 (capability-level kill switch) and OIK-112 (drill); packages/broker/src/capabilityRegistry.ts (`enabledToolNames`, built and tested at construction time only); packages/harness-factory/src/hooks/pretooluse.ts (every tool call POSTs live to `POST /v1/broker/pretooluse` — no per-run caching at the hook layer, confirmed by reading it directly)
+**Owned_Paths:** packages/broker/src/**, docs/runbooks/kill-switch-drill.md
+**Depends_On:** —
+**Description:** This is smaller than the WBS label suggests but not a no-op — investigate before building. `CapabilityRegistry.enabledToolNames` is built once from manifest+registered-row data (constructor time, `capabilityRegistry.ts`), and no code anywhere writes to a capability's `enabled` column after initial registration (confirmed: no `UPDATE ... enabled` anywhere in `packages/db`). So today, flipping a capability off has no live path — only a fresh process restart after a manifest edit and re-registration would pick it up, which is not a kill switch, it's a redeploy. First determine, by tracing the real request path from `POST /v1/broker/pretooluse` (wherever that route is actually implemented — find it, it wasn't in `packages/broker/src` by grep, check `services/control-api` or wherever the broker HTTP server itself lives) through to `CapabilityRegistry`, whether the registry instance is process-lifetime-static or re-constructed per request/interval. Then build the smallest correct live path: a DB function to flip a capability's (or, for the platform-wide case, every capability's) `enabled` flag, plus whatever the decision path needs to actually observe that flip without a process restart (a live DB check at decision time, or a short-TTL/invalidatable in-memory cache — pick the one that fits the existing architecture, don't invent a new caching layer if a live per-decision DB read is cheap enough and already the pattern elsewhere). Then write and run a real drill: enable a capability, prove a tool call using it is allowed, flip it off, prove the *very next* tool call using it is denied — same running process, no restart — then write `docs/runbooks/kill-switch-drill.md` documenting the real procedure (not a hypothetical one) for a human operator to pull the switch platform-wide in production.
+**Acceptance_Criteria:**
+- [ ] A capability enabled at drill start is provably usable (a real `pretooluse` decision returns allow) before the flip
+- [ ] After flipping that capability's `enabled` flag off, the very next `pretooluse` decision for it returns deny — same process, no restart — tested
+- [ ] The platform-wide case (flip every capability off at once) is also tested, not just the single-capability case
+- [ ] `docs/runbooks/kill-switch-drill.md` documents the real, just-proven procedure — not a hypothetical one
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:05:00Z
