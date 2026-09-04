@@ -4254,7 +4254,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-144
 **Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (locked decisions: Flutter, shared-token auth for now, single-owner territory model); apps/dashboard/src/lib/api.ts and apps/dashboard/src/lib/realtime.ts (the TS client this Dart client mirrors — same endpoints, same SSE Last-Event-ID resume semantics); services/control-api/src/auth.ts (POST /auth/login issues the httpOnly session cookie; a native client stores and replays that cookie itself); apps/dashboard/src/pages/LoginPage.tsx (the honest "single shared access token" login this screen mirrors)
@@ -4268,15 +4268,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Login screen widget test: bad token shows an error, good token navigates
 - [ ] No raw token in any log statement or persisted store; `flutter test` exits 0
 - [ ] No file outside apps/mobile/** touched (repo root .gitignore included)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-144-s5
+**Started_At:** 2026-09-04T19:36:08Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T19:36:08Z
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
