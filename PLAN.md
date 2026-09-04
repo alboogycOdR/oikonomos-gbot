@@ -3845,7 +3845,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-130
 **Title:** OIK-105 — pg-boss integration + job definitions
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-105); WORKFLOW_RT01_E10_E11_2026-09-04.md
@@ -3857,15 +3857,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The worker process starts and stops the queue cleanly — no orphaned connections/handles after shutdown, tested
 - [ ] `pg-boss` is a real devDependency/dependency with a pinned version, `pnpm-lock.yaml` updated accordingly
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-130-cx
+**Started_At:** 2026-09-04T13:36:37Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T15:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T13:36:37Z
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
