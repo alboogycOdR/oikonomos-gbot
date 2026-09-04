@@ -3630,7 +3630,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; Grok Bot reference product, confirmed 2026-09-03: a single 1:1 bot-to-bot delegation ping needs no human approval; fan-out to several bots or a whole group does
@@ -3644,13 +3644,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-122-s5
 **Started_At:** 2026-09-04T06:43:54Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-04T07:01:49Z] [SV:S5] Group thread UI (New group dialog, group-aware sidebar/pane/shell/page via local structural type extensions since types.ts isn't owned) + fan-out approval rule (deliverBotToBotMessage in chatRunDriver.ts, reuses existing issueApproval path). Known documented gap: POST into a group thread 404s (needs control-api/app.ts, outside Owned_Paths) — ComposeBox disabled for groups rather than shipping a broken send.
+**Artifacts:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/lib/api.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-122.md
+**Test_Evidence:** S5: dashboard 75/75, worker chatRunDriver 8/8 (real Postgres), mutation-proof verified (guard deleted → fan-out test reddens → reverted, diff clean), pnpm -r build 17/17, lint clean, pnpm -r test (run twice) clean except one already-documented pre-existing flake (registerCapabilities idempotency vs. concurrent connectors manifest registration), isolated re-run clean (41/41). ORCH independently re-ran (fresh subagent): dashboard 75/75, worker standalone 41/42 (1 skipped) clean, pnpm -r build clean, lint clean; full pnpm -r test hit the exact same pre-existing flake (registerCapabilities idempotency — a concurrent-suite race on the shared `capabilities` table, unrelated to this diff, documented and independently reproduced multiple times this session across TASK-120/123/122 reviews), confirmed isolated-clean per standing practice. Zero leftover TASK-122 fixture rows in shared Postgres (roles, chat.bot_fanout capability both absent post-run).
+**Review_Findings:** APPROVE, first-pass. Territory clean (9 files, all Owned_Paths). `deliverBotToBotMessage` is a clean, narrow gate (single branch point on recipient count, reuses `issueApproval`/`insertMessage`/`getOrCreateThreadForRole` rather than inventing new primitives); AC2/AC3 both genuinely proven against real Postgres with FK-ordered fixture-scoped cleanup. Frontend correctly respects the territory boundary on `components/chat/types.ts` (not owned) via local structural-type extensions in every file that needs them, rather than editing a file outside scope — a disciplined workaround, not a shortcut. The known gap (compose-into-group needs control-api wiring, out of scope) degrades safely (ComposeBox disabled, not broken) and is honestly documented, matching the established Grants-1 pattern. Merged --no-ff. **Opening a fast-follow task (TASK-126)** to close the compose-into-group gap and complete Chat-2 Core's live-usability story, same reasoning as TASK-123/124 — a real mechanism that's invisible/unusable in the live app defeats the wave's purpose. **Both locked waves — Grants-1 (117/118/119/123/124) and Chat-2 Core (120/121/122/125) — are now fully done.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T06:43:54Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T09:15:00Z
 
 ### TASK-123
 **Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
@@ -3734,3 +3735,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T08:20:00Z
+
+### TASK-126
+**Title:** Compose into a group thread (Chat-2d, fast-follow)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** TASK-122's own next_step/Review_Findings — the real, honestly-documented gap left after that task: `ComposeBox` is correctly disabled for a group thread in the live UI rather than shipping a broken send, because `POST /threads/:id/messages` only handles 1:1 threads today
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx
+**Depends_On:** TASK-122
+**Description:** `POST /threads/:id/messages` today assumes a single owning `roleId` (it looks up the thread's bot to start a `chatRunDriver` run against). For a group thread (`role_id IS NULL`, real `thread_members`), posting a human message should persist it (with `senderRoleId` null — matches "no single sender = the human user", TASK-120's own convention) and needs a real dispatch story for which bot(s) respond — reuse TASK-122's `deliverBotToBotMessage`/fan-out approval mechanism where it applies rather than inventing a second delivery path; keep the v1 behavior narrow (e.g. the human's message fans out to the group's members via the same approval gate TASK-122 already built for bot-to-bot fan-out, since a human posting into a multi-bot group is the same fan-out shape). On the frontend, remove `ChatShell`'s `ComposeBox` group-disable once the endpoint is real and tested.
+**Acceptance_Criteria:**
+- [ ] Posting a message into a real group thread persists it with `senderRoleId` null, tested against real Postgres
+- [ ] Posting into a group thread with 2+ members correctly requires a real pending approval before any bot receives it, reusing TASK-122's fan-out mechanism (not a new one) — tested
+- [ ] Existing 1:1 `POST /threads/:id/messages` behavior is provably unchanged — existing tests pass unmodified
+- [ ] `ComposeBox` is enabled for group threads in the live UI once the endpoint is real — tested through the real component tree, not just the endpoint in isolation
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T09:15:00Z
