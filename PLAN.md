@@ -3645,7 +3645,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-123
 **Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** TASK-118's own Review_Findings — the real, documented gap left after that task: roleId/capabilityId/maxTier never reach ApprovalCard through the live component tree, so "Always Allow" is correct but invisible in the running app
@@ -3663,7 +3663,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T05:28:28Z] [SV:CX] Live chat now maps API approval capability/tier data and the active bot role ID into ApprovalCard; Always Allow is visible and targets the real role.
 **Artifacts:** apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-123.md
 **Test_Evidence:** Focused dashboard tests: 7/7 passed. pnpm lint clean; pnpm -r build clean across 17 projects; pnpm -r test clean (dashboard 62 tests; all recursive targets passed).
-**Review_Findings:** —
+- [2026-09-04T07:40:00Z] [ORCH] APPROVED, first-pass. Territory clean (6 files, all Owned_Paths), minimal diff, no scope creep — `ApprovalCard.tsx` correctly left untouched exactly as the task called for. Both AC1/AC2 tested through the real component tree: `ConversationPane.test.tsx`'s new case renders with real approval/capability/tier fixture data and asserts the button actually appears (not just that `ApprovalCard` alone can render it); `ChatPage.test.tsx` proves the same through the full data-mapping path. Independently caught a real cross-package regression while verifying the full suite (unrelated to this task's own diff): `services/worker/src/chatRunDriver.test.ts` (TASK-116) never learned about TASK-120's new `thread_members` FK, so its cleanup broke once that table had a real row for its fixture thread — reproduced in isolation (not a concurrency flake), fixed directly on master (e357fbf), reverified clean (both real SDK calls pass). This is exactly the class of gap CLAUDE.md's amended review standard exists to catch — caught one review cycle later than ideal, but caught. Full pnpm -r build (19/19), lint clean, full pnpm -r test (284 assertions, 1 pre-existing flake confirmed isolated-clean per standing practice). Merged --no-ff (be3851b). **Grants-1 (TASK-117/118/119/123) is now fully done.**
+**Artifacts:** apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-123.md
+**Review_Findings:** APPROVE, first-pass. Unrelated cross-package regression found and fixed during full-suite verification (see AUTOPILOT_LOG.md).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:28:28Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:40:00Z
