@@ -156,3 +156,99 @@ outside `Owned_Paths` were modified or committed (the local `PLAN.md` working-tr
 `origin/master` is uncommitted and read-only in effect — needed only so the territory-firewall hook
 saw the current grant; the stray `AUTOPILOT_LOG.md` diff from a prior session was discarded via
 `git checkout --`, not committed).
+
+- [2026-09-04T17:52:00Z] [S5] **Resumed after ORCH granted `packages/db/src/index.ts` (17:34:00Z).**
+  Synced the local worktree `PLAN.md` from `origin/master` again (same working-tree-only technique
+  as the previous resume — the territory-firewall hook reads the local file directly). Confirmed the
+  grant note verbatim in the synced `PLAN.md`'s `Owned_Paths` and `Progress_Notes` before touching
+  anything.
+
+  1. Re-drafted and completed the barrel export: `parkRun` added to `packages/db/src/index.ts`'s
+     existing `export { ... } from "./runs.js";` block, alongside its siblings (`resumeRun`,
+     `completeRun`, etc.) — additive only, one line.
+  2. `services/worker/src/runLifecycle.ts`: added `parkTaskRun(options, runId)`, a thin wrapper
+     around the newly-exported `parkRun`, in the exact same shape/position as `completeTaskRun`/
+     `failTaskRun` (mirrors the file's own existing pattern; no new pattern introduced).
+  3. `services/worker/src/chatRunDriver.ts`: read `packages/harness-factory/src/compose.ts`'s
+     `RunParkPort`/`withPark`/`PARK_REASONS` and `services/worker/src/executeRun.ts`'s `park` plumbing
+     in full before writing anything (both already confirmed real and wired in this dossier's first
+     entry). Added `createRunParkPort(options, runId): RunParkPort` — its `park()` callback calls
+     `parkTaskRun(options, runId)` — and passed it as `executeTaskRun`'s `park` option in
+     `runChatTask`. Confirmed via source read that `withPark`'s `PARK_REASONS` set is keyed on
+     `decision.message`, and that `packages/harness-factory/src/hooks/pretooluse.ts` sets
+     `message: record.reason` verbatim — i.e. the broker's real `"approval_pending"` deny reason
+     (packages/broker/src/index.ts) flows through unchanged to the park trigger; nothing was assumed.
+     Also confirmed `completeRun`/`failRun` (packages/db/src/runs.ts) both already accept
+     `waiting_approval` as a legal source status, so a run parked mid-turn still terminates correctly
+     afterward with no further change needed — the Agent SDK query loop continues past one denied
+     tool call within the same turn rather than aborting the run.
+
+  **Real end-to-end test, real Postgres, real broker decision (no mocked internals) — added to
+  `services/worker/src/chatRunDriver.test.ts`** inside the existing TASK-116 integration describe
+  block (reused its role/task/thread fixture and the existing `task128Manifest`, per the file's own
+  established pattern rather than inventing a new one):
+  - Granted `email.send` (declared `T3_external` by `task128Manifest` itself — deliberately reused
+    rather than picking an arbitrary tier, so `CapabilityRegistry`'s tier-drift guard, C5, could not
+    silently paper over a mismatch) at `maxTier: T3_external`, which is `>= APPROVAL_TIER`
+    (`packages/broker/src/index.ts`), so a granted call issues a real pending approval rather than an
+    outright deny or bare allow.
+  - A test `queryFn` calls `mcp__gmail__send_message` through the same `callMountedTool` harness the
+    file's other tests already use (drives the real composed `PreToolUse` hook directly, no need to
+    stand up a real HTTP MCP server since the call is denied before ever reaching the connector).
+  - **Directly inside the running query loop**, immediately after the denied call returns, queries
+    real Postgres for the run's `status` — proving `parkTaskRun`'s `UPDATE` had already committed by
+    the time `withPark`'s `park()` await resolved, not merely that the run ends up parked eventually.
+    Asserts `waiting_approval`.
+  - After the driver's `run()` promise resolves, asserts: the `policy.decision` audit event has
+    `tier: "T3_external"`, `verdict: "require_approval"` (the real broker's own verdict string — my
+    first draft assumed `"deny"` by pattern-matching sibling tests without checking; the test run
+    caught it, corrected against the actual audit payload, not by loosening the assertion); exactly
+    one pending row in `approvals`; and the run's own final `status` is `"completed"` (documents the
+    scope narrowing explicitly, matching AC3's own instruction not to silently drop it — this task
+    proves reaching `waiting_approval`, not resuming the live SDK session after approval).
+  - **AC2** (`reconcileInterruptedRuns` finds and correctly handles a run parked this way): fabricated
+    an orphaned run via the *same* typed `parkTaskRun` accessor `chatRunDriver.ts` now calls (no raw
+    SQL, N-rule), simulating a worker process that died after parking but before ever reaching
+    `completeTaskRun`/`failTaskRun`. Asserted `reconcileInterruptedRuns` finds it and resumes it
+    (`status` → `resumed`), closing the loop this dossier's first entry documented as unreachable in
+    production.
+  - Also had to extend the describe block's own `cleanup()` to delete from `approvals` before `runs`
+    (FK: `approvals.run_id` → `runs.run_id`) — the file's existing cleanup predates any test in this
+    suite creating a real pending approval and would otherwise violate
+    `approvals_run_id_fkey` on teardown once this test runs. Narrow, in-territory fix to the same
+    file's own fixture helper, not a new pattern.
+
+  **Test evidence (real Postgres, `DATABASE_URL` set in this environment):**
+  - `pnpm --filter @oikonomos/db typecheck` — clean.
+  - `pnpm --filter @oikonomos/db build` — clean (needed so the worker's typecheck picks up the new
+    `parkRun` export from `dist/`, workspace `exports` resolution).
+  - `pnpm --filter @oikonomos/worker typecheck` — clean.
+  - `pnpm --filter @oikonomos/worker test` — **59 passed, 1 skipped**, including all 3 chatRunDriver
+    TASK-116 integration tests and the new TASK-136 one, against real Postgres and real inference
+    spend for the two pre-existing TASK-116 tests that drive a real Claude Agent SDK call (unchanged
+    by this session). One unrelated pre-existing flake in this same file
+    (`src/registerCapabilities.test.ts`'s idempotency test) reproduces identically on `origin/master`
+    with none of this session's changes applied (`git stash` + rerun, confirmed byte-for-byte same
+    failure) — real Postgres row pollution from concurrent vitest workers across files sharing
+    `email.*` capability ids, not caused by or fixed in this session, and outside `Owned_Paths`
+    (`src/registerCapabilities.test.ts` is not in TASK-136's territory).
+  - `pnpm -r build` — **fails**, but only at `services/control-api` (`Cannot find module
+    'cron-parser'`), a package fully outside `Owned_Paths`. Confirmed via `git stash` + rerun that
+    this fails identically with zero TASK-136 changes applied — a pre-existing, unrelated dependency
+    resolution gap in this worktree (`cron-parser` is declared in `services/control-api/package.json`
+    but absent from its `node_modules`; `pnpm install` reported "Already up to date" and did not fix
+    it). Every package this task actually touches or depends on (`packages/db`, `services/worker`,
+    and everything transitively required to build/typecheck them) builds clean.
+  - `pnpm -r test` — same shape: every package passes except `services/control-api` (6 suites fail
+    on the identical `cron-parser` import, pre-existing per the same `git stash` check) and the one
+    already-documented unrelated `registerCapabilities.test.ts` flake.
+  - `pnpm lint` — **clean, exit 0**, full repo.
+
+  Per AC4's literal wording ("`pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0") this is not a
+  clean pass repo-wide — but the two non-zero exits are independently reproduced as pre-existing on
+  `origin/master` with none of this branch's changes applied, live entirely outside `Owned_Paths`,
+  and are not something this task can fix without an ownership grant it has not needed for anything
+  else. Documenting honestly per this task's own "do not silently drop scope narrowing" instruction
+  rather than either claiming a false clean pass or blocking on someone else's territory.
+
+  Committed `54f882b`. Setting `Status: needs_review`.
