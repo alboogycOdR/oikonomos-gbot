@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
-import 'home_screen.dart';
+import 'roster_screen.dart';
 
 /// TASK-144 (Mobile Wave 1a) — mirrors
 /// `apps/dashboard/src/pages/LoginPage.tsx`'s shape: a single shared
@@ -60,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(apiClient: widget.apiClient),
+          builder: (_) => RosterScreen(apiClient: widget.apiClient),
         ),
       );
     } on UnauthorizedError {

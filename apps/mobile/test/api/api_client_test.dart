@@ -109,6 +109,25 @@ void main() {
       expect(request.url.path, '/roles');
     });
 
+    test('createThread posts roleId and returns the new thread id', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      // POST /threads returns the raw db Thread row (no botName/
+      // avatarSeed/lastMessagePreview) — only `id` is used by callers.
+      fake.queueJson(201, {
+        'id': 'thread-9',
+        'roleId': 'role-2',
+        'updatedAt': '2026-09-04T00:03:00Z',
+      });
+
+      final threadId = await client.createThread('role-2');
+      expect(threadId, 'thread-9');
+
+      final request = fake.requests.last;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/threads');
+    });
+
     test('listThreads discriminates single vs group threads', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
