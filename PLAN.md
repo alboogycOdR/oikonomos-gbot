@@ -3765,7 +3765,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-127
 **Title:** Gmail connector session minter — real OAuth-authenticated MCP config (Connectors-1a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CAPABILITY_RESOLUTION_PROBLEM_STATEMENT.md; docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E9/ADR-013 (manifest-driven capabilities); ADR-013's own "next" pointer — packages/connectors already has `mcpConfigFromManifest` (resolves a manifest's MCP server URL) and `createGmailOAuthTokenProvider` (real Google OAuth refresh-token exchange, fully built and tested) but nothing composes them, and neither is exported from the package barrel; `createConnectorSessionPool` (also fully built) has no registered minter for any real connector
@@ -3778,15 +3778,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `mcpConfigFromManifest`, `createGmailOAuthTokenProvider`, and the new minter are exported from `packages/connectors/src/index.ts`
 - [ ] No test, fixture, log statement, or error message anywhere in this diff contains a literal token, client secret, or resolved header value — reviewed directly, not just asserted
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-127-s5
+**Started_At:** 2026-09-04T07:56:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T09:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T07:56:11Z
 
 ### TASK-128
 **Title:** Wire real manifest-connector tools into live chat runs (Connectors-1b)
