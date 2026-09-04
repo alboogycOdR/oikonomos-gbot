@@ -47,6 +47,20 @@ export {
   type ConnectorSessionPoolOptions,
   type MintConnectorSessionInput,
 } from "./sessions/index.js";
+export {
+  createGmailConnectorSessionMinter,
+  createGmailOAuthTokenProvider,
+  mcpConfigFromManifest,
+  type CreateGmailConnectorSessionMinterOptions,
+  type GmailOAuthTokenProviderOptions,
+  type ManifestMcpInput,
+  type McpConfigFromManifestOptions,
+  type McpHttpServerConfig,
+  type McpServerConfig,
+  type McpServers,
+  type OAuthTokenProvider,
+  type SecretResolver,
+} from "./mcp/index.js";
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
