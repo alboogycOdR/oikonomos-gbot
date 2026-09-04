@@ -4280,17 +4280,17 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
 **Owned_Paths:** infra/postgres/migrations/**, packages/db/src/deviceTokens.ts, packages/db/src/deviceTokens.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/pushTransport.ts, services/control-api/src/pushTransport.test.ts, services/control-api/src/**/*.test.ts
 **Depends_On:** —
-**Description:** Backend half of mobile push, fully testable with zero Firebase credentials. (1) Migration + `packages/db/src/deviceTokens.ts`: a `device_tokens` table (token, platform, created_at, last_seen_at) with register (idempotent upsert by token), list, and remove-on-permanent-failure operations — real-Postgres tests matching the package's conventions. (2) `services/control-api/src/pushTransport.ts`: a `PushTransportPort` interface (`send(deviceToken, notification)`) with two implementations — a no-op/collecting fake for tests and composition-when-unconfigured, and an FCM HTTP adapter that reads its service-account config from env, is env-gated (absent config means transport disabled, control-api starts and runs normally — push is additive, never load-bearing), and never logs a token or credential (non-negotiable 4). (3) Routes: `POST /devices` (register, behind the standard auth gate) and the trigger wiring in `ports.ts`: when an approval is created and when a chat run completes, fan the notification out to every registered device via the port. **Broadcast to all devices is the deliberate, documented semantics** (see workflow doc) — add the code comment saying why and when it changes (per-user auth). A transport failure must never fail the underlying operation (approval creation/run completion succeed regardless — push errors are logged sans-token and swallowed). Real FCM adapter is exercised only against a fake fetch in tests.
+**Description:** Backend half of mobile push, fully testable with zero Firebase credentials. (1) Migration + `packages/db/src/deviceTokens.ts`: a `device_tokens` table (token, platform, created_at, last_seen_at) with register (idempotent upsert by token), list, and remove-on-permanent-failure operations — real-Postgres tests matching the package's conventions. (2) `services/control-api/src/pushTransport.ts`: a `PushTransportPort` interface (`send(deviceToken, notification)`) with two implementations — a no-op/collecting fake for tests and composition-when-unconfigured, and an FCM HTTP adapter that reads its service-account config from env, is env-gated (absent config means transport disabled, control-api starts and runs normally — push is additive, never load-bearing), and never logs a token or credential (non-negotiable 4). (3) Routes: `POST /devices` (register, behind the standard auth gate) and the trigger wiring **entirely inside `ports.ts`, around the awaited `runChatTask` call** (REVISED after CX's correct block — approvals are issued inside the worker's run, `chatRunDriver.ts`/`packages/approvals`, both outside this territory and chatRunDriver is owned by active TASK-146): when `runChatTask` resolves, check the run's resulting state via the deps already composed there — pending approvals exist for that run ⇒ send an approval-pending notification; otherwise ⇒ send a run-completed notification — fanning out to every registered device via the port. No worker or approvals package code may be touched; the composition root derives both events itself. **Broadcast to all devices is the deliberate, documented semantics** (see workflow doc) — add the code comment saying why and when it changes (per-user auth). A transport failure must never fail the underlying operation (approval creation/run completion succeed regardless — push errors are logged sans-token and swallowed). Real FCM adapter is exercised only against a fake fetch in tests.
 **Acceptance_Criteria:**
 - [ ] `device_tokens` migration + db module: register (idempotent), list, remove — real-Postgres tests
 - [ ] `POST /devices` registers a device behind the auth gate (401 unauthenticated — matches every other route's gate test)
-- [ ] Approval-created and chat-run-completed each trigger one send per registered device via the injected port — tested with the collecting fake
+- [ ] After an awaited chat run: approval-pending (when the run parked with pending approvals) and run-completed (otherwise) each trigger one send per registered device via the injected port — both cases tested with the collecting fake
 - [ ] A throwing transport does NOT fail approval creation or run completion — tested
 - [ ] Unconfigured FCM env means transport disabled, control-api boots and serves normally — tested
 - [ ] No device token, FCM key, or credential in any log/error/fixture — reviewed directly
@@ -4299,12 +4299,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T19:36:20Z
 **Progress_Notes:**
 - [2026-09-04T19:38:46Z] [SV:CX] Preflight completed; implementation stopped before code changes because approval-created notifications require an unowned worker/approval callback.
+- [2026-09-04T21:50:00Z] [ORCH] Unblocked by redesign, not widening: chatRunDriver.ts is owned by ACTIVE TASK-146 — widening would be a live collision. Instead the triggers move entirely into ports.ts around the awaited runChatTask: on resolve, derive the event from the run's own state (pending approvals ⇒ approval-pending push; else run-completed push). Architecturally cleaner anyway — push stays a control-api concern, worker untouched. Description/AC revised. Resuming on task/TASK-145-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: Approval creation occurs in services/worker/src/chatRunDriver.ts via packages/approvals/src/issue.ts, outside TASK-145 Owned_Paths. Add an approval-created callback there or widen ownership before implementation.
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T19:38:46Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T21:50:00Z
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
