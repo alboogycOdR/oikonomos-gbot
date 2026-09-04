@@ -9,7 +9,7 @@
     "telegram"
   ],
   "review_cmd": "claude -p \"You are ORCH in this repository. Read .claude/commands/devteam-review.md and execute that review workflow end-to-end now for every task with Status: needs_review. The integration branch is per autopilot.json git.base_branch.\" --model claude-opus-4-8 --dangerously-skip-permissions",
-  "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version \u2014 verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
+  "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version — verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
   "builders": {
     "active": [
       "CX",
@@ -34,6 +34,7 @@
       "CX": {
         "cli": "codex",
         "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium",
         "_model_note": "gpt-5.6-sol rejected 400 on ChatGPT-account Codex (2026-08-13). terra = account's flagship agentic-coding model per models_cache.json, probe-verified same day. User-level ~/.codex/config.toml still pins sol; --model overrides it for dispatches.",
         "auth": {
           "mode": "default"
@@ -42,11 +43,13 @@
         "branch_suffix": "cx",
         "briefing": "briefings/CODEX_BRIEFING.md",
         "auto_loads_ambient_context": false,
-        "usage_provider": "codex"
+        "usage_provider": "codex",
+        "_reasoning_effort_note": "Pinned explicitly 2026-09-04. Previously INHERITED, by two different routes: CX read model_reasoning_effort='medium' from ~/.codex/config.toml, while CX9's config set nothing and silently rode gpt-5.6-terra's default_reasoning_level. They agreed only by coincidence -- if OpenAI shifts that default, CX9 drifts and CX does not, with no signal. Passed via `-c model_reasoning_effort=` (empirically verified a real key under --strict-config, with a bogus-key control; note the older in-script comment that only --reasoning-effort was tried and rejected)."
       },
       "CX9": {
         "cli": "codex",
         "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium",
         "auth": {
           "mode": "config_dir",
           "value": "~/.codex-nuburo-systems"

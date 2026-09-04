@@ -34,6 +34,7 @@ it. The pack ships **S5B** in exactly this state (see Activation below).
 |---|---|
 | `cli` | Invocation family: `grok` / `codex` / `claude`. Picks the CLI-quirk row in dispatch (flags, non-interactive conventions) — deliberately NOT what determines worktree/branch/briefing. |
 | `model` | Pinned model string, or `null` for the CLI's own default. |
+| `reasoning_effort` | Pinned thinking level, or `null` to inherit the CLI/model default. Codex units pass it as `-c model_reasoning_effort=<v>`; other CLI families currently ignore it. **Pin it rather than inherit.** Until 2026-09-04 it was inherited, and two units documented as interchangeable peers were only agreeing by coincidence: CX read `medium` from its own `~/.codex/config.toml`, while CX9's config set nothing and silently rode the model's `default_reasoning_level`. Had that default moved, CX9 would have drifted and CX would not, with nothing to signal it. A registry field is visible and version-controlled; a user-level config file is neither. |
 | `auth` | `{"mode": "default"}` (ambient credentials) or `{"mode": "config_dir", "value": "~/.claude-s5b"}` — dispatch sets `CLAUDE_CONFIG_DIR` to that path **scoped to the launch only** (bash: `env(1)` in the launch subshell; PS 5.1: save/restore in `finally`). |
 | `worktree_suffix` | → `wt-<suffix>-<project>` (sibling of the project root). |
 | `branch_suffix` | → `task/TASK-NNN-<suffix>`. |

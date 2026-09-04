@@ -61,7 +61,7 @@ foreach ($line in $RegOut) {
     $i = "$line".IndexOf("=")
     if ($i -gt 0) { $Reg["$line".Substring(0, $i)] = "$line".Substring($i + 1) }
 }
-$Id = $Reg["UNIT"]; $Cli = $Reg["CLI"]; $Model = $Reg["MODEL"]
+$Id = $Reg["UNIT"]; $Cli = $Reg["CLI"]; $Model = $Reg["MODEL"]; $ReasoningEffort = $Reg["REASONING_EFFORT"]
 $Suffix = $Reg["BRANCH_SUFFIX"]; $Briefing = $Reg["BRIEFING"]
 $AutoLoadsContext = ($Reg["AUTO_LOADS_CONTEXT"] -eq "true")
 $AuthMode = $Reg["AUTH_MODE"]; $AuthValue = $Reg["AUTH_VALUE"]
@@ -104,8 +104,20 @@ switch ($Cli) {
         # (ExpectingInput) under splatted-array invocation from a script,
         # blocking on stdin ("stdin is not a terminal") -- reproduced live.
         # cmd /c invokes codex.cmd, which has no such pipeline semantics.
-        # --reasoning-effort is NOT a valid codex exec flag (codex-cli 0.144.5);
-        # model_reasoning_effort is authoritative via .codex/config.toml.
+        # --reasoning-effort is NOT a valid codex exec flag (codex-cli 0.144.5).
+        # AMENDED 2026-09-04: that earlier finding was correct but incomplete --
+        # it only ruled out the dedicated flag, leaving effort to be inherited
+        # from $CODEX_HOME/config.toml. That was a silent-divergence hazard: CX
+        # pinned "medium" in its own config while CX9's config set nothing and
+        # rode the model's default_reasoning_level, so two units documented as
+        # peers agreed only by coincidence. `-c model_reasoning_effort=<v>` is
+        # the supported override (verified empirically under --strict-config,
+        # against a deliberately-bogus-key control, since --help short-circuits
+        # config validation and cannot prove a key is real). Registry-driven so
+        # the thinking level is visible in autopilot.json, not two user-level
+        # files outside version control -- same lesson as the GB dead-knob note
+        # above: a setting that looks authoritative and is not is worse than
+        # an absent one. Null = inherit (unchanged behaviour).
         # PROMPT VIA STDIN (fix 2026-08-14, oikonomos live failure): cmd.exe
         # treats embedded newlines in an argument as command breaks and drops
         # into "More?" continuation reading stdin — the multiline prompt never
@@ -117,6 +129,7 @@ switch ($Cli) {
         $Cmd = "cmd"
         $CmdArgs = @("/c", "codex", "exec")
         if ($Model) { $CmdArgs += @("--model", $Model) }
+        if ($ReasoningEffort) { $CmdArgs += @("-c", "model_reasoning_effort=$ReasoningEffort") }
         $CmdArgs += @("-s", "danger-full-access")
         $PromptViaStdin = $true
     }

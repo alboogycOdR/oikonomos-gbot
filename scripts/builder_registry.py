@@ -33,6 +33,7 @@ unknown unit (see resolve()).
 Entry schema (per unit):
   cli                       "grok" | "codex" | "claude" — invocation family
   model                     pinned model string, or None for CLI default
+  reasoning_effort          pinned thinking level, or None to inherit the CLI/model default
   auth                      {"mode": "default"} or
                             {"mode": "config_dir", "value": "<path>"}
                             (sets CLAUDE_CONFIG_DIR for that unit's launch)
@@ -117,6 +118,7 @@ def _normalize_entry(unit: str, entry: dict) -> dict:
             f"builders.defined['{unit}'] is missing required field(s): {', '.join(missing)}")
     out = dict(entry)
     out.setdefault("model", None)
+    out.setdefault("reasoning_effort", None)
     out.setdefault("auth", {"mode": "default"})
     out.setdefault("auto_loads_ambient_context", entry.get("cli") == "claude")
     out.setdefault("usage_provider", None)
@@ -247,6 +249,7 @@ def _main(argv: list[str]) -> int:
         print(f"UNIT={unit}")
         print(f"CLI={e['cli']}")
         print(f"MODEL={e.get('model') or ''}")
+        print(f"REASONING_EFFORT={e.get('reasoning_effort') or ''}")
         print(f"WORKTREE_SUFFIX={e['worktree_suffix']}")
         print(f"BRANCH_SUFFIX={e['branch_suffix']}")
         print(f"BRIEFING={e['briefing']}")
