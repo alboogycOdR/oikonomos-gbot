@@ -4412,7 +4412,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-143 (frozen; its Progress_Notes carry the full architectural finding: `withBudgetSink` decorates `AgentProvider`, which the primary SDK chat path never touches); packages/harness-factory/src/ports.ts (`AgentSdkQueryFn` — stream typed `AsyncIterable<unknown>`, no cost shape anywhere); packages/harness-factory/src/index.ts (`defaultSdkQuery` — the real `@anthropic-ai/claude-agent-sdk` `query()` binding); packages/agent-providers/src/budget.ts (the existing pattern to mirror: fail-closed decorator, `BudgetReport` shape); branch task/TASK-143-cx (CX's own preserved investigation dossier)
@@ -4428,9 +4428,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T19:56:58Z
 **Progress_Notes:**
 - [2026-09-04T22:07:00Z] [ORCH] Reassigned CX -> CX9 for scheduling reasons only (CX is booked on TASK-145 then the TASK-146 handover; this task has no dependencies and is protected-path, so CX/CX9 only). Owned_Paths verified disjoint from all three active tasks. **One standing note given the immediately-preceding TASK-146 incident: report only test runs you actually executed this session, unfiltered where the task says unfiltered.** The code work on that task was good; the frozen verdict was purely about evidence that did not survive verification. Same bar applies here.
+- [2026-09-04T19:58:30Z] [SV:CX9] Stopped before implementation: assigned branch task/TASK-150-cx9 is absent locally and among fetched refs; worktree remains on unrelated task/TASK-146-cx9.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SYNC_MISMATCH: dispatcher-assigned task/TASK-150-cx9 does not exist; supervisor must provide/create the branch and expected base before safe implementation.
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T19:56:58Z
+**Updated_At:** 2026-09-04T19:58:30Z
