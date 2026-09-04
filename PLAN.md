@@ -4280,7 +4280,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
@@ -4295,15 +4295,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Unconfigured FCM env means transport disabled, control-api boots and serves normally — tested
 - [ ] No device token, FCM key, or credential in any log/error/fixture — reviewed directly
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-145-cx
+**Started_At:** 2026-09-04T19:36:20Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T19:36:20Z
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
