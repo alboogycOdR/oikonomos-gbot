@@ -68,6 +68,17 @@ Three blocks in a single day on this alone (TASK-143 with one Codex unit, TASK-1
 
 **Recommendation:** port both edits. More generally: any prompt clause of the form "do not X" where X is a word that also names a legitimate required action ("branch", "claim", "commit") should name the object explicitly — "do not re-claim *in PLAN.md*" — because builders correctly treat prohibitions as hard constraints and will stop rather than interpret.
 
+### 9. The dispatch prompt never tells a builder to read `Review_Findings` — so a rework verdict can silently fail to reach it
+
+**What happened:** ORCH sent a task back with `Status: in_progress` and two specific findings written into PLAN.md's `Review_Findings`. The redispatched builder ran for 22 seconds, changed nothing, and re-emitted `needs_review`. It was not being lazy — it was following its prompt exactly. The template's step 1 says to read PLAN.md *"for the task's Spec_References/Owned_Paths/Acceptance_Criteria"* and to read the dossier *"(your prior work log)"* for the stopping point. `Review_Findings` is named nowhere. The builder's own dossier said the work was complete with a green suite, so from inside the prompt's instructions the correct conclusion was "nothing to do".
+
+This is a silent failure with no error: the task looks redispatched, the builder reports `needs_review`, and only a reviewer who re-checks the specific findings notices nothing changed. It is also self-concealing — the second `needs_review` looks identical to the first.
+
+**Fix (live in Oikonomos, `scripts/dispatch.ps1`):** step 1 now reads `... Acceptance_Criteria AND its **Review_Findings** field`, followed by an explicit gate:
+`REWORK CHECK — do this before concluding you are done: if Review_Findings contains REWORK, the supervisor sent this task back and those findings are your job this session. PLAN.md's Review_Findings OUTRANKS your own dossier: a dossier saying the work is complete with passing tests is stale the moment a REWORK verdict lands.`
+
+**Recommendation:** port it. The general lesson is about **authority ordering between a builder's own work log and the supervisor's verdict**. The pack's resume design deliberately makes the dossier the builder's heartbeat and stopping-point record, which is right — but that makes the dossier the freshest-looking source at resume time, and on a rework it is exactly the stale one. Any field the supervisor uses to send work back must be named in the prompt *and* explicitly ranked above the builder's own notes, or rework rounds will occasionally evaporate. Related to finding #8: both are cases where the prompt's wording, not the builder's judgement, produced the wrong outcome.
+
 ---
 
 ## Minor — onboarding friction, not a bug
