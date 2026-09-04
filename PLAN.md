@@ -3599,7 +3599,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
@@ -3619,9 +3619,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** dossiers/TASK-121.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: TASK-120 scoped `addThreadMember`/`listThreadMembers` but not a `createGroupThread`/group-aware `listThreads` accessor; control-api cannot embed raw SQL or touch packages/db itself. Triaged 2026-09-04T05:52:00Z [ORCH]: this is a genuine decomposition gap, not a builder error — CX's diagnosis is correct. Opened TASK-125 (single-owner, packages/db) to close it; re-sequenced this task's Depends_On to include it. Branch task/TASK-121-cx stays put per resume-first practice; resume once TASK-125 merges.
+**Blocked_Reason:** — (was MISSING_DEPENDENCY, resolved: TASK-125 merged 2026-09-04T08:20:00Z with `createGroupThread`/`listAllThreadsWithMembers` now exported from `@oikonomos/db`. Resuming CX on task/TASK-121-cx.)
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T05:52:00Z
+**Updated_At:** 2026-09-04T08:20:00Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
@@ -3702,7 +3702,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-125
 **Title:** Group-thread DB accessors (Chat-2b prerequisite)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; TASK-121's own Blocked_Reason — the real gap TASK-120 left: no accessor exists to create a group thread (`role_id = null` + `thread_members` rows) or to list threads in a shape that includes both 1:1 and group threads
@@ -3721,9 +3721,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T05:52:46Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — packages/db/src/index.ts needed to export the new accessors, was outside Owned_Paths.
 - [2026-09-04T08:13:00Z] [ORCH] Triaged: legitimate gap, not scope creep — `index.ts` is the package's public barrel and TASK-121 cannot import anything not exported through it. Added packages/db/src/index.ts to Owned_Paths (additive only — description now says explicitly: touch only the existing threads.js export block, leave every other export untouched). No other active task owns this file (TASK-121 blocked/control-api, TASK-124 dashboard) — no collision. Resume on task/TASK-125-cx.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T05:57:29Z] [SV:CX] Implemented createGroupThread (atomic, min-2/no-duplicate validated) and listAllThreadsWithMembers (discriminated Thread|GroupThread), exported through index.ts. Reported blocked: OTHER — a group-thread row leaked by an earlier failed focused-test run remained in shared dev Postgres, and team rules prohibit builders issuing manual DELETE cleanup.
+**Artifacts:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts, dossiers/TASK-125.md
+**Test_Evidence:** CX: pnpm --filter @oikonomos/db typecheck passed; focused integration run showed the new group-thread test passing but an unrelated leaked row blocking the unchanged listThreads test. ORCH independently re-verified (fresh subagent, DATABASE_URL correctly propagated): direct Postgres queries found ZERO leaked rows (the test's own `finally` cleanup block does remove them correctly) — focused threads.test.ts 7/9 passed (2 skipped), full db package suite 126/128 (2 skipped), pnpm -r build 17/17, pnpm lint clean, full pnpm -r test exit 0 across every package with zero failures.
+- [2026-09-04T08:20:00Z] [ORCH] APPROVED, first-pass (the reported blocker did not reproduce on independent re-run — the row CX saw was transient/from the interrupted first attempt, and the test's own cleanup already handles it correctly; not a real defect). Territory clean (4 files, all Owned_Paths). Diff reviewed directly: `createGroupThread` is properly transactional (BEGIN/COMMIT/ROLLBACK around the parent insert + all member inserts, releases the client in `finally`), validates ≥2 roles and rejects duplicates before opening a pool. `listAllThreadsWithMembers` uses a single LEFT JOIN + array_agg query, correctly discriminates 1:1 vs group rows on `role_id IS NULL`, and correctly reuses the existing `toThread`/new `toGroupThread` converters without touching either pre-existing 1:1-only accessor's behavior. Test coverage includes the FK-rollback case (a missing role in the roleIds list leaves zero rows behind, asserted directly). `index.ts` diff is exactly the scoped addition (4 lines, existing threads.js export block only, nothing else touched). Merged --no-ff. **Unlocks TASK-121** (now resume CX on task/TASK-121-cx with the new accessors available).
+**Review_Findings:** APPROVE, first-pass. Reported blocker was a false positive on independent re-verification — not a defect, no rework needed.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T08:13:00Z
+**Updated_At:** 2026-09-04T08:20:00Z
