@@ -3704,21 +3704,24 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; TASK-121's own Blocked_Reason — the real gap TASK-120 left: no accessor exists to create a group thread (`role_id = null` + `thread_members` rows) or to list threads in a shape that includes both 1:1 and group threads
-**Owned_Paths:** packages/db/src/threads.ts, packages/db/src/threads.test.ts
+**Owned_Paths:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts
 **Depends_On:** TASK-120
-**Description:** `packages/db/src/threads.ts` today only creates/returns 1:1 threads (`toThread` throws if `role_id` is null). Add `createGroupThread(options, {roleIds, title?})`: requires 2+ roleIds, inserts one `threads` row with `role_id = null` in the same transaction as one `thread_members` row per roleId (all-or-nothing — do not leave a thread with zero members if any insert fails), returns a new `GroupThread` type (`id`, `title`, `createdAt`, `updatedAt`, `memberRoleIds: string[]` — no single `roleId` field, this is deliberately a different shape from `Thread`, not a null-roleId `Thread`). Add `listAllThreadsWithMembers(options)` (or similar) returning both 1:1 and group threads in one call with enough data for control-api to build TASK-121's `GET /threads` response shape (e.g. an array of `Thread | GroupThread`, discriminated by presence of `roleId` vs `memberRoleIds`) — do not change `toThread`'s existing fail-loud behavior for the pre-existing 1:1-only functions (`createThread`, `listThreads`, `getThreadsForRole`, `getOrCreateThreadForRole`); this is additive, not a replacement.
+**Description:** `packages/db/src/threads.ts` today only creates/returns 1:1 threads (`toThread` throws if `role_id` is null). Add `createGroupThread(options, {roleIds, title?})`: requires 2+ roleIds, inserts one `threads` row with `role_id = null` in the same transaction as one `thread_members` row per roleId (all-or-nothing — do not leave a thread with zero members if any insert fails), returns a new `GroupThread` type (`id`, `title`, `createdAt`, `updatedAt`, `memberRoleIds: string[]` — no single `roleId` field, this is deliberately a different shape from `Thread`, not a null-roleId `Thread`). Add `listAllThreadsWithMembers(options)` (or similar) returning both 1:1 and group threads in one call with enough data for control-api to build TASK-121's `GET /threads` response shape (e.g. an array of `Thread | GroupThread`, discriminated by presence of `roleId` vs `memberRoleIds`) — do not change `toThread`'s existing fail-loud behavior for the pre-existing 1:1-only functions (`createThread`, `listThreads`, `getThreadsForRole`, `getOrCreateThreadForRole`); this is additive, not a replacement. Export the new function(s)/type(s) through `packages/db/src/index.ts` (its existing `threads.js` export block) so control-api can actually consume them — this is the only change this task makes to that file; do not touch or reorder any other export in it.
 **Acceptance_Criteria:**
 - [ ] `createGroupThread` rejects fewer than 2 roleIds before touching the DB, tested
 - [ ] `createGroupThread` produces a real thread (`role_id IS NULL`) and one real `thread_members` row per bot, tested against real Postgres; a failure partway through leaves no partial thread (transactional, tested)
 - [ ] A new list accessor returns both 1:1 and group threads with a discriminable shape, tested against real Postgres with a fixture of both kinds
 - [ ] Existing `threads.ts` exports and their tests are unmodified in behavior — only additive changes
+- [ ] New accessor(s)/type(s) are exported from `packages/db/src/index.ts`, with every pre-existing export in that file untouched
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-125-cx
 **Started_At:** 2026-09-04T05:50:33Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T05:52:46Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — packages/db/src/index.ts needed to export the new accessors, was outside Owned_Paths.
+- [2026-09-04T08:13:00Z] [ORCH] Triaged: legitimate gap, not scope creep — `index.ts` is the package's public barrel and TASK-121 cannot import anything not exported through it. Added packages/db/src/index.ts to Owned_Paths (additive only — description now says explicitly: touch only the existing threads.js export block, leave every other export untouched). No other active task owns this file (TASK-121 blocked/control-api, TASK-124 dashboard) — no collision. Resume on task/TASK-125-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:50:33Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T08:13:00Z
