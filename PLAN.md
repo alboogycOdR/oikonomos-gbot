@@ -3981,12 +3981,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T15:00:48Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — cron-parser needs to be a direct dependency of services/control-api (where the routine-creation handler actually lives), but I granted worker's package.json instead by mistake.
 - [2026-09-04T17:02:00Z] [ORCH] My own mis-scoping — corrected to services/control-api/package.json (removed the wrong worker grant). No collision (TASK-135 doesn't touch control-api). Resuming CX.
+- [2026-09-04T15:03:08Z] [SV:CX] Blocked again: SYNC_MISMATCH — worktree's own PLAN.md predated the correction (dispatch.ps1 correctly does not force-reset a worktree sitting on a real branch, so it can go stale relative to master between dispatches). Correctly self-diagnosed rather than proceeding on stale metadata.
+- [2026-09-04T17:05:00Z] [ORCH] Merged master into the CX worktree directly (clean, no conflicts) to bring its local PLAN.md current. Resuming CX.
 **Artifacts:** dossiers/TASK-134.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T17:02:00Z
+**Updated_At:** 2026-09-04T17:05:00Z
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
