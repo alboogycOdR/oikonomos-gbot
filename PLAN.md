@@ -4307,7 +4307,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-139 Review_Findings (both findings recorded there verbatim); services/worker/src/executeRun.ts (`connectorMount()` derives `ConnectorMount.connectorId` solely from `connector.manifest.connector_id` — only the FIRST merged connector's identity survives); services/worker/src/chatRunDriver.ts (`combineConnectorContexts` keeps `manifest: first.manifest`)
@@ -4319,15 +4319,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Reverse-direction isolation (Drive-granted, Calendar-absent) independently asserted, mutation-proof
 - [ ] Existing TASK-116/117/128/139 tests pass unmodified (except fixtures the shape change forces — each named in the dossier)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-146-cx9
+**Started_At:** 2026-09-04T19:36:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T19:36:28Z
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
