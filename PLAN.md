@@ -3963,7 +3963,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-134
 **Title:** OIK-109 — real cron routine scheduling (create/list + fire-time computation)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-109); TASK-132's real firing mechanism (this task feeds it real `next_fire_at` values, doesn't touch firing itself); `apps/dashboard/src/components/chat/RightPanel.tsx`'s existing read-only Routines tab (`ChatPage.tsx` currently passes `routines={[]}` hardcoded — this task is what finally gives it real data)
@@ -3976,15 +3976,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `GET /roles/:roleId/routines` returns real routines for a role — tested
 - [ ] The live Routines tab shows real routine data for the active bot — tested through the real component tree, not just the endpoint in isolation
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-134-cx
+**Started_At:** 2026-09-04T14:59:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:56:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T14:59:01Z
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
