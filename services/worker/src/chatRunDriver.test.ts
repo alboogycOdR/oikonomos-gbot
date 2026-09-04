@@ -9,8 +9,12 @@ import {
   listRuns,
   type DatabaseOptions,
 } from "@oikonomos/db";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { once } from "node:events";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { AgentSdkQueryFn, AgentSdkQueryInput } from "@oikonomos/harness-factory";
+import type { ConnectorManifest } from "@oikonomos/connectors";
 
 import {
   CHAT_FANOUT_CAPABILITY_ID,
@@ -30,10 +34,56 @@ const base = {
   agentRef: { provider: "claude", sessionRef: "session", isSubagent: false },
 };
 
+const task128Manifest: ConnectorManifest = {
+  connector_id: "gmail",
+  account_ownership: "basileia",
+  mcp_server: { name: "gmail", transport: "remote", url_ref: "secret://mcp/gmail/url" },
+  tools: [
+    { tool_name: "mcp__gmail__list_messages", capability_id: "email.list", default_tier: "T0_observe" },
+    { tool_name: "mcp__gmail__create_draft", capability_id: "email.create_draft", default_tier: "T1_draft" },
+    { tool_name: "mcp__gmail__send_message", capability_id: "email.send", default_tier: "T3_external" },
+  ],
+  role_grants: [],
+  evals: { suite: "evals/golden/suites/task-128", min_pass_rate: 0.9 },
+  review: { onboarded_by: "test", date: "2026-09-04", scope_justification: "TASK-128 fixture" },
+};
+
+async function callMountedTool(
+  input: AgentSdkQueryInput,
+  toolName: string,
+  toolUseId: string,
+  toolInput: Record<string, unknown>,
+): Promise<boolean> {
+  const options = input.options as {
+    hooks?: { PreToolUse?: Array<{ hooks: Array<(...args: never[]) => Promise<unknown>> }> };
+  } | undefined;
+  const hook = options?.hooks?.PreToolUse?.[0]?.hooks[0];
+  if (hook === undefined) throw new Error("TASK-128 fixture expected the composed PreToolUse hook");
+  const output = await hook(
+    { hook_event_name: "PreToolUse", tool_name: toolName, tool_use_id: toolUseId, tool_input: toolInput } as never,
+    toolUseId as never,
+    { signal: new AbortController().signal } as never,
+  ) as { hookSpecificOutput?: { permissionDecision?: string } };
+  return output.hookSpecificOutput?.permissionDecision === "allow";
+}
+
+async function readRequest(request: IncomingMessage): Promise<string> {
+  let body = "";
+  for await (const chunk of request) body += String(chunk);
+  return body;
+}
+
+function json(response: ServerResponse, value: unknown): void {
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify(value));
+}
+
 describe("chat run driver governance helpers", () => {
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
     expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)", "Read(*)"]');
-    expect(chatRunDriverSource).not.toMatch(/queryFn\s*:/);
+    // TASK-128 has an injected query seam for its protocol-compatible MCP
+    // fixture; production still leaves Agent SDK ownership with the factory.
+    expect(chatRunDriverSource).toContain("options.queryFn");
     expect(chatRunDriverSource).not.toContain("@anthropic-ai/claude-agent-sdk");
   });
 
@@ -130,6 +180,16 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       title: "TASK-116 governed chat run fixture role",
       description: "TASK-116 chatRunDriver integration fixture — intentionally grant-less.",
     });
+    // Keep the shared development capability rows aligned to the checked-in
+    // Gmail manifest. This is idempotent fixture setup, not a new capability.
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({ capabilityId: "email.list", description: "List Gmail messages.", defaultTier: "T0_observe", adapter: "mcp:gmail", enabled: true });
+      await database.upsertCapability({ capabilityId: "email.create_draft", description: "Create a Gmail draft.", defaultTier: "T1_draft", adapter: "mcp:gmail", enabled: true });
+      await database.upsertCapability({ capabilityId: "email.send", description: "Send a Gmail message.", defaultTier: "T3_external", adapter: "mcp:gmail", enabled: false });
+    } finally {
+      await database.close();
+    }
 
     task = await createTask(options, {
       roleId,
@@ -220,7 +280,98 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     120_000,
   );
 
+  it("mounts only a role's granted Gmail tool and calls it through a real fixture HTTP MCP server (TASK-128)", async () => {
+    const calls: Array<{ tool: string; authorization: string | undefined }> = [];
+    const server = createServer(async (request, response) => {
+      const body = JSON.parse(await readRequest(request)) as { id?: unknown; method?: unknown; params?: { name?: unknown } };
+      if (body.method === "tools/call" && typeof body.params?.name === "string") {
+        calls.push({ tool: body.params.name, authorization: request.headers.authorization });
+      }
+      json(response, { jsonrpc: "2.0", id: body.id ?? null, result: { content: [{ type: "text", text: "fixture response" }] } });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("TASK-128 fixture server did not bind TCP");
+    const mcpUrl = `http://127.0.0.1:${address.port}/mcp`;
+    const fixtureToken = ["task", "128", "access"].join("-");
+
+    const database = new Database(options);
+    try {
+      await database.upsertRoleGrant({ roleId, capabilityId: "email.list", maxTier: "T0_observe", constraints: {} });
+    } finally {
+      await database.close();
+    }
+
+    const connectorCalls: string[] = [];
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      const sdkOptions = input.options as {
+        allowedTools?: readonly string[];
+        mcpServers?: Record<string, { url: string; headers?: Record<string, string> }>;
+      };
+      const gmail = sdkOptions.mcpServers?.gmail;
+      if (gmail === undefined) throw new Error("TASK-128 fixture expected Gmail to be mounted");
+      for (const [toolName, mcpTool] of [
+        ["mcp__gmail__list_messages", "list_messages"],
+        ["mcp__gmail__send_message", "send_message"],
+      ] as const) {
+        // This models the SDK's L2 surface: an unmounted tool cannot be selected
+        // by the agent at all. Removing TASK-128's per-run filter adds send here,
+        // which calls the fixture endpoint and reddens the assertions below.
+        if (!sdkOptions.allowedTools?.includes(`${toolName}(*)`)) continue;
+        const allowed = await callMountedTool(input, toolName, `task-128-${mcpTool}`, { q: "in:inbox" });
+        if (!allowed) continue;
+        const response = await fetch(gmail.url, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...gmail.headers },
+          body: JSON.stringify({ jsonrpc: "2.0", id: mcpTool, method: "tools/call", params: { name: mcpTool, arguments: {} } }),
+        });
+        expect(response.ok).toBe(true);
+        connectorCalls.push(toolName);
+        yield { type: "tool_result", toolName, result: "fixture response" };
+      }
+    };
+
+    try {
+      const gmailTask = await createTask(options, {
+        roleId,
+        title: "TASK-128 Gmail connector fixture",
+        goal: "List fixture mail only.",
+        requestedBy: "task-128-suite",
+      });
+      await createChatRunDriver({
+        ...options,
+        manifests: [task128Manifest],
+        queryFn,
+        gmailSessionMinter: {
+          resolveUrl: async () => mcpUrl,
+          oauth: {
+            resolve: async () => "fixture-secret",
+            tokenEndpoint: "http://oauth.fixture.invalid/token",
+            fetch: async () => new Response(JSON.stringify({ access_token: fixtureToken, expires_in: 3600 })),
+          },
+        },
+      }).run({ task: gmailTask, threadId });
+
+      const run = (await listRuns(options, { taskId: gmailTask.taskId })).runs[0];
+      expect(run?.status).toBe("completed");
+      const events = await getAuditEventsForRun(options, run!.runId);
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "email.list"))
+        .toMatchObject({ payload: { verdict: "allow", toolName: "mcp__gmail__list_messages" } });
+      expect(connectorCalls).toEqual(["mcp__gmail__list_messages"]);
+      expect(calls.map((call) => call.tool)).toEqual(["list_messages"]);
+      expect(calls[0]?.authorization).toBe(`Bearer ${fixtureToken}`);
+      expect(sdkOptionsAbsent(calls, "send_message")).toBe(true);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  }, 30_000);
+
 });
+
+function sdkOptionsAbsent(calls: readonly { tool: string }[], tool: string): boolean {
+  return !calls.some((call) => call.tool === tool);
+}
 
 // TASK-122 (Chat-2c): the fan-out-approval rule, confirmed against the real
 // Grok Bot reference product 2026-09-03 — a single 1:1 bot-to-bot message

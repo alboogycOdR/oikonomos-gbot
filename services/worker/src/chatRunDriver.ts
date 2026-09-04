@@ -13,11 +13,16 @@ import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, startTaskRun } from "./runLifecycle.js";
+import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
 
 export interface ChatRunRequest { readonly task: Task; readonly threadId: string; }
 export interface ChatRunDriver { run(request: ChatRunRequest): Promise<void>; }
 export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly manifestsDir?: string;
+  /** Test-only manifest seam; production always loads the validated manifest directory. */
+  readonly manifests?: readonly ConnectorManifest[];
+  /** Test-only Agent SDK seam; production uses the SDK's default query function. */
+  readonly queryFn?: AgentSdkQueryFn;
   /**
    * Test seam for connector session acquisition. Production callers leave
    * this unset and use the Gmail OAuth-backed session minter below.
@@ -64,7 +69,7 @@ async function runChatTask(
   const database = new Database(options);
   let runId: string | undefined;
   try {
-    const manifests = await loadManifests(options.manifestsDir ?? defaultManifestsDir());
+    const manifests = options.manifests ?? await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
     const acquiredConnector = await resolveGrantedGmailConnector({
       database,
@@ -88,6 +93,7 @@ async function runChatTask(
         run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
         // L2 requires the scoped form; PolicyRegistry receives its bare name.
         allowedTools: ["Bash(*)", "Read(*)"],
+        ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
         ...(acquiredConnector === undefined ? {} : { connector: acquiredConnector.connector }),
         brokerDependencies: createBrokerDependencies(options, database, registry, policy),
         auditSink: completionAuditSink(options, run),
@@ -162,6 +168,7 @@ export function destinationFor(request: PreToolUseRequest): string {
   const destination = request.toolName === "Read" || request.toolName === "Edit" || request.toolName === "Write" ? input.file_path
     : request.toolName === "Glob" || request.toolName === "Grep" ? input.path ?? input.pattern
       : request.toolName === "Bash" ? input.command
+        : request.toolName === "mcp__gmail__list_messages" ? input.q
         : request.toolName === "mcp__gmail__send_message" ? input.to : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
