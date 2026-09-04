@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { Message, Thread } from "@oikonomos/db";
+import type { Message, Routine, Thread } from "@oikonomos/db";
 
 import { buildApp } from "./app.js";
 import type { ControlApiDeps } from "./ports.js";
@@ -41,6 +41,9 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     createTask: async () => {
       throw new Error("unused in this test");
     },
+    createRoutine: async () => {
+      throw new Error("unused in this test");
+    },
     createRole: async () => {
       throw new Error("unused in this test");
     },
@@ -49,6 +52,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     listRoleGrants: async () => [],
     revokeRoleGrant: async () => {},
     listRoles: async () => [],
+    listRoutines: async (): Promise<Routine[]> => [],
     getOrCreateThreadForRole: async () => makeThread(),
     listThreads: async () => [makeThread()],
     createGroupThread: async () => {

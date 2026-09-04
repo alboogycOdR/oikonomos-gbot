@@ -6,6 +6,7 @@ import {
   defaultPoolConfig,
   insertMessage,
   listAllThreadsWithMembers,
+  listRoutines,
   listThreadMembers,
   type Approval,
   type Capability,
@@ -14,6 +15,7 @@ import {
   type Message,
   type Role,
   type RoleGrant,
+  type Routine,
   type Task,
   type Thread,
 } from "@oikonomos/db";
@@ -58,6 +60,14 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function makeRoutine(overrides: Partial<Routine> = {}): Routine {
+  return {
+    routineId: randomUUID(), roleId, tenantId: "basileia", name: "Daily report", schedule: "0 8 * * *",
+    lane: "background", enabled: true, definition: {}, lastFireAt: null, nextFireAt: new Date("2030-01-01T08:00:00.000Z"), lastFireStatus: null,
+    ...overrides,
+  };
+}
+
 function makeCapability(overrides: Partial<Capability> = {}): Capability {
   return {
     capabilityId: "fs.read", description: "Read files", defaultTier: "T0_observe", adapter: "sdk:builtin", enabled: true,
@@ -77,12 +87,14 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
   const calls: string[] = [];
   const deps: ControlApiDeps = {
     createTask: async (input) => { calls.push("createTask"); return makeTask(input); },
+    createRoutine: async (input) => { calls.push("createRoutine"); return makeRoutine(input); },
     createRole: async (input) => { calls.push("createRole"); return makeRole(input); },
     listCapabilities: async () => { calls.push("listCapabilities"); return [makeCapability()]; },
     upsertRoleGrant: async (input) => { calls.push(`upsertRoleGrant:${input.capabilityId}:${input.maxTier}`); return input; },
     listRoleGrants: async () => { calls.push("listRoleGrants"); return []; },
     revokeRoleGrant: async (grantRoleId, capabilityId) => { calls.push(`revokeRoleGrant:${grantRoleId}:${capabilityId}`); },
     listRoles: async () => { calls.push("listRoles"); return [makeRole()]; },
+    listRoutines: async () => { calls.push("listRoutines"); return []; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
     createGroupThread: async (input) => ({ ...makeGroupThread(), title: input.title ?? null, memberRoleIds: input.roleIds }),
@@ -116,6 +128,8 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "POST" as const, url: `/roles/${roleId}/grants`, payload: { capabilityId: "email.send", maxTier: "T3_external" } },
       { method: "GET" as const, url: `/roles/${roleId}/grants` },
       { method: "DELETE" as const, url: `/roles/${roleId}/grants/email.send` },
+      { method: "POST" as const, url: `/roles/${roleId}/routines`, payload: { name: "Daily", schedule: "0 8 * * *" } },
+      { method: "GET" as const, url: `/roles/${roleId}/routines` },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
     ];
@@ -164,6 +178,32 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     expect(created.statusCode).toBe(201);
     const listed = await app.inject({ method: "GET", url: "/threads", headers: authHeaders() });
     expect(JSON.parse(listed.body)[0]).toMatchObject({ id: threadId, roleId, botName: "Chat bot", lastMessagePreview: "Hello bot" });
+    await app.close();
+  });
+
+  it("validates five-field cron schedules before calling persistence and lists role routines", async () => {
+    const { deps, calls } = createDeps({
+      listRoutines: async (filter) => [makeRoutine({ roleId: filter.roleId ?? roleId })],
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const invalid = await app.inject({
+      method: "POST", url: `/roles/${roleId}/routines`, headers: authHeaders(),
+      payload: { name: "Invalid", schedule: "not cron" },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(calls).not.toContain("createRoutine");
+
+    const created = await app.inject({
+      method: "POST", url: `/roles/${roleId}/routines`, headers: authHeaders(),
+      payload: { name: " Daily ", schedule: "0 8 * * *", definition: { goal: "Report" } },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(JSON.parse(created.body)).toMatchObject({ name: "Daily", schedule: "0 8 * * *", nextFireAt: expect.any(String) });
+
+    const listed = await app.inject({ method: "GET", url: `/roles/${roleId}/routines`, headers: authHeaders() });
+    expect(listed.statusCode).toBe(200);
+    expect(JSON.parse(listed.body)).toHaveLength(1);
+    expect(calls).toContain("createRoutine");
     await app.close();
   });
 
@@ -553,6 +593,44 @@ integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () 
       }
     },
   );
+});
+
+integration("Role routines — cron scheduling, real Postgres (TASK-134)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("creates a scheduled routine with a persisted next fire time and lists it by role", async () => {
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const roleRes = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name: `Routine ${randomUUID()}`, description: "TASK-134 integration fixture" },
+      });
+      expect(roleRes.statusCode).toBe(201);
+      const role = JSON.parse(roleRes.body) as { id: string };
+
+      const createdRes = await app.inject({
+        method: "POST", url: `/roles/${role.id}/routines`, headers: authHeaders(),
+        payload: { name: "Daily report", schedule: "0 8 * * *", definition: { goal: "Deliver report" } },
+      });
+      expect(createdRes.statusCode).toBe(201);
+      const created = JSON.parse(createdRes.body) as { routineId: string; nextFireAt: string | null; lastFireAt: string | null; lastFireStatus: string | null };
+      expect(created.nextFireAt).not.toBeNull();
+      expect(new Date(created.nextFireAt!).getTime()).toBeGreaterThan(Date.now());
+      expect(created.lastFireAt).toBeNull();
+      expect(created.lastFireStatus).toBeNull();
+
+      const persisted = await listRoutines(options, { tenantId: "basileia", roleId: role.id });
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0]).toMatchObject({ routineId: created.routineId, name: "Daily report", schedule: "0 8 * * *" });
+      expect(persisted[0]?.nextFireAt).not.toBeNull();
+
+      const listRes = await app.inject({ method: "GET", url: `/roles/${role.id}/routines`, headers: authHeaders() });
+      expect(listRes.statusCode).toBe(200);
+      expect(JSON.parse(listRes.body)).toEqual(expect.arrayContaining([expect.objectContaining({ routineId: created.routineId })]));
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 integration("Group-thread control-api routes — real Postgres (TASK-121)", () => {

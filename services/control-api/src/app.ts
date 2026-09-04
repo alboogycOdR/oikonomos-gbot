@@ -2,6 +2,7 @@ import type { Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
+import { CronExpressionParser } from "cron-parser";
 import { riskTiers, runStatuses, taskStatuses, type Approval, type Message, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
@@ -133,6 +134,17 @@ const CREATE_ROLE_GRANT_SCHEMA = {
   properties: {
     capabilityId: { type: "string", minLength: 1 },
     maxTier: { type: "string", enum: riskTiers },
+  },
+} as const;
+
+const CREATE_ROUTINE_SCHEMA = {
+  type: "object",
+  required: ["name", "schedule"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    schedule: { type: "string", minLength: 1 },
+    definition: { type: "object" },
   },
 } as const;
 
@@ -270,6 +282,18 @@ function isRunStatus(value: string): value is RunStatus {
 
 function isTaskStatus(value: string): value is TaskStatus {
   return (taskStatuses as readonly string[]).includes(value);
+}
+
+function nextFireAtFromCron(schedule: string): Date {
+  const normalized = schedule.trim();
+  if (normalized.split(/\s+/).length !== 5) {
+    throw new Error("schedule must be a valid 5-field cron expression.");
+  }
+  try {
+    return CronExpressionParser.parse(normalized).next().toDate();
+  } catch {
+    throw new Error("schedule must be a valid 5-field cron expression.");
+  }
 }
 
 /**
@@ -563,6 +587,35 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     try {
       const grants = await deps.listRoleGrants(request.params.roleId);
       await reply.code(200).send(grants);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { roleId: string }; Body: { name: string; schedule: string; definition?: Record<string, unknown> } }>(
+    "/roles/:roleId/routines",
+    { schema: { body: CREATE_ROUTINE_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const routine = await deps.createRoutine({
+          roleId: request.params.roleId,
+          tenantId: "basileia",
+          name: request.body.name.trim(),
+          schedule: request.body.schedule.trim(),
+          definition: request.body.definition ?? {},
+          nextFireAt: nextFireAtFromCron(request.body.schedule),
+        });
+        await reply.code(201).send(routine);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/routines", async (request, reply) => {
+    try {
+      const routines = await deps.listRoutines({ tenantId: "basileia", roleId: request.params.roleId });
+      await reply.code(200).send(routines);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
     }

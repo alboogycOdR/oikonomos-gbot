@@ -9,6 +9,7 @@
 import {
   Database,
   createTask as dbCreateTask,
+  createRoutine as dbCreateRoutine,
   createRole as dbCreateRole,
   createGroupThread as dbCreateGroupThread,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
@@ -18,6 +19,7 @@ import {
   listPendingApprovals as dbListPendingApprovals,
   listMessages as dbListMessages,
   listRoles as dbListRoles,
+  listRoutines as dbListRoutines,
   listRuns as dbListRuns,
   listTasks as dbListTasks,
   listThreads as dbListThreads,
@@ -26,6 +28,7 @@ import {
   type Capability,
   type DatabaseOptions,
   type NewTask,
+  type NewRoutine,
   type NewRole,
   type NewThread,
   type NewGroupThread,
@@ -40,6 +43,7 @@ import {
   type TaskListPage,
   type Role,
   type RoleGrant,
+  type Routine,
   type Thread,
   type GroupThread,
   type Message,
@@ -70,12 +74,14 @@ import {
  */
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
+  createRoutine(input: NewRoutine): Promise<Routine>;
   createRole(input: NewRole): Promise<Role>;
   listCapabilities(): Promise<Capability[]>;
   upsertRoleGrant(input: RoleGrant): Promise<RoleGrant>;
   listRoleGrants(roleId: string): Promise<RoleGrant[]>;
   revokeRoleGrant(roleId: string, capabilityId: string): Promise<void>;
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
+  listRoutines(filter: { tenantId: string; roleId?: string }): Promise<Routine[]>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
   createGroupThread(input: NewGroupThread): Promise<GroupThread>;
@@ -115,6 +121,7 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
   const chatRunDriver: ChatRunDriver = createChatRunDriver(options);
   return {
     createTask: (input) => dbCreateTask(options, input),
+    createRoutine: (input) => dbCreateRoutine(options, input),
     createRole: (input) => dbCreateRole(options, input),
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
     upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),
@@ -122,6 +129,7 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     revokeRoleGrant: (roleId, capabilityId) =>
       withDatabase(options, (database) => database.revokeRoleGrant(roleId, capabilityId)),
     listRoles: (filter) => dbListRoles(options, filter),
+    listRoutines: (filter) => dbListRoutines(options, filter),
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),
     createGroupThread: (input) => dbCreateGroupThread(options, input),

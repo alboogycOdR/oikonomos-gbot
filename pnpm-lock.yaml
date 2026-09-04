@@ -348,6 +348,9 @@ importers:
       '@oikonomos/worker':
         specifier: workspace:*
         version: link:../worker
+      cron-parser:
+        specifier: ^5.10.0
+        version: 5.10.0
       fastify:
         specifier: ^5.12.1
         version: 5.12.1

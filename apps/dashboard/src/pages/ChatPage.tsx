@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatShell } from "../components/chat/ChatShell";
-import type { BotSummary, ChatMessage } from "../components/chat/types";
+import type { BotSummary, ChatMessage, RoutineSummary } from "../components/chat/types";
 import {
   isGroupThread,
   listRoles,
@@ -15,6 +15,14 @@ import {
 } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
 import { subscribeToThreadMessages, type RealtimeMessage } from "../lib/realtime";
+
+const BASE_URL: string = (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
+
+interface ApiRoutine {
+  routineId: string;
+  name: string;
+  schedule: string | null;
+}
 
 /**
  * TASK-122 (Chat-2c) — `BotSummary`/`ChatMessage` (components/chat/types.ts)
@@ -103,6 +111,7 @@ function toChatMessage(message: ThreadMessage): GroupAwareChatMessage {
 export function ChatPage() {
   const { markUnauthenticated } = useAuth();
   const [bots, setBots] = useState<GroupAwareBotSummary[]>([]);
+  const [routines, setRoutines] = useState<RoutineSummary[]>([]);
   const [messagesByBotId, setMessagesByBotId] = useState<Record<string, GroupAwareChatMessage[]>>({});
   const [activeBotId, setActiveBotId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -245,6 +254,27 @@ export function ChatPage() {
 
   const activeBot = bots.find((bot) => bot.id === activeBotId);
 
+  useEffect(() => {
+    if (activeBot?.roleId === undefined) {
+      setRoutines([]);
+      return undefined;
+    }
+    let cancelled = false;
+    fetch(`${BASE_URL}/roles/${encodeURIComponent(activeBot.roleId)}/routines`, { credentials: "same-origin" })
+      .then(async (response) => {
+        if (response.status === 401) throw new UnauthorizedError();
+        if (!response.ok) throw new Error(`failed to load routines (${response.status})`);
+        return (await response.json()) as ApiRoutine[];
+      })
+      .then((data) => {
+        if (!cancelled) setRoutines(data.map((routine) => ({ id: routine.routineId, name: routine.name, description: routine.schedule ?? undefined })));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled && !handleAuthError(err)) setError(err instanceof Error ? err.message : "failed to load routines");
+      });
+    return () => { cancelled = true; };
+  }, [activeBot?.roleId, handleAuthError]);
+
   return (
     <main className="h-screen w-full">
       {loading && bots.length === 0 && (
@@ -260,7 +290,7 @@ export function ChatPage() {
           bots={bots}
           messagesByBotId={messagesByBotId}
           members={[]}
-          routines={[]}
+          routines={routines}
           initialActiveBotId={activeBot?.id}
           isBotResponding={isBotResponding}
           onSelectBot={handleSelectBot}
