@@ -4447,7 +4447,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-151
 **Title:** Fix the recurring registerCapabilities idempotency flake (concurrency-isolate the test)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/registerCapabilities.test.ts ("registerCapabilities PostgreSQL idempotency — leaves the complete declaration inventory byte-identical on a second registration", the failing case); services/worker/src/killSwitchDrill.test.ts (TASK-140 — flips EVERY capability's `enabled` flag platform-wide via `setAllCapabilitiesEnabled` and restores in a `finally`, a prime suspect for cross-test interference on the shared `capabilities` table); PLAN.md TASK-128/136/139/146 Test_Evidence entries (four separate tasks whose evidence this flake has muddied)
@@ -4460,12 +4460,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Both tests retain their original assertion strength: idempotency still asserts byte-identical inventory; the kill-switch drill still flips every capability platform-wide
 - [ ] The fix isolates data rather than serialising the suite, or explains in the dossier why that was not possible
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-151-cx9
+**Started_At:** 2026-09-04T21:20:59Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T23:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T21:20:59Z
