@@ -4075,7 +4075,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-138
 **Title:** Google Drive connector session minter (Connectors-2b)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/connectors/google-drive.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-drive.yaml; TASK-127 (the exact pattern to mirror)
@@ -4093,11 +4093,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T17:40:11Z] [SV:CX9] Implemented a self-contained Google Drive session minter using the shared OAuth token provider, with safe secret-resolution handling and session-pool compatibility tests.
 **Artifacts:** packages/connectors/src/mcp/googleDriveSessionMinter.ts, packages/connectors/src/mcp/googleDriveSessionMinter.test.ts, dossiers/TASK-138.md
-**Test_Evidence:** Focused connector test: 4/4 pass; pnpm --filter @oikonomos/connectors typecheck pass; pnpm -r test exit 0; pnpm -r build exit 0; pnpm lint exit 0; git diff --check clean.
-**Review_Findings:** —
+**Test_Evidence:** Focused connector test: 4/4 pass; pnpm --filter @oikonomos/connectors typecheck pass; pnpm -r test exit 0; pnpm -r build exit 0; pnpm lint exit 0; git diff --check clean. ORCH's review subagent independently re-ran: connectors 123/127 (4 skipped) incl. 4/4 new tests, full pnpm -r test 141 files/1028 tests passed (control-api's cron-parser failures flagged as a possible master-red concern — ORCH independently verified directly: a stale filtered-build artifact from running `pnpm --filter control-api build` without first rebuilding its dependencies; full `pnpm -r build`/`pnpm -r --no-bail test` in correct dependency order is genuinely clean, control-api 109/132 passed/23 skipped, no regression).
+**Review_Findings:** APPROVE, first-pass. Territory clean (2 new files, barrels correctly untouched). Mirrors TASK-127's Gmail pattern with the same justified local-wrapper deviation as TASK-137 (Owned_Paths too narrow to touch the shared `oauthTokenProvider.ts`), all real OAuth logic still delegated to the shared generic provider — token provider lazily cached across mint calls, verified by a dedicated reuse test. Secret hygiene solid: sanitized `OAuthTokenError` never carries the resolved value, explicit non-leak test on message/JSON/stack. The reviewing subagent flagged what looked like a cross-cutting master-red `cron-parser` build break — investigated directly rather than accepted at face value or dismissed: confirmed it was a stale-dist artifact from a filtered build order, not a real regression; master's full recursive build/test are genuinely green. Merged --no-ff.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T17:40:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T19:52:00Z
 
 ### TASK-140
 **Title:** OIK-112 — platform-wide kill-switch drill (make the capability kill switch actually live, then rehearse it)
