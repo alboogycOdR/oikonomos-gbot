@@ -53,7 +53,12 @@ import {
   type EditApprovalResult,
   type IssueApprovalRequest,
 } from "@oikonomos/approvals";
-import { createChatRunDriver, type ChatRunDriver } from "@oikonomos/worker";
+import {
+  createChatRunDriver,
+  deliverBotToBotMessage,
+  startTaskRun,
+  type ChatRunDriver,
+} from "@oikonomos/worker";
 
 /**
  * The port every route handler is written against. Route-level tests
@@ -97,6 +102,7 @@ export interface ControlApiDeps {
   editApproval(nonce: string, editedRequest: IssueApprovalRequest): Promise<EditApprovalResult>;
   getAuditEventsForRun(runId: string): Promise<AuditEvent[]>;
   runChatTask(input: { task: Task; threadId: string }): Promise<void>;
+  requestGroupFanout(input: { task: Task; memberRoleIds: readonly string[]; body: string }): Promise<{ runId: string }>;
 }
 
 /**
@@ -132,6 +138,20 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
       approvalsEditApproval(nonce, editedRequest, { database: options }),
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),
     runChatTask: (input) => chatRunDriver.run(input),
+    requestGroupFanout: async ({ task, memberRoleIds, body }) => {
+      const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group" });
+      await deliverBotToBotMessage(options, {
+        // The fan-out gate's sender label is audit data, not a role FK. The
+        // persisted group-thread message remains correctly unattributed
+        // (`senderRoleId: null`) because its author is the human user.
+        fromRoleId: "human",
+        toRoleIds: memberRoleIds,
+        body,
+        runId: run.runId,
+        tenantId: task.tenantId,
+      });
+      return { runId: run.runId };
+    },
   };
 }
 

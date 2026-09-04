@@ -645,9 +645,26 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           await reply.code(400).send({ error: "body must not be empty." });
           return;
         }
-        const thread = (await deps.listThreads()).find((candidate) => candidate.id === request.params.id);
+        const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === request.params.id);
         if (thread === undefined) {
           await reply.code(404).send({ error: "thread not found" });
+          return;
+        }
+        if ("memberRoleIds" in thread) {
+          const [dispatchRoleId] = thread.memberRoleIds;
+          if (dispatchRoleId === undefined) {
+            await reply.code(400).send({ error: "group thread has no members" });
+            return;
+          }
+          const task = await deps.createTask({
+            roleId: dispatchRoleId,
+            title: `Group chat: ${body.slice(0, 120)}`,
+            goal: body,
+            requestedBy: `chat:thread:${thread.id}`,
+          });
+          const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: thread.memberRoleIds, body });
+          const message = await deps.insertMessage({ threadId: thread.id, role: "user", body, runId, senderRoleId: null });
+          await reply.code(201).send(message);
           return;
         }
         const message = await deps.insertMessage({ threadId: thread.id, role: "user", body });

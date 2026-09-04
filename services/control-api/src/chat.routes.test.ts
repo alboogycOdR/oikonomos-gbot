@@ -86,7 +86,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
     createGroupThread: async (input) => ({ ...makeGroupThread(), title: input.title ?? null, memberRoleIds: input.roleIds }),
-    listAllThreadsWithMembers: async () => [makeThread()],
+    listAllThreadsWithMembers: async () => { calls.push("listAllThreadsWithMembers"); return [makeThread()]; },
     insertMessage: async (input) => { calls.push("insertMessage"); return makeMessage(input); },
     listMessages: async () => { calls.push("listMessages"); return [makeMessage()]; },
     listTasks: async () => ({ tasks: [], nextCursor: null }),
@@ -97,6 +97,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     editApproval: async () => ({ edited: false, rowCount: 0 }),
     getAuditEventsForRun: async () => [],
     runChatTask: async () => { calls.push("runChatTask"); },
+    requestGroupFanout: async () => { calls.push("requestGroupFanout"); return { runId: randomUUID() }; },
     ...overrides,
   };
   return { deps, calls };
@@ -202,7 +203,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const result = await app.inject({ method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "  Plan my day  " } });
     expect(result.statusCode).toBe(201);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(calls).toEqual(["listThreads", "insertMessage", "createTask", "runChatTask"]);
+    expect(calls).toEqual(["listAllThreadsWithMembers", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
     await app.close();
   });
@@ -239,6 +240,36 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const result = await app.inject({ method: "GET", url: `/threads/${threadId}/messages`, headers: authHeaders() });
     expect(JSON.parse(result.body)[0].approval.max_tier).toBeNull();
+    await app.close();
+  });
+
+  it("posts a human message into a group and requests the existing fan-out gate before delivery", async () => {
+    const groupThread = makeGroupThread();
+    const fanoutRequests: Array<{ task: Task; memberRoleIds: readonly string[]; body: string }> = [];
+    const inserted: Array<Parameters<ControlApiDeps["insertMessage"]>[0]> = [];
+    const { deps, calls } = createDeps({
+      listAllThreadsWithMembers: async () => { calls.push("listAllThreadsWithMembers"); return [groupThread]; },
+      requestGroupFanout: async (input) => {
+        calls.push("requestGroupFanout");
+        fanoutRequests.push(input);
+        return { runId: randomUUID() };
+      },
+      insertMessage: async (input) => {
+        calls.push("insertMessage");
+        inserted.push(input);
+        return makeMessage(input);
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "POST", url: `/threads/${groupThread.id}/messages`, headers: authHeaders(), payload: { body: "  Coordinate this  " },
+    });
+    expect(result.statusCode).toBe(201);
+    expect(calls).toEqual(["listAllThreadsWithMembers", "createTask", "requestGroupFanout", "insertMessage"]);
+    expect(fanoutRequests).toEqual([expect.objectContaining({ memberRoleIds: groupThread.memberRoleIds, body: "Coordinate this" })]);
+    expect(inserted).toEqual([expect.objectContaining({
+      threadId: groupThread.id, role: "user", body: "Coordinate this", senderRoleId: null, runId: expect.any(String),
+    })]);
     await app.close();
   });
 
@@ -531,6 +562,24 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
   const fixtureThreadIds: string[] = [];
 
   async function cleanup(): Promise<void> {
+    // TASK-126's group compose route creates a small dispatch task/run so
+    // its approval can retain the same real run FK as TASK-122's gate.
+    // Remove those dependents before their unique fixture roles.
+    const taskIds = (await pool.query<{ task_id: string }>(
+      "SELECT task_id FROM tasks WHERE requested_by LIKE 'chat:thread:%' AND role_id = ANY($1::text[])",
+      [fixtureRoleIds],
+    )).rows.map((row) => row.task_id);
+    if (taskIds.length > 0) {
+      const runIds = (await pool.query<{ run_id: string }>("SELECT run_id FROM runs WHERE task_id = ANY($1::uuid[])", [taskIds])).rows
+        .map((row) => row.run_id);
+      if (runIds.length > 0) {
+        await pool.query("DELETE FROM messages WHERE run_id = ANY($1::uuid[])", [runIds]);
+        await pool.query("DELETE FROM audit_events WHERE run_id = ANY($1::uuid[])", [runIds]);
+        await pool.query("DELETE FROM approvals WHERE run_id = ANY($1::uuid[])", [runIds]);
+        await pool.query("DELETE FROM runs WHERE run_id = ANY($1::uuid[])", [runIds]);
+      }
+      await pool.query("DELETE FROM tasks WHERE task_id = ANY($1::uuid[])", [taskIds]);
+    }
     if (fixtureThreadIds.length > 0) {
       await pool.query("DELETE FROM messages WHERE thread_id = ANY($1::uuid[])", [fixtureThreadIds]);
       await pool.query("DELETE FROM thread_members WHERE thread_id = ANY($1::uuid[])", [fixtureThreadIds]);
@@ -597,6 +646,29 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       expect(messages).toEqual(expect.arrayContaining([
         expect.objectContaining({ body: "Hello from the second bot", senderRoleId: second.id, senderName: second.name }),
       ]));
+
+      const posted = await app.inject({
+        method: "POST", url: `/threads/${group.id}/messages`, headers: authHeaders(), payload: { body: "Human group dispatch" },
+      });
+      expect(posted.statusCode).toBe(201);
+      const humanMessage = JSON.parse(posted.body) as { id: string; runId: string | null; senderRoleId: string | null };
+      expect(humanMessage).toMatchObject({ senderRoleId: null, runId: expect.any(String) });
+
+      const pendingApproval = await pool.query<{ status: string; capability_id: string }>(
+        "SELECT status, capability_id FROM approvals WHERE run_id = $1",
+        [humanMessage.runId],
+      );
+      expect(pendingApproval.rows).toEqual([{ status: "pending", capability_id: "chat.bot_fanout" }]);
+
+      // The shared TASK-122 gate must stop before its direct-delivery branch:
+      // this run may contain the human's group-thread message, but no newly
+      // created 1:1 recipient-thread message. Removing the gate's fan-out
+      // branch would make this assertion fail.
+      const runMessages = await pool.query<{ thread_id: string; role: string; sender_role_id: string | null }>(
+        "SELECT thread_id, role, sender_role_id FROM messages WHERE run_id = $1",
+        [humanMessage.runId],
+      );
+      expect(runMessages.rows).toEqual([{ thread_id: group.id, role: "user", sender_role_id: null }]);
     } finally {
       try {
         await app.close();

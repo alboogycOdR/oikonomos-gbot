@@ -130,6 +130,20 @@ describe("ChatShell", () => {
     expect(screen.getByTestId("typing-indicator")).toBeInTheDocument();
   });
 
+  it("keeps the compose box enabled for a selected group thread", () => {
+    render(
+      <ChatShell
+        bots={[{ ...fixtureBots[0]!, id: "group-thread", name: "Planning group", isGroup: true } as typeof fixtureBots[number]]}
+        messagesByBotId={{}}
+        members={fixtureMembers}
+        routines={fixtureRoutines}
+        initialActiveBotId="group-thread"
+      />,
+    );
+
+    expect(screen.getByLabelText("Message")).toBeEnabled();
+  });
+
   it("right panel switches between Members and Routines tabs", async () => {
     const user = userEvent.setup();
     render(
