@@ -4164,7 +4164,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-103/104; evals/harness/test/ome-two-role-handoff.test.ts (TASK-100's existing service-layer ACL/versioning proof — already thorough, real Postgres, exercises `sendToRole`/`resolve` directly, do not duplicate its coverage); TASK-131 (registered `mcp__workspace__send_to_role` as a real invokable broker tool — the piece that was missing when OIK-103 was first scoped, now done)
@@ -4177,15 +4177,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A `policy.decision` audit event records the tool call with `verdict: allow`
 - [ ] The receiving role's fact-reference resolution respects the ACL exactly as TASK-100's existing test already proves at the service layer — this test confirms the same property holds when reached through the live tool-call path, not just directly
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-141-cx
+**Started_At:** 2026-09-04T17:57:27Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:57:27Z
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
