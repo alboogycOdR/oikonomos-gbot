@@ -3963,7 +3963,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-134
 **Title:** OIK-109 — real cron routine scheduling (create/list + fire-time computation)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-109); TASK-132's real firing mechanism (this task feeds it real `next_fire_at` values, doesn't touch firing itself); `apps/dashboard/src/components/chat/RightPanel.tsx`'s existing read-only Routines tab (`ChatPage.tsx` currently passes `routines={[]}` hardcoded — this task is what finally gives it real data)
@@ -3985,16 +3985,18 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T17:05:00Z] [ORCH] Merged master into the CX worktree directly (clean, no conflicts) to bring its local PLAN.md current. Resuming CX.
 - [2026-09-04T15:05:36Z] [SV:CX] Blocked a third time: OWNERSHIP_CONFLICT — `createRoutine`'s INSERT has no `next_fire_at` column at all, and `recordRoutineFire` is the wrong tool (it would incorrectly stamp a fire status at creation time, not just set the initial schedule). Correctly declined to misuse the firing API for creation-time state.
 - [2026-09-04T17:08:00Z] [ORCH] Triaged: legitimate, verified directly against createRoutine's real SQL — confirmed the gap. Added packages/db/src/routines.ts + its test to Owned_Paths (no collision, TASK-132 already merged). Guidance: extend `NewRoutine` with an optional `nextFireAt?: Date | null`, threaded into the INSERT as a plain creation-time field — additive, state-neutral, no change to `recordRoutineFire`'s own fire-event semantics. Resuming CX.
-**Artifacts:** dossiers/TASK-134.md
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T15:16:31Z] [SV:CX] Finished: cron create/list API, next_fire_at persisted, active-bot Routines tab wired. Flagged an "unrelated" build failure (worker's @oikonomos/workspace import unresolved) and a recursive-test DDL deadlock, both documented as out-of-scope in the dossier.
+- [2026-09-04T17:22:00Z] [ORCH] Verified both flagged issues directly rather than taking them on faith: the @oikonomos/workspace resolution failure was a genuine stale pnpm workspace link in this worktree (TASK-131 added the dependency to master; the worktree's own `git merge` pulled the package.json/lockfile change but never re-ran `pnpm install`, so node_modules wasn't relinked) — fixed with a pinned-Node-22 `pnpm install` in the worktree, confirmed `pnpm -r build` clean across all 17 projects afterward. The packages/db failure did not reproduce on a direct re-run (27/27 files, 131/131 tests clean) — confirmed transient full-suite contention noise, not a regression; routines.test.ts itself passed 7/7 in isolation throughout. Neither issue originated in this task's own diff.
+**Artifacts:** apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, packages/db/src/routines.ts, packages/db/src/routines.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/control-api/package.json, pnpm-lock.yaml, dossiers/TASK-134.md
+**Test_Evidence:** CX: control-api 132/132, db 131/2 skipped, dashboard 84/84, lint clean. ORCH independently re-verified: fixed the stale worktree linking directly, confirmed pnpm -r build clean (17/17), confirmed packages/db's earlier full-suite failure was transient (clean re-run, 131/131), full pnpm -r --no-bail test clean except the one documented registerCapabilities flake.
+**Review_Findings:** APPROVE, first-pass on the diff itself (3 legitimate ownership/sync gaps along the way, none builder error). Cron validation happens synchronously before `deps.createRoutine` is ever called (a thrown `nextFireAtFromCron` never reaches the DB call), satisfying AC2 precisely. `next_fire_at` computation reuses `cron-parser` (already resolved transitively via pg-boss, now a real direct dependency) rather than hand-rolling cron math. Routines tab test genuinely exercises the real component tree (clicks the tab, asserts real fetched data renders), not just the endpoint. Merged --no-ff. **Both prerequisite pieces of E11's "schedule a bot" story (TASK-132 firing + TASK-134 creation) are now real and connected end to end.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T17:08:00Z
+**Updated_At:** 2026-09-04T17:25:00Z
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-107 — "Resumes into waiting_approval, never re-executes"); TASK-133's `reconcileInterruptedRuns`/`resumeInterruptedRun` (already scans and resumes `waiting_approval` runs as part of its open-status set — this task is specifically about proving/hardening the approval-wait case, which TASK-133 didn't specifically end-to-end test)
@@ -4007,10 +4009,35 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-135-s5
 **Started_At:** 2026-09-04T14:59:13Z
+**Progress_Notes:**
+- [2026-09-04T15:11:49Z] [SV:S5] Investigated first: `reconcileInterruptedRuns`/`resumeInterruptedRun` are pure `@oikonomos/db` status transitions, never importing the harness/broker/tool code — the re-execution-safety property holds by construction. Wrote a real end-to-end Postgres proof (call-counter across park→reconcile→resume→grant→consume, single-use replay also proven safe). Found and honestly documented (did not fix, correctly out of Owned_Paths) a real production gap: `chatRunDriver.ts` never wires a `RunParkPort`, so no real run actually reaches `waiting_approval` in production today.
+**Artifacts:** services/worker/test/runLifecycle.test.ts, dossiers/TASK-135.md
+**Test_Evidence:** S5: runLifecycle.test.ts 8/8, worker 57/1 skipped, build/lint clean, full-suite clean except the documented registerCapabilities flake (isolated-confirmed). ORCH independently re-ran: identical clean results across the full recursive suite, only the same one documented flake.
+**Review_Findings:** APPROVE, first-pass. No production code touched — exactly matched the task's own framing that this might be pure verification work. Test rigor is exceptional: a real call-counter proves the governed tool stays at zero invocations across the entire park→reconcile→resume cycle (not "no error thrown"), a real approval is granted and consumed via the actual `grantApproval`/`verifyAndConsume` path with the *original* pre-crash nonce, single-use replay is proven safe after completion, and a mutation-proof companion test guards the terminal-run-never-touched property. The honestly-documented production gap (no real run ever reaches `waiting_approval` today) is a genuine, important finding — opening TASK-136 as an immediate fast-follow rather than letting a real gap sit undiscovered, matching the Grants-1/TASK-123/124 precedent. Merged --no-ff.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T17:28:00Z
+
+### TASK-136
+**Title:** Wire a real RunParkPort into chatRunDriver so chat runs actually reach waiting_approval
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** TASK-135's own honestly-documented finding — `packages/harness-factory/src/compose.ts`'s `RunParkPort`/`withPark` already exists and is wired all the way through `executeRun.ts`'s `park` option, and `PARK_REASONS` already includes `"approval_pending"` (confirmed by reading the source directly, not assumed) — but `chatRunDriver.ts` never supplies a `park` implementation, so a chat run that hits a pending approval today never actually transitions its DB `status` to `waiting_approval`. TASK-133/135's whole durable-resume mechanism is real, tested, and correct, but currently has nothing to act on in production because no chat run ever reaches the state it reconciles.
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts
+**Depends_On:** TASK-135
+**Description:** **Investigate before implementing — this task's scope may need narrowing once the real shape is understood, same discipline as TASK-135.** At minimum: wire a real `RunParkPort` into `chatRunDriver.ts`'s `executeTaskRun` call whose `park()` implementation transitions the run's DB status to `waiting_approval` (a real `packages/db/src/runs.ts` accessor may be needed if one doesn't already cleanly support this transition from `started` — check `resumeRun`'s own status-transition list first). The harder question, to investigate and answer honestly rather than guess at: what does "resuming" a parked *chat* run actually mean once a human grants the approval — does the same Agent SDK session (`sessionRef`) genuinely continue mid-turn once the now-allowed tool call is retried, or does completing a chat run after approval need its own explicit re-entry path distinct from `resumeInterruptedRun`'s DB-only transition? If the full resume-and-continue-the-conversation mechanism turns out to be substantially bigger than wiring the park callback itself, it is legitimate to scope this task to "the run correctly reaches and is marked `waiting_approval`, proven end to end with a real chat run and a real pending approval" and open a further fast-follow for the continue-after-approval half — do not silently build a partial mechanism without saying so.
+**Acceptance_Criteria:**
+- [ ] A real chat run that triggers a real pending approval (matching TASK-116/117's own liveness pattern) actually transitions to `waiting_approval` in the database — tested against real Postgres, not asserted from mocked internals
+- [ ] TASK-133's `reconcileInterruptedRuns` finds and correctly handles a chat run parked this way (closing the loop TASK-135 flagged as currently unreachable in production) — tested
+- [ ] Any scope narrowing (e.g. deferring full continue-after-approval) is explicitly documented in the dossier and this task's own Review_Findings, not silently dropped
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T14:59:13Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T17:30:00Z
