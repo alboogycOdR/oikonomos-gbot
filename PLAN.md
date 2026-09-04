@@ -3877,7 +3877,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
-**Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/package.json, pnpm-lock.yaml
+**Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/package.json, pnpm-lock.yaml, services/worker/src/registerCapabilities.ts
 **Depends_On:** TASK-130
 **Description:** `sendToRole` (`services/workspace/src/mailbox.ts`) is a real, fully-tested, typed role-to-role handoff mechanism (ADR-012 items 3/4 — explicit publish, typed handoff with a memory fact reference, "no privilege expansion" already designed in), but nothing in `packages/broker`/`chatRunDriver` registers it as a tool a live agent run can actually call — confirmed zero references. Add a declared tool (matching `BUILTIN_TOOLS`' existing pattern in `packages/broker/src/builtinTools.ts`) for a `send_to_role` capability, decide and implement the right invocation mechanism given how tools are actually mounted for a real Agent SDK query today (`packages/harness-factory`'s MCP layer only supports `stdio`/`http` transports, not a bare in-process function — a small local MCP server wrapping `sendToRole` is the natural fit, matching the shape TASK-127/128 already established for external connectors, except this one is Basileia-internal, not a third-party OAuth connector). Wire it into `chatRunDriver.ts` so a real chat run can invoke it, gated through the broker's normal PreToolUse/tier/grant path like every other tool (T1_draft is a reasonable default tier — a handoff is not silent/autonomous by default, matching Grants-1's own default-tier philosophy; do not hardcode it as always-allowed). The receiving role's own re-read of any referenced fact must happen under the receiver's own identity/grants (ADR-012's "no privilege expansion" invariant) — this task does not change that invariant, `sendToRole`/`mailbox.ts` already enforce it; this task only makes the tool callable.
 **Acceptance_Criteria:**
@@ -3890,9 +3890,59 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T13:40:10Z] [SV:CX9] Blocked: OWNERSHIP_CONFLICT — wrapping `sendToRole` needs `@oikonomos/workspace` added to `services/worker/package.json` (not currently a dependency), touching `pnpm-lock.yaml` too, neither owned by TASK-131.
 - [2026-09-04T13:45:00Z] [ORCH] Triaged: legitimate — confirmed `services/worker` has no dependency on `@oikonomos/workspace` today, and no circular-dependency risk (`services/workspace` only depends on `@oikonomos/db`/`@oikonomos/shared`, not on `worker`). Did NOT simply grant the paths: TASK-130 (CX) is *concurrently* editing these exact two files right now (adding pg-boss) — granting them to TASK-131 too would put two builders in the same files simultaneously, which CLAUDE.md forbids outright ("Never let two builders near one file, ever"). Sequenced TASK-131 to depend on TASK-130 instead; will expand Owned_Paths and resume CX9 once TASK-130 merges (its post-merge version of these files is what TASK-131 should build on, avoiding a lockfile conflict). CX9 goes idle in the meantime — first real assignment, first legitimate blocker, correctly self-diagnosed and no incorrect scope grab.
+- [2026-09-04T14:11:43Z] [SV:CX9] Blocked again: OWNERSHIP_CONFLICT — the new `send_to_role` capability needs a real declaration in `services/worker/src/registerCapabilities.ts` (with an `mcp:workspace` adapter) or the broker will fail-closed deny it in production; that file isn't in Owned_Paths.
+- [2026-09-04T16:18:00Z] [ORCH] Triaged: legitimate — confirmed `registerCapabilities.ts` is exactly the file that declares each capability's adapter for real registration (same role it played for TASK-114's registerCapabilities CLI and TASK-128's Gmail wiring). No other active task touches it. Added to Owned_Paths. Resuming CX9.
 **Artifacts:** dossiers/TASK-131.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** — (was MISSING_DEPENDENCY, resolved: TASK-130 merged 2026-09-04T16:10:00Z. Owned_Paths expanded to include services/worker/package.json + pnpm-lock.yaml, now safe post-merge. Resuming CX9 on task/TASK-131-cx9.)
+**Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:10:00Z
+**Updated_At:** 2026-09-04T16:18:00Z
+
+### TASK-132
+**Title:** OIK-108 — wire pg-boss to actually fire real routines
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-108); TASK-130's `WorkerJobQueue` (the pg-boss plumbing this task consumes); `services/worker/src/scheduler/scheduler.ts`'s existing `fireRoutine(fire: RoutineFire, ports: RoutineFirePorts)` and `packages/db/src/routines.ts`'s `createRoutine`/`listRoutines`/`recordRoutineFire` (both already built and tested — do not reimplement, wire to them)
+**Owned_Paths:** services/worker/src/jobs/**, services/worker/src/jobs/**/*.test.ts
+**Depends_On:** TASK-130
+**Description:** `role_routines` (schema), `routines.ts` (DB accessors), and `scheduler.ts`'s `fireRoutine`/`RoutineFirePorts` contract already exist and are tested in isolation — nothing calls any of them today. Add a real pg-boss job (using TASK-130's `WorkerJobQueue`) that, on a schedule, finds due routines (`listRoutines`, filtering on `next_fire_at`/`enabled`) and calls `scheduler.fireRoutine()` for each with real `RoutineFirePorts` implementations backed by real DB accessors (`environmentIsUp`, `createTask` from `packages/db`, `recordFire` → `recordRoutineFire`). This task is the firing mechanism, not the cron-expression/NL-parsing UI (that's OIK-109 — this task can drive firing off `next_fire_at` timestamps already present in the schema, however they get set; do not build a cron-string parser here unless a due-routine check genuinely requires one). Keep this narrowly about proving a real routine, once due, actually produces a real queued task through the existing scheduler contract — end to end, against real Postgres.
+**Acceptance_Criteria:**
+- [ ] A real routine past its `next_fire_at` gets picked up and fired through `scheduler.fireRoutine()`, producing a real queued task — tested against real Postgres
+- [ ] A routine whose target environment is down is recorded as `missed`, not queued (exercises `RoutineFirePorts.environmentIsUp` returning false) — tested
+- [ ] `recordRoutineFire` is called with the correct outcome in both cases, and `last_fire_at`/`next_fire_at`/`last_fire_status` reflect it — tested against real Postgres, not asserted from the call alone
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:20:00Z
+
+### TASK-133
+**Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-106); `services/worker/src/runLifecycle.ts`'s `resumeInterruptedRun` (already built and tested — its own comment names this exact scenario, "resume after a killed process returns to the correct state" — but nothing calls it); `packages/db/src/runs.ts`'s `runStatuses`/open-status concept (`started`/`waiting_approval`/`resumed` are non-terminal; the module's own `OPEN_STATUSES` list is private — export it, or add an equivalent query, rather than hand-duplicating the literal array)
+**Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, packages/db/src/runs.ts, packages/db/src/runs.test.ts
+**Depends_On:** TASK-130
+**Description:** `resumeInterruptedRun(options, runId)` already exists, is tested, and does exactly what OIK-106 needs at the single-run level — but nothing calls it when the worker process actually restarts. A run left in an open, non-terminal status (`started`/`waiting_approval`/`resumed`) with no live process still executing it is an orphaned run from a prior process's death. Add a real boot-time reconciliation step the worker service calls on startup: query for open runs (add a real accessor to `packages/db/src/runs.ts` if `listRuns`'s existing filter doesn't already support querying by open status — check first, ADR-013's own precedent applies: don't rebuild what a filter already does), and call `resumeInterruptedRun` on each. A run that legitimately completed/failed/was cancelled must never be touched. This task does not need to solve concurrent-worker-instance coordination (e.g. two worker processes racing to resume the same run) — a single-worker-instance deployment is this task's scope; note the multi-instance gap honestly in the dossier rather than silently ignoring it or over-building for it.
+**Acceptance_Criteria:**
+- [ ] A real run left in an open status (simulating a killed process — do not actually kill a process in the test, construct the persisted state directly) is found and resumed via `resumeInterruptedRun` when the reconciliation step runs — tested against real Postgres
+- [ ] A completed/failed/cancelled run is never touched by the reconciliation step — tested (mutation-proof: removing the status filter must make this test fail by attempting to resume a terminal run)
+- [ ] The reconciliation step is callable independently of full worker-process boot (so it's actually testable, not just "trust it runs on startup")
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:20:00Z
