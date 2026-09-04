@@ -7,6 +7,7 @@
  * liveness check that keeps this true.
  */
 import {
+  Database,
   createTask as dbCreateTask,
   createRole as dbCreateRole,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
@@ -20,6 +21,7 @@ import {
   listTasks as dbListTasks,
   listThreads as dbListThreads,
   type AuditEvent,
+  type Capability,
   type DatabaseOptions,
   type NewTask,
   type NewRole,
@@ -34,6 +36,7 @@ import {
   type TaskListFilter,
   type TaskListPage,
   type Role,
+  type RoleGrant,
   type Thread,
   type Message,
   type MessageListOptions,
@@ -59,6 +62,8 @@ import { createChatRunDriver, type ChatRunDriver } from "@oikonomos/worker";
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
   createRole(input: NewRole): Promise<Role>;
+  listCapabilities(): Promise<Capability[]>;
+  upsertRoleGrant(input: RoleGrant): Promise<RoleGrant>;
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
@@ -97,6 +102,8 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
   return {
     createTask: (input) => dbCreateTask(options, input),
     createRole: (input) => dbCreateRole(options, input),
+    listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
+    upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),
     listRoles: (filter) => dbListRoles(options, filter),
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),
@@ -113,4 +120,13 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),
     runChatTask: (input) => chatRunDriver.run(input),
   };
+}
+
+async function withDatabase<T>(options: DatabaseOptions, operation: (database: Database) => Promise<T>): Promise<T> {
+  const database = new Database(options);
+  try {
+    return await operation(database);
+  } finally {
+    await database.close();
+  }
 }

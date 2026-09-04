@@ -22,14 +22,14 @@ async function runChatTask(options: CreateChatRunDriverOptions, request: ChatRun
   try {
     const manifests = await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
-    const policy = new PolicyRegistry({ mountedToolNames: ["Bash"], policies: [{ toolName: "Bash" }], manifestToolNames: [...registry.enabledToolNames] });
+    const policy = new PolicyRegistry({ mountedToolNames: ["Bash", "Read"], policies: [{ toolName: "Bash" }, { toolName: "Read" }], manifestToolNames: [...registry.enabledToolNames] });
     const run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
     runId = run.runId;
     const result = await executeTaskRun({
       prompt: request.task.goal,
       run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
       // L2 requires the scoped form; PolicyRegistry receives its bare name.
-      allowedTools: ["Bash(*)"],
+      allowedTools: ["Bash(*)", "Read(*)"],
       brokerDependencies: createBrokerDependencies(options, database, registry, policy),
       auditSink: completionAuditSink(options, run),
     });

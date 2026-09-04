@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import { Database, type Approval, type DatabaseOptions, type Message, type Role, type Task, type Thread } from "@oikonomos/db";
+import { Database, type Approval, type Capability, type DatabaseOptions, type Message, type Role, type RoleGrant, type Task, type Thread } from "@oikonomos/db";
 
 import { buildApp } from "./app.js";
 import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
@@ -38,6 +38,13 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function makeCapability(overrides: Partial<Capability> = {}): Capability {
+  return {
+    capabilityId: "fs.read", description: "Read files", defaultTier: "T0_observe", adapter: "sdk:builtin", enabled: true,
+    ...overrides,
+  };
+}
+
 function makeApproval(runId: string): Approval {
   return {
     approvalId: randomUUID(), tenantId: "basileia", runId, capabilityId: "email.send", actionDigest: Buffer.from("digest"),
@@ -51,6 +58,8 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
   const deps: ControlApiDeps = {
     createTask: async (input) => { calls.push("createTask"); return makeTask(input); },
     createRole: async (input) => { calls.push("createRole"); return makeRole(input); },
+    listCapabilities: async () => { calls.push("listCapabilities"); return [makeCapability()]; },
+    upsertRoleGrant: async (input) => { calls.push(`upsertRoleGrant:${input.capabilityId}:${input.maxTier}`); return input; },
     listRoles: async () => { calls.push("listRoles"); return [makeRole()]; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
@@ -86,16 +95,36 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await app.close();
   });
 
-  it("creates and lists zero-grant chat bots without a client-controlled capability", async () => {
+  it("creates and lists chat bots with data-driven built-in grants", async () => {
     const { deps, calls } = createDeps();
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const created = await app.inject({ method: "POST", url: "/roles", headers: authHeaders(), payload: { name: " Bot ", description: " Helpful " } });
     expect(created.statusCode).toBe(201);
     expect(JSON.parse(created.body)).toMatchObject({ name: "Bot", description: "Helpful", avatarSeed: expect.any(String) });
-    expect(calls).toEqual(["createRole"]);
+    expect(calls).toEqual(["createRole", "listCapabilities", "upsertRoleGrant:fs.read:T0_observe"]);
     const listed = await app.inject({ method: "GET", url: "/roles", headers: authHeaders() });
     expect(listed.statusCode).toBe(200);
     expect(JSON.parse(listed.body)[0]).toMatchObject({ id: roleId, name: "Chat bot" });
+    await app.close();
+  });
+
+  it("grants every sdk:builtin capability at its registered default tier", async () => {
+    const grants: RoleGrant[] = [];
+    const { deps } = createDeps({
+      listCapabilities: async () => [
+        makeCapability({ capabilityId: "fs.read", defaultTier: "T1_draft" }),
+        makeCapability({ capabilityId: "runtime.bash", defaultTier: "T3_external" }),
+        makeCapability({ capabilityId: "email.send", adapter: "mcp:gmail", defaultTier: "T4_irreversible" }),
+      ],
+      upsertRoleGrant: async (grant) => { grants.push(grant); return grant; },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({ method: "POST", url: "/roles", headers: authHeaders(), payload: { name: "Bot", description: "d" } });
+    expect(response.statusCode).toBe(201);
+    expect(grants).toEqual([
+      { roleId: expect.any(String), capabilityId: "fs.read", maxTier: "T1_draft", constraints: {} },
+      { roleId: expect.any(String), capabilityId: "runtime.bash", maxTier: "T3_external", constraints: {} },
+    ]);
     await app.close();
   });
 
@@ -146,10 +175,10 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
 
-integration("POST /roles — zero-grant database integration (TASK-106)", () => {
+integration("POST /roles — built-in grant database integration (TASK-117)", () => {
   const options: DatabaseOptions = { connectionString: connectionString ?? "" };
 
-  it("persists the role with no role_grants rows", async () => {
+  it("persists every registered sdk:builtin capability at its own default tier", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
     const response = await app.inject({
       method: "POST", url: "/roles", headers: authHeaders(),
@@ -159,8 +188,45 @@ integration("POST /roles — zero-grant database integration (TASK-106)", () => 
     const created = JSON.parse(response.body) as { id: string };
     const database = new Database(options);
     try {
-      expect(await database.listRoleGrants(created.id)).toEqual([]);
+      const capabilities = (await database.listCapabilities()).filter((capability) => capability.adapter === "sdk:builtin");
+      expect(await database.listRoleGrants(created.id)).toEqual(
+        capabilities.map((capability) => ({
+          roleId: created.id,
+          capabilityId: capability.capabilityId,
+          maxTier: capability.defaultTier,
+          constraints: {},
+        })),
+      );
     } finally {
+      await database.close();
+      await app.close();
+    }
+  });
+
+  it("uses a registered built-in capability's current, non-default tier", async () => {
+    const database = new Database(options);
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    const original = await database.getCapability("fs.read");
+    if (original === null) throw new Error("TASK-117 integration requires registered fs.read capability.");
+    try {
+      await database.upsertCapability({
+        ...original,
+        defaultTier: "T1_draft",
+      });
+      const response = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name: `Tier grant ${randomUUID()}`, description: "Database assertion fixture" },
+      });
+      expect(response.statusCode).toBe(201);
+      const created = JSON.parse(response.body) as { id: string };
+      expect(await database.getRoleGrant(created.id, "fs.read")).toEqual({
+        roleId: created.id,
+        capabilityId: "fs.read",
+        maxTier: "T1_draft",
+        constraints: {},
+      });
+    } finally {
+      await database.upsertCapability(original);
       await database.close();
       await app.close();
     }
