@@ -4413,7 +4413,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-143 (frozen; its Progress_Notes carry the full architectural finding: `withBudgetSink` decorates `AgentProvider`, which the primary SDK chat path never touches); packages/harness-factory/src/ports.ts (`AgentSdkQueryFn` — stream typed `AsyncIterable<unknown>`, no cost shape anywhere); packages/harness-factory/src/index.ts (`defaultSdkQuery` — the real `@anthropic-ai/claude-agent-sdk` `query()` binding); packages/agent-providers/src/budget.ts (the existing pattern to mirror: fail-closed decorator, `BudgetReport` shape); branch task/TASK-143-cx (CX's own preserved investigation dossier)
 **Owned_Paths:** packages/harness-factory/src/budgetTap.ts, packages/harness-factory/src/budgetTap.test.ts, packages/harness-factory/src/index.ts
@@ -4426,7 +4426,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No production call site modified; barrel export added; `pnpm -r test`, `pnpm -r build`, `pnpm lint` exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T22:07:00Z] [ORCH] Reassigned CX -> CX9 for scheduling reasons only (CX is booked on TASK-145 then the TASK-146 handover; this task has no dependencies and is protected-path, so CX/CX9 only). Owned_Paths verified disjoint from all three active tasks. **One standing note given the immediately-preceding TASK-146 incident: report only test runs you actually executed this session, unfiltered where the task says unfiltered.** The code work on that task was good; the frozen verdict was purely about evidence that did not survive verification. Same bar applies here.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
