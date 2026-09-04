@@ -3820,7 +3820,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-129
 **Title:** RT-01 — real-time push for chat messages and approvals
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_RT01_E10_E11_2026-09-04.md (RT-01); ChatPage.tsx's own `POLL_INTERVAL_MS = 2000` comment block, which this task replaces
@@ -3833,15 +3833,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A dropped connection reconnects and does not duplicate or lose messages — tested
 - [ ] Existing `GET /threads/:id/messages` endpoint and its tests are unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-129-s5
+**Started_At:** 2026-09-04T13:36:25Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T15:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T13:36:25Z
 
 ### TASK-130
 **Title:** OIK-105 — pg-boss integration + job definitions
