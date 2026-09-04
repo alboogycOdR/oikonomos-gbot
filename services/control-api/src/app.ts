@@ -475,6 +475,32 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     },
   );
 
+  /**
+   * TASK-119 (Grants-1c) — list/revoke the standing grants a role holds,
+   * so a granted capability can be taken back from the dashboard. Covered
+   * by the same global fail-closed auth preHandler as every other route.
+   */
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/grants", async (request, reply) => {
+    try {
+      const grants = await deps.listRoleGrants(request.params.roleId);
+      await reply.code(200).send(grants);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.delete<{ Params: { roleId: string; capabilityId: string } }>(
+    "/roles/:roleId/grants/:capabilityId",
+    async (request, reply) => {
+      try {
+        await deps.revokeRoleGrant(request.params.roleId, request.params.capabilityId);
+        await reply.code(204).send();
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
   app.get("/threads", async (_request, reply) => {
     try {
       const [threads, roles] = await Promise.all([

@@ -60,6 +60,8 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     createRole: async (input) => { calls.push("createRole"); return makeRole(input); },
     listCapabilities: async () => { calls.push("listCapabilities"); return [makeCapability()]; },
     upsertRoleGrant: async (input) => { calls.push(`upsertRoleGrant:${input.capabilityId}:${input.maxTier}`); return input; },
+    listRoleGrants: async () => { calls.push("listRoleGrants"); return []; },
+    revokeRoleGrant: async (grantRoleId, capabilityId) => { calls.push(`revokeRoleGrant:${grantRoleId}:${capabilityId}`); },
     listRoles: async () => { calls.push("listRoles"); return [makeRole()]; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
@@ -88,6 +90,8 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "GET" as const, url: "/threads" },
       { method: "POST" as const, url: "/threads", payload: { roleId } },
       { method: "POST" as const, url: `/roles/${roleId}/grants`, payload: { capabilityId: "email.send", maxTier: "T3_external" } },
+      { method: "GET" as const, url: `/roles/${roleId}/grants` },
+      { method: "DELETE" as const, url: `/roles/${roleId}/grants/email.send` },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
     ];
@@ -223,6 +227,36 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await app.close();
   });
 
+  it("lists a role's grants via GET /roles/:roleId/grants (TASK-119)", async () => {
+    const roleGrants: RoleGrant[] = [
+      { roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} },
+      { roleId, capabilityId: "fs.read", maxTier: "T0_observe", constraints: {} },
+    ];
+    const { deps, calls } = createDeps({ listRoleGrants: async () => { calls.push("listRoleGrants"); return roleGrants; } });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({ method: "GET", url: `/roles/${roleId}/grants`, headers: authHeaders() });
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body)).toEqual(roleGrants);
+    expect(calls).toEqual(["listRoleGrants"]);
+    await app.close();
+  });
+
+  it("revokes a grant via DELETE /roles/:roleId/grants/:capabilityId (TASK-119)", async () => {
+    const revoked: Array<[string, string]> = [];
+    const { deps } = createDeps({
+      revokeRoleGrant: async (grantRoleId, capabilityId) => {
+        revoked.push([grantRoleId, capabilityId]);
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "DELETE", url: `/roles/${roleId}/grants/email.send`, headers: authHeaders(),
+    });
+    expect(result.statusCode).toBe(204);
+    expect(revoked).toEqual([[roleId, "email.send"]]);
+    await app.close();
+  });
+
   it("publishes all six chat endpoints in OpenAPI", async () => {
     const { deps } = createDeps();
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
@@ -335,4 +369,91 @@ integration("POST /roles/:roleId/grants — Always Allow standing grant, real Po
       await app.close();
     }
   });
+});
+
+integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("GET lists exactly the grants a role holds, exercising the real DB (not mocked)", async () => {
+    const database = new Database(options);
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const roleRes = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name: `List grants ${randomUUID()}`, description: "TASK-119 integration fixture" },
+      });
+      expect(roleRes.statusCode).toBe(201);
+      const createdRole = JSON.parse(roleRes.body) as { id: string };
+
+      // TASK-117's own onboarding already writes one built-in grant
+      // (fs.read) at role-creation time — add a second, distinguishable
+      // grant via the real POST endpoint so the list assertion below
+      // proves both onboarding-time and explicit grants round-trip.
+      const grantRes = await app.inject({
+        method: "POST", url: `/roles/${createdRole.id}/grants`, headers: authHeaders(),
+        payload: { capabilityId: "fs.read", maxTier: "T1_draft" },
+      });
+      expect(grantRes.statusCode).toBe(201);
+
+      const listRes = await app.inject({
+        method: "GET", url: `/roles/${createdRole.id}/grants`, headers: authHeaders(),
+      });
+      expect(listRes.statusCode).toBe(200);
+      const listed = JSON.parse(listRes.body) as Array<{ roleId: string; capabilityId: string }>;
+      expect(listed).toEqual(await database.listRoleGrants(createdRole.id));
+      expect(listed.some((grant) => grant.capabilityId === "fs.read")).toBe(true);
+    } finally {
+      await database.close();
+      await app.close();
+    }
+  });
+
+  it(
+    "DELETE removes exactly the targeted (role_id, capability_id) row and leaves others intact; " +
+      "a revoked capability's next real getRoleGrant lookup — the same read the broker's fail-closed " +
+      "gate uses (packages/broker/src/capabilityRegistry.ts) — returns null, mirroring TASK-117/118's " +
+      "evidentiary shape via the exact mechanism a fresh run's approval check depends on",
+    async () => {
+      const database = new Database(options);
+      const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+      try {
+        const roleRes = await app.inject({
+          method: "POST", url: "/roles", headers: authHeaders(),
+          payload: { name: `Revoke grants ${randomUUID()}`, description: "TASK-119 integration fixture" },
+        });
+        expect(roleRes.statusCode).toBe(201);
+        const createdRole = JSON.parse(roleRes.body) as { id: string };
+
+        const capability = await database.getCapability("fs.read");
+        if (capability === null) throw new Error("TASK-119 integration requires registered fs.read capability.");
+
+        // A second capability's grant must survive the targeted delete.
+        const other = await database.listCapabilities();
+        const otherCapability = other.find((c) => c.capabilityId !== "fs.read" && c.adapter === "sdk:builtin");
+        if (otherCapability !== undefined) {
+          await database.upsertRoleGrant({
+            roleId: createdRole.id,
+            capabilityId: otherCapability.capabilityId,
+            maxTier: otherCapability.defaultTier,
+            constraints: {},
+          });
+        }
+
+        expect(await database.getRoleGrant(createdRole.id, "fs.read")).not.toBeNull();
+
+        const deleteRes = await app.inject({
+          method: "DELETE", url: `/roles/${createdRole.id}/grants/fs.read`, headers: authHeaders(),
+        });
+        expect(deleteRes.statusCode).toBe(204);
+
+        expect(await database.getRoleGrant(createdRole.id, "fs.read")).toBeNull();
+        if (otherCapability !== undefined) {
+          expect(await database.getRoleGrant(createdRole.id, otherCapability.capabilityId)).not.toBeNull();
+        }
+      } finally {
+        await database.close();
+        await app.close();
+      }
+    },
+  );
 });
