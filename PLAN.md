@@ -3483,7 +3483,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
@@ -3498,13 +3498,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-117-cx
 **Started_At:** 2026-09-03T21:48:27Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T04:14:50Z] [SV:CX] Blocked before source changes: the required T0 chat-run proof cannot run because chatRunDriver mounts only Bash.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: AC #3 requires services/worker/src/chatRunDriver.ts (and likely its test) to mount a T0 tool such as Read, but those paths are outside TASK-117 territory.
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T21:48:27Z
+**Updated_At:** 2026-09-04T04:14:50Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
