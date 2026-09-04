@@ -1,5 +1,5 @@
 ---
-plan_version: 9.0
+plan_version: 9.1
 last_updated: 2026-09-03T23:20:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v9.0 - Wave Chat-1 + ADR-013 (TASK-105-116) complete and demoed live (dashboard dev proxy + control-api Windows entrypoint guard both fixed this pass - services/control-api/src/index.ts now uses the same fileURLToPath pattern TASK-114 proved). User cross-examined the real Grok Bot reference product across three rounds of direct questions before locking the next two waves - findings materially shaped scope: (1) our TASK-106 zero-grant default diverged from our own WBS OIK-131 intent AND the reference product's real behavior (new bot works immediately, T2+ still asks) - corrected in TASK-117; (2) no separate admin/permissions screen exists in the reference product, standing grants come from 'always allow' on the approval card itself - matches our own source-study finding independently, informs TASK-118 (fold into ApprovalCard, no new screen) over the originally-proposed standalone admin UI; (3) bot-to-bot messages use the acting bot's own permissions, already true by construction in our broker (no code change needed, confirmed twice now from independent angles); (4) single 1:1 bot delegation needs no approval, fan-out to multiple bots/a group does - new rule, feeds TASK-122; (5) no grant expiry, no unattended-run leniency - simplifies future E11 routines work, not acted on now (still deferred). Locked two waves: **Grants-1** (TASK-117/118/119 - default builtin grants at bot creation, Always-Allow standing grants from the approval card, a minimal permissions view with revoke) and **Chat-2 Core** (TASK-120/121/122 - group-thread schema, control-api endpoints, UI + the fan-out-approval rule). TASK-117 and TASK-120 have no dependencies and are eligible now; both protected-path-free. GB remains deactivated; E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred. Standing practice continues unchanged (full pnpm -r test per CLAUDE.md's amended review standard, isolated re-run before treating a lone failure as a regression, Node-22 PATH pin now baked into dispatch.ps1)."
@@ -3599,12 +3599,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
-**Depends_On:** TASK-120, TASK-119
+**Depends_On:** TASK-120, TASK-119, TASK-125
 **Description:** Add `POST /threads/group` — body `{roleIds: string[], title?: string}`, requires 2+ roleIds — creates a thread with `role_id = null` and a `thread_members` row per bot (TASK-120's accessors). Extend `GET /threads` to include group threads (a thread with no single `role_id` needs a different summary shape — `botName`/`botDescription` don't apply; return `memberRoleIds`/`memberNames` instead, and the frontend, TASK-122, branches on which shape it got). Extend `GET /threads/:id/messages` to include `senderRoleId`/`senderName` per message so the client can attribute each line to the right bot. `POST /threads/:id/messages` on a group thread is **out of scope for this task** — posting into a group thread and triggering multiple bots is TASK-122's job alongside the fan-out-approval rule; this task is read/creation plumbing only.
 **Acceptance_Criteria:**
 - [ ] `POST /threads/group` creates a real thread + real `thread_members` rows for 2+ bots, rejects with a client error for fewer than 2, tested against real Postgres
@@ -3614,13 +3614,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-121-cx
 **Started_At:** 2026-09-04T05:45:53Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T05:48:06Z] [SV:CX] Verified territory and TASK-120's DB API; no compliant path exists to create a real group thread from control-api without touching packages/db, which is outside Owned_Paths.
+**Artifacts:** dossiers/TASK-121.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:45:53Z
+**Blocked_Reason:** MISSING_DEPENDENCY: TASK-120 scoped `addThreadMember`/`listThreadMembers` but not a `createGroupThread`/group-aware `listThreads` accessor; control-api cannot embed raw SQL or touch packages/db itself. Triaged 2026-09-04T05:52:00Z [ORCH]: this is a genuine decomposition gap, not a builder error — CX's diagnosis is correct. Opened TASK-125 (single-owner, packages/db) to close it; re-sequenced this task's Depends_On to include it. Branch task/TASK-121-cx stays put per resume-first practice; resume once TASK-125 merges.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T05:52:00Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
@@ -3696,3 +3697,28 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-04T05:46:04Z
+
+### TASK-125
+**Title:** Group-thread DB accessors (Chat-2b prerequisite)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; TASK-121's own Blocked_Reason — the real gap TASK-120 left: no accessor exists to create a group thread (`role_id = null` + `thread_members` rows) or to list threads in a shape that includes both 1:1 and group threads
+**Owned_Paths:** packages/db/src/threads.ts, packages/db/src/threads.test.ts
+**Depends_On:** TASK-120
+**Description:** `packages/db/src/threads.ts` today only creates/returns 1:1 threads (`toThread` throws if `role_id` is null). Add `createGroupThread(options, {roleIds, title?})`: requires 2+ roleIds, inserts one `threads` row with `role_id = null` in the same transaction as one `thread_members` row per roleId (all-or-nothing — do not leave a thread with zero members if any insert fails), returns a new `GroupThread` type (`id`, `title`, `createdAt`, `updatedAt`, `memberRoleIds: string[]` — no single `roleId` field, this is deliberately a different shape from `Thread`, not a null-roleId `Thread`). Add `listAllThreadsWithMembers(options)` (or similar) returning both 1:1 and group threads in one call with enough data for control-api to build TASK-121's `GET /threads` response shape (e.g. an array of `Thread | GroupThread`, discriminated by presence of `roleId` vs `memberRoleIds`) — do not change `toThread`'s existing fail-loud behavior for the pre-existing 1:1-only functions (`createThread`, `listThreads`, `getThreadsForRole`, `getOrCreateThreadForRole`); this is additive, not a replacement.
+**Acceptance_Criteria:**
+- [ ] `createGroupThread` rejects fewer than 2 roleIds before touching the DB, tested
+- [ ] `createGroupThread` produces a real thread (`role_id IS NULL`) and one real `thread_members` row per bot, tested against real Postgres; a failure partway through leaves no partial thread (transactional, tested)
+- [ ] A new list accessor returns both 1:1 and group threads with a discriminable shape, tested against real Postgres with a fixture of both kinds
+- [ ] Existing `threads.ts` exports and their tests are unmodified in behavior — only additive changes
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T05:52:00Z
