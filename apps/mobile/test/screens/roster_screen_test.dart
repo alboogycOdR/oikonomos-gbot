@@ -124,4 +124,68 @@ void main() {
 
     expect(find.byType(CreateBotScreen), findsOneWidget);
   });
+
+  testWidgets('creating a bot and returning reloads the roster with it', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    // Initial roster load: empty.
+    fake.queueJson(200, <Object?>[]);
+
+    await tester.pumpWidget(
+      MaterialApp(home: RosterScreen(apiClient: client)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('roster-empty')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('new-bot-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(CreateBotScreen), findsOneWidget);
+
+    // CreateBotScreen.submit(): POST /roles then POST /threads.
+    fake.queueJson(200, {
+      'id': 'role-new',
+      'name': 'Helper',
+      'description': '',
+      'avatarSeed': 'role-new',
+    });
+    fake.queueJson(200, {
+      'id': 'thread-new',
+      'roleId': 'role-new',
+      'botName': 'Helper',
+      'botDescription': '',
+      'avatarSeed': 'role-new',
+      'title': null,
+      'lastMessagePreview': null,
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+
+    // RosterScreen._openCreateBot's `if (created == true) await _load()`
+    // reload path fires within the same pump as the submit/pop below (the
+    // pop's Navigator future resolves and _load() runs before
+    // pumpAndSettle returns), so its response must be queued *before* the
+    // tap — a second GET /threads returning the new bot.
+    fake.queueJson(200, [
+      {
+        'id': 'thread-new',
+        'roleId': 'role-new',
+        'botName': 'Helper',
+        'botDescription': '',
+        'avatarSeed': 'role-new',
+        'title': null,
+        'lastMessagePreview': '',
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
+    ]);
+
+    await tester.enterText(find.byKey(const Key('bot-name-field')), 'Helper');
+    await tester.tap(find.byKey(const Key('create-bot-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CreateBotScreen), findsNothing);
+    expect(find.byKey(const Key('bot-tile-thread-new')), findsOneWidget);
+    expect(find.text('Helper'), findsOneWidget);
+  });
 }

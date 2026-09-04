@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -95,7 +96,7 @@ void main() {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
-    fake.queueHangingStream(200);
+    final streamController = fake.queueControlledStream(200);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -117,15 +118,27 @@ void main() {
 
     final state = tester.state<ChatScreenState>(find.byType(ChatScreen));
     expect(state.hasOpenSubscription, isTrue);
+    // Pre-condition the teardown assertion below actually depends on: the
+    // fake's controller has a live listener while the screen is subscribed.
+    expect(streamController.hasListener, isTrue);
 
     Navigator.of(tester.element(find.byType(ChatScreen))).pop();
     await tester.pumpAndSettle();
 
-    // The widget (and its State) is disposed; hasOpenSubscription can no
-    // longer be observed, but its dispose() having run without error and
-    // the widget being gone from the tree is the externally-visible
-    // guarantee that subscribeToThreadMessages().close() was called.
     expect(find.byType(ChatScreen), findsNothing);
+    // This is the assertion that actually flips on the bug: it only passes
+    // if ChatScreen.dispose() genuinely cancelled/closed the SSE
+    // subscription. If dispose() were a no-op, the controller would still
+    // have its listener attached and this would fail.
+    expect(streamController.hasListener, isFalse);
+
+    // Do NOT await close() here: with no listener left (dispose already
+    // cancelled it), a single-subscription controller's close() has no
+    // one to deliver the done event to and its Future never completes —
+    // the exact hang this test's sibling above works around by closing
+    // *before* disposal. Fire-and-forget is fine; nothing here depends on
+    // the controller reaching a closed state.
+    unawaited(streamController.close());
   });
 
   testWidgets('sending a message posts it and appends the reply', (
