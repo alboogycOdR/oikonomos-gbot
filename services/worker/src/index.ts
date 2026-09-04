@@ -42,6 +42,14 @@ export {
   type GatedGrokOptions,
 } from "./subprocessProviders.js";
 
+export {
+  createWorkerJobQueue,
+  WorkerJobQueue,
+  WORKER_HEARTBEAT_JOB,
+  type CreateWorkerJobQueueOptions,
+  type WorkerHeartbeatJob,
+} from "./jobs/workerJobQueue.js";
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
   describe("@oikonomos/worker", () => {
