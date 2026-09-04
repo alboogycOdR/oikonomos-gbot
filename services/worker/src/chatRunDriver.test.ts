@@ -23,7 +23,7 @@ import {
   destinationFor,
   finalText,
 } from "./chatRunDriver.js";
-import { startTaskRun } from "./runLifecycle.js";
+import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
 
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
@@ -141,6 +141,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
   async function cleanup(): Promise<void> {
     await pool.query(
       `DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`,
+      [roleId],
+    );
+    // TASK-136 added a real pending-approval fixture — `approvals.run_id`
+    // FK-references `runs`, so it must be deleted before `runs` below or the
+    // DELETE violates `approvals_run_id_fkey`.
+    await pool.query(
+      `DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`,
       [roleId],
     );
     await pool.query(
@@ -277,6 +284,121 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         [run.runId],
       );
       expect(approvals.rows[0]!.count).toBe("0");
+    },
+    120_000,
+  );
+
+  it(
+    "a real pending approval during a chat run actually parks it to waiting_approval, and reconcileInterruptedRuns closes the loop (TASK-136)",
+    async () => {
+      // email.send is declared T3_external by task128Manifest itself — this
+      // deliberately reuses the manifest's own declared tier rather than
+      // picking an arbitrary one, so CapabilityRegistry's tier-drift guard
+      // (C5) cannot silently paper over a mismatch. T3_external is >=
+      // APPROVAL_TIER (packages/broker), so a granted call to it issues a
+      // real pending approval instead of an outright deny or a bare allow.
+      const database = new Database(options);
+      try {
+        await database.upsertCapability({
+          capabilityId: "email.send",
+          description: "Send a Gmail message.",
+          defaultTier: "T3_external",
+          adapter: "mcp:gmail",
+          enabled: true,
+        });
+        await database.upsertRoleGrant({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
+      } finally {
+        await database.close();
+      }
+
+      const parkTask = await createTask(options, {
+        roleId,
+        title: "TASK-136 park fixture",
+        goal: "Send fixture mail.",
+        requestedBy: "task-136-suite",
+      });
+
+      // Read directly from Postgres from *inside* the running chat turn, right
+      // after the denied tool call returns — proving `withPark`'s park()
+      // callback (this driver's real `RunParkPort`, via `parkTaskRun`) has
+      // already committed the `waiting_approval` transition by the time the
+      // hook resolves, not merely that the run ends up there eventually.
+      let statusDuringRun: string | undefined;
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+        if (sdkOptions.mcpServers?.gmail === undefined) throw new Error("TASK-136 fixture expected Gmail to be mounted");
+        expect(sdkOptions.allowedTools).toContain("mcp__gmail__send_message(*)");
+
+        const allowed = await callMountedTool(input, "mcp__gmail__send_message", "task-136-park", { to: "user@example.test" });
+        // A pending approval is a deny at the L1/L2 SDK surface (same as any
+        // other CAN-04 deny) — the model simply cannot use the tool this turn.
+        expect(allowed).toBe(false);
+
+        const row = await pool.query<{ status: string }>(
+          "SELECT status FROM runs WHERE task_id = $1",
+          [parkTask.taskId],
+        );
+        statusDuringRun = row.rows[0]?.status;
+        yield { type: "tool_result", result: "mail send is pending human approval" };
+      };
+
+      await createChatRunDriver({
+        ...options,
+        manifests: [task128Manifest],
+        queryFn,
+        gmailSessionMinter: {
+          resolveUrl: async () => "http://gmail.fixture.invalid/mcp",
+          oauth: {
+            resolve: async () => "fixture-secret",
+            tokenEndpoint: "http://oauth.fixture.invalid/token",
+            fetch: async () => new Response(JSON.stringify({ access_token: "task-136-fixture-token", expires_in: 3600 })),
+          },
+        },
+      }).run({ task: parkTask, threadId });
+
+      expect(statusDuringRun).toBe("waiting_approval");
+
+      const run = (await listRuns(options, { taskId: parkTask.taskId })).runs[0]!;
+      const events = await getAuditEventsForRun(options, run.runId);
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "email.send"))
+        .toMatchObject({ tier: "T3_external", payload: { toolName: "mcp__gmail__send_message", verdict: "require_approval" } });
+      const approvals = await pool.query<{ count: string }>(
+        "SELECT count(*) FROM approvals WHERE run_id = $1 AND status = 'pending'",
+        [run.runId],
+      );
+      expect(approvals.rows[0]!.count).toBe("1");
+
+      // The Agent SDK query loop continues past a single denied tool call
+      // within the same turn, so this driver's run still finishes normally —
+      // `completeRun`/`failRun` both already accept `waiting_approval` as a
+      // legal source status (packages/db/src/runs.ts), so no further change
+      // was needed for the run to terminate correctly after being parked.
+      // This is the explicit scope narrowing this task's own Description
+      // allows: reaching and proving `waiting_approval` is in scope; a live
+      // continue-after-approval resume of this exact in-flight SDK session is
+      // not (see dossiers/TASK-136.md).
+      expect(run.status).toBe("completed");
+
+      // AC2 — TASK-133's reconcileInterruptedRuns finds and correctly
+      // handles a chat run parked this way. Fabricate an orphaned run using
+      // the exact same typed `parkTaskRun` accessor this driver calls (no
+      // raw SQL), simulating a worker process that died after parking but
+      // before ever reaching completeTaskRun/failTaskRun.
+      const orphanTask = await createTask(options, {
+        roleId,
+        title: "TASK-136 reconcile fixture",
+        goal: "Never reached — this run is parked and abandoned mid-flight.",
+        requestedBy: "task-136-suite",
+      });
+      const orphanRun = await startTaskRun(options, { taskId: orphanTask.taskId, provider: "claude", tenantId: "basileia" });
+      await parkTaskRun(options, orphanRun.runId);
+      const parkedRow = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
+      expect(parkedRow.rows[0]?.status).toBe("waiting_approval");
+
+      const outcomes = await reconcileInterruptedRuns(options, { taskId: orphanTask.taskId });
+      expect(outcomes).toEqual([{ runId: orphanRun.runId, outcome: "resumed" }]);
+      const resumedRow = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
+      expect(resumedRow.rows[0]?.status).toBe("resumed");
     },
     120_000,
   );
