@@ -4310,7 +4310,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-139 Review_Findings (both findings recorded there verbatim); services/worker/src/executeRun.ts (`connectorMount()` derives `ConnectorMount.connectorId` solely from `connector.manifest.connector_id` — only the FIRST merged connector's identity survives); services/worker/src/chatRunDriver.ts (`combineConnectorContexts` keeps `manifest: first.manifest`)
@@ -4326,12 +4326,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T19:36:28Z
 **Progress_Notes:**
 - [2026-09-04T19:41:51Z] [SV:CX9] Connector mounts now report every mounted identity; reverse Calendar/Drive grant isolation is independently tested.
+- [2026-09-04T19:51:43Z] [SV:CX9] Replaced the inaccurate singular connector identity with an all-mounted connectorIds result, and added independent reverse Calendar/Drive grant-isolation coverage.
 **Artifacts:** services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-146.md
-**Test_Evidence:** PASS: focused worker tests 22/22; pnpm -r build; pnpm lint; pnpm -r test all exited 0.
+**Test_Evidence:** PASS: worker focused tests 22/22; pnpm -r build; pnpm lint; pnpm -r test -- --reporter=dot.
 **Review_Findings:** REWORK (round 1). The core work is good — the shape change is honest (connectorIds list, deduped, frozen, validated in assertConnectorContext), and the reverse-direction fix is elegant (the absent-mount assertion became unconditional and the test revokes Calendar's grant before granting Drive, genuinely exercising the reverse case). But ORCH's independent re-run against real Postgres found a deterministic regression the builder's evidence missed: test/inboxTriage.e2e.test.ts (TASK-055 e2e, DATABASE_URL-gated) still asserts the old singular `connectorId` shape — `expected { connectorIds: ['gmail'] } to deeply equal { connectorId: 'gmail' }`, reproduces 100%. Not a flake. The file was outside Owned_Paths, so this is partly an ORCH decompose gap — territory now widened to include it. Fix: update that one assertion to the new shape, then re-run the worker suite WITH DATABASE_URL set (the gated integration tests are exactly where shape-change fallout hides — an ungated run cannot count as evidence for this task).
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T19:41:51Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T19:51:43Z
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
