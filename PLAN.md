@@ -4191,7 +4191,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** infra/sandbox/README.md (OIK-042 — the real, already-deployed OpenSandbox server on clawsrv, Tailscale-only, `100.78.70.2:8080`, API key required via `OPEN-SANDBOX-API-KEY` header); docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md (R14 pin-don't-track-latest, R16 Docker-backend-only — this task's client must not assume/require Kubernetes); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-113/114 (the full epic — this task is deliberately only its first slice, NOT the full trace-capture-to-routine-spec pipeline)
@@ -4209,15 +4209,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T18:10:17Z] [SV:S5] Implemented packages/sandbox-client: typed OpenSandbox client (health/createSandbox/destroySandbox) against the real live server's own /openapi.json (not guessed from README). Established the secret://opensandbox/api_key resolver convention mirroring connectors' envSecretResolver. 12 files, commits 2d5742a + 7e1dc22 on task/TASK-142-s5, diff clean (Owned_Paths + dossier only, no PLAN.md/lockfile). Health check exercised live against 100.78.70.2:8080 this session (Tailscale reachable) ΓÇö passed. Create/destroy integration test written+gated but not run for real (no API key available in this environment); documented precisely in dossier per AC4. pnpm-lock.yaml needs a sync for 3 new devDeps (no runtime deps) ΓÇö reverted rather than committed since it's outside Owned_Paths, per TASK-085/086/107 precedent (ORCH resolves as merge wiring).
 **Artifacts:** packages/sandbox-client/package.json, packages/sandbox-client/tsconfig.json, packages/sandbox-client/vitest.config.ts, packages/sandbox-client/README.md, packages/sandbox-client/src/client.ts, packages/sandbox-client/src/errors.ts, packages/sandbox-client/src/secretResolver.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/src/index.ts, packages/sandbox-client/test/sandboxClient.test.ts, packages/sandbox-client/test/secretResolver.test.ts, packages/sandbox-client/test/sandboxClient.integration.test.ts, dossiers/TASK-142.md
-**Test_Evidence:** pnpm --filter @oikonomos/sandbox-client typecheck/build/test: all exit 0, 15/15 unit tests passed (2 integration tests correctly skipped, env-gated). pnpm -r build: exit 0, 18/18 workspaces. pnpm lint: exit 0. pnpm -r test run 3x: sandbox-client itself green all 3 runs (0 flakes); each run hit one different pre-existing unrelated flake (packages/db/runs.test.ts, evals/harness can-03, packages/approvals/editApproval.test.ts) under shared-Postgres/subprocess contention, each confirmed passing in isolation, none touching this diff. Real connectivity: health() run live against 100.78.70.2:8080 via built dist client, returned {status:healthy}.
-**Review_Findings:** —
+**Test_Evidence:** pnpm --filter @oikonomos/sandbox-client typecheck/build/test: all exit 0, 15/15 unit tests passed (2 integration tests correctly skipped, env-gated). pnpm -r build: exit 0, 18/18 workspaces. pnpm lint: exit 0. pnpm -r test run 3x: sandbox-client itself green all 3 runs (0 flakes); each run hit one different pre-existing unrelated flake (packages/db/runs.test.ts, evals/harness can-03, packages/approvals/editApproval.test.ts) under shared-Postgres/subprocess contention, each confirmed passing in isolation, none touching this diff. Real connectivity: health() run live against 100.78.70.2:8080 via built dist client, returned {status:healthy}. ORCH's review subagent independently re-ran: 15/15 unit tests, build/lint clean, matched exactly.
+**Review_Findings:** APPROVE, first-pass. Territory clean (11 new files + dossier, no pnpm-lock.yaml — correctly deferred to ORCH as merge-wiring). Found the real live `/openapi.json` rather than guessing endpoint shapes from the README, established a `secret://opensandbox/api_key` convention mirroring `packages/connectors`' existing `envSecretResolver.ts` exactly. Secret hygiene is rigorous: a deliberately adversarial test makes the *underlying* fetch error contain a fake key and asserts the client's re-thrown error does not forward it verbatim — proves upstream error text isn't blindly relayed, not just that fixtures avoid literals. R14/R16 compliant (no Kubernetes concepts, no hardcoded image tag assumptions — image URI is caller-supplied). Genuinely ran the health check live against the real deployed clawsrv server this session (`{status:healthy}`); correctly declined to fabricate a create/destroy round-trip since the real API key wasn't available in this environment, documented precisely rather than glossed over. Lockfile synced by ORCH post-merge (`pnpm install`, 3 new devDeps only, no runtime deps), full `pnpm -r build` re-verified clean (19/19 workspaces) after the sync. Merged --no-ff. **OIK-113/114's Wave-1 foundation is real and proven — connectivity, lifecycle client, and secret convention all in place for the next slice (Steel Browser deployment inside a sandbox) whenever that's scheduled.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T18:10:17Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:40:00Z
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111
@@ -4235,9 +4235,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T18:10:06Z
 **Progress_Notes:**
 - [2026-09-04T18:12:36Z] [SV:CX] Blocked before code: worktree is detached at dispatch commit 6752c6b and task/TASK-143-cx is absent, while dispatch explicitly forbids re-branching.
+- [2026-09-04T18:35:00Z] [ORCH] Unblocked: a genuine dispatch-prompt-template ambiguity, not a builder error — the prompt's own intro line ("claimed by the dispatcher before this session started - do not re-claim or re-branch") reads as "never create a branch," while step 2 correctly says "If newly claimed: create branch task/TASK-143-cx." CX correctly refused to guess rather than risk an unauthorized action. Created `task/TASK-143-cx` from master tip myself; worth flagging in the pack feedback doc as a real prompt-clarity gap (the intro sentence means "don't re-CLAIM in PLAN.md," not "don't branch," and should say so explicitly). Redispatching CX.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** SYNC_MISMATCH: Provision/check out task/TASK-143-cx for this worktree, or explicitly authorize creating it from 6752c6b; no implementation can be safely committed otherwise.
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T18:12:36Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:35:00Z
