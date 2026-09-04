@@ -3700,7 +3700,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-125
 **Title:** Group-thread DB accessors (Chat-2b prerequisite)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; TASK-121's own Blocked_Reason — the real gap TASK-120 left: no accessor exists to create a group thread (`role_id = null` + `thread_members` rows) or to list threads in a shape that includes both 1:1 and group threads
@@ -3713,12 +3713,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A new list accessor returns both 1:1 and group threads with a discriminable shape, tested against real Postgres with a fixture of both kinds
 - [ ] Existing `threads.ts` exports and their tests are unmodified in behavior — only additive changes
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-125-cx
+**Started_At:** 2026-09-04T05:50:33Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T05:52:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:50:33Z
