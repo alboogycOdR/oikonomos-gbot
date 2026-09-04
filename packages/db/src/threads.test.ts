@@ -6,12 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   addThreadMember,
+  createGroupThread,
   createRole,
   createThread,
   defaultPoolConfig,
   getOrCreateThreadForRole,
   getThreadsForRole,
   listThreadMembers,
+  listAllThreadsWithMembers,
   listThreads,
 } from "./index.js";
 
@@ -175,6 +177,66 @@ integration("packages/db threads — migration + CRUD (TASK-105)", () => {
     const second = await getOrCreateThreadForRole({ connectionString: connectionString! }, { roleId, title: "ignored" });
     expect(second.id).toBe(first.id);
     expect(second.title).toBe(first.title);
+  });
+
+  it("creates group threads atomically and lists both thread shapes", async () => {
+    const firstGroupRoleId = "task-125-threads-suite-role-1";
+    const secondGroupRoleId = "task-125-threads-suite-role-2";
+    const groupTitle = "TASK-125 group thread";
+    const partialTitle = "TASK-125 rollback check";
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: firstGroupRoleId, tenantId, name: "First Group Bot", title: "First Group Bot Role" },
+    );
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: secondGroupRoleId, tenantId, name: "Second Group Bot", title: "Second Group Bot Role" },
+    );
+    try {
+      await expect(createGroupThread(
+        { connectionString: connectionString! },
+        { roleIds: [firstGroupRoleId] },
+      )).rejects.toThrow(/at least two/);
+
+      const groupThread = await createGroupThread(
+        { connectionString: connectionString! },
+        { roleIds: [firstGroupRoleId, secondGroupRoleId], title: groupTitle },
+      );
+      expect(groupThread).toEqual({
+        id: expect.any(String),
+        title: groupTitle,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+        memberRoleIds: [firstGroupRoleId, secondGroupRoleId],
+      });
+      const persisted = await pool.query<{ role_id: string | null }>("SELECT role_id FROM threads WHERE id = $1", [groupThread.id]);
+      expect(persisted.rows[0]).toEqual({ role_id: null });
+      expect(await listThreadMembers({ connectionString: connectionString! }, groupThread.id)).toEqual([
+        { threadId: groupThread.id, roleId: firstGroupRoleId, createdAt: expect.any(Date) },
+        { threadId: groupThread.id, roleId: secondGroupRoleId, createdAt: expect.any(Date) },
+      ]);
+
+      await expect(createGroupThread(
+        { connectionString: connectionString! },
+        { roleIds: [firstGroupRoleId, "task-125-missing-role"], title: partialTitle },
+      )).rejects.toThrow();
+      const partial = await pool.query("SELECT id FROM threads WHERE title = $1", [partialTitle]);
+      expect(partial.rows).toEqual([]);
+
+      const oneToOne = await createThread({ connectionString: connectionString! }, { roleId, title: "A thread" });
+      const allThreads = await listAllThreadsWithMembers({ connectionString: connectionString! });
+      expect(allThreads).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: oneToOne.id, roleId }),
+        expect.objectContaining({ id: groupThread.id, memberRoleIds: [firstGroupRoleId, secondGroupRoleId] }),
+      ]));
+
+      await pool.query("DELETE FROM thread_members WHERE thread_id = $1", [groupThread.id]);
+      await pool.query("DELETE FROM threads WHERE id = $1", [groupThread.id]);
+    } finally {
+      await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1)", [[firstGroupRoleId, secondGroupRoleId]]);
+      await pool.query("DELETE FROM threads WHERE title = ANY($1)", [[groupTitle, partialTitle]]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [[firstGroupRoleId, secondGroupRoleId]]);
+    }
   });
 
   const roundTrip = process.env.MIGRATION_ROUND_TRIP === "1" ? it : it.skip;

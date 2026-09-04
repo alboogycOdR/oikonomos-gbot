@@ -71,7 +71,7 @@ export function ChatShell({
           onSend={(body) => activeBotId && onSend?.(activeBotId, body)}
         />
       </div>
-      <RightPanel members={members} routines={routines} />
+      <RightPanel members={members} routines={routines} activeRoleId={activeBot?.roleId} />
     </div>
   );
 }

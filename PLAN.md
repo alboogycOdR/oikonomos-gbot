@@ -1,5 +1,5 @@
 ---
-plan_version: 9.0
+plan_version: 9.1
 last_updated: 2026-09-03T23:20:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v9.0 - Wave Chat-1 + ADR-013 (TASK-105-116) complete and demoed live (dashboard dev proxy + control-api Windows entrypoint guard both fixed this pass - services/control-api/src/index.ts now uses the same fileURLToPath pattern TASK-114 proved). User cross-examined the real Grok Bot reference product across three rounds of direct questions before locking the next two waves - findings materially shaped scope: (1) our TASK-106 zero-grant default diverged from our own WBS OIK-131 intent AND the reference product's real behavior (new bot works immediately, T2+ still asks) - corrected in TASK-117; (2) no separate admin/permissions screen exists in the reference product, standing grants come from 'always allow' on the approval card itself - matches our own source-study finding independently, informs TASK-118 (fold into ApprovalCard, no new screen) over the originally-proposed standalone admin UI; (3) bot-to-bot messages use the acting bot's own permissions, already true by construction in our broker (no code change needed, confirmed twice now from independent angles); (4) single 1:1 bot delegation needs no approval, fan-out to multiple bots/a group does - new rule, feeds TASK-122; (5) no grant expiry, no unattended-run leniency - simplifies future E11 routines work, not acted on now (still deferred). Locked two waves: **Grants-1** (TASK-117/118/119 - default builtin grants at bot creation, Always-Allow standing grants from the approval card, a minimal permissions view with revoke) and **Chat-2 Core** (TASK-120/121/122 - group-thread schema, control-api endpoints, UI + the fan-out-approval rule). TASK-117 and TASK-120 have no dependencies and are eligible now; both protected-path-free. GB remains deactivated; E9.2/E9.3/E9.4/E11/E12 remain explicitly deferred. Standing practice continues unchanged (full pnpm -r test per CLAUDE.md's amended review standard, isolated re-run before treating a lone failure as a regression, Node-22 PATH pin now baked into dispatch.ps1)."
@@ -3604,7 +3604,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
-**Depends_On:** TASK-120, TASK-119
+**Depends_On:** TASK-120, TASK-119, TASK-125
 **Description:** Add `POST /threads/group` — body `{roleIds: string[], title?: string}`, requires 2+ roleIds — creates a thread with `role_id = null` and a `thread_members` row per bot (TASK-120's accessors). Extend `GET /threads` to include group threads (a thread with no single `role_id` needs a different summary shape — `botName`/`botDescription` don't apply; return `memberRoleIds`/`memberNames` instead, and the frontend, TASK-122, branches on which shape it got). Extend `GET /threads/:id/messages` to include `senderRoleId`/`senderName` per message so the client can attribute each line to the right bot. `POST /threads/:id/messages` on a group thread is **out of scope for this task** — posting into a group thread and triggering multiple bots is TASK-122's job alongside the fan-out-approval rule; this task is read/creation plumbing only.
 **Acceptance_Criteria:**
 - [ ] `POST /threads/group` creates a real thread + real `thread_members` rows for 2+ bots, rejects with a client error for fewer than 2, tested against real Postgres
@@ -3614,13 +3614,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-121-cx
 **Started_At:** 2026-09-04T05:45:53Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T05:48:06Z] [SV:CX] Verified territory and TASK-120's DB API; no compliant path exists to create a real group thread from control-api without touching packages/db, which is outside Owned_Paths.
+**Artifacts:** dossiers/TASK-121.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:45:53Z
+**Blocked_Reason:** — (was MISSING_DEPENDENCY, resolved: TASK-125 merged 2026-09-04T08:20:00Z with `createGroupThread`/`listAllThreadsWithMembers` now exported from `@oikonomos/db`. Resuming CX on task/TASK-121-cx.)
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T08:20:00Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
@@ -3675,7 +3676,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-124
 **Title:** Wire activeRoleId into RightPanel through the live chat UI (Grants-1e, fast-follow)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-119's own Review_Findings — the same class of gap TASK-123 fixed for ApprovalCard: RightPanel's permissions view is real and tested but invisible because activeRoleId never reaches it through ChatShell/ChatPage
@@ -3689,10 +3690,42 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-124-s5
 **Started_At:** 2026-09-04T05:46:04Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-04T05:53:19Z] [SV:S5] Wired activeRoleId from ChatShell's existing activeBot state to RightPanel (no parallel state added); ChatPage already threaded roleId via BotSummary so it needed only new regression tests. Fixed a latent GET/POST mock collision in ChatPage.test.tsx that the new wiring surfaced.
+**Artifacts:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-124.md
+**Test_Evidence:** S5: pnpm --filter @oikonomos/dashboard test 69/69, pnpm -r build 17/17, pnpm lint clean, pnpm -r test full recursive exit 0. ORCH independently re-ran on a fresh subagent in the worktree: identical results (1081 passed, 168 skipped, 0 failed across all 18 packages).
+- [2026-09-04T08:16:00Z] [ORCH] APPROVED, first-pass. Territory clean (4 files, all Owned_Paths — ChatPage.tsx untouched, correctly, since it already threaded roleId per TASK-123). Diff is a single-line change to ChatShell.tsx deriving activeRoleId from existing activeBot state (no parallel state, exactly as instructed) plus new tests. Both acceptance criteria genuinely tested through the real component tree, not just RightPanel in isolation: initial-render grants visibility AND the bot-switch case (clicking a different bot in the sidebar swaps the shown grants, old grant text asserted absent). The GET/POST mock collision fix in ChatPage.test.tsx is a legitimate latent-bug fix the new wiring surfaced, not scope creep. Independently re-verified full pnpm -r test clean (1081/0 failed). Merged --no-ff. **Grants-1 (TASK-117/118/119/123/124) is now fully done — the entire wave, including both fast-follow UI-wiring gaps, is real and visible in the live app.**
+**Review_Findings:** APPROVE, first-pass. No findings.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:46:04Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T08:16:00Z
+
+### TASK-125
+**Title:** Group-thread DB accessors (Chat-2b prerequisite)
+**Status:** done
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; TASK-121's own Blocked_Reason — the real gap TASK-120 left: no accessor exists to create a group thread (`role_id = null` + `thread_members` rows) or to list threads in a shape that includes both 1:1 and group threads
+**Owned_Paths:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts
+**Depends_On:** TASK-120
+**Description:** `packages/db/src/threads.ts` today only creates/returns 1:1 threads (`toThread` throws if `role_id` is null). Add `createGroupThread(options, {roleIds, title?})`: requires 2+ roleIds, inserts one `threads` row with `role_id = null` in the same transaction as one `thread_members` row per roleId (all-or-nothing — do not leave a thread with zero members if any insert fails), returns a new `GroupThread` type (`id`, `title`, `createdAt`, `updatedAt`, `memberRoleIds: string[]` — no single `roleId` field, this is deliberately a different shape from `Thread`, not a null-roleId `Thread`). Add `listAllThreadsWithMembers(options)` (or similar) returning both 1:1 and group threads in one call with enough data for control-api to build TASK-121's `GET /threads` response shape (e.g. an array of `Thread | GroupThread`, discriminated by presence of `roleId` vs `memberRoleIds`) — do not change `toThread`'s existing fail-loud behavior for the pre-existing 1:1-only functions (`createThread`, `listThreads`, `getThreadsForRole`, `getOrCreateThreadForRole`); this is additive, not a replacement. Export the new function(s)/type(s) through `packages/db/src/index.ts` (its existing `threads.js` export block) so control-api can actually consume them — this is the only change this task makes to that file; do not touch or reorder any other export in it.
+**Acceptance_Criteria:**
+- [ ] `createGroupThread` rejects fewer than 2 roleIds before touching the DB, tested
+- [ ] `createGroupThread` produces a real thread (`role_id IS NULL`) and one real `thread_members` row per bot, tested against real Postgres; a failure partway through leaves no partial thread (transactional, tested)
+- [ ] A new list accessor returns both 1:1 and group threads with a discriminable shape, tested against real Postgres with a fixture of both kinds
+- [ ] Existing `threads.ts` exports and their tests are unmodified in behavior — only additive changes
+- [ ] New accessor(s)/type(s) are exported from `packages/db/src/index.ts`, with every pre-existing export in that file untouched
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** task/TASK-125-cx
+**Started_At:** 2026-09-04T05:50:33Z
+**Progress_Notes:**
+- [2026-09-04T05:52:46Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — packages/db/src/index.ts needed to export the new accessors, was outside Owned_Paths.
+- [2026-09-04T08:13:00Z] [ORCH] Triaged: legitimate gap, not scope creep — `index.ts` is the package's public barrel and TASK-121 cannot import anything not exported through it. Added packages/db/src/index.ts to Owned_Paths (additive only — description now says explicitly: touch only the existing threads.js export block, leave every other export untouched). No other active task owns this file (TASK-121 blocked/control-api, TASK-124 dashboard) — no collision. Resume on task/TASK-125-cx.
+- [2026-09-04T05:57:29Z] [SV:CX] Implemented createGroupThread (atomic, min-2/no-duplicate validated) and listAllThreadsWithMembers (discriminated Thread|GroupThread), exported through index.ts. Reported blocked: OTHER — a group-thread row leaked by an earlier failed focused-test run remained in shared dev Postgres, and team rules prohibit builders issuing manual DELETE cleanup.
+**Artifacts:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts, dossiers/TASK-125.md
+**Test_Evidence:** CX: pnpm --filter @oikonomos/db typecheck passed; focused integration run showed the new group-thread test passing but an unrelated leaked row blocking the unchanged listThreads test. ORCH independently re-verified (fresh subagent, DATABASE_URL correctly propagated): direct Postgres queries found ZERO leaked rows (the test's own `finally` cleanup block does remove them correctly) — focused threads.test.ts 7/9 passed (2 skipped), full db package suite 126/128 (2 skipped), pnpm -r build 17/17, pnpm lint clean, full pnpm -r test exit 0 across every package with zero failures.
+- [2026-09-04T08:20:00Z] [ORCH] APPROVED, first-pass (the reported blocker did not reproduce on independent re-run — the row CX saw was transient/from the interrupted first attempt, and the test's own cleanup already handles it correctly; not a real defect). Territory clean (4 files, all Owned_Paths). Diff reviewed directly: `createGroupThread` is properly transactional (BEGIN/COMMIT/ROLLBACK around the parent insert + all member inserts, releases the client in `finally`), validates ≥2 roles and rejects duplicates before opening a pool. `listAllThreadsWithMembers` uses a single LEFT JOIN + array_agg query, correctly discriminates 1:1 vs group rows on `role_id IS NULL`, and correctly reuses the existing `toThread`/new `toGroupThread` converters without touching either pre-existing 1:1-only accessor's behavior. Test coverage includes the FK-rollback case (a missing role in the roleIds list leaves zero rows behind, asserted directly). `index.ts` diff is exactly the scoped addition (4 lines, existing threads.js export block only, nothing else touched). Merged --no-ff. **Unlocks TASK-121** (now resume CX on task/TASK-121-cx with the new accessors available).
+**Review_Findings:** APPROVE, first-pass. Reported blocker was a false positive on independent re-verification — not a defect, no rework needed.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T08:20:00Z
