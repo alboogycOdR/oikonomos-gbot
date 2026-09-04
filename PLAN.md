@@ -3738,7 +3738,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-126
 **Title:** Compose into a group thread (Chat-2d, fast-follow)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** TASK-122's own next_step/Review_Findings — the real, honestly-documented gap left after that task: `ComposeBox` is correctly disabled for a group thread in the live UI rather than shipping a broken send, because `POST /threads/:id/messages` only handles 1:1 threads today
@@ -3758,12 +3758,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T09:22:00Z] [ORCH] Triaged: legitimate — worker's barrel already exports `chatRunDriver`'s other public surface (`createChatRunDriver`, `destinationFor`, `finalText`) from the same file; `deliverBotToBotMessage`/`CHAT_FANOUT_CAPABILITY_ID`/its request-result types simply weren't added when TASK-122 introduced them (TASK-122's own Owned_Paths never included `index.ts`, so it couldn't have). Added `services/worker/src/index.ts` to Owned_Paths (additive export only — no other active task touches it). Resume on task/TASK-126-cx.
 - [2026-09-04T07:16:01Z] [SV:CX] Resumed; implemented group compose end-to-end (worker exports fan-out primitives; control-api resolves group threads, dispatches via `deliverBotToBotMessage`, persists the human message with `senderRoleId: null`; removed ChatShell's group-disable). Dossier recorded focused tests green (control-api 23/23, dashboard ChatShell 11/11) but the session never committed or emitted a final control block.
 - [2026-09-04T10:52:00Z] [ORCH] Stale heartbeat: no new commit or `.done` marker for ~100 min; the transcript log ended abruptly mid-`pnpm lint` with no Codex process still running (crashed or window closed, not a hang I should wait out). Real, substantial uncommitted work found intact in the worktree (`git status` showed the 4 implementation files + dossier modified, nothing lost). Redispatched CX per protocol (resume-first — branch and working tree left untouched, not reset to pending) to pick up its own uncommitted changes, finish, and emit the control block it never got to.
-**Artifacts:** dossiers/TASK-126.md
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T08:56:28Z] [SV:CX] Committed and finished: group-thread compose implemented end-to-end (control-api resolves group threads via `listAllThreadsWithMembers`, dispatches through `deliverBotToBotMessage` with `fromRoleId: "human"`, persists the human message with `senderRoleId: null`; worker exports the fan-out primitives; ChatShell's group compose-disable removed). control-api 23/23, pnpm -r test/build/lint all clean.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/index.ts, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, dossiers/TASK-126.md
+**Test_Evidence:** CX: control-api 126/126, dashboard 76/76, pnpm -r build clean, lint clean. ORCH independently re-ran (fresh subagent): control-api 126/126, dashboard 76/76, build/lint clean; full pnpm -r test hit the same pre-existing shared-Postgres `registerCapabilities` idempotency flake documented across TASK-120/122/123/125 reviews, confirmed isolated-clean twice in a row (3/3 both times) per standing practice. Postgres leftover-fixture check found 2 stale tasks + 2 stale roles — traced to the earlier crashed CX session (timestamped 07:15, before this run) plus one unrelated pre-existing stray from 2026-09-03; the just-reviewed run itself left nothing new. Cleaned up directly.
+**Review_Findings:** APPROVE, first-pass (on the recovered/completed diff — the earlier crash was an infra stall, not a defect in CX's work). Territory clean (7 files, all Owned_Paths). `requestGroupFanout`'s use of `fromRoleId: "human"` is a deliberate, sound design choice: group threads always have 2+ members by construction (TASK-121/125), so `deliverBotToBotMessage` always takes its fan-out-approval branch for this call site and never reaches the single-recipient `insertMessage` path that would otherwise need `fromRoleId` to be a real `roles` FK — verified this holds structurally, not just by test luck. All 4 acceptance criteria genuinely proven against real Postgres: `senderRoleId: null` on the persisted message, a real pending `chat.bot_fanout` approval created before delivery, a direct assertion that the run's only message is the human's own post (nothing delivered to recipients), and 1:1 behavior provably unchanged (early-return branch, existing tests pass unmodified). ChatShell's stale comment explaining the old disable was correctly updated to reflect the new reality rather than left dangling. Merged --no-ff. **Both Grants-1 and Chat-2 Core waves, plus every fast-follow they spawned, are now fully done and live end-to-end.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T10:52:00Z
+**Updated_At:** 2026-09-04T11:10:00Z
 
 ### TASK-127
 **Title:** Gmail connector session minter — real OAuth-authenticated MCP config (Connectors-1a)
