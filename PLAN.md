@@ -3515,7 +3515,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: a standing grant is created by choosing "always allow" on an approval card, not via a separate admin screen; capability+tier scoped (not destination-scoped — a deliberate v1 simplification, see PLAN.md TASK-118 note below and the session's own design discussion)
@@ -3534,10 +3534,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T05:16:12Z] [SV:S5] POST /roles/:roleId/grants + Always Allow wired end-to-end at the control-api and component layers, real-Postgres tested; frontend wiring of roleId/capabilityId/maxTier through ConversationPane/ChatPage/types.ts is outside Owned_Paths and documented as a follow-up gap in the dossier.
 **Artifacts:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, dossiers/TASK-118.md
 **Test_Evidence:** control-api: pnpm --filter @oikonomos/control-api test = 117/117 (incl. real-Postgres integration test for POST /roles/:roleId/grants). dashboard: pnpm --filter @oikonomos/dashboard test = 60/60 (incl. 3 new ApprovalCard tests: hidden-state, full decide+grant flow with nonce discipline, 409 handling). pnpm lint clean. pnpm -r build = 17/17 clean. pnpm -r test (full recursive): 1 failure in services/worker/src/registerCapabilities.test.ts (PostgreSQL idempotency, description-field drift from concurrent shared-DB registration runs), re-ran isolated and passed 38/38 (1 skipped) - confirmed pre-existing contention flake unrelated to this diff.
-**Review_Findings:** —
+- [2026-09-04T07:25:00Z] [ORCH] APPROVED, first-pass. Territory clean (6 files, all Owned_Paths). `maxTier` schema-validated against the real `riskTiers` enum (forged/malformed values rejected before reaching the DB, tested). Frontend test coverage is genuinely thorough: call-ordering (decide before grant write, matching Approve's own path — reused, not duplicated), nonce discipline extended and verified never leaking into URL/history/storage/the grant call body, and the 409 case correctly skips the grant write. One accepted, non-blocking simplification: the "fresh run no longer needs approval" test proves the grant row is written and correctly reflects an override (not just TASK-117's default) but doesn't drive a second real SDK call to reprove the read-time behavior — reasonable, since it's the identical `role_grants`/`getRoleGrant` mechanism TASK-117 already proved live; a second ~15-20s real-inference call here would be re-testing the same mechanism, not new risk surface. The real, material gap — `roleId`/`capabilityId`/`maxTier` aren't threaded from `ConversationPane`/`ChatPage` (outside this task's territory) — is honestly documented, not hidden, and degrades safely (button hides rather than breaks). Independently re-ran: dashboard (60/60), control-api (117/117), full pnpm -r build (19/19), lint clean, full pnpm -r test (301 assertions, zero failures). Merged --no-ff (10fd822). **Opened TASK-123 as an immediate fast-follow** (not deferred to Chat-2) to wire the live UI, since an invisible "Always Allow" button defeats this wave's actual purpose.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, dossiers/TASK-118.md
+**Review_Findings:** APPROVE, first-pass. Non-blocking: one test proves grant-write correctness rather than re-driving a live run (accepted); real gap (frontend wiring) spun out as TASK-123, not silently accepted.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:16:12Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:25:00Z
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
@@ -3624,7 +3626,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; Grok Bot reference product, confirmed 2026-09-03: a single 1:1 bot-to-bot delegation ping needs no human approval; fan-out to several bots or a whole group does
 **Owned_Paths:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/lib/api.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
-**Depends_On:** TASK-121
+**Depends_On:** TASK-121, TASK-123
 **Description:** Frontend: a "New group" affordance (mirrors `CreateBotDialog`'s pattern) that multi-selects existing bots and calls `POST /threads/group` (TASK-121); `BotSidebar` shows group threads distinctly from 1:1 ones; `ConversationPane`/`MessageBubble` attribute each message to the correct bot by name (using `senderRoleId`/`senderName` from TASK-121) instead of assuming a single bot. Backend/driver: this is where the fan-out rule becomes real, not just documented — when `chatRunDriver` processes a run whose task originated from one bot messaging **multiple** other bots or an entire group in one action, that specific action requires a real approval (reuse the existing approval-issuance path, do not invent a new one) before any of the messages are sent; a single bot messaging exactly one other bot does not. Keep the mechanism narrow: this task does not need to solve general multi-agent orchestration, only gate the fan-out case per the confirmed rule.
 **Acceptance_Criteria:**
 - [ ] Creating a group thread via the UI results in a real thread with the selected bots as real `thread_members`, and the conversation pane correctly attributes each message to the right bot by name
@@ -3640,3 +3642,27 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-03T23:20:00Z
+
+### TASK-123
+**Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** critical
+**Spec_References:** TASK-118's own Review_Findings — the real, documented gap left after that task: roleId/capabilityId/maxTier never reach ApprovalCard through the live component tree, so "Always Allow" is correct but invisible in the running app
+**Owned_Paths:** apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx
+**Depends_On:** TASK-118
+**Description:** apps/dashboard/src/lib/api.ts's ThreadMessage.approval already carries capability_id/max_tier (TASK-118). Thread them the rest of the way: ChatPage.tsx's message mapping (where ThreadMessage becomes whatever ChatMessage/ApprovalRender shape components/chat/types.ts defines) needs to carry capabilityId/maxTier through unchanged, and ConversationPane.tsx needs to pass the active bot's roleId down to <ApprovalCard> alongside the approval data it already renders. ApprovalCard.tsx itself needs no changes - its canAlwaysAllow gate already does the right thing once real values arrive instead of undefined. Check components/chat/types.ts for the exact field names the type currently declares before adding new ones - do not invent a second parallel shape.
+**Acceptance_Criteria:**
+- [ ] "Always Allow" is visible (not hidden) on a real pending approval rendered through the live component tree - tested by rendering ConversationPane/ChatPage with real fixture data carrying capability_id/max_tier and asserting the button appears, not just that ApprovalCard alone renders it when handed props directly
+- [ ] roleId passed to ApprovalCard is the actual active bot's role id, not a placeholder - tested
+- [ ] Existing ConversationPane/ChatPage tests pass unmodified except for the additions this task makes
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:25:00Z

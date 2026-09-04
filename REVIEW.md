@@ -166,3 +166,4 @@ TASK-111 | CX | approved | first-pass; real functionality independently verified
 TASK-116 | S5 | approved | first-pass; test-only, verified core assertion against actual production data byte-for-byte; closes Wave Chat-1 + ADR-013 (16 tasks, 105-116) | first-pass? yes
 TASK-120 | S5 | approved | first-pass; highest-risk migration this wave, verified live against shared dev Postgres directly; one full-suite failure traced to ORCH's own prior comment, fixed | first-pass? yes
 TASK-117 | CX | approved | first-pass (post 3-round unblock, 2 of 3 rounds ORCH's own gaps); non-default-tier test mutates real capability row and restores it; T0 liveness proof genuine, real allow event + zero pending approvals | first-pass? yes
+TASK-118 | S5 | approved | first-pass; grant-write mechanism real and tested, nonce discipline extended correctly; frontend wiring gap honestly documented, spun out as TASK-123 fast-follow | first-pass? yes
