@@ -3515,7 +3515,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: a standing grant is created by choosing "always allow" on an approval card, not via a separate admin screen; capability+tier scoped (not destination-scoped — a deliberate v1 simplification, see PLAN.md TASK-118 note below and the session's own design discussion)
@@ -3528,15 +3528,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A second, later attempt at the same capability by the same bot (a fresh run) is no longer denied for lack of a grant — tested (mirrors TASK-117's own "no pending approval" proof, but via the always-allow path instead of a pre-seeded default)
 - [ ] The nonce discipline test (never in URL/history/storage) is extended to cover the "Always Allow" path, not just Approve/Reject
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-118-s5
+**Started_At:** 2026-09-04T05:04:58Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:04:58Z
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
