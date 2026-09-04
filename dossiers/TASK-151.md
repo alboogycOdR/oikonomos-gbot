@@ -1,0 +1,6 @@
+# TASK-151 Dossier
+
+## Work Log
+
+- [2026-09-04T21:30:00Z] [CX9] Preflight completed: `services/worker/src/registerCapabilities.test.ts` and `services/worker/src/killSwitchDrill.test.ts` both exist. Diagnosis: each file passed alone; the first unfiltered worker-suite run failed registerCapabilities idempotency while `chatRunDriver.test.ts` was concurrent. The failure diff changed Gmail manifest descriptions from the registration declarations to `chatRunDriver.test.ts` fixture descriptions, not `enabled` values, refuting the initial kill-switch hypothesis. Isolated the registration test's fixed manifest IDs in a per-run disposable PostgreSQL schema; assertions remain byte-identical inventory and platform-wide kill-switch coverage remains unchanged. Next: run focused tests and the required five unfiltered worker runs, then workspace verification.
+- [2026-09-04T21:34:00Z] [CX9] Verification complete. Focused registration and kill-switch suites passed. Five consecutive unfiltered worker runs each passed (13 files, 64 passed, 1 skipped). `pnpm -r test`, `pnpm -r build`, and `pnpm lint` completed successfully. The earlier full-suite failure was deterministic evidence of cross-test data contention with chatRunDriver's fixed manifest-ID fixture; this change isolates test data rather than serialising Vitest.
