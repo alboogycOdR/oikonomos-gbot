@@ -3756,12 +3756,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T07:09:53Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — TASK-122's `deliverBotToBotMessage` is not exported from `services/worker/src/index.ts`, so control-api (which already depends on `@oikonomos/worker`) has no way to reuse it.
 - [2026-09-04T09:22:00Z] [ORCH] Triaged: legitimate — worker's barrel already exports `chatRunDriver`'s other public surface (`createChatRunDriver`, `destinationFor`, `finalText`) from the same file; `deliverBotToBotMessage`/`CHAT_FANOUT_CAPABILITY_ID`/its request-result types simply weren't added when TASK-122 introduced them (TASK-122's own Owned_Paths never included `index.ts`, so it couldn't have). Added `services/worker/src/index.ts` to Owned_Paths (additive export only — no other active task touches it). Resume on task/TASK-126-cx.
+- [2026-09-04T07:16:01Z] [SV:CX] Resumed; implemented group compose end-to-end (worker exports fan-out primitives; control-api resolves group threads, dispatches via `deliverBotToBotMessage`, persists the human message with `senderRoleId: null`; removed ChatShell's group-disable). Dossier recorded focused tests green (control-api 23/23, dashboard ChatShell 11/11) but the session never committed or emitted a final control block.
+- [2026-09-04T10:52:00Z] [ORCH] Stale heartbeat: no new commit or `.done` marker for ~100 min; the transcript log ended abruptly mid-`pnpm lint` with no Codex process still running (crashed or window closed, not a hang I should wait out). Real, substantial uncommitted work found intact in the worktree (`git status` showed the 4 implementation files + dossier modified, nothing lost). Redispatched CX per protocol (resume-first — branch and working tree left untouched, not reset to pending) to pick up its own uncommitted changes, finish, and emit the control block it never got to.
 **Artifacts:** dossiers/TASK-126.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T09:22:00Z
+**Updated_At:** 2026-09-04T10:52:00Z
 
 ### TASK-127
 **Title:** Gmail connector session minter — real OAuth-authenticated MCP config (Connectors-1a)
