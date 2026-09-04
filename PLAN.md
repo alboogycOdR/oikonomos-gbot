@@ -4049,7 +4049,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-137
 **Title:** Google Calendar connector session minter (Connectors-2a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/connectors/google-calendar.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-calendar.yaml; TASK-127 (the exact pattern to mirror — `createGmailConnectorSessionMinter` composing `mcpConfigFromManifest` + a generic `createOAuthTokenProvider`-based wrapper)
@@ -4062,15 +4062,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No literal token, client secret, or resolved header value anywhere in the diff — reviewed directly
 - [ ] Neither `packages/connectors/src/mcp/index.ts` nor `packages/connectors/src/index.ts` is modified by this task
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-137-s5
+**Started_At:** 2026-09-04T17:33:10Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T18:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:33:10Z
 
 ### TASK-138
 **Title:** Google Drive connector session minter (Connectors-2b)
