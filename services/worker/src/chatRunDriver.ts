@@ -1,4 +1,5 @@
 import { issueApproval, verifyAndConsume, type ApprovalWaitSignal } from "@oikonomos/approvals";
+import { fileURLToPath } from "node:url";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
   createConnectorSessionPool,
@@ -78,7 +79,14 @@ async function runChatTask(
       tenantId: request.task.tenantId,
       gmailPoolFor,
     });
-    const mountedToolNames = ["Bash", "Read", ...(acquiredConnector?.connector.allowedTools ?? [])];
+    const workspaceConnector = await resolveGrantedWorkspaceConnector({
+      database,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      connectionString: options.connectionString,
+    });
+    const connector = combineConnectorContexts(acquiredConnector?.connector, workspaceConnector);
+    const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({
       mountedToolNames,
       policies: mountedToolNames.map((toolName) => ({ toolName })),
@@ -94,7 +102,7 @@ async function runChatTask(
         // L2 requires the scoped form; PolicyRegistry receives its bare name.
         allowedTools: ["Bash(*)", "Read(*)"],
         ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
-        ...(acquiredConnector === undefined ? {} : { connector: acquiredConnector.connector }),
+        ...(connector === undefined ? {} : { connector }),
         brokerDependencies: createBrokerDependencies(options, database, registry, policy),
         auditSink: completionAuditSink(options, run),
       });
@@ -107,6 +115,45 @@ async function runChatTask(
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+const WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID = "workspace.send_to_role";
+const WORKSPACE_SEND_TO_ROLE_TOOL = "mcp__workspace__send_to_role";
+
+/** Mount the internal stdio bridge only when its persisted role grant exists. */
+async function resolveGrantedWorkspaceConnector(input: {
+  readonly database: Database;
+  readonly connectionString: string;
+  readonly roleId: string;
+  readonly tenantId: string;
+}): Promise<ConnectorContext | undefined> {
+  const grants = await input.database.listRoleGrants(input.roleId);
+  if (!grants.some((grant) => grant.capabilityId === WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID)) return undefined;
+  return {
+    manifest: { connector_id: "workspace", mcp_server: { name: "workspace" }, tools: [] },
+    mcpServers: {
+      workspace: {
+        transport: "stdio",
+        command: process.execPath,
+        args: [fileURLToPath(new URL("./workspaceMcpServer.js", import.meta.url)), input.connectionString, input.tenantId, input.roleId],
+      },
+    },
+    allowedTools: [WORKSPACE_SEND_TO_ROLE_TOOL],
+  };
+}
+
+/** executeTaskRun accepts one context; merge independently grant-derived MCP mounts into it. */
+function combineConnectorContexts(
+  first: ConnectorContext | undefined,
+  second: ConnectorContext | undefined,
+): ConnectorContext | undefined {
+  if (first === undefined) return second;
+  if (second === undefined) return first;
+  return {
+    manifest: first.manifest,
+    mcpServers: { ...first.mcpServers, ...second.mcpServers },
+    allowedTools: [...first.allowedTools, ...second.allowedTools],
+  };
 }
 
 interface AcquiredConnector {
@@ -167,9 +214,10 @@ export function destinationFor(request: PreToolUseRequest): string {
   const input = request.input;
   const destination = request.toolName === "Read" || request.toolName === "Edit" || request.toolName === "Write" ? input.file_path
     : request.toolName === "Glob" || request.toolName === "Grep" ? input.path ?? input.pattern
-      : request.toolName === "Bash" ? input.command
-        : request.toolName === "mcp__gmail__list_messages" ? input.q
-        : request.toolName === "mcp__gmail__send_message" ? input.to : undefined;
+        : request.toolName === "Bash" ? input.command
+          : request.toolName === "mcp__gmail__list_messages" ? input.q
+          : request.toolName === "mcp__gmail__send_message" ? input.to
+            : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
 }

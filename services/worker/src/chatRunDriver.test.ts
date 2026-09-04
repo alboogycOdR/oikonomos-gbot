@@ -24,6 +24,7 @@ import {
   finalText,
 } from "./chatRunDriver.js";
 import { startTaskRun } from "./runLifecycle.js";
+import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
 
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./chatRunDriver.ts", import.meta.url), "utf8"),
@@ -372,6 +373,80 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
 function sdkOptionsAbsent(calls: readonly { tool: string }[], tool: string): boolean {
   return !calls.some((call) => call.tool === tool);
 }
+
+integration("createChatRunDriver — send_to_role governed MCP run (TASK-131)", () => {
+  const senderRoleId = "task-131-chat-sender";
+  const receiverRoleId = "task-131-chat-receiver";
+  let pool: Pool;
+  let options: DatabaseOptions;
+  let threadId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM role_messages WHERE from_role_id = ANY($1::text[]) OR to_role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [senderRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [senderRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [senderRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [senderRoleId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+  }
+
+  beforeAll(async () => {
+    process.env.OIKONOMOS_CAPABILITIES_ENABLED = "true";
+    options = { connectionString: connectionString! };
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    for (const roleId of [senderRoleId, receiverRoleId]) await createRole(options, { roleId, name: roleId, title: "TASK-131 chat fixture", description: "TASK-131 real governed MCP run fixture." });
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({ capabilityId: "workspace.send_to_role", description: "Send an asynchronous role handoff.", defaultTier: "T1_draft", adapter: "mcp:workspace", enabled: true });
+      await database.upsertRoleGrant({ roleId: senderRoleId, capabilityId: "workspace.send_to_role", maxTier: "T1_draft", constraints: {} });
+    } finally { await database.close(); }
+    threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [senderRoleId])).rows[0]!.id;
+  });
+
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  it("allows a granted typed handoff through the mounted MCP bridge and persists role_messages", async () => {
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, { type: string; command?: string; args?: readonly string[] }> };
+      const workspace = sdkOptions.mcpServers?.workspace;
+      expect(workspace).toMatchObject({ type: "stdio" });
+      expect(workspace?.command).toBe(process.execPath);
+      expect(workspace?.args?.[0]).toMatch(/workspaceMcpServer\.js$/);
+      expect(sdkOptions.allowedTools).toContain("mcp__workspace__send_to_role(*)");
+      expect(await callMountedTool(input, "mcp__workspace__send_to_role", "task-131-granted", { toRoleId: receiverRoleId, body: "Review this typed finding.", handoffKind: "research.complete", factRef: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "finding" } })).toBe(true);
+      const response = await handleWorkspaceMcpRequest(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_to_role", arguments: { toRoleId: receiverRoleId, body: "Review this typed finding.", handoffKind: "research.complete", factRef: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "finding" } } } }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId });
+      expect(response).toHaveProperty("result.content");
+      yield { type: "tool_result", result: "handoff sent" };
+    };
+    const task = await createTask(options, { roleId: senderRoleId, title: "TASK-131 granted handoff", goal: "Send the typed handoff.", requestedBy: "task-131-suite" });
+    await createChatRunDriver({ ...options, queryFn }).run({ task, threadId });
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.send_to_role")).toMatchObject({ payload: { verdict: "allow", toolName: "mcp__workspace__send_to_role" } });
+    expect((await pool.query("SELECT handoff_kind, fact_ref FROM role_messages WHERE from_role_id = $1", [senderRoleId])).rows).toHaveLength(1);
+  });
+
+  it("denies the ungranted tool at policy.decision before any mailbox write", async () => {
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1 AND capability_id = 'workspace.send_to_role'", [senderRoleId]);
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+      expect(sdkOptions.mcpServers?.workspace).toBeUndefined();
+      expect(sdkOptions.allowedTools).not.toContain("mcp__workspace__send_to_role(*)");
+      expect(await callMountedTool(input, "mcp__workspace__send_to_role", "task-131-denied", { toRoleId: receiverRoleId, body: "must not send" })).toBe(false);
+      yield { type: "tool_result", result: "denied" };
+    };
+    const task = await createTask(options, { roleId: senderRoleId, title: "TASK-131 denied handoff", goal: "Attempt an ungranted handoff.", requestedBy: "task-131-suite" });
+    await createChatRunDriver({ ...options, queryFn }).run({ task, threadId });
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.send_to_role")).toMatchObject({ payload: { verdict: "deny", reason: "role.grant_missing", toolName: "mcp__workspace__send_to_role" } });
+    expect((await pool.query("SELECT count(*) FROM role_messages WHERE from_role_id = $1", [senderRoleId])).rows[0]!.count).toBe("1");
+  });
+});
 
 // TASK-122 (Chat-2c): the fan-out-approval rule, confirmed against the real
 // Grok Bot reference product 2026-09-03 — a single 1:1 bot-to-bot message
