@@ -3676,7 +3676,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-124
 **Title:** Wire activeRoleId into RightPanel through the live chat UI (Grants-1e, fast-follow)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-119's own Review_Findings — the same class of gap TASK-123 fixed for ApprovalCard: RightPanel's permissions view is real and tested but invisible because activeRoleId never reaches it through ChatShell/ChatPage
@@ -3690,13 +3690,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-124-s5
 **Started_At:** 2026-09-04T05:46:04Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-04T05:53:19Z] [SV:S5] Wired activeRoleId from ChatShell's existing activeBot state to RightPanel (no parallel state added); ChatPage already threaded roleId via BotSummary so it needed only new regression tests. Fixed a latent GET/POST mock collision in ChatPage.test.tsx that the new wiring surfaced.
+**Artifacts:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-124.md
+**Test_Evidence:** S5: pnpm --filter @oikonomos/dashboard test 69/69, pnpm -r build 17/17, pnpm lint clean, pnpm -r test full recursive exit 0. ORCH independently re-ran on a fresh subagent in the worktree: identical results (1081 passed, 168 skipped, 0 failed across all 18 packages).
+- [2026-09-04T08:16:00Z] [ORCH] APPROVED, first-pass. Territory clean (4 files, all Owned_Paths — ChatPage.tsx untouched, correctly, since it already threaded roleId per TASK-123). Diff is a single-line change to ChatShell.tsx deriving activeRoleId from existing activeBot state (no parallel state, exactly as instructed) plus new tests. Both acceptance criteria genuinely tested through the real component tree, not just RightPanel in isolation: initial-render grants visibility AND the bot-switch case (clicking a different bot in the sidebar swaps the shown grants, old grant text asserted absent). The GET/POST mock collision fix in ChatPage.test.tsx is a legitimate latent-bug fix the new wiring surfaced, not scope creep. Independently re-verified full pnpm -r test clean (1081/0 failed). Merged --no-ff. **Grants-1 (TASK-117/118/119/123/124) is now fully done — the entire wave, including both fast-follow UI-wiring gaps, is real and visible in the live app.**
+**Review_Findings:** APPROVE, first-pass. No findings.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:46:04Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T08:16:00Z
 
 ### TASK-125
 **Title:** Group-thread DB accessors (Chat-2b prerequisite)
