@@ -4164,7 +4164,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-103/104; evals/harness/test/ome-two-role-handoff.test.ts (TASK-100's existing service-layer ACL/versioning proof — already thorough, real Postgres, exercises `sendToRole`/`resolve` directly, do not duplicate its coverage); TASK-131 (registered `mcp__workspace__send_to_role` as a real invokable broker tool — the piece that was missing when OIK-103 was first scoped, now done)
@@ -4182,11 +4182,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T18:04:08Z] [SV:CX] Added and committed a real-Postgres two-role broker-path handoff liveness test using the mounted workspace stdio MCP bridge, identity-spoof guard, audit verification, and ACL proof.
 **Artifacts:** evals/harness/test/ome-two-role-handoff-live.test.ts, dossiers/TASK-141.md
-**Test_Evidence:** Focused live test 1/1 passed; evals harness 13 files/19 tests passed; pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
-**Review_Findings:** —
+**Test_Evidence:** Focused live test 1/1 passed; evals harness 13 files/19 tests passed; pnpm -r test, pnpm -r build, and pnpm lint all exited 0. ORCH independently re-ran the focused test against real Postgres directly (not delegated, given this is also OIK-104's own adversarial review): 1/1 pass.
+**Review_Findings:** APPROVE, first-pass. This doubles as OIK-104 (Fable adversarial review of the ACL/handoff model, done directly by ORCH per this program's own plan rather than a separate task). Territory clean (1 new test file + dossier). Genuinely adversarial, not a happy-path liveness check: spawns the REAL built `workspaceMcpServer.js` as a subprocess using the exact production-computed spawn config `chatRunDriver.ts` mounts for this run (not a reimplemented/mocked transport), sends a JSON-RPC `tools/call` with a spoofed `fromRoleId` (an impostor role) in the tool arguments, and proves the persisted `role_messages.fromRoleId` is still the real sender — the identity-from-process-args security property (`workspaceMcpServer.ts`'s core design, established at TASK-131) holds through a live subprocess round-trip, not just a unit test of the handler function in isolation. Also proves: a real `policy.decision` audit event with `verdict: allow`; and TASK-100's "no privilege expansion" property survives the live tool-call path — the receiver resolves the fact only via its own pre-existing ACL, the sender (who initiated the handoff) and the impostor both remain denied. `OIKONOMOS_CAPABILITIES_ENABLED` toggle is a legitimate, pre-existing ADR-013 feature flag (confirmed, not a workaround), correctly saved/restored in `finally`. Merged --no-ff. **OIK-103/104 both done — E10's handoff story, including its adversarial review, is now fully closed.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T18:04:08Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:10:00Z
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
