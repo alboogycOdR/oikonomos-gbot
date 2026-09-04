@@ -124,6 +124,46 @@ briefing. (Briefing templating was evaluated and deferred: the three
 briefings carry hard-won CLI-specific content — grok's trust-dialog
 behavior, S5's identity override — that a shared template would flatten.)
 
+## Activating CX9 (a second Codex login)
+
+CX9 = a second Codex CLI builder on a **separate ChatGPT account**
+(`nuburo.systems@gmail.com`), the same "second login, same CLI family"
+shape as S5B, adapted for Codex. It is configured but inactive until you:
+
+0. **Codex CLI has no first-class multi-account support** (confirmed
+   against Codex's own source, 2026-09-04) — the supported workaround is
+   giving each account its own `CODEX_HOME`, which isolates `auth.json`,
+   config, sessions, and logs per account. This is what `auth.mode:
+   "config_dir"` now generalizes to (v4.8 — previously Claude-only via
+   `CLAUDE_CONFIG_DIR`; `scripts/dispatch.ps1`'s `$AuthEnvVarByCli` table
+   maps `claude → CLAUDE_CONFIG_DIR`, `codex → CODEX_HOME`).
+   - **Do not reuse the default `~/.codex` for the second account, and do
+     not copy `auth.json` between homes.** Codex refresh tokens can change;
+     copying stale auth state causes token-revocation problems.
+   - **Log in to the two accounts from separate browser profiles**, not the
+     same browser session — a known Codex/Windows issue can invalidate
+     refresh tokens when two ChatGPT accounts share one browser cookie
+     session during login, even with separate `CODEX_HOME`s.
+
+1. **One-time login for the second account** (PowerShell):
+   ```powershell
+   $env:CODEX_HOME = "$HOME\.codex-nuburo-systems"
+   New-Item -ItemType Directory -Force $env:CODEX_HOME | Out-Null
+   'cli_auth_credentials_store = "file"' | Set-Content "$env:CODEX_HOME\config.toml"
+   codex login   # authenticate as nuburo.systems@gmail.com in a separate browser profile
+   codex login status   # confirm
+   Remove-Item Env:\CODEX_HOME
+   codex login status   # confirm the DEFAULT account is unaffected
+   ```
+2. Adjust `auth.value` in the CX9 entry if you used a different path.
+3. Add `"CX9"` to `builders.active`.
+4. Smoke it: `powershell -File scripts\dispatch.ps1 -Builder CX9 -DryRun`
+   — the preview must show `wt-codex9-<project>` and the scoped
+   `CODEX_HOME` note. Then a real dispatch on a small task.
+
+CX9 reuses `CODEX_BRIEFING.md` — same CLI, same model, same procedure; only
+credentials differ.
+
 ## Adding any future unit
 
 1. Add a `defined` entry (+ `active` when ready).

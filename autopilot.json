@@ -43,6 +43,20 @@
         "auto_loads_ambient_context": false,
         "usage_provider": "codex"
       },
+      "CX9": {
+        "cli": "codex",
+        "model": "gpt-5.6-terra",
+        "auth": {
+          "mode": "config_dir",
+          "value": "~/.codex-nuburo-systems"
+        },
+        "worktree_suffix": "codex9",
+        "branch_suffix": "cx9",
+        "briefing": "briefings/CODEX_BRIEFING.md",
+        "auto_loads_ambient_context": false,
+        "usage_provider": null,
+        "_comment": "Defined but NOT active: a second Codex login (nuburo.systems@gmail.com), same pattern as S5B. Activate by adding 'CX9' to builders.active AFTER completing codex login under CODEX_HOME=~/.codex-nuburo-systems (see docs/BUILDER_REGISTRY.md's CX9 section) and a -DryRun smoke test. usage_provider stays null until the per-account probe (increment 9) exists, same as S5B. NOTE 2026-09-04: the default ~/.codex account (CX, nuburo@gmail.com) lost its auth.json to an accidental login-flow trigger during this onboarding investigation - it needs a fresh `codex login` too, not just preservation, before CX (not CX9) can dispatch again."
+      },
       "S5": {
         "cli": "claude",
         "model": "claude-sonnet-5",

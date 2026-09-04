@@ -459,17 +459,28 @@ except Exception:
 }
 
 # v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
-# accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
-# only -- saved and restored around each builder invocation, never left set
-# for the rest of this script's life (PS 5.1 has no env(1)-style scoping,
-# so save/restore in finally is the equivalent).
+# accurate about it. config_dir mode sets a CLI-family-specific config-dir
+# env var for the launch only -- saved and restored around each builder
+# invocation, never left set for the rest of this script's life (PS 5.1 has
+# no env(1)-style scoping, so save/restore in finally is the equivalent).
+# v4.8 (CX9 onboarding): config_dir mode was Claude-only (CLAUDE_CONFIG_DIR
+# hardcoded) until a second Codex login (CX9) needed the same isolation.
+# Each CLI family has its own env var for this; add a row here, not a
+# special case at each of the 5 call sites below, when a new family needs it.
+$AuthEnvVarByCli = @{ "claude" = "CLAUDE_CONFIG_DIR"; "codex" = "CODEX_HOME" }
 $AuthDir = $null
+$AuthEnvVar = $null
 if ($AuthMode -eq "config_dir" -and $AuthValue) {
+    $AuthEnvVar = $AuthEnvVarByCli[$Cli]
+    if (-not $AuthEnvVar) {
+        Write-Error "[dispatch] Unit $Id requests auth.mode=config_dir but CLI family '$Cli' has no known config-dir env var - refusing to dispatch (fail closed, not a guessable default)."
+        exit 1
+    }
     $AuthDir = $AuthValue -replace '^~', $env:USERPROFILE
-    Write-Host "[dispatch] Unit $Id authenticates via CLAUDE_CONFIG_DIR=$AuthDir (scoped to this launch)." -ForegroundColor Cyan
+    Write-Host "[dispatch] Unit $Id authenticates via $AuthEnvVar=$AuthDir (scoped to this launch)." -ForegroundColor Cyan
 }
 $AuthNote = ""
-if ($AuthDir) { $AuthNote = "CLAUDE_CONFIG_DIR=$AuthDir " }
+if ($AuthDir) { $AuthNote = "$AuthEnvVar=$AuthDir " }
 
 # PROMPT QUOTING (fix 2026-08-15, oikonomos live failure — GB/TASK-020 died in 2s).
 #
@@ -571,7 +582,7 @@ if ($ControlMode -eq "strict") {
         # whatever's already on PATH) if this machine doesn't have it there.
         "if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { `$env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + `$env:Path }"
     )
-    if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
+    if ($AuthDir) { $RunnerLines += "`$env:$AuthEnvVar = '$AuthDir'" }
     $RunnerLines += "Write-Host '[$Id] starting $TaskId ($ResumeOrClaim) in $Wt' -ForegroundColor Green"
 
     if ($PromptViaStdin) {
@@ -660,7 +671,7 @@ if ($ControlMode -eq "strict") {
         # Node 22 over the system-default v23 that breaks a clean install/build.
         "if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { `$env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + `$env:Path }"
     )
-    if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
+    if ($AuthDir) { $RunnerLines += "`$env:$AuthEnvVar = '$AuthDir'" }
     $RunnerLines += @(
         "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')"
     )
@@ -694,15 +705,17 @@ if ($ControlMode -eq "strict") {
     exit 0
 } else {
     Push-Location $Wt
-    $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
+    $PrevConfigDir = if ($AuthEnvVar) { [Environment]::GetEnvironmentVariable($AuthEnvVar) } else { $null }
     try {
-        if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
+        if ($AuthDir) { Set-Item -Path "Env:$AuthEnvVar" -Value $AuthDir }
         & $Cmd @($CmdArgs + @($PromptArg))
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
-        if ($null -eq $PrevConfigDir) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
-        else { $env:CLAUDE_CONFIG_DIR = $PrevConfigDir }
+        if ($AuthEnvVar) {
+            if ($null -eq $PrevConfigDir) { Remove-Item -Path "Env:$AuthEnvVar" -ErrorAction SilentlyContinue }
+            else { Set-Item -Path "Env:$AuthEnvVar" -Value $PrevConfigDir }
+        }
         Pop-Location
     }
 
