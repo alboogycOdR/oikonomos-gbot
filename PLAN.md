@@ -3908,6 +3908,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Owned_Paths:** services/worker/src/jobs/**, services/worker/src/jobs/**/*.test.ts
 **Depends_On:** TASK-130
 **Description:** `role_routines` (schema), `routines.ts` (DB accessors), and `scheduler.ts`'s `fireRoutine`/`RoutineFirePorts` contract already exist and are tested in isolation — nothing calls any of them today. Add a real pg-boss job (using TASK-130's `WorkerJobQueue`) that, on a schedule, finds due routines (`listRoutines`, filtering on `next_fire_at`/`enabled`) and calls `scheduler.fireRoutine()` for each with real `RoutineFirePorts` implementations backed by real DB accessors (`environmentIsUp`, `createTask` from `packages/db`, `recordFire` → `recordRoutineFire`). This task is the firing mechanism, not the cron-expression/NL-parsing UI (that's OIK-109 — this task can drive firing off `next_fire_at` timestamps already present in the schema, however they get set; do not build a cron-string parser here unless a due-routine check genuinely requires one). Keep this narrowly about proving a real routine, once due, actually produces a real queued task through the existing scheduler contract — end to end, against real Postgres.
+**Resolved ambiguities (ORCH, 2026-09-04T16:45:00Z):** (1) `environmentIsUp(roleId)` — no real environment-health infrastructure exists yet (that's a separate, larger concern, not this task's scope); use the role's own `status` field (`getRole`/`roles` table, already real: `active`/`hidden`/`deleted`) as the proxy — `status === 'active'` means up. This is a real, grounded signal, not an invented one, and a routine for a hidden/deleted role should legitimately be treated as not-up. (2) Routine→task field mapping: `title` = `routine.name`; `goal` = `definition.goal` if present (cast/validate as a string), else fall back to `routine.name`; `requestedBy` = `` `routine:${routine.routineId}` `` (matches the existing `chat:thread:${id}`-style auto-provenance convention already used elsewhere, e.g. TASK-126). Do not invent a richer `definition` schema beyond reading an optional `goal` field — OIK-109 (cron/NL scheduling) is where the routine-authoring shape gets fleshed out further, not this task.
 **Acceptance_Criteria:**
 - [ ] A real routine past its `next_fire_at` gets picked up and fired through `scheduler.fireRoutine()`, producing a real queued task — tested against real Postgres
 - [ ] A routine whose target environment is down is recorded as `missed`, not queued (exercises `RoutineFirePorts.environmentIsUp` returning false) — tested
@@ -3915,13 +3916,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-132-cx
 **Started_At:** 2026-09-04T14:14:04Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T14:14:04Z] [SV:CX] Blocked: SPEC_AMBIGUITY — no persisted environment-health accessor for `environmentIsUp`, no routine-to-task-payload field mapping defined. Correctly declined to invent product semantics unilaterally.
+- [2026-09-04T16:45:00Z] [ORCH] Resolved both ambiguities (see Description). Resuming CX on task/TASK-132-cx.
+**Artifacts:** dossiers/TASK-132.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T14:14:04Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T16:45:00Z
 
 ### TASK-133
 **Title:** OIK-106 — wire durable resume into worker startup (kill worker mid-run)
