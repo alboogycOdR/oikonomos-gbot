@@ -96,8 +96,63 @@
   blocker above must resolve before that question is actionable — no point designing the resume path
   around a park mechanism that cannot yet exist.
 
+- [2026-09-04T17:45:00Z] [S5] **ORCH unblocked (PLAN.md Progress_Notes 17:31:00Z):** widened
+  `Owned_Paths` to add `packages/db/src/runs.ts` + `packages/db/src/runs.test.ts`. Synced the local
+  worktree's `PLAN.md` from `origin/master` (`git show origin/master:PLAN.md > PLAN.md`, working-tree
+  only, not committed — `territory-firewall.js` reads the local file directly and was still holding
+  the stale pre-grant snapshot) so the hook would recognize the new grant before editing.
+
+  Implemented `parkRun(options, runId): Promise<Run>` in `packages/db/src/runs.ts`, same shape as
+  `resumeRun`/`failRun`/`completeRun`/`cancelRun`: atomic `UPDATE runs SET status = 'waiting_approval'
+  WHERE run_id = $1 AND status IN ('started', 'resumed')`, `IllegalRunTransitionError` on 0 rows from
+  a real-but-wrong-status run (including an already-`waiting_approval` one — deliberately not a no-op,
+  since `withPark` only ever calls `park()` once per denied attempt and a second call would indicate a
+  caller bug), `RunNotFoundError` on an unknown run_id, hard `Error` if `rowCount > 1` (should be
+  structurally impossible, same defensive pattern as its siblings).
+
+  Added 5 real-Postgres integration tests to `packages/db/src/runs.test.ts` (`parkRun (TASK-136)`
+  describe block): started→waiting_approval, resumed→waiting_approval (proves idempotent kill/resume/
+  park cycles keep working), double-park rejected, terminal-run park rejected, unknown-run rejected.
+  `pnpm --filter @oikonomos/db typecheck` clean; `pnpm --filter @oikonomos/db test` — **136 passed, 2
+  skipped, 27 files**, including all 5 new tests, against real Postgres (`DATABASE_URL` was set in
+  this environment, so the `integration` describe blocks ran for real, not `describe.skip`).
+  Committed `07b3a4c`.
+
+  **Second ownership gap found while wiring the caller side — stopped again rather than work around
+  it.** `chatRunDriver.ts`/`runLifecycle.ts` need to call `parkRun`, but `packages/db/src/index.ts`
+  (the package's only public entry point — `package.json`'s `exports` map has exactly one subpath,
+  `"."` → `dist/index.js`; there is no `./runs` subpath, so `@oikonomos/db/dist/runs.js` or similar
+  deep import is not just against convention, it would be rejected outright by Node's `exports` field
+  at runtime) does not yet re-export `parkRun`. `packages/db/src/index.ts` is **not** in TASK-136's
+  `Owned_Paths` — confirmed by re-reading the ORCH grant note verbatim (only `runs.ts` + `runs.test.ts`
+  were added). This is the exact same shape of gap `runLifecycle.ts`'s own header comment already
+  documents for `OPEN_RUN_STATUSES`/`listOpenRuns` from TASK-133, but that one was worked around by
+  locally duplicating three literal strings — `parkRun` is a whole DB accessor, not a constant, and
+  duplicating it would mean a second `UPDATE runs SET status = ...` statement living outside
+  `packages/db`, which is exactly what the project's own N-rule (stated in this same file's header:
+  "there is no raw SQL here") forbids. Reverted the one import line I'd drafted in `runLifecycle.ts`
+  rather than leave a broken/unresolvable import in the tree — no other change was made to
+  `chatRunDriver.ts` or `runLifecycle.ts` this session.
+
+  Setting `Status: blocked`, `Blocked_Reason: OWNERSHIP_CONFLICT`.
+
+  **What ORCH needs to unblock this:** widen `Owned_Paths` by exactly one more file,
+  `packages/db/src/index.ts`, so this builder can add the single export line (`parkRun` alongside its
+  siblings in the existing `export { cancelRun, completeRun, failRun, ... } from "./runs.js";` block,
+  same file/line region already exporting `resumeRun` etc.). No other change to `index.ts` is needed
+  or intended. Once granted, remaining work is: re-add the `parkRun` import to `runLifecycle.ts`, add
+  a thin `parkTaskRun` wrapper there (mirroring `completeTaskRun`/`failTaskRun`), wire a real
+  `RunParkPort` into `chatRunDriver.ts`'s `executeTaskRun({ park: ... })` call, and then the harder,
+  not-yet-investigated question from the task Description: what resuming a parked *chat* run means for
+  the live Agent SDK session (documented in this dossier's first entry as deliberately deferred until
+  the park-side blocker resolved — still true).
+
 ## Status
 
-Branch `task/TASK-136-s5` created from `origin/master@10304c0`, no code changes. No files outside
-`Owned_Paths` were modified (the stray `AUTOPILOT_LOG.md` diff left over from a prior session on
-`task/TASK-135-s5` was discarded via `git checkout --`, not committed).
+Branch `task/TASK-136-s5` at commit `07b3a4c`. `packages/db/src/runs.ts` + `runs.test.ts` changes are
+committed and fully tested against real Postgres. `services/worker/src/chatRunDriver.ts` and
+`runLifecycle.ts` are untouched (draft import reverted, nothing broken left in the tree). No files
+outside `Owned_Paths` were modified or committed (the local `PLAN.md` working-tree sync from
+`origin/master` is uncommitted and read-only in effect — needed only so the territory-firewall hook
+saw the current grant; the stray `AUTOPILOT_LOG.md` diff from a prior session was discarded via
+`git checkout --`, not committed).
