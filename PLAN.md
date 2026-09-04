@@ -3820,7 +3820,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-129
 **Title:** RT-01 — real-time push for chat messages and approvals
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_RT01_E10_E11_2026-09-04.md (RT-01); ChatPage.tsx's own `POLL_INTERVAL_MS = 2000` comment block, which this task replaces
@@ -3837,12 +3837,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T13:36:25Z
 **Progress_Notes:**
 - [2026-09-04T13:37:11Z] [ORCH] First dispatch produced no real TASK-129 work: S5's worktree was still sitting on the old, already-merged `task/TASK-127-s5` branch (dispatch.ps1 deliberately never force-resets a worktree on a real branch, to protect in-flight work — correct, documented behavior), and the session re-verified that old TASK-127 work instead of following its own prompt's explicit step 2 ("If newly claimed: create branch task/TASK-129-s5"). Its emitted control block even named `"task": "TASK-127"`, not TASK-129 — the dispatcher correctly did not apply it to this task's frontmatter. Cleaned the worktree directly (discarded a stray uncommitted edit to ORCH-owned AUTOPILOT_LOG.md that shouldn't have been touched, detached to master tip) and redispatching S5 with a clean, unambiguous starting point.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T14:01:43Z] [SV:S5] Redispatch (correctly on TASK-129 this time): SSE stream route (`GET /threads/:id/stream`, 300ms server-side poll fanned out per connection — no pub/sub bus exists in ControlApiDeps, out of this task's scope to add one), a fetch+ReadableStream realtime client with Last-Event-ID resume, ChatPage rewired to subscribe/unsubscribe per active thread instead of the old 2s setInterval. Existing GET /threads/:id/messages endpoint untouched. All 4 ACs covered by new/updated tests.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/sse.test.ts, apps/dashboard/src/lib/realtime.ts, apps/dashboard/src/lib/realtime.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-129.md
+**Test_Evidence:** S5: control-api 130/130, dashboard 83/83, pnpm -r build clean, pnpm -r test run twice repo-wide clean except two different unrelated real-Postgres flakes across the two runs, each confirmed isolated-clean and pre-existing. ORCH independently re-ran: control-api 130/130, dashboard 83/83, build/lint clean; full pnpm -r test (1013 tests) hit only the one documented pre-existing registerCapabilities flake, no new failures. Directly confirmed `GET /threads/:id/messages`'s own tests (chat.routes.test.ts, 23/23) are present and unmodified.
+**Review_Findings:** APPROVE, first-pass (on the corrected redispatch — the first attempt was an environment/session issue, not a defect in S5's actual work once it started). Territory clean (6 files, all Owned_Paths). Design choice reviewed and accepted: a 300ms server-side poll fanned out per SSE connection rather than true pub/sub — clearly commented why (no pub/sub bus in ControlApiDeps, adding one is out of scope), and it genuinely satisfies AC1's "no 2-second delay" criterion as written, a ~6.7x real latency improvement. Client (`realtime.ts`) is well-built: hand-rolled `fetch`+`ReadableStream` reader chosen deliberately over `EventSource` (custom header support, testability — jsdom has no native EventSource), correct `Last-Event-ID` resume matching the server's exclusive `after` cursor, idempotent `close()`, AbortController-based teardown, stops reconnecting cleanly on 401 (matches old polling's behavior) rather than hammering the endpoint. All 4 acceptance criteria directly and individually tested (found each one's own dedicated test case, not just inferred from aggregate pass counts) on both client and server sides. Merged --no-ff. **Connectors-1/Wave-1's real-time-push track is done — Wave 1 (TASK-129/130/131) is now 2-of-3 complete, only TASK-131 remains.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T13:45:00Z
+**Updated_At:** 2026-09-04T16:15:00Z
 
 ### TASK-130
 **Title:** OIK-105 — pg-boss integration + job definitions
