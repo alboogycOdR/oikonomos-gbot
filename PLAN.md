@@ -4190,7 +4190,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** infra/sandbox/README.md (OIK-042 — the real, already-deployed OpenSandbox server on clawsrv, Tailscale-only, `100.78.70.2:8080`, API key required via `OPEN-SANDBOX-API-KEY` header); docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md (R14 pin-don't-track-latest, R16 Docker-backend-only — this task's client must not assume/require Kubernetes); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-113/114 (the full epic — this task is deliberately only its first slice, NOT the full trace-capture-to-routine-spec pipeline)
@@ -4205,13 +4205,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-142-s5
 **Started_At:** 2026-09-04T17:57:38Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T18:10:17Z] [SV:S5] Implemented packages/sandbox-client: typed OpenSandbox client (health/createSandbox/destroySandbox) against the real live server's own /openapi.json (not guessed from README). Established the secret://opensandbox/api_key resolver convention mirroring connectors' envSecretResolver. 12 files, commits 2d5742a + 7e1dc22 on task/TASK-142-s5, diff clean (Owned_Paths + dossier only, no PLAN.md/lockfile). Health check exercised live against 100.78.70.2:8080 this session (Tailscale reachable) ΓÇö passed. Create/destroy integration test written+gated but not run for real (no API key available in this environment); documented precisely in dossier per AC4. pnpm-lock.yaml needs a sync for 3 new devDeps (no runtime deps) ΓÇö reverted rather than committed since it's outside Owned_Paths, per TASK-085/086/107 precedent (ORCH resolves as merge wiring).
+**Artifacts:** packages/sandbox-client/package.json, packages/sandbox-client/tsconfig.json, packages/sandbox-client/vitest.config.ts, packages/sandbox-client/README.md, packages/sandbox-client/src/client.ts, packages/sandbox-client/src/errors.ts, packages/sandbox-client/src/secretResolver.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/src/index.ts, packages/sandbox-client/test/sandboxClient.test.ts, packages/sandbox-client/test/secretResolver.test.ts, packages/sandbox-client/test/sandboxClient.integration.test.ts, dossiers/TASK-142.md
+**Test_Evidence:** pnpm --filter @oikonomos/sandbox-client typecheck/build/test: all exit 0, 15/15 unit tests passed (2 integration tests correctly skipped, env-gated). pnpm -r build: exit 0, 18/18 workspaces. pnpm lint: exit 0. pnpm -r test run 3x: sandbox-client itself green all 3 runs (0 flakes); each run hit one different pre-existing unrelated flake (packages/db/runs.test.ts, evals/harness can-03, packages/approvals/editApproval.test.ts) under shared-Postgres/subprocess contention, each confirmed passing in isolation, none touching this diff. Real connectivity: health() run live against 100.78.70.2:8080 via built dist client, returned {status:healthy}.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T17:57:38Z
+**Updated_At:** 2026-09-04T18:10:17Z
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
