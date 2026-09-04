@@ -66,7 +66,9 @@ const integration = connectionString === undefined ? describe.skip : describe;
 
 integration("registerCapabilities PostgreSQL idempotency", () => {
   let pool: Pool;
+  let fixturePool: Pool;
   let store: ReturnType<typeof createConnectorRegistrationStore>;
+  const schema = `task_151_register_capabilities_${crypto.randomUUID().replaceAll("-", "")}`;
 
   async function snapshot(): Promise<unknown> {
     const result = await pool.query(
@@ -88,7 +90,31 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    // This declaration inventory uses the real fixed manifest IDs. Keep it in
+    // a disposable schema so concurrent integration fixtures cannot overwrite
+    // those rows with their own descriptions while the byte-identical check is
+    // in progress.
+    fixturePool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await fixturePool.query(`CREATE SCHEMA ${schema}`);
+    await fixturePool.query(`CREATE TABLE ${schema}.roles (LIKE public.roles INCLUDING ALL)`);
+    await fixturePool.query(`CREATE TABLE ${schema}.capabilities (LIKE public.capabilities INCLUDING ALL)`);
+    await fixturePool.query(`CREATE TABLE ${schema}.role_grants (LIKE public.role_grants INCLUDING ALL)`);
+    await fixturePool.query(
+      `ALTER TABLE ${schema}.role_grants
+       ADD CONSTRAINT role_grants_role_id_fkey
+       FOREIGN KEY (role_id) REFERENCES ${schema}.roles(role_id)`,
+    );
+    await fixturePool.query(
+      `ALTER TABLE ${schema}.role_grants
+       ADD CONSTRAINT role_grants_capability_id_fkey
+       FOREIGN KEY (capability_id) REFERENCES ${schema}.capabilities(capability_id)`,
+    );
+
+    pool = new Pool({
+      connectionString: connectionString!,
+      ...defaultPoolConfig,
+      options: `-c search_path=${schema},public`,
+    });
     store = createConnectorRegistrationStore(pool);
     // Connector registration correctly relies on D0 roles already existing.
     // Seed the three manifest-declared identities, idempotently, for this
@@ -105,6 +131,8 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
 
   afterAll(async () => {
     await pool.end();
+    await fixturePool.query(`DROP SCHEMA ${schema} CASCADE`);
+    await fixturePool.end();
   });
 
   it("leaves the complete declaration inventory byte-identical on a second registration", async () => {
