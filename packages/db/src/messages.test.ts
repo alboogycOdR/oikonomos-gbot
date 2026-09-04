@@ -47,8 +47,24 @@ integration("packages/db messages — transcript round trip (TASK-105)", () => {
     const transcript = await listMessages({ connectionString: connectionString! }, threadId);
     expect(transcript.map((message) => message.id)).toEqual([first.id, second.id, third.id]);
     expect(transcript.map((message) => message.body)).toEqual(["first", "second", "third"]);
+    expect(transcript.map((message) => message.senderRoleId)).toEqual([null, null, null]);
 
     const afterFirst = await listMessages({ connectionString: connectionString! }, threadId, { after: first.id });
     expect(afterFirst.map((message) => message.id)).toEqual([second.id, third.id]);
+  });
+
+  it("persists and reads back senderRoleId alongside existing role='user'/'bot' rows (TASK-120)", async () => {
+    const userMessage = await insertMessage({ connectionString: connectionString! }, { threadId, role: "user", body: "human line" });
+    expect(userMessage.senderRoleId).toBeNull();
+
+    const botMessage = await insertMessage(
+      { connectionString: connectionString! },
+      { threadId, role: "bot", body: "bot line", senderRoleId: roleId },
+    );
+    expect(botMessage.senderRoleId).toBe(roleId);
+
+    const transcript = await listMessages({ connectionString: connectionString! }, threadId, { after: userMessage.id });
+    const reread = transcript.find((message) => message.id === botMessage.id);
+    expect(reread?.senderRoleId).toBe(roleId);
   });
 });
