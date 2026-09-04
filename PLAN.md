@@ -1,8 +1,8 @@
 ---
-plan_version: 9.8
-last_updated: 2026-09-04T20:00:00Z
+plan_version: 9.9
+last_updated: 2026-09-04T20:05:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 5 DONE: TASK-137 (Calendar minter), TASK-138 (Drive minter), TASK-140 (live kill-switch) all approved and merged. Connectors-2 and OIK-112 complete. Real findings along the way: (1) control.py drain can replay an already-manually-superseded blocked control block and revert PLAN.md status out from under an active resumed session — hit once on TASK-140, caught and re-corrected, documented for the pack feedback doc; (2) docs/** is an absolute builder firewall path (hooks/lib.js PROTECTED_FOR_BUILDERS) regardless of a task's own Owned_Paths — TASK-140 wrongly granted docs/runbooks/kill-switch-drill.md to a builder; CX correctly refused to force the commit, ORCH wrote the runbook directly instead, now fixed as a standing rule (never grant docs/** to a builder); (3) CX independently caught and avoided a real architectural-layering mistake (declining to add @oikonomos/db to packages/broker/package.json, which would have undermined its deliberate DB-agnostic dependency-injection design) rather than following the path of least resistance. All three builders idle. Next: Wave 2 of WORKFLOW_CONNECTORS2_FASTFOLLOWS_BROWSERROUTINES_2026-09-04.md — TASK-139 (generalize connector merging to N + wire Calendar/Drive grant-derived mounting, CX/CX9 only) and TASK-141 (OIK-103/104 two-role handoff demo + my own Fable review). GB remains deactivated."
+orchestrator_notes: "Wave 5 DONE (TASK-137/138/140 — Connectors-2 + OIK-112 complete). Wave 6 dispatched: TASK-139 (generalize connector merging to N + wire Calendar/Drive grant-derived mounting, CX9 — protected-adjacent security-sensitive tool-mounting), TASK-141 (OIK-103 live two-role handoff demo through the real mcp__workspace__send_to_role broker-tool path, CX — TASK-100's existing evals/harness/test/ome-two-role-handoff.test.ts already proves the ACL/versioning model at the service layer, this proves the same property through the actual bot-facing tool-call path, not a duplicate), TASK-142 (OIK-113/114 Wave-1 slice, S5 — a thin OpenSandbox client wrapper + connectivity proof against the real deployed clawsrv server, explicitly NOT the full trace-capture-to-routine-spec epic; the API key has no existing secret:// ref convention, task requires an injected/documented resolver, never a hardcoded/undocumented env read). Real findings from Wave 5, worth carrying into future task authoring: never grant docs/** to a builder (absolute firewall path regardless of Owned_Paths, hooks/lib.js PROTECTED_FOR_BUILDERS); control.py drain can replay an already-superseded control block onto an active resumed task, watch for it. GB remains deactivated."
 ---
 
 # Project Plan
@@ -4133,4 +4133,82 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** APPROVE, first-pass on the code (3 legitimate blockers along the way — a real Owned_Paths gap, a real architectural-layering catch CX made itself, and a real DEVDEPARTMENT protected-path gap in my own task authoring — none of them builder error). The kill switch is now genuinely live: `getCapability` already read fresh per-decision before this task; what was missing was the DB-side toggle, which now exists, is tested against real Postgres, and is proven to reach a real `handlePreToolUse` decision in the same process with no restart — both for one capability and platform-wide. CX's mid-task catch (declining to add `@oikonomos/db` to `packages/broker/package.json`, correctly recognizing that would undermine the package's deliberate DB-agnostic dependency-injection design) is exactly the kind of judgment this program depends on. Runbook written by ORCH directly, since `docs/**` is an absolute builder firewall path this task's own Owned_Paths should never have included. Merged --no-ff. **Connectors-2 and OIK-112 are both now complete.**
 **Blocked_Reason:** —
 **Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:00:00Z
+
+### TASK-139
+**Title:** Generalize connector merging to N connectors + wire Calendar/Drive grant-derived mounting (Connectors-2c)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** TASK-128 (the exact pattern to mirror for grant-derived mounting, done for Gmail); services/worker/src/chatRunDriver.ts (`resolveGrantedGmailConnector`, `resolveGrantedWorkspaceConnector`, `combineConnectorContexts` — currently pairwise-only, built for exactly two connectors); TASK-137/138 (the new Calendar/Drive session minters this task wires in)
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/connectors/src/mcp/index.ts, packages/connectors/src/index.ts
+**Depends_On:** TASK-137, TASK-138
+**Description:** `chatRunDriver.ts`'s `combineConnectorContexts(first, second)` only accepts two `ConnectorContext | undefined` arguments — built for exactly Gmail + the internal workspace bridge. Adding Calendar and Drive as two more grant-derived connectors needs this generalized to accept any number of connector contexts (an array/rest-param merge, not two more special-cased pairwise calls). First, export the two new minters from the connectors barrels (this task owns them now — `mcpConfigFromManifest`, `createGoogleCalendarConnectorSessionMinter`, `createGoogleDriveConnectorSessionMinter` and their types, alongside the existing Gmail exports, matching TASK-127's export shape). Then in `chatRunDriver.ts`: rename/generalize `combineConnectorContexts` to accept N contexts (keep a name that reads clearly, e.g. `combineConnectorContexts(...contexts: (ConnectorContext | undefined)[])`), add `resolveGrantedGoogleCalendarConnector`/`resolveGrantedGoogleDriveConnector` mirroring `resolveGrantedGmailConnector`'s shape exactly (role-grant-derived, per-tool allowlist filtering, never mount an ungranted connector's tools — same defense-in-depth TASK-128 established), and merge all four context sources (Gmail, workspace, Calendar, Drive) through the generalized merge. A role with no manifest-connector grants must still behave exactly as today (Bash/Read only) — this is the same acceptance bar TASK-128 set and must not regress.
+**Acceptance_Criteria:**
+- [ ] `combineConnectorContexts` accepts and correctly merges any number of connector contexts (tested with 0, 1, 2, and 4 simultaneous contexts) — not hardcoded to exactly two
+- [ ] A role with a real Calendar grant can complete a real chat run that calls a granted `mcp__google_calendar__*` tool against a real (test-fixture) HTTP MCP server, with a `policy.decision` audit event showing `verdict: allow` — tested against real Postgres, mirroring TASK-128's own test shape
+- [ ] Same proof for Drive
+- [ ] A role granted Calendar but not Drive (or vice versa) cannot invoke the other connector's tools — tested, mutation-proof (removing per-connector grant filtering must redden this test)
+- [ ] A role with NO manifest-connector grants behaves identically to today (existing TASK-116/117/128 tests pass unmodified)
+- [ ] `mcpConfigFromManifest`, `createGoogleCalendarConnectorSessionMinter`, `createGoogleDriveConnectorSessionMinter` exported from the connectors barrels
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:05:00Z
+
+### TASK-141
+**Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-103/104; evals/harness/test/ome-two-role-handoff.test.ts (TASK-100's existing service-layer ACL/versioning proof — already thorough, real Postgres, exercises `sendToRole`/`resolve` directly, do not duplicate its coverage); TASK-131 (registered `mcp__workspace__send_to_role` as a real invokable broker tool — the piece that was missing when OIK-103 was first scoped, now done)
+**Owned_Paths:** evals/harness/test/ome-two-role-handoff-live.test.ts
+**Depends_On:** —
+**Description:** `ome-two-role-handoff.test.ts` already proves the ACL/versioning model thoroughly at the service layer (direct `sendToRole`/`resolve` calls). What's not yet proven is the *bot-facing* path: a real chat run, for a role that's actually granted `workspace.send_to_role`, genuinely calling the `mcp__workspace__send_to_role` tool through a live broker decision (not calling `sendToRole` directly in the test) — end to end from tool call → broker `pretooluse` decision → `workspaceMcpServer.ts` → `mailbox.ts`'s `sendToRole` → a second role reading the handoff. Write a new test that runs two real chat tasks (via `executeRun`/`chatRunDriver`, matching TASK-128's own real-Postgres liveness-test pattern) for two distinct roles, has the first role's run genuinely invoke the tool (real MCP round-trip, not a mock of `sendToRole` itself), and confirms: the handoff lands as a real `role_messages` row with the correct `fromRoleId` (proving the identity-from-process-args security property `workspaceMcpServer.ts` was built around still holds through a live run, not just a unit test), a `policy.decision` audit event records the tool call, and — reusing TASK-100's own "no privilege expansion" property — the receiving role can resolve any fact reference in the handoff only within its own existing ACL, never gaining implicit access via the handoff itself.
+**Acceptance_Criteria:**
+- [ ] Two real chat runs (real Postgres) complete, with the sending role's run genuinely invoking `mcp__workspace__send_to_role` through a real broker `pretooluse` decision (not a mocked tool call)
+- [ ] The persisted `role_messages` row's `fromRoleId` matches the *actual sending role*, sourced from server-side run identity, never from model-controlled tool input — tested (mutation-proof: if `fromRoleId` were taken from tool input instead, this test must redden)
+- [ ] A `policy.decision` audit event records the tool call with `verdict: allow`
+- [ ] The receiving role's fact-reference resolution respects the ACL exactly as TASK-100's existing test already proves at the service layer — this test confirms the same property holds when reached through the live tool-call path, not just directly
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:05:00Z
+
+### TASK-142
+**Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** infra/sandbox/README.md (OIK-042 — the real, already-deployed OpenSandbox server on clawsrv, Tailscale-only, `100.78.70.2:8080`, API key required via `OPEN-SANDBOX-API-KEY` header); docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md (R14 pin-don't-track-latest, R16 Docker-backend-only — this task's client must not assume/require Kubernetes); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-113/114 (the full epic — this task is deliberately only its first slice, NOT the full trace-capture-to-routine-spec pipeline)
+**Owned_Paths:** packages/sandbox-client/**
+**Depends_On:** —
+**Description:** OpenSandbox is real, deployed infrastructure with zero application code referencing it anywhere in this repo today. This task's scope is explicitly narrow: prove connectivity and basic lifecycle control, nothing about browser trace capture or routine-spec generation (those are separate, later tasks once this foundation exists). Create a new package `packages/sandbox-client` with a thin, typed HTTP client for the OpenSandbox server's real API (read its actual API surface from the live server's own docs/OpenAPI spec if the server exposes one at `/`, `/docs`, or similar — do not guess endpoint shapes from the README alone, verify against the real server). Cover at minimum: a health/liveness check, creating a sandbox, and destroying a sandbox. The API key has NO existing `secret://` ref convention (confirmed: `infra/sandbox/README.md` documents no `OIK_SECRET_*` usage, unlike every other credential in this codebase) — resolve it the same way as every other secret in this repo, via an injected resolver function (do not hardcode, do not read a raw env var by a made-up name without documenting the convention you chose and why). **Non-negotiable 4 (no credentials in prompts, logs, audit payloads, fixtures) applies here exactly as it does to every OAuth flow already built** — the API key must never appear in a test fixture, log line, or error message. Tests against the real live server are gated behind an env var (mirror the `DATABASE_URL`-gated `integration`/`describe.skip` pattern already used throughout this codebase) so they skip cleanly wherever Tailscale/the real key isn't available; unit tests against a fake HTTP transport cover the client's request/response shaping without ever touching the real server.
+**Acceptance_Criteria:**
+- [ ] A typed client can perform a health check, create a sandbox, and destroy a sandbox against a fake HTTP transport — tested
+- [ ] The real API key is resolved via an injected/documented secret mechanism, never hardcoded or read via an undocumented ad hoc env var name
+- [ ] No literal API key, or any other credential, appears anywhere in a log, error message, or test fixture — reviewed directly
+- [ ] An optional real-server integration test (gated behind an env var, skipped when unset) proves actual connectivity to the live clawsrv server — document in the dossier whether it was actually run against the real server this session, and its result, since ORCH cannot verify Tailscale connectivity from every environment
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:05:00Z
 **Updated_At:** 2026-09-04T17:40:11Z
