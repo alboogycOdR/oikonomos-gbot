@@ -3543,7 +3543,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: no documented standalone permissions page exists in the reference product either (uninstall/disconnect is its only confirmed revoke path) — OIKONOMOS builds a minimal one anyway since capability grants (unlike connector installs) have no equivalent "disconnect" affordance today. Depends_On TASK-118 in addition to TASK-117 (added at plan-validation time) purely to serialize both tasks' shared touch on services/control-api/src/app.ts/ports.ts — not a functional dependency.
@@ -3556,15 +3556,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] The dashboard's Members/permissions view shows real grants for the active bot (not fixture data) and a revoke click results in the row actually disappearing after the next real fetch — tested
 - [ ] A revoked capability, attempted again in a real chat run, correctly returns to the deny/approval-required path (mirrors TASK-117/118's evidentiary shape) — tested against real Postgres
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-119-s5
+**Started_At:** 2026-09-04T05:22:38Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-03T23:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:22:38Z
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
