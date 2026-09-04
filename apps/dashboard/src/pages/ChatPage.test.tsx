@@ -148,8 +148,13 @@ describe("ChatPage", () => {
           { status: 200 },
         );
       }
-      if (url.endsWith("/roles/role-1/grants")) {
+      if (url.endsWith("/roles/role-1/grants") && init?.method === "POST") {
         return new Response(JSON.stringify({}), { status: 201 });
+      }
+      if (url.endsWith("/roles/role-1/grants")) {
+        // RightPanel (TASK-124: activeRoleId now reaches it) GETs this
+        // same URL on mount to populate the Permissions section.
+        return new Response(JSON.stringify([]), { status: 200 });
       }
       return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
     }) as unknown as typeof fetch;
@@ -226,5 +231,39 @@ describe("ChatPage", () => {
     // fetches; assert clearInterval actually fired for it instead of
     // relying on absence of extra calls (flaky under real timers).
     await waitFor(() => expect(clearIntervalSpy).toHaveBeenCalled());
+  });
+
+  // TASK-124 (Grants-1e): activeRoleId must reach RightPanel through the
+  // real ChatPage -> ChatShell tree (not just when handed to RightPanel
+  // directly), otherwise TASK-119's permissions view is dead code in the
+  // live app.
+  it("threads the active thread's roleId into RightPanel so the permissions view shows real grants", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+      }
+      if (url.endsWith("/roles")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/threads")) {
+        return new Response(JSON.stringify([THREAD]), { status: 200 });
+      }
+      if (url.includes("/threads/thread-1/messages")) {
+        return new Response(JSON.stringify([USER_MESSAGE]), { status: 200 });
+      }
+      if (url.endsWith("/roles/role-1/grants")) {
+        return new Response(
+          JSON.stringify([{ capabilityId: "email.send", maxTier: "T3_external" }]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+
+    renderPage();
+
+    expect(await screen.findByLabelText("Permissions")).toBeInTheDocument();
+    expect(await screen.findByText("email.send")).toBeInTheDocument();
   });
 });
