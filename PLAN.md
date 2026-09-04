@@ -4217,7 +4217,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111; services/worker/src/subprocessProviders.ts (CX's own finding — the real production `AgentProvider` construction site, not `executeRun.ts` as originally guessed)
@@ -4243,9 +4243,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T18:55:00Z] [ORCH] Third unblock: widened Owned_Paths to services/worker/src/chatRunDriver.ts + .test.ts (executeRun.test.ts already granted). Verified no collision — TASK-139, the only other task that touched chatRunDriver.ts this wave, is already merged and its branch deleted. Resuming on task/TASK-143-cx.
 - [2026-09-04T18:24:45Z] [SV:CX] Production wiring territory is ready, but costUsd cannot safely enforce a R30,000 inference-plus-hosting ceiling without a defined currency conversion and hosting-cost source.
 - [2026-09-04T19:00:00Z] [ORCH] Resolved (real product decision, not a guess): USD→ZAR via a configurable `USD_TO_ZAR_RATE` env var (documented placeholder default, applied only at the ceiling-comparison point, raw costUsd still stored unconverted). Hosting costs explicitly descoped — no telemetry exists anywhere in this codebase, building it is a materially larger separate task; this task enforces the inference-cost portion of the ceiling only, documented honestly rather than silently narrowed. Description/AC updated. Resuming on task/TASK-143-cx.
+- [2026-09-04T18:28:17Z] [SV:CX] Recorded and committed the live-path investigation (89e801a); no inert budget implementation was added.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T19:00:00Z
+**Blocked_Reason:** OTHER: The production chat path bypasses AgentProvider.sendPrompt(), so withBudgetSink cannot persist completed live-run spend at the currently permitted construction site. ORCH must select and assign a live interception boundary.
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T18:28:17Z
