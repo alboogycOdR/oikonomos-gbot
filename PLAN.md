@@ -3645,7 +3645,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-123
 **Title:** Wire "Always Allow" grant data through the live chat UI (Grants-1d, fast-follow)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** TASK-118's own Review_Findings — the real, documented gap left after that task: roleId/capabilityId/maxTier never reach ApprovalCard through the live component tree, so "Always Allow" is correct but invisible in the running app
@@ -3657,12 +3657,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] roleId passed to ApprovalCard is the actual active bot's role id, not a placeholder - tested
 - [ ] Existing ConversationPane/ChatPage tests pass unmodified except for the additions this task makes
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-123-cx
+**Started_At:** 2026-09-04T05:22:51Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T07:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:22:51Z
