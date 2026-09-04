@@ -3599,7 +3599,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; WBS OIK-150
@@ -3616,12 +3616,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T05:45:53Z
 **Progress_Notes:**
 - [2026-09-04T05:48:06Z] [SV:CX] Verified territory and TASK-120's DB API; no compliant path exists to create a real group thread from control-api without touching packages/db, which is outside Owned_Paths.
+- [2026-09-04T06:11:14Z] [SV:CX] Implemented group-thread routes, mixed thread summaries, sender attribution. chat.routes.test.ts 22/22 passed. Blocked again: full pnpm -r test failed because packages/db's `listThreads` (legacy, 1:1-only) threw once a real group thread existed in shared Postgres — outside TASK-121's Owned_Paths to fix.
+- [2026-09-04T08:31:00Z] [ORCH] Triaged: legitimate, real bug — `listThreads` had no `WHERE role_id IS NOT NULL` filter, so it threw for its *entire* result set as soon as any real group thread existed anywhere in the table (not just group-thread-aware callers). Fixed directly on master (packages/db, unprotected path, one-line filter, commit 8cfe5e5) — restores the function's own documented 1:1-only scope rather than widening it; group threads are `listAllThreadsWithMembers`'s job (TASK-125). Independently re-verifying full suite now. **Separately, a real gap in TASK-121's own diff**: the new `chat.routes.test.ts` "real Postgres" test (`Group-thread control-api routes`) creates real roles/threads/thread_members/messages with no cleanup (no `finally`/`afterAll` deleting them) — left 2 group threads + roles + members permanently in shared dev Postgres, which is exactly what surfaced the `listThreads` bug in the first place. Cleaned up what the classifier allowed; a stray 1:1 fixture thread (`fccaf1e8...`) could not be removed this tick (Bash permission classifier declined repeated DELETE statements) — harmless (valid role_id, doesn't trip the fixed `listThreads` filter) but should be cleaned by CX's own test fix. **Rework requested**: add real cleanup (matching `chatRunDriver.test.ts`'s `cleanup()` pattern — delete messages/thread_members/threads/roles created by this test, in FK order) to the new integration test before resubmitting for review.
 **Artifacts:** dossiers/TASK-121.md
-**Test_Evidence:** —
-**Review_Findings:** —
-**Blocked_Reason:** — (was MISSING_DEPENDENCY, resolved: TASK-125 merged 2026-09-04T08:20:00Z with `createGroupThread`/`listAllThreadsWithMembers` now exported from `@oikonomos/db`. Resuming CX on task/TASK-121-cx.)
+**Test_Evidence:** CX: chat.routes.test.ts 22/22 passed (real Postgres). ORCH: independent re-verification pending (see next tick).
+**Review_Findings:** REWORK requested (not yet a full review — this is blocked-task triage). Finding: add cleanup to the new group-thread integration test so it doesn't leak roles/threads/members into shared Postgres.
+**Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T08:20:00Z
+**Updated_At:** 2026-09-04T08:31:00Z
 
 ### TASK-122
 **Title:** Group thread UI + fan-out approval rule (Chat-2c)
