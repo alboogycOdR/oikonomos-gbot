@@ -413,7 +413,19 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           title: name,
           description,
         });
-        // Deliberately no role_grants write: a new chat bot begins fail-closed.
+        const builtinCapabilities = (await deps.listCapabilities()).filter(
+          (capability) => capability.adapter === "sdk:builtin",
+        );
+        await Promise.all(
+          builtinCapabilities.map((capability) =>
+            deps.upsertRoleGrant({
+              roleId: role.roleId,
+              capabilityId: capability.capabilityId,
+              maxTier: capability.defaultTier,
+              constraints: {},
+            }),
+          ),
+        );
         await reply.code(201).send(serializeRole(role));
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });

@@ -1,7 +1,7 @@
 import {
+  Database,
   createRole,
   createTask,
-  createThread,
   defaultPoolConfig,
   getAuditEventsForRun,
   listMessages,
@@ -24,7 +24,7 @@ const base = {
 
 describe("chat run driver governance helpers", () => {
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
-    expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)"]');
+    expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)", "Read(*)"]');
     expect(chatRunDriverSource).not.toMatch(/queryFn\s*:/);
     expect(chatRunDriverSource).not.toContain("@anthropic-ai/claude-agent-sdk");
   });
@@ -83,6 +83,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     );
     await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM threads WHERE role_id = $1`, [roleId]);
+    await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
   }
 
@@ -113,8 +114,11 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     });
     taskId = task.taskId;
 
-    const thread = await createThread(options, { roleId });
-    threadId = thread.id;
+    const thread = await pool.query<{ id: string }>(
+      "INSERT INTO threads (role_id) VALUES ($1) RETURNING id",
+      [roleId],
+    );
+    threadId = thread.rows[0]!.id;
   });
 
   afterAll(async () => {
@@ -149,6 +153,44 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const botMessage = messages.find((message) => message.role === "bot" && message.runId === run.runId);
       expect(botMessage).toBeDefined();
       expect(botMessage?.body.length).toBeGreaterThan(0);
+    },
+    120_000,
+  );
+
+  it(
+    "completes a real mounted Read action with its T0 role grant and no pending approval",
+    async () => {
+      const database = new Database(options);
+      try {
+        await database.upsertRoleGrant({
+          roleId,
+          capabilityId: "fs.read",
+          maxTier: "T0_observe",
+          constraints: {},
+        });
+      } finally {
+        await database.close();
+      }
+      const readTask = await createTask(options, {
+        roleId,
+        title: "TASK-117 T0 Read grant fixture",
+        goal: "Use Read to read package.json exactly once. Do not use Bash or any other tool, then report the package name.",
+        requestedBy: "task-117-suite",
+      });
+
+      await createChatRunDriver(options).run({ task: readTask, threadId });
+
+      const runsPage = await listRuns(options, { taskId: readTask.taskId });
+      const run = runsPage.runs[0]!;
+      expect(run.status).toBe("completed");
+      const events = await getAuditEventsForRun(options, run.runId);
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "fs.read"))
+        .toMatchObject({ tier: "T0_observe", payload: { toolName: "Read", verdict: "allow" } });
+      const approvals = await pool.query<{ count: string }>(
+        "SELECT count(*) FROM approvals WHERE run_id = $1 AND status = 'pending'",
+        [run.runId],
+      );
+      expect(approvals.rows[0]!.count).toBe("0");
     },
     120_000,
   );
