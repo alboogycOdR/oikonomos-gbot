@@ -14,10 +14,11 @@ import { once } from "node:events";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentSdkQueryFn, AgentSdkQueryInput } from "@oikonomos/harness-factory";
-import type { ConnectorManifest } from "@oikonomos/connectors";
+import { defaultManifestsDir, loadManifests, type ConnectorManifest } from "@oikonomos/connectors";
 
 import {
   CHAT_FANOUT_CAPABILITY_ID,
+  combineConnectorContexts,
   createChatRunDriver,
   deliverBotToBotMessage,
   destinationFor,
@@ -25,6 +26,7 @@ import {
 } from "./chatRunDriver.js";
 import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
+import type { ConnectorContext } from "./executeRun.js";
 
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./chatRunDriver.ts", import.meta.url), "utf8"),
@@ -80,6 +82,22 @@ function json(response: ServerResponse, value: unknown): void {
 }
 
 describe("chat run driver governance helpers", () => {
+  it("merges zero, one, two, and four connector contexts without pairwise limits (TASK-139)", () => {
+    const context = (id: string): ConnectorContext => ({
+      manifest: { connector_id: id, mcp_server: { name: id }, tools: [] },
+      mcpServers: { [id]: { transport: "http", url: `http://${id}.fixture.invalid/mcp` } },
+      allowedTools: [`mcp__${id}__list`],
+    });
+    const [gmail, workspace, calendar, drive] = ["gmail", "workspace", "google-calendar", "google-drive"].map(context);
+    expect(combineConnectorContexts()).toBeUndefined();
+    expect(combineConnectorContexts(gmail)).toMatchObject({ allowedTools: ["mcp__gmail__list"], mcpServers: { gmail: expect.anything() } });
+    expect(combineConnectorContexts(gmail, workspace)).toMatchObject({ allowedTools: ["mcp__gmail__list", "mcp__workspace__list"] });
+    expect(combineConnectorContexts(gmail, workspace, calendar, drive)).toMatchObject({
+      allowedTools: ["mcp__gmail__list", "mcp__workspace__list", "mcp__google-calendar__list", "mcp__google-drive__list"],
+      mcpServers: { gmail: expect.anything(), workspace: expect.anything(), "google-calendar": expect.anything(), "google-drive": expect.anything() },
+    });
+  });
+
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
     expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)", "Read(*)"]');
     // TASK-128 has an injected query seam for its protocol-compatible MCP
@@ -485,6 +503,99 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       expect(calls.map((call) => call.tool)).toEqual(["list_messages"]);
       expect(calls[0]?.authorization).toBe(`Bearer ${fixtureToken}`);
       expect(sdkOptionsAbsent(calls, "send_message")).toBe(true);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  }, 30_000);
+
+  it("mounts Calendar and Drive only from their own grants through real fixture MCP calls (TASK-139)", async () => {
+    const calls: string[] = [];
+    const server = createServer(async (request, response) => {
+      const body = JSON.parse(await readRequest(request)) as { id?: unknown; method?: unknown; params?: { name?: unknown } };
+      if (body.method === "tools/call" && typeof body.params?.name === "string") calls.push(body.params.name);
+      json(response, { jsonrpc: "2.0", id: body.id ?? null, result: { content: [{ type: "text", text: "fixture response" }] } });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("TASK-139 fixture server did not bind TCP");
+    const mcpUrl = `http://127.0.0.1:${address.port}/mcp`;
+    const fixtureToken = ["task", "139", "access"].join("-");
+    const minterOptions = {
+      resolveUrl: async () => mcpUrl,
+      oauth: {
+        resolve: async () => "fixture-secret",
+        tokenEndpoint: "http://oauth.fixture.invalid/token",
+        fetch: async () => new Response(JSON.stringify({ access_token: fixtureToken, expires_in: 3600 })),
+      },
+    };
+    const database = new Database(options);
+    try {
+      // The surrounding legacy integration suite grants this shared fixture
+      // role several unrelated capabilities. Reset only its grants before
+      // this test so the Calendar-only mount assertion is discriminating.
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await database.upsertCapability({ capabilityId: "calendar.list", description: "List calendar events.", defaultTier: "T0_observe", adapter: "mcp:google-calendar", enabled: true });
+      await database.upsertCapability({ capabilityId: "drive.search", description: "Search Drive files.", defaultTier: "T0_observe", adapter: "mcp:google-drive", enabled: true });
+      await database.upsertRoleGrant({ roleId, capabilityId: "calendar.list", maxTier: "T0_observe", constraints: {} });
+    } finally {
+      await database.close();
+    }
+
+    const runWith = async (toolName: "mcp__google-calendar__list_events" | "mcp__google-drive__search_files") => {
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        const sdkOptions = input.options as {
+          allowedTools?: readonly string[];
+          mcpServers?: Record<string, { url: string; headers?: Record<string, string> }>;
+        };
+        const serverName = toolName.includes("calendar") ? "google-calendar" : "google-drive";
+        const otherServerName = serverName === "google-calendar" ? "google-drive" : "google-calendar";
+        const connector = sdkOptions.mcpServers?.[serverName];
+        if (connector === undefined) throw new Error(`TASK-139 expected ${serverName} to be mounted`);
+        if (toolName.includes("calendar")) expect(sdkOptions.mcpServers?.[otherServerName]).toBeUndefined();
+        expect(sdkOptions.allowedTools).toContain(`${toolName}(*)`);
+        const allowed = await callMountedTool(
+          input,
+          toolName,
+          `task-139-${serverName}`,
+          toolName.includes("calendar") ? { calendarId: "primary" } : { query: "quarterly report" },
+        );
+        expect(allowed).toBe(true);
+        const response = await fetch(connector.url, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...connector.headers },
+          body: JSON.stringify({ jsonrpc: "2.0", id: serverName, method: "tools/call", params: { name: toolName.split("__").at(-1), arguments: {} } }),
+        });
+        expect(response.ok).toBe(true);
+        yield { type: "tool_result", toolName, result: "fixture response" };
+      };
+      const task = await createTask(options, { roleId, title: `TASK-139 ${toolName} fixture`, goal: "Call the granted fixture tool once.", requestedBy: "task-139-suite" });
+      await createChatRunDriver({
+        ...options,
+        manifests: await loadManifests(defaultManifestsDir()),
+        queryFn,
+        calendarSessionMinter: minterOptions,
+        driveSessionMinter: minterOptions,
+      }).run({ task, threadId });
+      const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+      const capability = toolName.includes("calendar") ? "calendar.list" : "drive.search";
+      expect((await getAuditEventsForRun(options, run.runId)).find((event) => event.eventType === "policy.decision" && event.capability === capability))
+        .toMatchObject({ payload: { verdict: "allow", toolName } });
+    };
+
+    try {
+      // Calendar has a grant; Drive does not. The absent mount assertion in
+      // runWith is mutation-proof: removing the per-connector grant filter
+      // mounts Drive and makes this test fail before the tool call.
+      await runWith("mcp__google-calendar__list_events");
+      const grantDatabase = new Database(options);
+      try {
+        await grantDatabase.upsertRoleGrant({ roleId, capabilityId: "drive.search", maxTier: "T0_observe", constraints: {} });
+      } finally {
+        await grantDatabase.close();
+      }
+      await runWith("mcp__google-drive__search_files");
+      expect(calls).toEqual(["list_events", "search_files"]);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     }

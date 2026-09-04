@@ -4,11 +4,16 @@ import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromMan
 import {
   createConnectorSessionPool,
   createGmailConnectorSessionMinter,
+  createGoogleCalendarConnectorSessionMinter,
+  createGoogleDriveConnectorSessionMinter,
   defaultManifestsDir,
+  envSecretResolver,
   loadManifests,
   type ConnectorManifest,
   type ConnectorSessionPool,
   type CreateGmailConnectorSessionMinterOptions,
+  type CreateGoogleCalendarConnectorSessionMinterOptions,
+  type CreateGoogleDriveConnectorSessionMinterOptions,
 } from "@oikonomos/connectors";
 import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
@@ -32,24 +37,58 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly connectorSessionPool?: ConnectorSessionPool;
   /** Overrides for the Gmail minter's secret/OAuth ports; never logged. */
   readonly gmailSessionMinter?: Omit<CreateGmailConnectorSessionMinterOptions, "manifest">;
+  /** Overrides for the Calendar minter's secret/OAuth ports; never logged. */
+  readonly calendarSessionMinter?: Omit<CreateGoogleCalendarConnectorSessionMinterOptions, "manifest">;
+  /** Overrides for the Drive minter's secret/OAuth ports; never logged. */
+  readonly driveSessionMinter?: Omit<CreateGoogleDriveConnectorSessionMinterOptions, "manifest">;
 }
 
 /** First production chat task-to-run composition; registry resolution is declaration- and DB-backed. */
 export function createChatRunDriver(options: CreateChatRunDriverOptions): ChatRunDriver {
   let gmailSessionPool = options.connectorSessionPool;
+  let calendarSessionPool: ConnectorSessionPool | undefined;
+  let driveSessionPool: ConnectorSessionPool | undefined;
   return {
-    run: async (request) => runChatTask(options, request, (manifest) => {
-      if (gmailSessionPool === undefined) {
-        gmailSessionPool = createConnectorSessionPool({
-          mint: createGmailConnectorSessionMinter({
-            manifest,
-            resolveUrl: options.gmailSessionMinter?.resolveUrl ?? resolveGmailMcpUrl,
-            ...(options.gmailSessionMinter?.oauth === undefined ? {} : { oauth: options.gmailSessionMinter.oauth }),
-            ...(options.gmailSessionMinter?.serverName === undefined ? {} : { serverName: options.gmailSessionMinter.serverName }),
-          }),
-        });
-      }
-      return gmailSessionPool;
+    run: async (request) => runChatTask(options, request, {
+      gmailPoolFor: (manifest) => {
+        if (gmailSessionPool === undefined) {
+          gmailSessionPool = createConnectorSessionPool({
+            mint: createGmailConnectorSessionMinter({
+              manifest,
+              resolveUrl: options.gmailSessionMinter?.resolveUrl ?? resolveGmailMcpUrl,
+              ...(options.gmailSessionMinter?.oauth === undefined ? {} : { oauth: options.gmailSessionMinter.oauth }),
+              ...(options.gmailSessionMinter?.serverName === undefined ? {} : { serverName: options.gmailSessionMinter.serverName }),
+            }),
+          });
+        }
+        return gmailSessionPool;
+      },
+      calendarPoolFor: (manifest) => {
+        if (calendarSessionPool === undefined) {
+          calendarSessionPool = createConnectorSessionPool({
+            mint: createGoogleCalendarConnectorSessionMinter({
+              manifest,
+              resolveUrl: options.calendarSessionMinter?.resolveUrl ?? envSecretResolver,
+              oauth: options.calendarSessionMinter?.oauth ?? { resolve: envSecretResolver },
+              ...(options.calendarSessionMinter?.serverName === undefined ? {} : { serverName: options.calendarSessionMinter.serverName }),
+            }),
+          });
+        }
+        return calendarSessionPool;
+      },
+      drivePoolFor: (manifest) => {
+        if (driveSessionPool === undefined) {
+          driveSessionPool = createConnectorSessionPool({
+            mint: createGoogleDriveConnectorSessionMinter({
+              manifest,
+              resolveUrl: options.driveSessionMinter?.resolveUrl ?? envSecretResolver,
+              ...(options.driveSessionMinter?.oauth === undefined ? {} : { oauth: options.driveSessionMinter.oauth }),
+              ...(options.driveSessionMinter?.serverName === undefined ? {} : { serverName: options.driveSessionMinter.serverName }),
+            }),
+          });
+        }
+        return driveSessionPool;
+      },
     }),
   };
 }
@@ -65,7 +104,11 @@ async function resolveGmailMcpUrl(ref: string): Promise<string> {
 async function runChatTask(
   options: CreateChatRunDriverOptions,
   request: ChatRunRequest,
-  gmailPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool,
+  pools: {
+    readonly gmailPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+    readonly calendarPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+    readonly drivePoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+  },
 ): Promise<void> {
   assertRequest(request);
   const database = new Database(options);
@@ -73,12 +116,26 @@ async function runChatTask(
   try {
     const manifests = options.manifests ?? await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
-    const acquiredConnector = await resolveGrantedGmailConnector({
+    const acquiredGmailConnector = await resolveGrantedGmailConnector({
       database,
       manifests,
       roleId: request.task.roleId,
       tenantId: request.task.tenantId,
-      gmailPoolFor,
+      gmailPoolFor: pools.gmailPoolFor,
+    });
+    const acquiredCalendarConnector = await resolveGrantedGoogleCalendarConnector({
+      database,
+      manifests,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      calendarPoolFor: pools.calendarPoolFor,
+    });
+    const acquiredDriveConnector = await resolveGrantedGoogleDriveConnector({
+      database,
+      manifests,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      drivePoolFor: pools.drivePoolFor,
     });
     const workspaceConnector = await resolveGrantedWorkspaceConnector({
       database,
@@ -86,7 +143,12 @@ async function runChatTask(
       tenantId: request.task.tenantId,
       connectionString: options.connectionString,
     });
-    const connector = combineConnectorContexts(acquiredConnector?.connector, workspaceConnector);
+    const connector = combineConnectorContexts(
+      acquiredGmailConnector?.connector,
+      workspaceConnector,
+      acquiredCalendarConnector?.connector,
+      acquiredDriveConnector?.connector,
+    );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({
       mountedToolNames,
@@ -109,7 +171,9 @@ async function runChatTask(
         park: createRunParkPort(options, run.runId),
       });
     } finally {
-      if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
+      for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
+        if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
+      }
     }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
     await completeTaskRun(options, run.runId);
@@ -145,16 +209,16 @@ async function resolveGrantedWorkspaceConnector(input: {
 }
 
 /** executeTaskRun accepts one context; merge independently grant-derived MCP mounts into it. */
-function combineConnectorContexts(
-  first: ConnectorContext | undefined,
-  second: ConnectorContext | undefined,
+export function combineConnectorContexts(
+  ...contexts: readonly (ConnectorContext | undefined)[]
 ): ConnectorContext | undefined {
-  if (first === undefined) return second;
-  if (second === undefined) return first;
+  const definedContexts = contexts.filter((context): context is ConnectorContext => context !== undefined);
+  const [first] = definedContexts;
+  if (first === undefined) return undefined;
   return {
     manifest: first.manifest,
-    mcpServers: { ...first.mcpServers, ...second.mcpServers },
-    allowedTools: [...first.allowedTools, ...second.allowedTools],
+    mcpServers: Object.assign({}, ...definedContexts.map((context) => context.mcpServers)),
+    allowedTools: definedContexts.flatMap((context) => context.allowedTools),
   };
 }
 
@@ -166,9 +230,8 @@ interface AcquiredConnector {
 
 /**
  * Derive the connector surface from persisted grants, not from a model prompt
- * or a manifest default. Gmail is deliberately the only mounted connector in
- * this wave: other manifests have no session minter yet and therefore remain
- * unavailable even if their rows are granted.
+ * or a manifest default. Every manifest connector is independently filtered
+ * to its persisted grants before its session is ever acquired.
  */
 async function resolveGrantedGmailConnector(input: {
   readonly database: Database;
@@ -177,7 +240,40 @@ async function resolveGrantedGmailConnector(input: {
   readonly tenantId: string;
   readonly gmailPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
 }): Promise<AcquiredConnector | undefined> {
-  const manifest = input.manifests.find((candidate) => candidate.connector_id === "gmail");
+  return resolveGrantedManifestConnector({ ...input, connectorId: "gmail", poolFor: input.gmailPoolFor });
+}
+
+/** Mount Calendar only when at least one enabled Calendar tool is role-granted. */
+async function resolveGrantedGoogleCalendarConnector(input: {
+  readonly database: Database;
+  readonly manifests: readonly ConnectorManifest[];
+  readonly roleId: string;
+  readonly tenantId: string;
+  readonly calendarPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+}): Promise<AcquiredConnector | undefined> {
+  return resolveGrantedManifestConnector({ ...input, connectorId: "google-calendar", poolFor: input.calendarPoolFor });
+}
+
+/** Mount Drive only when at least one enabled Drive tool is role-granted. */
+async function resolveGrantedGoogleDriveConnector(input: {
+  readonly database: Database;
+  readonly manifests: readonly ConnectorManifest[];
+  readonly roleId: string;
+  readonly tenantId: string;
+  readonly drivePoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+}): Promise<AcquiredConnector | undefined> {
+  return resolveGrantedManifestConnector({ ...input, connectorId: "google-drive", poolFor: input.drivePoolFor });
+}
+
+async function resolveGrantedManifestConnector(input: {
+  readonly connectorId: string;
+  readonly database: Database;
+  readonly manifests: readonly ConnectorManifest[];
+  readonly roleId: string;
+  readonly tenantId: string;
+  readonly poolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+}): Promise<AcquiredConnector | undefined> {
+  const manifest = input.manifests.find((candidate) => candidate.connector_id === input.connectorId);
   if (manifest === undefined) return undefined;
 
   const grantedCapabilities = new Set((await input.database.listRoleGrants(input.roleId)).map((grant) => grant.capabilityId));
@@ -186,7 +282,7 @@ async function resolveGrantedGmailConnector(input: {
     .map((tool) => tool.tool_name);
   if (allowedTools.length === 0) return undefined;
 
-  const pool = input.gmailPoolFor(manifest);
+  const pool = input.poolFor(manifest);
   const handle = await pool.acquire(input.tenantId, manifest.connector_id);
   return {
     pool,
@@ -243,6 +339,8 @@ export function destinationFor(request: PreToolUseRequest): string {
         : request.toolName === "Bash" ? input.command
           : request.toolName === "mcp__gmail__list_messages" ? input.q
           : request.toolName === "mcp__gmail__send_message" ? input.to
+            : request.toolName === "mcp__google-calendar__list_events" ? input.calendarId
+              : request.toolName === "mcp__google-drive__search_files" ? input.query
             : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;

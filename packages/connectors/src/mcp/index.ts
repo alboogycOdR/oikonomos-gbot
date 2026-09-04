@@ -6,6 +6,16 @@ export {
   type CreateGmailConnectorSessionMinterOptions,
 } from "./gmailSessionMinter.js";
 export {
+  createGoogleCalendarConnectorSessionMinter,
+  type CreateGoogleCalendarConnectorSessionMinterOptions,
+  type GoogleCalendarOAuthTokenProviderOptions,
+} from "./googleCalendarSessionMinter.js";
+export {
+  createGoogleDriveConnectorSessionMinter,
+  type CreateGoogleDriveConnectorSessionMinterOptions,
+  type GoogleDriveOAuthTokenProviderOptions,
+} from "./googleDriveSessionMinter.js";
+export {
   createGmailOAuthTokenProvider,
   createOAuthTokenProvider,
   GMAIL_OAUTH_CLIENT_ID_REF,
