@@ -64,6 +64,8 @@ export interface ControlApiDeps {
   createRole(input: NewRole): Promise<Role>;
   listCapabilities(): Promise<Capability[]>;
   upsertRoleGrant(input: RoleGrant): Promise<RoleGrant>;
+  listRoleGrants(roleId: string): Promise<RoleGrant[]>;
+  revokeRoleGrant(roleId: string, capabilityId: string): Promise<void>;
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
@@ -104,6 +106,9 @@ export function createDatabaseBackedDeps(options: DatabaseOptions): ControlApiDe
     createRole: (input) => dbCreateRole(options, input),
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
     upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),
+    listRoleGrants: (roleId) => withDatabase(options, (database) => database.listRoleGrants(roleId)),
+    revokeRoleGrant: (roleId, capabilityId) =>
+      withDatabase(options, (database) => database.revokeRoleGrant(roleId, capabilityId)),
     listRoles: (filter) => dbListRoles(options, filter),
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),

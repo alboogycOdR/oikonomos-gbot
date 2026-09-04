@@ -159,4 +159,11 @@ export class Database {
     );
     return toRoleGrant(result.rows[0]);
   }
+
+  public async revokeRoleGrant(roleId: string, capabilityId: string): Promise<void> {
+    await this.#pool.query(
+      `DELETE FROM role_grants WHERE role_id = $1 AND capability_id = $2`,
+      [roleId, capabilityId],
+    );
+  }
 }
