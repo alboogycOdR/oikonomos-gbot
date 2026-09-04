@@ -3543,7 +3543,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: no documented standalone permissions page exists in the reference product either (uninstall/disconnect is its only confirmed revoke path) — OIKONOMOS builds a minimal one anyway since capability grants (unlike connector installs) have no equivalent "disconnect" affordance today. Depends_On TASK-118 in addition to TASK-117 (added at plan-validation time) purely to serialize both tasks' shared touch on services/control-api/src/app.ts/ports.ts — not a functional dependency.
@@ -3558,13 +3558,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-119-s5
 **Started_At:** 2026-09-04T05:22:38Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T05:39:54Z] [SV:S5] Implemented Database.revokeRoleGrant, GET/DELETE /roles/:roleId/grants control-api routes (auth-gated), and RightPanel Members-tab permissions list+revoke UI. Documented ownership gap (ChatShell/api.ts not in Owned_Paths, so RightPanel self-fetches and takes an optional activeRoleId prop that nothing wires yet) mirroring TASK-118's accepted precedent.
+**Artifacts:** packages/db/src/database.ts, packages/db/src/database.test.ts, services/control-api/src/ports.ts, services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, dossiers/TASK-119.md
+**Test_Evidence:** pnpm --filter @oikonomos/db test = 125/125 (2 skipped, unrelated guard), incl. new database.test.ts (3/3, real Postgres, revoke precision proven). pnpm --filter @oikonomos/control-api test = 121/121 incl. 4 new TASK-119 tests (2 unit + 2 real-Postgres integration for GET/DELETE grants). pnpm --filter @oikonomos/dashboard test = 64/64 incl. 4 new RightPanel permission tests. pnpm -r build = 17/17 clean. pnpm lint clean. pnpm -r test (full recursive): 1 pre-existing failure in packages/agent-providers/test/providers.grok.test.ts (subprocess timing flake, package untouched by this diff), re-ran isolated and passed 96/96 confirming unrelated flake.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T05:22:38Z
+**Updated_At:** 2026-09-04T05:39:54Z
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
