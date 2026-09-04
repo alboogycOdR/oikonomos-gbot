@@ -105,3 +105,59 @@ integration("Database role grants — list/upsert/revoke (TASK-119)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+integration("Database capability enable switches (TASK-140)", () => {
+  let pool: Pool;
+  let database: Database;
+  const capabilityA = "task-140.database-switch.a";
+  const capabilityB = "task-140.database-switch.b";
+
+  async function cleanup(): Promise<void> {
+    await pool.query(`DELETE FROM capabilities WHERE capability_id = ANY($1)`, [[capabilityA, capabilityB]]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    database = new Database({ connectionString: connectionString! });
+    await cleanup();
+    for (const capabilityId of [capabilityA, capabilityB]) {
+      await database.upsertCapability({
+        capabilityId,
+        description: "TASK-140 database enable-switch fixture",
+        defaultTier: "T0_observe",
+        adapter: "mcp:task-140-database-switch",
+        enabled: true,
+      });
+    }
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+    await database.close();
+  });
+
+  it("flips exactly one capability without changing another capability", async () => {
+    await database.setCapabilityEnabled(capabilityA, false);
+
+    await expect(database.getCapability(capabilityA)).resolves.toMatchObject({ enabled: false });
+    await expect(database.getCapability(capabilityB)).resolves.toMatchObject({ enabled: true });
+    await expect(database.setCapabilityEnabled("task-140.database-switch.absent", false)).resolves.toBeNull();
+  });
+
+  it("flips every registered capability platform-wide", async () => {
+    await database.setCapabilityEnabled(capabilityA, true);
+    await database.setCapabilityEnabled(capabilityB, true);
+
+    const before = await database.listCapabilities();
+    try {
+      await expect(database.setAllCapabilitiesEnabled(false)).resolves.toBe(before.length);
+      const disabled = await database.listCapabilities();
+      expect(disabled.every((capability) => capability.enabled === false)).toBe(true);
+    } finally {
+      await Promise.all(before.map((capability) =>
+        database.setCapabilityEnabled(capability.capabilityId, capability.enabled),
+      ));
+    }
+  });
+});
