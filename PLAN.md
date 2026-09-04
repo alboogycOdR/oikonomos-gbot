@@ -3870,12 +3870,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
 **Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
-**Depends_On:** —
+**Depends_On:** TASK-130
 **Description:** `sendToRole` (`services/workspace/src/mailbox.ts`) is a real, fully-tested, typed role-to-role handoff mechanism (ADR-012 items 3/4 — explicit publish, typed handoff with a memory fact reference, "no privilege expansion" already designed in), but nothing in `packages/broker`/`chatRunDriver` registers it as a tool a live agent run can actually call — confirmed zero references. Add a declared tool (matching `BUILTIN_TOOLS`' existing pattern in `packages/broker/src/builtinTools.ts`) for a `send_to_role` capability, decide and implement the right invocation mechanism given how tools are actually mounted for a real Agent SDK query today (`packages/harness-factory`'s MCP layer only supports `stdio`/`http` transports, not a bare in-process function — a small local MCP server wrapping `sendToRole` is the natural fit, matching the shape TASK-127/128 already established for external connectors, except this one is Basileia-internal, not a third-party OAuth connector). Wire it into `chatRunDriver.ts` so a real chat run can invoke it, gated through the broker's normal PreToolUse/tier/grant path like every other tool (T1_draft is a reasonable default tier — a handoff is not silent/autonomous by default, matching Grants-1's own default-tier philosophy; do not hardcode it as always-allowed). The receiving role's own re-read of any referenced fact must happen under the receiver's own identity/grants (ADR-012's "no privilege expansion" invariant) — this task does not change that invariant, `sendToRole`/`mailbox.ts` already enforce it; this task only makes the tool callable.
 **Acceptance_Criteria:**
 - [ ] A real chat run for a role with a `send_to_role` grant can actually invoke it and a real `role_messages` row is persisted — tested against real Postgres, matching TASK-116/117/128's own liveness-test pattern
@@ -3884,10 +3884,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-131-cx9
 **Started_At:** 2026-09-04T13:36:49Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T13:40:10Z] [SV:CX9] Blocked: OWNERSHIP_CONFLICT — wrapping `sendToRole` needs `@oikonomos/workspace` added to `services/worker/package.json` (not currently a dependency), touching `pnpm-lock.yaml` too, neither owned by TASK-131.
+- [2026-09-04T13:45:00Z] [ORCH] Triaged: legitimate — confirmed `services/worker` has no dependency on `@oikonomos/workspace` today, and no circular-dependency risk (`services/workspace` only depends on `@oikonomos/db`/`@oikonomos/shared`, not on `worker`). Did NOT simply grant the paths: TASK-130 (CX) is *concurrently* editing these exact two files right now (adding pg-boss) — granting them to TASK-131 too would put two builders in the same files simultaneously, which CLAUDE.md forbids outright ("Never let two builders near one file, ever"). Sequenced TASK-131 to depend on TASK-130 instead; will expand Owned_Paths and resume CX9 once TASK-130 merges (its post-merge version of these files is what TASK-131 should build on, avoiding a lockfile conflict). CX9 goes idle in the meantime — first real assignment, first legitimate blocker, correctly self-diagnosed and no incorrect scope grab.
+**Artifacts:** dossiers/TASK-131.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T13:36:49Z
+**Blocked_Reason:** MISSING_DEPENDENCY: sequenced behind TASK-130 (see Progress_Notes) — a real file-collision risk, not a false blocker.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T13:45:00Z
