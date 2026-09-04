@@ -98,6 +98,16 @@ const CREATE_THREAD_SCHEMA = {
   properties: { roleId: { type: "string" } },
 } as const;
 
+const CREATE_GROUP_THREAD_SCHEMA = {
+  type: "object",
+  required: ["roleIds"],
+  additionalProperties: false,
+  properties: {
+    roleIds: { type: "array", minItems: 2, items: { type: "string", minLength: 1 } },
+    title: { type: "string" },
+  },
+} as const;
+
 /**
  * TASK-118 (Grants-1b) — "Always Allow" standing grant, capability+tier
  * scoped (deliberate v1 simplification, see PLAN.md TASK-118). `maxTier`
@@ -341,6 +351,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           get: { summary: "List chat threads", operationId: "listThreads", responses: { "200": { description: "Chat threads" } } },
           post: { summary: "Create or return a chat thread", operationId: "createThread", responses: { "201": { description: "Chat thread" } } },
         },
+        "/threads/group": {
+          post: { summary: "Create a multi-bot chat thread", operationId: "createGroupThread", responses: { "201": { description: "Group chat thread created" } } },
+        },
         "/threads/{id}/messages": {
           get: { summary: "List a chat transcript", operationId: "listThreadMessages", responses: { "200": { description: "Transcript messages" } } },
           post: { summary: "Post a chat message", operationId: "createThreadMessage", responses: { "201": { description: "User message created" } } },
@@ -504,7 +517,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   app.get("/threads", async (_request, reply) => {
     try {
       const [threads, roles] = await Promise.all([
-        deps.listThreads(),
+        deps.listAllThreadsWithMembers(),
         deps.listRoles({ tenantId: "basileia", status: "active" }),
       ]);
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
@@ -512,6 +525,16 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         threads.map(async (thread) => {
           const messages = await deps.listMessages(thread.id);
           const lastMessage = messages.at(-1);
+          if ("memberRoleIds" in thread) {
+            return {
+              id: thread.id,
+              memberRoleIds: thread.memberRoleIds,
+              memberNames: thread.memberRoleIds.map((memberRoleId) => rolesById.get(memberRoleId)?.name ?? memberRoleId),
+              title: thread.title,
+              lastMessagePreview: lastMessage?.body ?? "",
+              updatedAt: thread.updatedAt,
+            };
+          }
           const role = rolesById.get(thread.roleId);
           return {
             id: thread.id,
@@ -544,15 +567,32 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     },
   );
 
+  app.post<{ Body: { roleIds: string[]; title?: string } }>(
+    "/threads/group",
+    { schema: { body: CREATE_GROUP_THREAD_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const thread = await deps.createGroupThread({
+          roleIds: request.body.roleIds,
+          ...(request.body.title === undefined ? {} : { title: request.body.title.trim() }),
+        });
+        await reply.code(201).send(thread);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>(
     "/threads/:id/messages",
     { schema: { querystring: LIST_MESSAGES_QUERY_SCHEMA } },
     async (request, reply) => {
       try {
-        const [messages, approvals, capabilities] = await Promise.all([
+        const [messages, approvals, capabilities, roles] = await Promise.all([
           deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
           deps.listPendingApprovals(),
           deps.listCapabilities(),
+          deps.listRoles({ tenantId: "basileia", status: "active" }),
         ]);
         const approvalsByRunId = new Map(approvals.map((approval) => [approval.runId, approval]));
         // TASK-118: the grants a client can request via "Always Allow"
@@ -565,11 +605,16 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         const defaultTierByCapabilityId = new Map(
           capabilities.map((capability) => [capability.capabilityId, capability.defaultTier]),
         );
+        const roleNameById = new Map(roles.map((role) => [role.roleId, role.name]));
         await reply.code(200).send(
           messages.map((message) => {
             const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
             return {
               ...message,
+              senderRoleId: message.senderRoleId ?? null,
+              senderName: message.senderRoleId === null || message.senderRoleId === undefined
+                ? null
+                : roleNameById.get(message.senderRoleId) ?? message.senderRoleId,
               ...(approval === undefined
                 ? {}
                 : {
