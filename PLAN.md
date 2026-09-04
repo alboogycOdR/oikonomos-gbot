@@ -4049,7 +4049,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-137
 **Title:** Google Calendar connector session minter (Connectors-2a)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/connectors/google-calendar.md (already onboarded, G-CONN CLOSED, real tier map); packages/connectors/manifests/google-calendar.yaml; TASK-127 (the exact pattern to mirror — `createGmailConnectorSessionMinter` composing `mcpConfigFromManifest` + a generic `createOAuthTokenProvider`-based wrapper)
@@ -4068,10 +4068,10 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T17:40:11Z] [SV:S5] Implemented createGoogleCalendarConnectorSessionMinter mirroring TASK-127 Gmail pattern: mcpConfigFromManifest + local thin OAuth wrapper over the generic createOAuthTokenProvider (oauthTokenProvider.ts not in Owned_Paths, so wrapper kept local). Barrels (mcp/index.ts, src/index.ts) untouched per description, reserved for TASK-139. 6 new tests (bearer token shape, custom serverName, provider reuse, pool integration, secret non-leak on failure, TypeError when no oauth.resolve given).
 **Artifacts:** packages/connectors/src/mcp/googleCalendarSessionMinter.ts, packages/connectors/src/mcp/googleCalendarSessionMinter.test.ts, dossiers/TASK-137.md
 **Test_Evidence:** pnpm test -- googleCalendarSessionMinter (packages/connectors): 6/6 new tests pass; full connectors suite 14 files/125 passed/4 skipped. pnpm -r build: exit 0, 17/17 workspaces. pnpm lint (root eslint .): exit 0. pnpm -r test (full recursive, run twice): green except pre-existing unrelated flakes under shared compose Postgres load ΓÇö run1: 2 timeouts in packages/approvals/src/editApproval.test.ts; run2: 1 timeout in packages/db/src/runs.test.ts ΓÇö neither touches packages/connectors or this task's diff (git diff --stat mainco/master shows only the 2 new files); isolated rerun of the approvals failing test passes cleanly in ~5s alone, confirming contention not regression.
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass. Territory clean (2 new files, both Owned_Paths — barrels correctly untouched, reserved for TASK-139). Faithfully mirrors the approved TASK-127 Gmail pattern; the one deviation (a local thin OAuth wrapper instead of reusing Gmail's `oauthTokenProvider.ts` wrapper) is justified and well-documented — that file is outside this task's Owned_Paths, and duplicating its refresh-exchange logic was correctly avoided by calling the shared generic `createOAuthTokenProvider` directly. Secret hygiene solid: every fixture is runtime-assembled, plus an explicit test asserting a mint failure never echoes the attempted secret/token value. Connectors suite 125/129 (4 skipped) including 6/6 new tests, full pnpm -r build/lint clean. Full recursive pnpm -r test hit only pre-existing, unrelated, isolated-clean flakes (approvals/db tests under shared Postgres contention, confirmed by ORCH's review subagent, not touching this diff). Merged --no-ff.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T17:40:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:52:00Z
 
 ### TASK-138
 **Title:** Google Drive connector session minter (Connectors-2b)
