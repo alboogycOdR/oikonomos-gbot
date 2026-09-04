@@ -4254,7 +4254,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-144
 **Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (locked decisions: Flutter, shared-token auth for now, single-owner territory model); apps/dashboard/src/lib/api.ts and apps/dashboard/src/lib/realtime.ts (the TS client this Dart client mirrors — same endpoints, same SSE Last-Event-ID resume semantics); services/control-api/src/auth.ts (POST /auth/login issues the httpOnly session cookie; a native client stores and replays that cookie itself); apps/dashboard/src/pages/LoginPage.tsx (the honest "single shared access token" login this screen mirrors)
@@ -4274,9 +4274,9 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T19:46:25Z] [SV:S5] Flutter skeleton + Dart API client (login/roles/threads incl. group discrimination/messages/send) + SSE client (Last-Event-ID resume, stop-on-401, clean teardown) + login screen mirroring LoginPage.tsx, all built by hand under apps/mobile/** (outside pnpm workspace, own pubspec.yaml/.gitignore). flutter analyze: 0 issues. flutter test: 17/17 passed. No file outside apps/mobile/** touched.
 **Artifacts:** apps/mobile/pubspec.yaml, apps/mobile/.gitignore, apps/mobile/analysis_options.yaml, apps/mobile/lib/api/models.dart, apps/mobile/lib/api/exceptions.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/realtime/sse_client.dart, apps/mobile/lib/screens/login_screen.dart, apps/mobile/lib/screens/home_screen.dart, apps/mobile/lib/main.dart, apps/mobile/test/support/fake_http_client.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/realtime/sse_client_test.dart, apps/mobile/test/screens/login_screen_test.dart
 **Test_Evidence:** C:\tool\flutter\bin\flutter analyze -> 'No issues found! (ran in 7.1s)'. C:\tool\flutter\bin\flutter test -> '00:02 +17: All tests passed!' (9 api_client_test + 5 sse_client_test + 3 login_screen_test).
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass. Territory spotless — 15 files, all apps/mobile/**, root .gitignore and every package.json verified untouched. The SSE client is a faithful port of realtime.ts down to the subtle parts: same exclusive Last-Event-ID resume cursor (set even from data-less frames), same heartbeat-comment skip, same stop-on-401 without reconnect hammering, idempotent close cancelling both timer and subscription. Every API path/method/body was checked against the real Fastify routes in app.ts — no mismatches, including the single/group thread discriminant and the snake_case approval-ref fields the server actually emits. Credential hygiene exceeds the bar: zero logging statements anywhere in lib/ or test/, token cleared from widget state on every path (success, 401, error), no persisted storage, cookie is the only retained credential exactly as auth.ts designs. All 17 tests are real dedicated assertions per AC (resume asserts exact delivered-id sequence, teardown asserts frozen connect count across 10x the retry delay), independently re-run by ORCH's reviewer: `flutter analyze` -> No issues found, `flutter test` -> 17/17. Two non-blocking notes recorded, neither worth rework: (1) a mid-stream `close()` leaves one suspended completer un-resolved — inert since `_closed` gates every resume point, and Dart's http package has no AbortController equivalent to do it the TS way; (2) platform scaffolding (`flutter create` android/ios dirs) was deliberately skipped — TASK-149 will need Android scaffolding added, flagged now so it is not a surprise then. Merged --no-ff. **Unlocks TASK-147.**
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T19:46:25Z
 
 ### TASK-145
