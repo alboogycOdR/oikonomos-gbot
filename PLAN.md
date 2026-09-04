@@ -3483,7 +3483,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
@@ -3503,12 +3503,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T05:55:00Z] [ORCH] Unblocking. Real finding — chatRunDriver.ts is currently hard-coded to `["Bash(*)"]` only, so AC #3 was untestable as scoped. Added services/worker/src/chatRunDriver.ts + its test to Owned_Paths; extend the mounted set to `["Bash(*)", "Read(*)"]` (minimal, matches this task's scope). This also directly serves the wave's goal — a T0 grant is meaningless if nothing but Bash is ever attempted. Resume on task/TASK-117-cx.
 - [2026-09-04T04:52:54Z] [SV:CX] Implemented and committed c6b60dd: role creation now grants all registered sdk:builtin capabilities at their live default tier; Read(*) is mounted and T0 Read liveness coverage added.
 - [2026-09-04T06:58:00Z] [ORCH] Unblocking. Not a real regression — diagnosed directly: this worktree's packages/harness-factory dist/ was built before TASK-115 merged, so the CLI-resolution fix exists in source but was never compiled in (confirmed: grep for withSystemClaudeExecutable found it in src/index.ts, absent from dist/index.js), which is exactly why both liveness tests hit the old stale-bundled-CLI error again. The negative-control failure is the same class of issue — this worktree's control-api/src/index.ts predates my c0c70ce comment fix. Merge/rebase current master into task/TASK-117-cx and rebuild (pnpm --filter @oikonomos/harness-factory build at minimum; a full pnpm -r build is safer) before retesting. Resume on task/TASK-117-cx — your c6b60dd implementation stands untouched.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-04T05:00:29Z] [SV:CX] Data-driven built-in grants and mounted Read T0 execution are implemented, rebased onto current master, rebuilt, and verified end-to-end.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-117.md
+**Test_Evidence:** Real Postgres: control-api chat.routes.test.ts 9/9 passed; worker chatRunDriver.test.ts 5/5 passed including real Read/T0/no-pending-approval run. pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T06:58:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:00:29Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
