@@ -56,6 +56,18 @@ Both of these are already hand-amended into Oikonomos's own CLAUDE.md (in the pr
 
 6. **Two different "Protected paths" concepts exist and both bind, but nothing in the pack's own generated section makes that explicit.** A project's own CLAUDE.md protected-paths list (requiring adversarial review) and the pack-generated section's builder territory firewall (paths builders may never touch at all) are genuinely different lists serving different purposes, but the shared name "protected paths" invites a project author to assume one supersedes the other. Recommend renaming the pack's own concept to something unambiguous (e.g. "builder territory firewall," already used informally) so the two never collide on terminology again.
 
+### 8. The dispatch prompt's opening line forbids branch creation, contradicting its own step 2 — three live blocks in one day
+
+**What happened:** `scripts/dispatch.ps1`'s builder prompt opened with `Your task is TASK-NNN (claimed by the dispatcher before this session started - do not re-claim or re-branch)`. The intent was "don't re-write PLAN.md's claim". But "do not re-branch" reads as an absolute prohibition on `git checkout -b`, and it sits three lines above step 2, which says `If newly claimed: create branch task/TASK-NNN-xx in your worktree`. A builder facing a task whose branch does not yet exist is told both to create it and not to.
+
+Three blocks in a single day on this alone (TASK-143 with one Codex unit, TASK-150 with a second, plus a related earlier stall). Every one cost a full blocked -> ORCH-triage -> redispatch round trip. Both builders behaved **correctly** — they refused to take an action the prompt appeared to forbid rather than guess. Notably only Codex-family units hit it; the Claude-family builder resolved the ambiguity in the other direction and branched anyway. That divergence is itself worth knowing: an ambiguous prompt does not fail uniformly across model families, so "it works for our builder" is not evidence the wording is safe.
+
+**Fix (live in Oikonomos, `scripts/dispatch.ps1`):** the intro now scopes the prohibition to what was actually meant and explicitly disclaims the branch reading —
+`do NOT edit PLAN.md to claim it again; the claim is already recorded for you). This says nothing about git branches: creating your task branch is your job, see step 2.`
+— and step 2 became directive rather than conditional: check `git rev-parse --verify`, check out if it exists, otherwise `git checkout -b` (stated as "expected and authorised, never a reason to block").
+
+**Recommendation:** port both edits. More generally: any prompt clause of the form "do not X" where X is a word that also names a legitimate required action ("branch", "claim", "commit") should name the object explicitly — "do not re-claim *in PLAN.md*" — because builders correctly treat prohibitions as hard constraints and will stop rather than interpret.
+
 ---
 
 ## Minor — onboarding friction, not a bug
