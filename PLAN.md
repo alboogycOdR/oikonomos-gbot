@@ -3483,7 +3483,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
@@ -3506,10 +3506,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T05:00:29Z] [SV:CX] Data-driven built-in grants and mounted Read T0 execution are implemented, rebased onto current master, rebuilt, and verified end-to-end.
 **Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-117.md
 **Test_Evidence:** Real Postgres: control-api chat.routes.test.ts 9/9 passed; worker chatRunDriver.test.ts 5/5 passed including real Read/T0/no-pending-approval run. pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
-**Review_Findings:** —
+- [2026-09-04T07:10:00Z] [ORCH] APPROVED, first-pass (post 3-round unblock, 2 of the 3 rounds were ORCH's own spec/environment gaps, not CX's). Verified the non-default-tier test genuinely mutates a real capability row in Postgres and restores it in `finally` — real, not simulated, and hygienic about shared-DB state. The T0 liveness test seeds a real grant, prompts the model to specifically use Read (not Bash), and asserts a real `policy.decision` allow event plus zero pending approvals — matches AC #3 exactly. Independently re-ran on a freshly rebuilt worktree (the stale-dist issue from the last round is gone): worker tests 38/39 including both real SDK calls (12.5s + 10.2s), control-api 112/112, full pnpm -r build (19/19), lint clean (no-raw-sql guard intact), full pnpm -r test (301 assertions, zero failures — neither known contention flake reproduced this run). Merged --no-ff (5004f91). Unlocks TASK-118.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-117.md
+**Review_Findings:** APPROVE, first-pass.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:00:29Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:10:00Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
