@@ -1,8 +1,8 @@
 ---
-plan_version: 9.9
-last_updated: 2026-09-04T20:05:00Z
+plan_version: 10.0
+last_updated: 2026-09-04T20:15:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 5 DONE (TASK-137/138/140 — Connectors-2 + OIK-112 complete). Wave 6 dispatched: TASK-139 (generalize connector merging to N + wire Calendar/Drive grant-derived mounting, CX9 — protected-adjacent security-sensitive tool-mounting), TASK-141 (OIK-103 live two-role handoff demo through the real mcp__workspace__send_to_role broker-tool path, CX — TASK-100's existing evals/harness/test/ome-two-role-handoff.test.ts already proves the ACL/versioning model at the service layer, this proves the same property through the actual bot-facing tool-call path, not a duplicate), TASK-142 (OIK-113/114 Wave-1 slice, S5 — a thin OpenSandbox client wrapper + connectivity proof against the real deployed clawsrv server, explicitly NOT the full trace-capture-to-routine-spec epic; the API key has no existing secret:// ref convention, task requires an injected/documented resolver, never a hardcoded/undocumented env read). Real findings from Wave 5, worth carrying into future task authoring: never grant docs/** to a builder (absolute firewall path regardless of Owned_Paths, hooks/lib.js PROTECTED_FOR_BUILDERS); control.py drain can replay an already-superseded control block onto an active resumed task, watch for it. GB remains deactivated."
+orchestrator_notes: "Wave 5 DONE (TASK-137/138/140 — Connectors-2 + OIK-112). Wave 6: TASK-141 (OIK-103/104 handoff demo + Fable review) DONE, merged. TASK-139 (CX9, connector-merge generalization) and TASK-142 (S5, OpenSandbox client) still running. TASK-143 dispatched to CX (now idle): OIK-110/111 budgets — found the same 'built but never wired' pattern again: packages/agent-providers/src/budget.ts's withBudgetSink/BudgetSink was built at TASK-072 explicitly for this, fully tested, never composed anywhere. Task investigates real composition site + broker-level live enforcement, explicitly permitted to split OIK-110/111 into two tasks if real scope is larger than one. Real findings from Wave 5/6, worth carrying forward: never grant docs/** to a builder (absolute firewall path regardless of Owned_Paths); control.py drain can replay an already-superseded control block onto an active resumed task; a stray duplicate Updated_At line was found and cleaned at PLAN.md's tail (harmless to validate_plan.py but worth watching for). GB remains deactivated."
 ---
 
 # Project Plan
@@ -4212,4 +4212,29 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-04T17:57:38Z
-**Updated_At:** 2026-09-04T17:40:11Z
+
+### TASK-143
+**Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111
+**Owned_Paths:** packages/db/src/spend.ts, packages/db/src/spend.test.ts, packages/db/src/index.ts, infra/postgres/migrations/**, packages/broker/src/**, services/worker/src/executeRun.ts, services/worker/src/executeRun.test.ts
+**Depends_On:** —
+**Description:** Investigate before building, same discipline as this session's other "built but never wired" discoveries. `withBudgetSink` (packages/agent-providers) is fully built and tested but nothing composes it at any real call site, and no DB schema exists to persist per-routine or platform spend. CLAUDE.md places enforcement at the broker ("Per-routine budgets enforced by the broker from week 5"), not at the agent-providers layer — so the design is: (1) a new migration + `packages/db` module recording spend (at minimum: routine/run identifier, provider, model, costUsd, tokens, timestamp — derive the exact shape from `BudgetReport`'s existing fields rather than inventing a new one); (2) compose `withBudgetSink(provider, sink)` at the real provider construction site (`packages/harness-factory` or wherever `AgentProvider` instances are actually built for a run — find it, do not guess) with a `BudgetSink` that writes to the new spend table; (3) a broker-level check (packages/broker, matching TASK-140's precedent of a live per-decision DB read, not a cached/stale one) that denies a tool call when a routine's accumulated spend exceeds its configured budget, or when platform-wide spend exceeds the R30,000/month ceiling. Investigate whether a routine's per-routine budget ceiling has anywhere to live today (likely `role_routines.definition jsonb`, check `packages/db/src/routines.ts`) before inventing a new column. If the real scope turns out larger than one task, split OIK-110 (per-routine) and OIK-111 (platform ceiling) into two — say so honestly in the dossier rather than cutting corners to fit one task.
+**Acceptance_Criteria:**
+- [ ] A new DB module records real per-turn spend (provider, model, costUsd, tokens, routine/run identifier), tested against real Postgres
+- [ ] `withBudgetSink` is actually composed at the real provider construction site — a completed real run persists a real spend record, tested
+- [ ] A routine whose accumulated spend exceeds its configured per-routine budget is denied on its next tool call — a real, live per-decision check (not evaluated only at routine-fire time), tested
+- [ ] Platform-wide spend exceeding the R30,000/month ceiling denies further tool calls across every routine — tested
+- [ ] Fail-closed on a budget-check failure (DB unreachable, malformed record) — matches CLAUDE.md non-negotiable 3, tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T20:15:00Z
