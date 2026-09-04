@@ -4217,7 +4217,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111
@@ -4233,10 +4233,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-143-cx
 **Started_At:** 2026-09-04T18:10:06Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T18:12:36Z] [SV:CX] Blocked before code: worktree is detached at dispatch commit 6752c6b and task/TASK-143-cx is absent, while dispatch explicitly forbids re-branching.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SYNC_MISMATCH: Provision/check out task/TASK-143-cx for this worktree, or explicitly authorize creating it from 6752c6b; no implementation can be safely committed otherwise.
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T18:10:06Z
+**Updated_At:** 2026-09-04T18:12:36Z
