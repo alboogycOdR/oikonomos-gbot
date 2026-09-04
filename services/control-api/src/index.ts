@@ -27,7 +27,7 @@ export async function start(): Promise<void> {
 // (by tests or by other packages) for its exports. `file://${argv[1]}`
 // string comparison breaks on Windows (argv[1] is a raw path, not a URL);
 // fileURLToPath is the portable comparison — same fix already proven in
-// services/worker/src/registerCapabilities.ts (TASK-114).
+// the worker service's own capability-registration CLI (TASK-114).
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
   start().catch((error: unknown) => {
     console.error(error);
