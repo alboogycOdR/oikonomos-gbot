@@ -3967,7 +3967,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-109); TASK-132's real firing mechanism (this task feeds it real `next_fire_at` values, doesn't touch firing itself); `apps/dashboard/src/components/chat/RightPanel.tsx`'s existing read-only Routines tab (`ChatPage.tsx` currently passes `routines={[]}` hardcoded — this task is what finally gives it real data)
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, services/worker/package.json, pnpm-lock.yaml
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, services/control-api/package.json, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, pnpm-lock.yaml
 **Depends_On:** TASK-132, TASK-131
 **Description:** **Scope deliberately narrowed to cron only — natural-language schedule parsing is out of scope for this task, not silently dropped.** The WBS's "cron + NL description" is real future work; this task covers the cron half, which is what actually determines `next_fire_at` and is required before NL parsing means anything. `role_routines.schedule` (text) already exists in the schema; add real `POST /roles/:roleId/routines` (body: `{name, schedule, definition?}` — validate `schedule` as a real 5-field cron expression, reject anything else with a clear 400, not a silent no-op) and `GET /roles/:roleId/routines` endpoints using `createRoutine`/`listRoutines` (`packages/db/src/routines.ts`, already built). Computing `next_fire_at` from a cron expression needs a real parser — `cron-parser` is already resolved in `pnpm-lock.yaml` (a transitive dependency of `pg-boss`, TASK-130); promote it to a direct dependency of `services/control-api` (or wherever the create-routine handler actually lives) rather than relying on an unstable transitive resolution. Wire `ChatPage.tsx`'s `routines={[]}` to real data from `GET /roles/:roleId/routines` for the active bot, closing the gap TASK-123/124 already established the fast-follow pattern for (a real mechanism invisible in the live UI defeats the point).
 **Acceptance_Criteria:**
@@ -3978,13 +3978,15 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-134-cx
 **Started_At:** 2026-09-04T14:59:01Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T15:00:48Z] [SV:CX] Blocked: OWNERSHIP_CONFLICT — cron-parser needs to be a direct dependency of services/control-api (where the routine-creation handler actually lives), but I granted worker's package.json instead by mistake.
+- [2026-09-04T17:02:00Z] [ORCH] My own mis-scoping — corrected to services/control-api/package.json (removed the wrong worker grant). No collision (TASK-135 doesn't touch control-api). Resuming CX.
+**Artifacts:** dossiers/TASK-134.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T14:59:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T17:02:00Z
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
