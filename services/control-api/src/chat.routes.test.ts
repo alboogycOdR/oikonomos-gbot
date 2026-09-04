@@ -87,6 +87,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "POST" as const, url: "/roles", payload: { name: "Bot", description: "d" } },
       { method: "GET" as const, url: "/threads" },
       { method: "POST" as const, url: "/threads", payload: { roleId } },
+      { method: "POST" as const, url: `/roles/${roleId}/grants`, payload: { capabilityId: "email.send", maxTier: "T3_external" } },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
     ];
@@ -149,17 +150,76 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await app.close();
   });
 
-  it("projects a pending approval onto its matching bot message", async () => {
+  it("projects a pending approval onto its matching bot message, including its capability and tier (TASK-118)", async () => {
+    const runId = randomUUID();
+    const approval = makeApproval(runId); // capabilityId: "email.send"
+    const { deps } = createDeps({
+      listMessages: async () => [makeMessage({ role: "bot", runId, body: "I need approval" })],
+      listPendingApprovals: async () => [approval],
+      listCapabilities: async () => [makeCapability({ capabilityId: "email.send", defaultTier: "T3_external" })],
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({ method: "GET", url: `/threads/${threadId}/messages`, headers: authHeaders() });
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body)[0].approval).toEqual({
+      nonce: approval.nonce,
+      action_render: approval.actionRender,
+      status: "pending",
+      capability_id: "email.send",
+      max_tier: "T3_external",
+    });
+    await app.close();
+  });
+
+  it("projects null max_tier when the approval's capability is no longer registered", async () => {
     const runId = randomUUID();
     const approval = makeApproval(runId);
     const { deps } = createDeps({
       listMessages: async () => [makeMessage({ role: "bot", runId, body: "I need approval" })],
       listPendingApprovals: async () => [approval],
+      listCapabilities: async () => [],
     });
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const result = await app.inject({ method: "GET", url: `/threads/${threadId}/messages`, headers: authHeaders() });
-    expect(result.statusCode).toBe(200);
-    expect(JSON.parse(result.body)[0].approval).toEqual({ nonce: approval.nonce, action_render: approval.actionRender, status: "pending" });
+    expect(JSON.parse(result.body)[0].approval.max_tier).toBeNull();
+    await app.close();
+  });
+
+  it("rejects POST /roles/:roleId/grants without a session (401)", async () => {
+    const { deps, calls } = createDeps();
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "POST", url: `/roles/${roleId}/grants`,
+      payload: { capabilityId: "email.send", maxTier: "T3_external" },
+    });
+    expect(result.statusCode).toBe(401);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("writes a real standing grant via POST /roles/:roleId/grants (Always Allow, TASK-118)", async () => {
+    const grants: RoleGrant[] = [];
+    const { deps } = createDeps({ upsertRoleGrant: async (input) => { grants.push(input); return input; } });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "POST", url: `/roles/${roleId}/grants`, headers: authHeaders(),
+      payload: { capabilityId: "email.send", maxTier: "T3_external" },
+    });
+    expect(result.statusCode).toBe(201);
+    expect(grants).toEqual([{ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} }]);
+    expect(JSON.parse(result.body)).toEqual({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
+    await app.close();
+  });
+
+  it("rejects an unknown maxTier value on POST /roles/:roleId/grants (400, schema-validated)", async () => {
+    const { deps, calls } = createDeps();
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "POST", url: `/roles/${roleId}/grants`, headers: authHeaders(),
+      payload: { capabilityId: "email.send", maxTier: "not_a_real_tier" },
+    });
+    expect(result.statusCode).toBe(400);
+    expect(calls).toEqual([]);
     await app.close();
   });
 
@@ -227,6 +287,50 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
       });
     } finally {
       await database.upsertCapability(original);
+      await database.close();
+      await app.close();
+    }
+  });
+});
+
+integration("POST /roles/:roleId/grants — Always Allow standing grant, real Postgres (TASK-118)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("writes a real role_grants row — a fresh run no longer needs approval for this capability afterward", async () => {
+    const database = new Database(options);
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const roleRes = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name: `Always allow ${randomUUID()}`, description: "TASK-118 integration fixture" },
+      });
+      expect(roleRes.statusCode).toBe(201);
+      const createdRole = JSON.parse(roleRes.body) as { id: string };
+
+      // fs.read is one of the built-in capabilities every role already
+      // gets by default (TASK-117), at fs.read's own registered default
+      // tier. Requesting a DIFFERENT, non-default tier here — and then
+      // asserting the persisted row reflects it — proves this endpoint's
+      // own write, not TASK-117's creation-time default, produced the
+      // final row (mirrors TASK-117's own "non-default tier" proof).
+      const capability = await database.getCapability("fs.read");
+      if (capability === null) throw new Error("TASK-118 integration requires registered fs.read capability.");
+      const overriddenTier = capability.defaultTier === "T0_observe" ? "T1_draft" : "T0_observe";
+
+      const grantRes = await app.inject({
+        method: "POST", url: `/roles/${createdRole.id}/grants`, headers: authHeaders(),
+        payload: { capabilityId: "fs.read", maxTier: overriddenTier },
+      });
+      expect(grantRes.statusCode).toBe(201);
+
+      const persisted = await database.getRoleGrant(createdRole.id, "fs.read");
+      expect(persisted).toEqual({
+        roleId: createdRole.id,
+        capabilityId: "fs.read",
+        maxTier: overriddenTier,
+        constraints: {},
+      });
+    } finally {
       await database.close();
       await app.close();
     }

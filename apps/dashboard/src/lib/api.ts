@@ -264,7 +264,22 @@ export interface ThreadMessage {
   body: string;
   runId: string | null;
   createdAt: string;
-  approval?: { nonce: string; action_render: string; status: string };
+  /**
+   * TASK-118 (Grants-1b): `capability_id`/`max_tier` are the server's own
+   * field names (`app.ts`'s `/threads/:id/messages` handler builds this
+   * object literally, same convention as `action_render`) — carried so
+   * the "Always Allow" action on `ApprovalCard` can call
+   * `POST /roles/:roleId/grants` with the right capability/tier without
+   * a second round trip. `max_tier` is `null` when the approval's
+   * capability is no longer registered.
+   */
+  approval?: {
+    nonce: string;
+    action_render: string;
+    status: string;
+    capability_id: string;
+    max_tier: string | null;
+  };
 }
 
 export interface ListThreadMessagesParams {
@@ -289,5 +304,30 @@ export async function sendThreadMessage(threadId: string, body: string): Promise
   return request<ThreadMessage>(`/threads/${encodeURIComponent(threadId)}/messages`, {
     method: "POST",
     body: JSON.stringify({ body }),
+  });
+}
+
+/**
+ * TASK-118 (Grants-1b) — "Always Allow" standing grant. Capability+tier
+ * scoped (deliberate v1 simplification, see PLAN.md TASK-118). Mirrors
+ * `decideApproval`'s error-shape handling rather than the generic
+ * `request` helper's, since `ApprovalCard` needs to distinguish "grant
+ * written" from a 401 the same way it already does for decide.
+ */
+export interface RoleGrant {
+  roleId: string;
+  capabilityId: string;
+  maxTier: string;
+  constraints: Record<string, unknown>;
+}
+
+export async function createRoleGrant(
+  roleId: string,
+  capabilityId: string,
+  maxTier: string,
+): Promise<RoleGrant> {
+  return request<RoleGrant>(`/roles/${encodeURIComponent(roleId)}/grants`, {
+    method: "POST",
+    body: JSON.stringify({ capabilityId, maxTier }),
   });
 }

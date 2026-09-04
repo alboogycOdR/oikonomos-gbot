@@ -2,7 +2,7 @@ import type { Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { runStatuses, taskStatuses, type Approval, type RunStatus, type TaskStatus } from "@oikonomos/db";
+import { riskTiers, runStatuses, taskStatuses, type Approval, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -96,6 +96,22 @@ const CREATE_THREAD_SCHEMA = {
   required: ["roleId"],
   additionalProperties: false,
   properties: { roleId: { type: "string" } },
+} as const;
+
+/**
+ * TASK-118 (Grants-1b) — "Always Allow" standing grant, capability+tier
+ * scoped (deliberate v1 simplification, see PLAN.md TASK-118). `maxTier`
+ * is validated against the real `riskTiers` enum so a malformed/forged
+ * client value can never be persisted as a grant ceiling.
+ */
+const CREATE_ROLE_GRANT_SCHEMA = {
+  type: "object",
+  required: ["capabilityId", "maxTier"],
+  additionalProperties: false,
+  properties: {
+    capabilityId: { type: "string", minLength: 1 },
+    maxTier: { type: "string", enum: riskTiers },
+  },
 } as const;
 
 const CREATE_MESSAGE_SCHEMA = {
@@ -433,6 +449,32 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     },
   );
 
+  /**
+   * TASK-118 (Grants-1b) — the "Always Allow" standing grant the inline
+   * `ApprovalCard` issues (spec: a standing grant is created from the
+   * approval card itself, not a separate admin screen). Covered by the
+   * global fail-closed auth preHandler above like every other route here
+   * (no `public: true`). Capability+tier scoped only, deliberately not
+   * destination-scoped (v1 simplification, see PLAN.md TASK-118).
+   */
+  app.post<{ Params: { roleId: string }; Body: { capabilityId: string; maxTier: (typeof riskTiers)[number] } }>(
+    "/roles/:roleId/grants",
+    { schema: { body: CREATE_ROLE_GRANT_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const grant = await deps.upsertRoleGrant({
+          roleId: request.params.roleId,
+          capabilityId: request.body.capabilityId,
+          maxTier: request.body.maxTier,
+          constraints: {},
+        });
+        await reply.code(201).send(grant);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
   app.get("/threads", async (_request, reply) => {
     try {
       const [threads, roles] = await Promise.all([
@@ -481,9 +523,22 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     { schema: { querystring: LIST_MESSAGES_QUERY_SCHEMA } },
     async (request, reply) => {
       try {
-        const messages = await deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after });
-        const approvals = await deps.listPendingApprovals();
+        const [messages, approvals, capabilities] = await Promise.all([
+          deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
+          deps.listPendingApprovals(),
+          deps.listCapabilities(),
+        ]);
         const approvalsByRunId = new Map(approvals.map((approval) => [approval.runId, approval]));
+        // TASK-118: the grants a client can request via "Always Allow"
+        // are capability+tier scoped, but `Approval` itself never
+        // persisted the tier it was raised at (packages/db/src/
+        // approvals.ts, outside this task's Owned_Paths) — the
+        // capability's own registered `defaultTier` is the only tier
+        // source available here, and is exactly what TASK-117's
+        // built-in-grant path already uses as its ceiling.
+        const defaultTierByCapabilityId = new Map(
+          capabilities.map((capability) => [capability.capabilityId, capability.defaultTier]),
+        );
         await reply.code(200).send(
           messages.map((message) => {
             const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
@@ -491,7 +546,15 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
               ...message,
               ...(approval === undefined
                 ? {}
-                : { approval: { nonce: approval.nonce, action_render: approval.actionRender, status: approval.status } }),
+                : {
+                    approval: {
+                      nonce: approval.nonce,
+                      action_render: approval.actionRender,
+                      status: approval.status,
+                      capability_id: approval.capabilityId,
+                      max_tier: defaultTierByCapabilityId.get(approval.capabilityId) ?? null,
+                    },
+                  }),
             };
           }),
         );

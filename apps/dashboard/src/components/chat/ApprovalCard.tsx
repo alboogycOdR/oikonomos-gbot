@@ -20,11 +20,33 @@
 //    ops approvals page.
 import { useState } from "react";
 
-import { decideApproval, UnauthorizedError, type ApprovalDecisionKind } from "../../lib/api";
+import {
+  createRoleGrant,
+  decideApproval,
+  UnauthorizedError,
+  type ApprovalDecisionKind,
+} from "../../lib/api";
 import type { ApprovalRender } from "./types";
 
+/**
+ * TASK-118 (Grants-1b) — `capabilityId`/`maxTier` (the grant this
+ * approval's capability would need) and `roleId` (the bot the standing
+ * grant is scoped to) are ALL required to call `POST /roles/:roleId/
+ * grants`, but none of them exist yet on `ApprovalRender`/`BotSummary`
+ * (`components/chat/types.ts`) or reach this component through
+ * `ConversationPane.tsx` → `ChatPage.tsx`'s message mapping today — none
+ * of those three files are in this task's `Owned_Paths`. They're kept
+ * optional here so the "Always Allow" action degrades to "hidden"
+ * (rather than a broken button) until a follow-up task wires them
+ * through; see the TASK-118 dossier's blocked note for the exact three
+ * files and the field names (`api.ts`'s `ThreadMessage.approval` already
+ * carries `capability_id`/`max_tier` server-side, ready to be threaded
+ * through once that follow-up lands).
+ */
 export interface ApprovalCardProps {
-  approval: ApprovalRender;
+  approval: ApprovalRender & { capabilityId?: string; maxTier?: string };
+  /** The bot (role) this approval belongs to — required for "Always Allow". */
+  roleId?: string;
   /** Called when the dashboard's session cookie has expired (401). */
   onUnauthorized?: () => void;
   /**
@@ -33,6 +55,8 @@ export interface ApprovalCardProps {
    */
   onDecided?: (status: "approved" | "rejected") => void;
 }
+
+type Deciding = ApprovalDecisionKind | "always_allow" | null;
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending your decision",
@@ -46,12 +70,18 @@ function statusLabel(status: string): string {
   return STATUS_LABEL[status] ?? status;
 }
 
-export function ApprovalCard({ approval, onUnauthorized, onDecided }: ApprovalCardProps) {
-  const [deciding, setDeciding] = useState<ApprovalDecisionKind | null>(null);
+export function ApprovalCard({ approval, roleId, onUnauthorized, onDecided }: ApprovalCardProps) {
+  const [deciding, setDeciding] = useState<Deciding>(null);
   const [localStatus, setLocalStatus] = useState<string>(approval.status);
   const [notice, setNotice] = useState<string | null>(null);
 
   const isPending = localStatus === "pending";
+  // Always Allow needs the capability, its tier, and the owning role —
+  // hide the button rather than call the grants endpoint with a hole in
+  // the payload (see ApprovalCardProps' doc comment for why these are
+  // still optional here).
+  const canAlwaysAllow =
+    roleId !== undefined && approval.capabilityId !== undefined && approval.maxTier !== undefined;
 
   async function handleDecide(decision: ApprovalDecisionKind) {
     setDeciding(decision);
@@ -75,6 +105,42 @@ export function ApprovalCard({ approval, onUnauthorized, onDecided }: ApprovalCa
         return;
       }
       setNotice(err instanceof Error ? err.message : "decision failed");
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  /**
+   * TASK-118: "Always Allow" both decides the current approval as
+   * granted (reusing `decideApproval`, the exact call "Approve" makes —
+   * not duplicated) AND writes a standing grant. The nonce discipline
+   * TASK-109 proved (never in URL/history/storage) is unchanged: `nonce`
+   * only ever leaves this component's state in the one decide request
+   * body, same as every other path here; the grants call carries no
+   * nonce at all.
+   */
+  async function handleAlwaysAllow() {
+    if (!canAlwaysAllow || roleId === undefined || approval.capabilityId === undefined || approval.maxTier === undefined) {
+      return;
+    }
+    setDeciding("always_allow");
+    setNotice(null);
+    try {
+      const result = await decideApproval(approval.nonce, "granted");
+      if (!result.decided) {
+        setLocalStatus((current) => (current === "pending" ? "expired" : current));
+        setNotice("Already decided or no longer valid.");
+        return;
+      }
+      await createRoleGrant(roleId, approval.capabilityId, approval.maxTier);
+      setLocalStatus("approved");
+      onDecided?.("approved");
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+        return;
+      }
+      setNotice(err instanceof Error ? err.message : "always-allow failed");
     } finally {
       setDeciding(null);
     }
@@ -116,6 +182,16 @@ export function ApprovalCard({ approval, onUnauthorized, onDecided }: ApprovalCa
           >
             Reject
           </button>
+          {canAlwaysAllow ? (
+            <button
+              type="button"
+              disabled={deciding !== null}
+              onClick={() => void handleAlwaysAllow()}
+              className="rounded-md bg-sky-600/80 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+            >
+              Always Allow
+            </button>
+          ) : null}
         </div>
       ) : null}
 
