@@ -3808,10 +3808,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-128-cx
 **Started_At:** 2026-09-04T09:06:25Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-04T09:16:45Z] [SV:CX] Checkpoint: grant-derived Gmail mounting implemented (cached OAuth session pool, per-run allowlist/policy filtering). Remaining: a protocol-compatible streamable HTTP MCP fixture for the real-Postgres liveness test, then focused + full pnpm -r test/build/lint. Resumed on task/TASK-128-cx.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-128.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T09:06:25Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T11:17:00Z
