@@ -23,6 +23,20 @@ export interface Thread {
   updatedAt: Date;
 }
 
+export interface NewGroupThread {
+  roleIds: string[];
+  title?: string | null;
+}
+
+/** A multi-bot conversation, deliberately distinct from a 1:1 Thread. */
+export interface GroupThread {
+  id: string;
+  title: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  memberRoleIds: string[];
+}
+
 export interface ThreadMember {
   threadId: string;
   roleId: string;
@@ -44,6 +58,7 @@ interface ThreadMemberRow extends QueryResultRow {
 }
 
 const threadColumns = "id, role_id, title, created_at, updated_at";
+const qualifiedThreadColumns = "threads.id, threads.role_id, threads.title, threads.created_at, threads.updated_at";
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -72,6 +87,28 @@ function toThread(row: ThreadRow): Thread {
 
 function toThreadMember(row: ThreadMemberRow): ThreadMember {
   return { threadId: row.thread_id, roleId: row.role_id, createdAt: row.created_at };
+}
+
+function toGroupThread(row: ThreadRow, memberRoleIds: string[]): GroupThread {
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    memberRoleIds,
+  };
+}
+
+function requireGroupRoleIds(roleIds: string[]): string[] {
+  if (roleIds.length < 2) {
+    throw new Error("roleIds must contain at least two roles.");
+  }
+
+  const normalizedRoleIds = roleIds.map((roleId) => requireNonEmpty(roleId, "roleId"));
+  if (new Set(normalizedRoleIds).size !== normalizedRoleIds.length) {
+    throw new Error("roleIds must not contain duplicates.");
+  }
+  return normalizedRoleIds;
 }
 
 async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
@@ -103,6 +140,35 @@ export async function createThread(options: DatabaseOptions, input: NewThread): 
   });
 }
 
+/** Creates a multi-bot thread and all of its memberships atomically. */
+export async function createGroupThread(options: DatabaseOptions, input: NewGroupThread): Promise<GroupThread> {
+  const roleIds = requireGroupRoleIds(input.roleIds);
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const threadResult = await client.query<ThreadRow>(
+        `INSERT INTO threads (role_id, title) VALUES (NULL, $1) RETURNING ${threadColumns}`,
+        [input.title ?? null],
+      );
+      const row = threadResult.rows[0];
+      if (row === undefined) throw new Error("createGroupThread did not return a persisted row.");
+
+      for (const roleId of roleIds) {
+        await client.query("INSERT INTO thread_members (thread_id, role_id) VALUES ($1, $2)", [row.id, roleId]);
+      }
+      await client.query("COMMIT");
+      return toGroupThread(row, roleIds);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
 /** Lists all v1 bot conversations, most recently active first. */
 export async function listThreads(options: DatabaseOptions): Promise<Thread[]> {
   return withPool(options, async (pool) => {
@@ -110,6 +176,22 @@ export async function listThreads(options: DatabaseOptions): Promise<Thread[]> {
       `SELECT ${threadColumns} FROM threads ORDER BY updated_at DESC, id DESC`,
     );
     return result.rows.map(toThread);
+  });
+}
+
+/** Lists 1:1 and group conversations in one discriminated result set. */
+export async function listAllThreadsWithMembers(options: DatabaseOptions): Promise<Array<Thread | GroupThread>> {
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ThreadRow & { member_role_ids: string[] | null }>(
+      `SELECT ${qualifiedThreadColumns}, array_remove(array_agg(thread_members.role_id ORDER BY thread_members.created_at ASC, thread_members.role_id ASC), NULL) AS member_role_ids
+       FROM threads
+       LEFT JOIN thread_members ON thread_members.thread_id = threads.id
+       GROUP BY threads.id
+       ORDER BY threads.updated_at DESC, threads.id DESC`,
+    );
+    return result.rows.map((row) => row.role_id === null
+      ? toGroupThread(row, row.member_role_ids ?? [])
+      : toThread(row));
   });
 }
 
@@ -185,6 +267,8 @@ if (import.meta.vitest) {
       await expect(createThread(live, { roleId: " " })).rejects.toThrow(/roleId/);
       await expect(getThreadsForRole(live, " ")).rejects.toThrow(/roleId/);
       await expect(getOrCreateThreadForRole(live, { roleId: " " })).rejects.toThrow(/roleId/);
+      await expect(createGroupThread(live, { roleIds: ["role"] })).rejects.toThrow(/at least two/);
+      await expect(createGroupThread(live, { roleIds: ["role", "role"] })).rejects.toThrow(/duplicates/);
       await expect(addThreadMember(live, { threadId: " ", roleId: "role" })).rejects.toThrow(/threadId/);
       await expect(addThreadMember(live, { threadId: "t", roleId: " " })).rejects.toThrow(/roleId/);
       await expect(listThreadMembers(live, " ")).rejects.toThrow(/threadId/);
