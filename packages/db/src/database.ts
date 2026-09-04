@@ -118,6 +118,39 @@ export class Database {
     return toCapability(result.rows[0]);
   }
 
+  /**
+   * Changes only a capability's runtime availability, preserving its reviewed
+   * declaration (description, tier, and adapter).  A missing capability is a
+   * no-op so an operator can safely repeat a targeted disable command.
+   */
+  public async setCapabilityEnabled(
+    capabilityId: string,
+    enabled: boolean,
+  ): Promise<Capability | null> {
+    const result = await this.#pool.query<CapabilityRow>(
+      `UPDATE capabilities
+       SET enabled = $2
+       WHERE capability_id = $1
+       RETURNING capability_id, description, default_tier, adapter, enabled`,
+      [capabilityId, enabled],
+    );
+    return result.rows[0] === undefined ? null : toCapability(result.rows[0]);
+  }
+
+  /**
+   * Platform-wide emergency switch.  It intentionally updates every
+   * registered capability, including ones that were already in the requested
+   * state, so its return value is an auditable inventory count.
+   */
+  public async setAllCapabilitiesEnabled(enabled: boolean): Promise<number> {
+    const result = await this.#pool.query(
+      `UPDATE capabilities
+       SET enabled = $1`,
+      [enabled],
+    );
+    return result.rowCount ?? 0;
+  }
+
   public async getRoleGrant(
     roleId: string,
     capabilityId: string,
