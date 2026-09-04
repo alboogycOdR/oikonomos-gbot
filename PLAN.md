@@ -3794,7 +3794,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-128
 **Title:** Wire real manifest-connector tools into live chat runs (Connectors-1b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** TASK-127 (session minter); services/worker/src/executeRun.ts's own `ConnectorContext`/`connector` parameter (already accepts `mcpServers`/`allowedTools`, fully built and used elsewhere — just never populated by `chatRunDriver`); ADR-013 §7 (role grants gate capability access)
@@ -3806,12 +3806,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A role with NO manifest-connector grants behaves identically to today (only Bash/Read mounted, gmail tools absent from `allowedTools`) — existing TASK-116/117 tests pass unmodified
 - [ ] A role granted `email.list` but NOT `email.send` cannot invoke `mcp__gmail__send_message` — tested (mutation-proof: removing the per-run allowlist filtering must redden this test)
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-128-cx
+**Started_At:** 2026-09-04T09:06:25Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T09:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T09:06:25Z
