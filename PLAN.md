@@ -3559,7 +3559,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8 (Chat-2, group threads); WBS OIK-150 (multi-agent thread with human visibility); Grok Bot reference product, confirmed 2026-09-03: bot-to-bot messages use the acting bot's own permissions (already true by construction in our broker — no change needed there), and a single 1:1 delegation ping needs no human approval while fan-out to several bots/a group does (a rule for TASK-122 to enforce, not this task)
@@ -3574,13 +3574,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-120-s5
 **Started_At:** 2026-09-03T21:48:59Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T04:14:50Z] [SV:S5] Migration 009 (thread_members join table, nullable threads.role_id via partial unique index, messages.sender_role_id) plus addThreadMember/listThreadMembers accessors and insertMessage senderRoleId support, all test-covered against real Postgres including migration up/down round trips. Handled the control-api cross-package type ripple entirely within packages/db (kept Thread.roleId as string, made Message.senderRoleId optional) rather than touching services/control-api, which is outside Owned_Paths.
+**Artifacts:** infra/postgres/migrations/009_group_threads.up.sql, infra/postgres/migrations/009_group_threads.down.sql, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/messages.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
+**Test_Evidence:** pnpm --filter @oikonomos/db test: 122/124 passed (2 skipped, MIGRATION_ROUND_TRIP-gated), one transient roles.test.ts DDL-deadlock flake isolated away on re-run (documented pre-existing contention flake, not caused by this change). MIGRATION_ROUND_TRIP=1 pnpm --filter @oikonomos/db test -- src/threads.test.ts: 124/124 passed including both 009-alone and 008+009 down/up round trips. pnpm --filter @oikonomos/control-api test: 110/110 passed (chat.routes.test.ts and real-Postgres integration.test.ts unaffected). pnpm -r build: 19/19 clean. pnpm lint: clean. pnpm -r test (full recursive): all packages pass except services/worker's registerCapabilities.test.ts 'is never called from a service process entrypoint', reproduced byte-identically on stashed pre-TASK-120 HEAD (ab79525) confirming it predates and is unrelated to this task's diff.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-03T21:48:59Z
+**Updated_At:** 2026-09-04T04:14:50Z
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
