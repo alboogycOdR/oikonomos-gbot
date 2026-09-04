@@ -3873,7 +3873,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
@@ -3896,12 +3896,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T16:29:00Z] [ORCH] Triaged: legitimate — a new file for a new local MCP server is exactly the natural shape this task's own description anticipated ("a small local MCP server wrapping sendToRole"). No collision with any other active task. Added the file (+ its test) to Owned_Paths. Resuming CX9.
 - [2026-09-04T14:30:53Z] [SV:CX9] Blocked a fourth time: OWNERSHIP_CONFLICT — registerCapabilities.test.ts needs updating for the new 5th registration, wasn't granted.
 - [2026-09-04T16:33:00Z] [ORCH] My own oversight, not a new gap: I granted registerCapabilities.ts but forgot its own paired test file, breaking the .ts+.test.ts pattern already used consistently everywhere else this session. Added. Resuming CX9.
-**Artifacts:** dossiers/TASK-131.md
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-04T14:40:55Z] [SV:CX9] Finished: registered send_to_role MCP bridge, grant-mounted, real Postgres tests cover typed persistence and no-grant denial.
+**Artifacts:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/registerCapabilities.ts, services/worker/src/registerCapabilities.test.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/package.json, pnpm-lock.yaml, dossiers/TASK-131.md
+**Test_Evidence:** CX9: broker 120/120, worker typecheck/focused tests/build/lint/full-suite all reported passing. ORCH independently re-ran: broker 1/1 clean, build/lint clean; `pnpm --filter @oikonomos/worker` and full `pnpm --no-bail -r test` both surfaced 2 failures in services/worker — the documented registerCapabilities idempotency flake, AND a real, new, non-flaky failure: `chatRunDriver.test.ts:99`, TASK-128's own mutation-proof source-text assertion (`toContain("acquiredConnector?.connector.allowedTools")`) no longer matches because TASK-131's (correct, functionally sound) refactor routes Gmail's mounted-tools list through a new `connector` variable via `combineConnectorContexts` rather than referencing `acquiredConnector.connector.allowedTools` directly at the `mountedToolNames` call site. Confirmed this is source-text drift, not a functional regression — `resolveGrantedGmailConnector`'s own grant-filtering logic is untouched by this diff.
+**Review_Findings:** REWORK. Real, non-flaky finding: `chatRunDriver.test.ts:99`'s literal source-text assertion needs updating to match the current, functionally-equivalent code path — this is TASK-131's own diff that moved the code past the string the older TASK-128 assertion checks for, so it's this task's job to reconcile it, not a separate task. Fix the assertion string (confirm the underlying property — Gmail mounting still strictly grant-derived — still holds structurally, don't just patch blindly to make text match). Every other acceptance criterion and the security design (role identity via server-side process args, never model input; grant-gated mounting; typed-handoff path exercised; denial persists zero role_messages rows) reviewed and found sound — this is the only blocker to approval.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:18:00Z
+**Updated_At:** 2026-09-04T16:53:00Z
 
 ### TASK-132
 **Title:** OIK-108 — wire pg-boss to actually fire real routines
