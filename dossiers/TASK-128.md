@@ -1,0 +1,8 @@
+# TASK-128 Dossier
+
+## Work Log
+
+- [2026-09-04T09:08:00Z] [CX] Preflight completed: `[preflight] TASK-128 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE`; both `services/worker/src/chatRunDriver.ts` (171 lines) and `services/worker/src/chatRunDriver.test.ts` (335 lines) existed.
+- [2026-09-04T09:16:00Z] [CX] Implemented grant-derived Gmail connector mounting in `chatRunDriver`: loads persisted role grants, filters Gmail manifest tools to granted+enabled entries, uses a cached `createConnectorSessionPool` seeded by `createGmailConnectorSessionMinter`, passes the acquired `mcpServers`/allowlist to `executeTaskRun`, extends the per-run policy registry, and releases the session after the run. No-grant runs retain the existing Bash/Read-only surface.
+- [2026-09-04T09:17:00Z] [CX] Evidence: `pnpm --filter @oikonomos/connectors build` passed; `pnpm --filter @oikonomos/worker typecheck` passed; `pnpm --filter @oikonomos/worker test -- chatRunDriver.test.ts -t "chat run driver governance helpers"` passed (4/4; remaining integration tests skipped by selector). Added a mutation-sensitive source assertion that fails if the per-run enabled+grant filter is removed.
+- [2026-09-04T09:18:00Z] [CX] Stopping checkpoint: a first live Agent SDK test using the enumeration suite's simple local JSON-RPC HTTP fixture did not return; the Agent SDK requires a fuller streamable MCP transport. The experimental fixture was removed, leaving no hanging test code. Next: adapt the existing TASK-116 real-Postgres test with a protocol-compatible mock MCP server (or existing SDK-compatible test utility), then run full focused, recursive test/build/lint suites.

@@ -37,6 +37,17 @@ describe("chat run driver governance helpers", () => {
     expect(chatRunDriverSource).not.toContain("@anthropic-ai/claude-agent-sdk");
   });
 
+  it("derives Gmail's mounted surface from persisted, enabled grants only (TASK-128)", () => {
+    // This is deliberately tied to the per-run filter rather than merely the
+    // broker's later tier check: deleting it would mount every Gmail manifest
+    // tool (including ungranted email.send) and makes this test red.
+    expect(chatRunDriverSource).toContain("database.listRoleGrants(input.roleId)");
+    expect(chatRunDriverSource).toContain("tool.enabled !== false && grantedCapabilities.has(tool.capability_id)");
+    expect(chatRunDriverSource).toContain("connector: { manifest, mcpServers: handle.mcpServers, allowedTools }");
+    expect(chatRunDriverSource).toContain("mint: createGmailConnectorSessionMinter");
+    expect(chatRunDriverSource).toContain("acquiredConnector?.connector.allowedTools");
+  });
+
   it("derives only ADR-013's approved destinations and fails closed otherwise", () => {
     expect(destinationFor({ ...base, toolName: "Read", input: { file_path: "src/app.ts" } })).toBe("src/app.ts");
     expect(destinationFor({ ...base, toolName: "Glob", input: { pattern: "src/**/*.ts" } })).toBe("src/**/*.ts");
@@ -208,6 +219,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     },
     120_000,
   );
+
 });
 
 // TASK-122 (Chat-2c): the fan-out-approval rule, confirmed against the real

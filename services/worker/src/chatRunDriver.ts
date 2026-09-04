@@ -1,44 +1,143 @@
 import { issueApproval, verifyAndConsume, type ApprovalWaitSignal } from "@oikonomos/approvals";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
-import { defaultManifestsDir, loadManifests } from "@oikonomos/connectors";
+import {
+  createConnectorSessionPool,
+  createGmailConnectorSessionMinter,
+  defaultManifestsDir,
+  loadManifests,
+  type ConnectorManifest,
+  type ConnectorSessionPool,
+  type CreateGmailConnectorSessionMinterOptions,
+} from "@oikonomos/connectors";
 import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
-import { executeTaskRun } from "./executeRun.js";
+import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, startTaskRun } from "./runLifecycle.js";
 
 export interface ChatRunRequest { readonly task: Task; readonly threadId: string; }
 export interface ChatRunDriver { run(request: ChatRunRequest): Promise<void>; }
-export interface CreateChatRunDriverOptions extends DatabaseOptions { readonly manifestsDir?: string; }
+export interface CreateChatRunDriverOptions extends DatabaseOptions {
+  readonly manifestsDir?: string;
+  /**
+   * Test seam for connector session acquisition. Production callers leave
+   * this unset and use the Gmail OAuth-backed session minter below.
+   */
+  readonly connectorSessionPool?: ConnectorSessionPool;
+  /** Overrides for the Gmail minter's secret/OAuth ports; never logged. */
+  readonly gmailSessionMinter?: Omit<CreateGmailConnectorSessionMinterOptions, "manifest">;
+}
 
 /** First production chat task-to-run composition; registry resolution is declaration- and DB-backed. */
 export function createChatRunDriver(options: CreateChatRunDriverOptions): ChatRunDriver {
-  return { run: async (request) => runChatTask(options, request) };
+  let gmailSessionPool = options.connectorSessionPool;
+  return {
+    run: async (request) => runChatTask(options, request, (manifest) => {
+      if (gmailSessionPool === undefined) {
+        gmailSessionPool = createConnectorSessionPool({
+          mint: createGmailConnectorSessionMinter({
+            manifest,
+            resolveUrl: options.gmailSessionMinter?.resolveUrl ?? resolveGmailMcpUrl,
+            ...(options.gmailSessionMinter?.oauth === undefined ? {} : { oauth: options.gmailSessionMinter.oauth }),
+            ...(options.gmailSessionMinter?.serverName === undefined ? {} : { serverName: options.gmailSessionMinter.serverName }),
+          }),
+        });
+      }
+      return gmailSessionPool;
+    }),
+  };
 }
 
-async function runChatTask(options: CreateChatRunDriverOptions, request: ChatRunRequest): Promise<void> {
+/** The Gmail minter requires a URL resolver; keep the secret value out of errors. */
+async function resolveGmailMcpUrl(ref: string): Promise<string> {
+  if (ref !== "secret://mcp/gmail/url") throw new Error(`unsupported connector URL secret ref: ${ref}`);
+  const value = process.env.OIK_SECRET_MCP_GMAIL_URL;
+  if (value === undefined || value.length === 0) throw new Error(`secret ref is unset: ${ref}`);
+  return value;
+}
+
+async function runChatTask(
+  options: CreateChatRunDriverOptions,
+  request: ChatRunRequest,
+  gmailPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool,
+): Promise<void> {
   assertRequest(request);
   const database = new Database(options);
   let runId: string | undefined;
   try {
     const manifests = await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
-    const policy = new PolicyRegistry({ mountedToolNames: ["Bash", "Read"], policies: [{ toolName: "Bash" }, { toolName: "Read" }], manifestToolNames: [...registry.enabledToolNames] });
+    const acquiredConnector = await resolveGrantedGmailConnector({
+      database,
+      manifests,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      gmailPoolFor,
+    });
+    const mountedToolNames = ["Bash", "Read", ...(acquiredConnector?.connector.allowedTools ?? [])];
+    const policy = new PolicyRegistry({
+      mountedToolNames,
+      policies: mountedToolNames.map((toolName) => ({ toolName })),
+      manifestToolNames: [...registry.enabledToolNames],
+    });
     const run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
     runId = run.runId;
-    const result = await executeTaskRun({
-      prompt: request.task.goal,
-      run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
-      // L2 requires the scoped form; PolicyRegistry receives its bare name.
-      allowedTools: ["Bash(*)", "Read(*)"],
-      brokerDependencies: createBrokerDependencies(options, database, registry, policy),
-      auditSink: completionAuditSink(options, run),
-    });
+    let result;
+    try {
+      result = await executeTaskRun({
+        prompt: request.task.goal,
+        run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
+        // L2 requires the scoped form; PolicyRegistry receives its bare name.
+        allowedTools: ["Bash(*)", "Read(*)"],
+        ...(acquiredConnector === undefined ? {} : { connector: acquiredConnector.connector }),
+        brokerDependencies: createBrokerDependencies(options, database, registry, policy),
+        auditSink: completionAuditSink(options, run),
+      });
+    } finally {
+      if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
+    }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
     await completeTaskRun(options, run.runId);
   } catch (error) {
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+interface AcquiredConnector {
+  readonly connector: ConnectorContext;
+  readonly pool: ConnectorSessionPool;
+  readonly handle: Awaited<ReturnType<ConnectorSessionPool["acquire"]>>;
+}
+
+/**
+ * Derive the connector surface from persisted grants, not from a model prompt
+ * or a manifest default. Gmail is deliberately the only mounted connector in
+ * this wave: other manifests have no session minter yet and therefore remain
+ * unavailable even if their rows are granted.
+ */
+async function resolveGrantedGmailConnector(input: {
+  readonly database: Database;
+  readonly manifests: readonly ConnectorManifest[];
+  readonly roleId: string;
+  readonly tenantId: string;
+  readonly gmailPoolFor: (manifest: ConnectorManifest) => ConnectorSessionPool;
+}): Promise<AcquiredConnector | undefined> {
+  const manifest = input.manifests.find((candidate) => candidate.connector_id === "gmail");
+  if (manifest === undefined) return undefined;
+
+  const grantedCapabilities = new Set((await input.database.listRoleGrants(input.roleId)).map((grant) => grant.capabilityId));
+  const allowedTools = manifest.tools
+    .filter((tool) => tool.enabled !== false && grantedCapabilities.has(tool.capability_id))
+    .map((tool) => tool.tool_name);
+  if (allowedTools.length === 0) return undefined;
+
+  const pool = input.gmailPoolFor(manifest);
+  const handle = await pool.acquire(input.tenantId, manifest.connector_id);
+  return {
+    pool,
+    handle,
+    connector: { manifest, mcpServers: handle.mcpServers, allowedTools },
+  };
 }
 
 function createBrokerDependencies(options: DatabaseOptions, database: Database, registry: CapabilityRegistry, policy: PolicyRegistry): BrokerDependencies {
