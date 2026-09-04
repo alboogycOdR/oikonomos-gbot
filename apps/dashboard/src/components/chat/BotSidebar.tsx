@@ -13,6 +13,17 @@ import { useState } from "react";
 import type { BotSummary } from "./types";
 import { Avatar } from "./Avatar";
 import { CreateBotDialog } from "./CreateBotDialog";
+import { GroupThreadDialog } from "./GroupThreadDialog";
+
+/**
+ * TASK-122 (Chat-2c) — see ChatPage.tsx's own comment: group-thread
+ * awareness is a local structural extension of `BotSummary`, not a
+ * `types.ts` edit (outside this task's Owned_Paths).
+ */
+interface GroupAwareBotSummary extends BotSummary {
+  isGroup?: boolean;
+  memberNames?: string[];
+}
 
 function formatRelative(iso: string): string {
   const then = new Date(iso).getTime();
@@ -38,6 +49,9 @@ export function BotSidebar({
   onCreateBot,
 }: BotSidebarProps) {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
+  const [isGroupDialogOpen, setGroupDialogOpen] = useState(false);
+  const groupAwareBots = bots as GroupAwareBotSummary[];
+  const realBots = groupAwareBots.filter((bot) => bot.isGroup !== true);
 
   return (
     <aside
@@ -48,23 +62,37 @@ export function BotSidebar({
         <h1 className="text-sm font-semibold tracking-wide text-slate-100">
           Your bots
         </h1>
-        <button
-          type="button"
-          onClick={() => {
-            setCreateDialogOpen(true);
-            onCreateBot?.();
-          }}
-          className="rounded-md bg-bubble-user px-2 py-1 text-xs font-medium text-white hover:opacity-90"
-        >
-          + New bot
-        </button>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setGroupDialogOpen(true)}
+            className="rounded-md px-2 py-1 text-xs font-medium text-slate-300 hover:bg-surface-raised"
+          >
+            + New group
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCreateDialogOpen(true);
+              onCreateBot?.();
+            }}
+            className="rounded-md bg-bubble-user px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+          >
+            + New bot
+          </button>
+        </div>
       </div>
       <CreateBotDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
       />
+      <GroupThreadDialog
+        isOpen={isGroupDialogOpen}
+        bots={realBots}
+        onClose={() => setGroupDialogOpen(false)}
+      />
       <ul className="flex-1 overflow-y-auto" role="listbox" aria-label="Bot threads">
-        {bots.map((bot) => {
+        {groupAwareBots.map((bot) => {
           const isActive = bot.id === activeBotId;
           return (
             <li key={bot.id}>
@@ -83,6 +111,7 @@ export function BotSidebar({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium text-slate-100">
+                      {bot.isGroup === true ? "👥 " : ""}
                       {bot.name}
                     </span>
                     <span className="shrink-0 text-[10px] text-slate-500">

@@ -243,8 +243,41 @@ export interface Thread {
   updatedAt: string;
 }
 
-export async function listThreads(): Promise<Thread[]> {
-  return request<Thread[]>("/threads");
+/**
+ * TASK-122 (Chat-2c) — mirrors `app.ts`'s `GET /threads` group-thread
+ * summary shape exactly (TASK-121): a group thread has no single
+ * `roleId`/`botName`, only `memberRoleIds`/`memberNames`. Discriminated
+ * from `Thread` by the presence of `memberRoleIds` (same discriminant
+ * `app.ts` itself uses server-side), never a null `roleId` on `Thread`.
+ */
+export interface GroupThread {
+  id: string;
+  memberRoleIds: string[];
+  memberNames: string[];
+  title: string | null;
+  lastMessagePreview: string;
+  updatedAt: string;
+}
+
+export function isGroupThread(thread: Thread | GroupThread): thread is GroupThread {
+  return "memberRoleIds" in thread;
+}
+
+export async function listThreads(): Promise<Array<Thread | GroupThread>> {
+  return request<Array<Thread | GroupThread>>("/threads");
+}
+
+/**
+ * TASK-122 (Chat-2c) — `POST /threads/group` (TASK-121). Requires 2+
+ * roleIds server-side; mirrored here as a thin wrapper, no client-side
+ * duplicate validation beyond what the dialog itself already enforces
+ * (fail loud from the server is fine for this rare, deliberate action).
+ */
+export async function createGroupThread(roleIds: string[], title?: string): Promise<GroupThread> {
+  return request<GroupThread>("/threads/group", {
+    method: "POST",
+    body: JSON.stringify(title === undefined ? { roleIds } : { roleIds, title }),
+  });
 }
 
 export type ThreadMessageRole = "user" | "bot" | "system";
@@ -264,6 +297,15 @@ export interface ThreadMessage {
   body: string;
   runId: string | null;
   createdAt: string;
+  /**
+   * TASK-122 (Chat-2c) — server's real field names (`app.ts`'s
+   * `/threads/:id/messages` handler, TASK-121): the sending bot's role id
+   * and resolved display name, present on every message (`null` for
+   * human/system messages). Needed to attribute each line in a group
+   * thread to the right bot instead of assuming a single sender.
+   */
+  senderRoleId?: string | null;
+  senderName?: string | null;
   /**
    * TASK-118 (Grants-1b): `capability_id`/`max_tier` are the server's own
    * field names (`app.ts`'s `/threads/:id/messages` handler builds this
