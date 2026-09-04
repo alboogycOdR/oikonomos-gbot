@@ -4020,7 +4020,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-136
 **Title:** Wire a real RunParkPort into chatRunDriver so chat runs actually reach waiting_approval
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-135's own honestly-documented finding — `packages/harness-factory/src/compose.ts`'s `RunParkPort`/`withPark` already exists and is wired all the way through `executeRun.ts`'s `park` option, and `PARK_REASONS` already includes `"approval_pending"` (confirmed by reading the source directly, not assumed) — but `chatRunDriver.ts` never supplies a `park` implementation, so a chat run that hits a pending approval today never actually transitions its DB `status` to `waiting_approval`. TASK-133/135's whole durable-resume mechanism is real, tested, and correct, but currently has nothing to act on in production because no chat run ever reaches the state it reconciles.
@@ -4032,12 +4032,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] TASK-133's `reconcileInterruptedRuns` finds and correctly handles a chat run parked this way (closing the loop TASK-135 flagged as currently unreachable in production) — tested
 - [ ] Any scope narrowing (e.g. deferring full continue-after-approval) is explicitly documented in the dossier and this task's own Review_Findings, not silently dropped
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-136-s5
+**Started_At:** 2026-09-04T15:23:55Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T17:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T15:23:55Z
