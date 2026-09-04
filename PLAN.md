@@ -4412,7 +4412,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-150
 **Title:** Cost-interception design pass for the Agent SDK path (unfreezes the TASK-143 thread)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-143 (frozen; its Progress_Notes carry the full architectural finding: `withBudgetSink` decorates `AgentProvider`, which the primary SDK chat path never touches); packages/harness-factory/src/ports.ts (`AgentSdkQueryFn` — stream typed `AsyncIterable<unknown>`, no cost shape anywhere); packages/harness-factory/src/index.ts (`defaultSdkQuery` — the real `@anthropic-ai/claude-agent-sdk` `query()` binding); packages/agent-providers/src/budget.ts (the existing pattern to mirror: fail-closed decorator, `BudgetReport` shape); branch task/TASK-143-cx (CX's own preserved investigation dossier)
