@@ -1,8 +1,8 @@
 ---
-plan_version: 10.0
-last_updated: 2026-09-04T20:15:00Z
+plan_version: 10.1
+last_updated: 2026-09-04T18:50:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 5 DONE (TASK-137/138/140 — Connectors-2 + OIK-112). Wave 6: TASK-141 (OIK-103/104 handoff demo + Fable review) DONE, merged. TASK-139 (CX9, connector-merge generalization) and TASK-142 (S5, OpenSandbox client) still running. TASK-143 dispatched to CX (now idle): OIK-110/111 budgets — found the same 'built but never wired' pattern again: packages/agent-providers/src/budget.ts's withBudgetSink/BudgetSink was built at TASK-072 explicitly for this, fully tested, never composed anywhere. Task investigates real composition site + broker-level live enforcement, explicitly permitted to split OIK-110/111 into two tasks if real scope is larger than one. Real findings from Wave 5/6, worth carrying forward: never grant docs/** to a builder (absolute firewall path regardless of Owned_Paths); control.py drain can replay an already-superseded control block onto an active resumed task; a stray duplicate Updated_At line was found and cleaned at PLAN.md's tail (harmless to validate_plan.py but worth watching for). GB remains deactivated."
+orchestrator_notes: "Wave 5 DONE (Connectors-2 minters + OIK-112). Wave 6: TASK-141 (OIK-103/104) and TASK-139 (connector-merge generalization, Calendar/Drive grant-derived mounting) both DONE and merged — Connectors-2 is now fully complete, Gmail/Calendar/Drive all have real grant-derived tool-mounting. Two small non-blocking follow-ups flagged in TASK-139's review (merged ConnectorContext.manifest only keeps the first connector's identity — currently inert; mutation-proof test's reverse direction inferred not independently asserted) — not urgent, noted for a future pass. TASK-143 (CX) in progress: OIK-110/111 budgets, hit a real dispatch-prompt-template ambiguity (fixed by ORCH creating the branch directly) then a real Owned_Paths gap (widened to services/worker/src/subprocessProviders.ts, the actual AgentProvider construction site CX found). All other Wave 6 tasks done; only TASK-143 still active. Real findings from Wave 5/6 for the pack feedback doc: never grant docs/** to a builder; control.py drain can replay a superseded control block onto an active resumed task; dispatch prompt's intro line ('do not re-claim or re-branch') contradicts its own step 2 for a newly-claimed task — needs clearer wording. GB remains deactivated."
 ---
 
 # Project Plan
@@ -4137,7 +4137,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-139
 **Title:** Generalize connector merging to N connectors + wire Calendar/Drive grant-derived mounting (Connectors-2c)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-128 (the exact pattern to mirror for grant-derived mounting, done for Gmail); services/worker/src/chatRunDriver.ts (`resolveGrantedGmailConnector`, `resolveGrantedWorkspaceConnector`, `combineConnectorContexts` — currently pairwise-only, built for exactly two connectors); TASK-137/138 (the new Calendar/Drive session minters this task wires in)
@@ -4157,11 +4157,11 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Progress_Notes:**
 - [2026-09-04T18:11:51Z] [SV:CX9] Implemented N-ary connector merging plus Calendar/Drive grant-derived mounting and barrel exports; committed 409eea4.
 **Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/connectors/src/mcp/index.ts, packages/connectors/src/index.ts, dossiers/TASK-139.md
-**Test_Evidence:** PASS: pnpm --filter @oikonomos/worker test -- -t "TASK-139" (2 passed; real Postgres Calendar/Drive fixture-MCP proof); pnpm --filter @oikonomos/connectors test (15 files, 129 passed, 4 skipped); pnpm --filter @oikonomos/connectors build; pnpm --filter @oikonomos/worker typecheck; pnpm lint. Full worker suite hit unrelated shared-Postgres deadlock/registration snapshot concurrency failures.
-**Review_Findings:** —
+**Test_Evidence:** PASS: pnpm --filter @oikonomos/worker test -- -t "TASK-139" (2 passed; real Postgres Calendar/Drive fixture-MCP proof); pnpm --filter @oikonomos/connectors test (15 files, 129 passed, 4 skipped); pnpm --filter @oikonomos/connectors build; pnpm --filter @oikonomos/worker typecheck; pnpm lint. Full worker suite hit unrelated shared-Postgres deadlock/registration snapshot concurrency failures. ORCH's review subagent independently re-ran: chatRunDriver 15/15 (incl. all TASK-116/128 tests unmodified), connectors 129/133, full pnpm -r build/test hit only pre-existing environmental/contention failures outside Owned_Paths (confirmed isolated-clean). ORCH re-verified full pnpm -r build clean (19/19) directly on master post-merge with pinned Node 22.
+**Review_Findings:** APPROVE, first-pass. Territory clean (4 files + dossier). The N-ary merge (`combineConnectorContexts(...contexts)`) correctly unions any number of contexts via `Object.assign`/`flatMap`, tested at 0/1/2/4. Per-connector grant derivation (`resolveGrantedManifestConnector`, now a shared helper behind the three connector-specific wrappers) mirrors TASK-128's Gmail pattern exactly — grants loaded fresh per run, filtered per-manifest, zero cross-connector leakage (confirmed: Calendar/Drive manifests use disjoint `capability_id`/tool-name namespaces, and each connector's grant check only ever consults its own manifest). Zero-grant role behavior unchanged, existing TASK-116/117/128 tests untouched and passing. Barrels additive-only. Two non-blocking findings recorded, not merge-blockers: (1) the merged `ConnectorContext.manifest` field keeps only the first connector's manifest, so `ExecuteTaskRunResult.connector.connectorId` would misreport under multi-connector mounts — currently inert since `chatRunDriver.ts` never reads that field, but a latent inaccuracy for any future caller; flagging as a fast-follow rather than reworking a currently-harmless field. (2) The mutation-proof isolation test only directly asserts the Calendar-granted/Drive-absent direction; the reverse is inferred by symmetry through the shared-helper implementation rather than independently tested — acceptable given the implementation makes an asymmetric bug implausible, but worth tightening in a future pass. Merged --no-ff, full pnpm -r build re-verified clean (19/19) on master. **Connectors-2 (TASK-137/138/139) is now fully done — Gmail, Calendar, and Drive all have real grant-derived tool-mounting.**
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T18:11:51Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T18:50:00Z
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
