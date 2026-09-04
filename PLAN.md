@@ -4309,7 +4309,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** PLAN.md TASK-139 Review_Findings (both findings recorded there verbatim); services/worker/src/executeRun.ts (`connectorMount()` derives `ConnectorMount.connectorId` solely from `connector.manifest.connector_id` — only the FIRST merged connector's identity survives); services/worker/src/chatRunDriver.ts (`combineConnectorContexts` keeps `manifest: first.manifest`)
@@ -4323,13 +4323,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-146-cx9
 **Started_At:** 2026-09-04T19:36:28Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T19:41:51Z] [SV:CX9] Connector mounts now report every mounted identity; reverse Calendar/Drive grant isolation is independently tested.
+**Artifacts:** services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-146.md
+**Test_Evidence:** PASS: focused worker tests 22/22; pnpm -r build; pnpm lint; pnpm -r test all exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T19:36:28Z
+**Updated_At:** 2026-09-04T19:41:51Z
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
