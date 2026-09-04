@@ -3515,7 +3515,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: a standing grant is created by choosing "always allow" on an approval card, not via a separate admin screen; capability+tier scoped (not destination-scoped — a deliberate v1 simplification, see PLAN.md TASK-118 note below and the session's own design discussion)
@@ -3530,13 +3530,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-118-s5
 **Started_At:** 2026-09-04T05:04:58Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T05:16:12Z] [SV:S5] POST /roles/:roleId/grants + Always Allow wired end-to-end at the control-api and component layers, real-Postgres tested; frontend wiring of roleId/capabilityId/maxTier through ConversationPane/ChatPage/types.ts is outside Owned_Paths and documented as a follow-up gap in the dossier.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/components/chat/ApprovalCard.tsx, apps/dashboard/src/components/chat/ApprovalCard.test.tsx, dossiers/TASK-118.md
+**Test_Evidence:** control-api: pnpm --filter @oikonomos/control-api test = 117/117 (incl. real-Postgres integration test for POST /roles/:roleId/grants). dashboard: pnpm --filter @oikonomos/dashboard test = 60/60 (incl. 3 new ApprovalCard tests: hidden-state, full decide+grant flow with nonce discipline, 409 handling). pnpm lint clean. pnpm -r build = 17/17 clean. pnpm -r test (full recursive): 1 failure in services/worker/src/registerCapabilities.test.ts (PostgreSQL idempotency, description-field drift from concurrent shared-DB registration runs), re-ran isolated and passed 38/38 (1 skipped) - confirmed pre-existing contention flake unrelated to this diff.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T05:04:58Z
+**Updated_At:** 2026-09-04T05:16:12Z
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
