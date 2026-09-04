@@ -1,8 +1,8 @@
 ---
-plan_version: 9.4
-last_updated: 2026-09-04T11:40:00Z
+plan_version: 9.5
+last_updated: 2026-09-04T15:40:00Z
 overall_status: in_progress
-orchestrator_notes: "THREE waves now fully DONE: **Grants-1** (TASK-117/118/119/123/124), **Chat-2 Core** (TASK-120/121/122/125/126), and **Connectors-1** (TASK-127/128) - a bot with a real Gmail grant can genuinely read/draft mail through a live chat run (real HTTP fixture MCP server, real OAuth bearer-token attachment, grant-derived per-run tool mounting, mutation-proof tested). TASK-126 survived a stale-heartbeat CX crash mid-session (real uncommitted work recovered intact, resumed, approved). TASK-128 (the wave's highest-stakes diff - first live external-tool execution path) got the most thorough review of the session: full recursive suite had to be re-run twice to get one complete pass after an early bail on a pre-existing DDL-deadlock flake, both known flakes (registerCapabilities idempotency, roles.test.ts deadlock) reconfirmed isolated-clean and did not recur on the complete run. Both builders now idle. No next wave locked - remaining Connectors-1 scope was deliberately narrow (gmail only, read/draft only; google-calendar/google-drive manifests exist but have no session minter yet - explicit future fast-follow candidate) and the longer-horizon backlog (calendar/drive minters, real-time push, still-deferred E9.2/E9.3/E9.4/E11/E12) awaits user direction. GB remains deactivated. Standing practice continues unchanged (full pnpm -r test per CLAUDE.md's amended review standard, isolated re-run before treating a lone failure as a regression, direct Postgres verification of builder claims)."
+orchestrator_notes: "Three waves DONE: Grants-1, Chat-2 Core, Connectors-1 (see git history for detail). User locked a new program: RT-01 (real-time push) + E11 (routines/scheduling/budgets) + E10 (OME/handoffs) - full plan in WORKFLOW_RT01_E10_E11_2026-09-04.md. A 4th builder, CX9 (second Codex login, nuburo.systems@gmail.com), was onboarded this session: dispatch.ps1's config_dir auth mode generalized from Claude-only to per-CLI (docs/BUILDER_REGISTRY.md has the activation steps), both Codex accounts verified logged in directly (not taken on faith), CX9 added to builders.active. CX9 is a full peer to CX for protected-path work (same Codex model family, satisfies ORCH's different-model reviewer requirement same as CX). Major finding while decomposing E10: ADR-012 (2026-09-02, outranks the WBS) already redirected OIK-098-101 into extending packages/memory instead of a parallel org_facts table, and that work is ALREADY DONE (real ACL/visible_to, real superseded_by versioning, real negative-ACL test, real typed fact-referencing handoffs in roleMessages.ts/mailbox.ts) - confirmed by reading the actual code, not assumed from the WBS labels. E10's remaining scope is now just: register sendToRole as an invokable broker tool (TASK-131), the two-role e2e demo (OIK-103), and Fable review (OIK-104) - not the 7-item epic the WBS implies. Wave 1 dispatched: TASK-129 (RT-01, S5), TASK-130 (OIK-105 pg-boss, CX), TASK-131 (sendToRole broker tool, CX9). Kickoff started early (15:40) once both Codex logins were confirmed, ahead of the planned 16:00. GB remains deactivated. Standing practice continues unchanged (full pnpm -r test, isolated re-run before treating a lone failure as a regression, direct verification of builder claims and of infra state like login status before trusting it)."
 ---
 
 # Project Plan
@@ -3817,3 +3817,76 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T11:40:00Z
+
+### TASK-129
+**Title:** RT-01 — real-time push for chat messages and approvals
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** WORKFLOW_RT01_E10_E11_2026-09-04.md (RT-01); ChatPage.tsx's own `POLL_INTERVAL_MS = 2000` comment block, which this task replaces
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/lib/realtime.ts, apps/dashboard/src/lib/realtime.test.ts
+**Depends_On:** —
+**Description:** `ChatPage.tsx` polls `GET /threads/:id/messages` every 2 seconds. Replace with real push: add a control-api endpoint that streams new messages/approval updates for a thread as they happen (Server-Sent Events via Fastify's `reply.raw` is the natural fit here — no new dependency needed, prefer it over adding a WebSocket library unless you hit a concrete reason SSE can't work for this). The client (`apps/dashboard/src/lib/realtime.ts`, new file) opens the stream per active thread and updates state as events arrive, replacing the `setInterval` polling loop. Keep the existing `GET /threads/:id/messages` endpoint working unmodified (initial load still uses it); this task only removes the *polling loop*, not the endpoint. Must survive a dropped connection (reconnect, no duplicate/missed messages on resume) and must not leak connections when the user switches threads or navigates away (existing `clearIntervalSpy` test precedent in ChatPage.test.tsx shows this codebase already cares about cleanup — match that discipline for the new stream's teardown).
+**Acceptance_Criteria:**
+- [ ] A message sent by another party (e.g. a bot reply arriving from a real chat run) appears in the UI without a 2-second polling delay — tested through the real component tree, not just the endpoint in isolation
+- [ ] Switching threads or unmounting `ChatPage` cleanly closes the previous stream — no leaked connections, tested (mirrors the existing `clearIntervalSpy` cleanup test pattern)
+- [ ] A dropped connection reconnects and does not duplicate or lose messages — tested
+- [ ] Existing `GET /threads/:id/messages` endpoint and its tests are unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T15:40:00Z
+
+### TASK-130
+**Title:** OIK-105 — pg-boss integration + job definitions
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-105); WORKFLOW_RT01_E10_E11_2026-09-04.md
+**Owned_Paths:** services/worker/src/jobs/**, services/worker/package.json, pnpm-lock.yaml, services/worker/src/index.ts
+**Depends_On:** —
+**Description:** No job-queue dependency exists anywhere in this repo today. Add `pg-boss` as a real dependency of `services/worker` and stand up a minimal, real integration: a `pg-boss` client connected to the same Postgres database (`DATABASE_URL`), at least one real job type defined and registered (e.g. a trivial heartbeat/no-op job is fine for this task — this task is the plumbing, not the routine-firing logic itself, which is OIK-108/109's job), and a clean start/stop lifecycle (the worker process must be able to start the queue, and shut it down cleanly on exit, without leaving orphaned connections). pg-boss manages its own schema in Postgres automatically on first connect — do not hand-write a competing migration for its internal tables. This task does not need to wire pg-boss into `scheduler.ts`'s existing `RoutineFire`/`RoutineFirePorts` contracts yet (that's OIK-108); keep this narrowly about proving the queue itself works for real, end to end.
+**Acceptance_Criteria:**
+- [ ] A real job can be scheduled and observed to actually run, against real Postgres — tested (not mocked pg-boss)
+- [ ] The worker process starts and stops the queue cleanly — no orphaned connections/handles after shutdown, tested
+- [ ] `pg-boss` is a real devDependency/dependency with a pinned version, `pnpm-lock.yaml` updated accordingly
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T15:40:00Z
+
+### TASK-131
+**Title:** Register `sendToRole` as a real, invokable broker tool
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
+**Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** `sendToRole` (`services/workspace/src/mailbox.ts`) is a real, fully-tested, typed role-to-role handoff mechanism (ADR-012 items 3/4 — explicit publish, typed handoff with a memory fact reference, "no privilege expansion" already designed in), but nothing in `packages/broker`/`chatRunDriver` registers it as a tool a live agent run can actually call — confirmed zero references. Add a declared tool (matching `BUILTIN_TOOLS`' existing pattern in `packages/broker/src/builtinTools.ts`) for a `send_to_role` capability, decide and implement the right invocation mechanism given how tools are actually mounted for a real Agent SDK query today (`packages/harness-factory`'s MCP layer only supports `stdio`/`http` transports, not a bare in-process function — a small local MCP server wrapping `sendToRole` is the natural fit, matching the shape TASK-127/128 already established for external connectors, except this one is Basileia-internal, not a third-party OAuth connector). Wire it into `chatRunDriver.ts` so a real chat run can invoke it, gated through the broker's normal PreToolUse/tier/grant path like every other tool (T1_draft is a reasonable default tier — a handoff is not silent/autonomous by default, matching Grants-1's own default-tier philosophy; do not hardcode it as always-allowed). The receiving role's own re-read of any referenced fact must happen under the receiver's own identity/grants (ADR-012's "no privilege expansion" invariant) — this task does not change that invariant, `sendToRole`/`mailbox.ts` already enforce it; this task only makes the tool callable.
+**Acceptance_Criteria:**
+- [ ] A real chat run for a role with a `send_to_role` grant can actually invoke it and a real `role_messages` row is persisted — tested against real Postgres, matching TASK-116/117/128's own liveness-test pattern
+- [ ] A role with NO `send_to_role` grant cannot invoke it — a real `policy.decision` deny event, tested
+- [ ] The typed-handoff path (`handoffKind`/`factRef`) is reachable through the tool, not just the untyped free-text path — tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T15:40:00Z
