@@ -3846,7 +3846,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-130
 **Title:** OIK-105 — pg-boss integration + job definitions
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-105); WORKFLOW_RT01_E10_E11_2026-09-04.md
@@ -3862,20 +3862,21 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T13:36:37Z
 **Progress_Notes:**
 - [2026-09-04T13:48:45Z] [SV:CX] Checkpoint: implemented pg-boss 12.30.0 heartbeat queue with real Postgres lifecycle coverage (4/4 focused tests pass). Build/lint clean. Full pnpm -r test blocked by unrelated shared-DB flakes CX correctly declined to treat as real without confirmation — resuming to verify.
+- [2026-09-04T13:58:05Z] [SV:CX] Finished: pnpm -r test/build/lint all exit 0 this run (earlier flakes did not recur).
 **Artifacts:** services/worker/src/jobs/workerJobQueue.ts, services/worker/src/jobs/workerJobQueue.test.ts, services/worker/src/index.ts, services/worker/package.json, pnpm-lock.yaml, dossiers/TASK-130.md
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** CX: focused workerJobQueue 4/4 (real Postgres), pnpm -r test/build/lint all clean. ORCH independently re-ran: focused 4/4, control-api unaffected, build/lint clean; full pnpm -r test hit the documented pre-existing registerCapabilities flake once — confirmed isolated-clean (3/3, true single-file scope) on a second check. Direct query confirmed zero orphaned pg-boss connections after shutdown (`pg_stat_activity` filtered by application_name).
+**Review_Findings:** APPROVE, first-pass. `WorkerJobQueue` lifecycle is clean: `start()` unwinds (`boss.stop`) if queue-creation/work-registration fails partway rather than leaving a half-initialized instance; `stop()` is idempotent (clears the instance field before awaiting, avoiding a double-stop race) and graceful with a real timeout. Tests prove both real criteria rigorously — a real job scheduled and observed running via a resolving Promise from the actual pg-boss callback (not a mock), and shutdown proven via a direct `pg_stat_activity` query showing zero connections under a unique per-test `application_name`, not just "no error thrown". `pg-boss` pinned to an exact version (`12.30.0`, no caret) — appropriately conservative for a library that manages its own DB schema. Correctly scoped to plumbing only, does not touch `scheduler.ts`'s `RoutineFire` ports (that's OIK-108, next). Merged --no-ff. **Unlocks TASK-131** (CX9, was sequenced behind this exact file collision).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T13:52:00Z
+**Updated_At:** 2026-09-04T16:10:00Z
 
 ### TASK-131
 **Title:** Register `sendToRole` as a real, invokable broker tool
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-012-ome-extends-memory-not-parallel-store.md §2 items 4/6; `packages/broker/src/builtinTools.ts` (the declared-tool pattern to extend); `services/workspace/src/mailbox.ts`'s `sendToRole` (the real, already-built, already-tested function this task exposes — do not reimplement its logic)
-**Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Owned_Paths:** packages/broker/src/**, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/package.json, pnpm-lock.yaml
 **Depends_On:** TASK-130
 **Description:** `sendToRole` (`services/workspace/src/mailbox.ts`) is a real, fully-tested, typed role-to-role handoff mechanism (ADR-012 items 3/4 — explicit publish, typed handoff with a memory fact reference, "no privilege expansion" already designed in), but nothing in `packages/broker`/`chatRunDriver` registers it as a tool a live agent run can actually call — confirmed zero references. Add a declared tool (matching `BUILTIN_TOOLS`' existing pattern in `packages/broker/src/builtinTools.ts`) for a `send_to_role` capability, decide and implement the right invocation mechanism given how tools are actually mounted for a real Agent SDK query today (`packages/harness-factory`'s MCP layer only supports `stdio`/`http` transports, not a bare in-process function — a small local MCP server wrapping `sendToRole` is the natural fit, matching the shape TASK-127/128 already established for external connectors, except this one is Basileia-internal, not a third-party OAuth connector). Wire it into `chatRunDriver.ts` so a real chat run can invoke it, gated through the broker's normal PreToolUse/tier/grant path like every other tool (T1_draft is a reasonable default tier — a handoff is not silent/autonomous by default, matching Grants-1's own default-tier philosophy; do not hardcode it as always-allowed). The receiving role's own re-read of any referenced fact must happen under the receiver's own identity/grants (ADR-012's "no privilege expansion" invariant) — this task does not change that invariant, `sendToRole`/`mailbox.ts` already enforce it; this task only makes the tool callable.
 **Acceptance_Criteria:**
@@ -3891,6 +3892,6 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Artifacts:** dossiers/TASK-131.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: sequenced behind TASK-130 (see Progress_Notes) — a real file-collision risk, not a false blocker.
+**Blocked_Reason:** — (was MISSING_DEPENDENCY, resolved: TASK-130 merged 2026-09-04T16:10:00Z. Owned_Paths expanded to include services/worker/package.json + pnpm-lock.yaml, now safe post-merge. Resuming CX9 on task/TASK-131-cx9.)
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T13:45:00Z
+**Updated_At:** 2026-09-04T16:10:00Z
