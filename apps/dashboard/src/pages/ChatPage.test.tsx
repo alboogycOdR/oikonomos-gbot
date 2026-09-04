@@ -36,6 +36,22 @@ const BOT_REPLY = {
   createdAt: "2026-09-03T10:00:05.000Z",
 };
 
+const PENDING_APPROVAL = {
+  id: "msg-approval",
+  threadId: "thread-1",
+  role: "bot",
+  body: "I need approval to send this.",
+  runId: "run-approval",
+  createdAt: "2026-09-03T10:00:10.000Z",
+  approval: {
+    nonce: "approval-nonce",
+    action_render: "Send email to finance",
+    status: "pending",
+    capability_id: "email.send",
+    max_tier: "T3_external",
+  },
+};
+
 /**
  * Authenticates synchronously so tests can render `<ChatPage>` directly
  * without exercising the login form (that's App.test.tsx's job).
@@ -106,6 +122,49 @@ describe("ChatPage", () => {
     // Fixture-only names must never leak in once real data has loaded.
     expect(screen.queryByText("Ops Bot")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("hi there")).toBeInTheDocument());
+  });
+
+  it("threads real approval grant data through to Always Allow for the active role", async () => {
+    const calls: { url: string; body?: unknown }[] = [];
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body === undefined ? undefined : JSON.parse(String(init.body));
+      calls.push({ url, body });
+      if (url.endsWith("/auth/login")) {
+        return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+      }
+      if (url.endsWith("/roles")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/threads")) {
+        return new Response(JSON.stringify([THREAD]), { status: 200 });
+      }
+      if (url.includes("/threads/thread-1/messages")) {
+        return new Response(JSON.stringify([PENDING_APPROVAL]), { status: 200 });
+      }
+      if (url.includes("/approvals/approval-nonce/decide")) {
+        return new Response(
+          JSON.stringify({ decided: true, approval: { nonce: "approval-nonce", status: "granted" } }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/roles/role-1/grants")) {
+        return new Response(JSON.stringify({}), { status: 201 });
+      }
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const user = userEvent.setup({ delay: null });
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Always Allow" }));
+
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        url: "/roles/role-1/grants",
+        body: { capabilityId: "email.send", maxTier: "T3_external" },
+      }),
+    );
   });
 
   it("sends a message via POST /threads/:id/messages, polls, and stops polling once the bot's reply arrives", async () => {
