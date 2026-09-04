@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   Database,
+  defaultPoolConfig,
   insertMessage,
   listAllThreadsWithMembers,
   listThreadMembers,
@@ -16,6 +17,7 @@ import {
   type Task,
   type Thread,
 } from "@oikonomos/db";
+import { Pool } from "pg";
 
 import { buildApp } from "./app.js";
 import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
@@ -524,6 +526,25 @@ integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () 
 
 integration("Group-thread control-api routes — real Postgres (TASK-121)", () => {
   const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+  const fixtureRoleIds: string[] = [];
+  const fixtureThreadIds: string[] = [];
+
+  async function cleanup(): Promise<void> {
+    if (fixtureThreadIds.length > 0) {
+      await pool.query("DELETE FROM messages WHERE thread_id = ANY($1::uuid[])", [fixtureThreadIds]);
+      await pool.query("DELETE FROM thread_members WHERE thread_id = ANY($1::uuid[])", [fixtureThreadIds]);
+      await pool.query("DELETE FROM threads WHERE id = ANY($1::uuid[])", [fixtureThreadIds]);
+    }
+    if (fixtureRoleIds.length > 0) {
+      await pool.query("DELETE FROM role_grants WHERE role_id = ANY($1::text[])", [fixtureRoleIds]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [fixtureRoleIds]);
+    }
+  }
+
+  afterAll(async () => {
+    await pool.end();
+  });
 
   it("creates real memberships, lists 1:1 and group summaries, and attributes a group message", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
@@ -534,7 +555,9 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
           payload: { name, description: `${name} fixture` },
         });
         expect(response.statusCode).toBe(201);
-        return JSON.parse(response.body) as { id: string; name: string };
+        const created = JSON.parse(response.body) as { id: string; name: string };
+        fixtureRoleIds.push(created.id);
+        return created;
       };
       const first = await createRole(`Group first ${randomUUID()}`);
       const second = await createRole(`Group second ${randomUUID()}`);
@@ -543,6 +566,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
         method: "POST", url: "/threads", headers: authHeaders(), payload: { roleId: first.id },
       });
       expect(oneToOneResponse.statusCode).toBe(201);
+      fixtureThreadIds.push((JSON.parse(oneToOneResponse.body) as { id: string }).id);
 
       const groupResponse = await app.inject({
         method: "POST", url: "/threads/group", headers: authHeaders(),
@@ -550,6 +574,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       });
       expect(groupResponse.statusCode).toBe(201);
       const group = JSON.parse(groupResponse.body) as { id: string; memberRoleIds: string[] };
+      fixtureThreadIds.push(group.id);
       expect(group.memberRoleIds).toEqual([first.id, second.id]);
       expect((await listThreadMembers(options, group.id)).map((member) => member.roleId)).toEqual(
         expect.arrayContaining([first.id, second.id]),
@@ -573,7 +598,11 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
         expect.objectContaining({ body: "Hello from the second bot", senderRoleId: second.id, senderName: second.name }),
       ]));
     } finally {
-      await app.close();
+      try {
+        await app.close();
+      } finally {
+        await cleanup();
+      }
     }
   });
 });
