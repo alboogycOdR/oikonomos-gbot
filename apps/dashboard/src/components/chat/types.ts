@@ -5,6 +5,8 @@
 
 export interface BotSummary {
   id: string;
+  /** Role owning this thread; distinct from the thread ID used as `id`. */
+  roleId?: string;
   name: string;
   description?: string;
   /** Deterministic seed for the initials-on-color avatar (spec §2). */
@@ -19,6 +21,9 @@ export interface ApprovalRender {
   nonce: string;
   actionRender: string;
   status: "pending" | "approved" | "rejected";
+  /** Capability and tier required for the optional standing-grant action. */
+  capabilityId?: string;
+  maxTier?: string;
 }
 
 export interface ChatMessage {

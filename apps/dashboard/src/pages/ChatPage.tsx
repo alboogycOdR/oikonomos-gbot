@@ -31,6 +31,7 @@ const POLL_INTERVAL_MS = 2000;
 function toBotSummary(thread: Thread): BotSummary {
   return {
     id: thread.id,
+    roleId: thread.roleId,
     name: thread.botName,
     description: thread.botDescription,
     avatarSeed: thread.avatarSeed,
@@ -53,6 +54,8 @@ function toChatMessage(message: ThreadMessage): ChatMessage {
             nonce: message.approval.nonce,
             actionRender: message.approval.action_render,
             status: message.approval.status as "pending" | "approved" | "rejected",
+            capabilityId: message.approval.capability_id,
+            ...(message.approval.max_tier === null ? {} : { maxTier: message.approval.max_tier }),
           },
         }),
   };

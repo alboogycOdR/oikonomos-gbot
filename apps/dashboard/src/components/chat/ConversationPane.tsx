@@ -55,7 +55,11 @@ export function ConversationPane({
           <div key={message.id} className="space-y-2">
             <MessageBubble message={message} botName={bot.name} />
             {message.approval ? (
-              <ApprovalCard approval={message.approval} onUnauthorized={onUnauthorized} />
+              <ApprovalCard
+                approval={message.approval}
+                roleId={bot.roleId}
+                onUnauthorized={onUnauthorized}
+              />
             ) : null}
           </div>
         ))}
