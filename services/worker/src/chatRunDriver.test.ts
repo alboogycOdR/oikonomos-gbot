@@ -96,7 +96,7 @@ describe("chat run driver governance helpers", () => {
     expect(chatRunDriverSource).toContain("tool.enabled !== false && grantedCapabilities.has(tool.capability_id)");
     expect(chatRunDriverSource).toContain("connector: { manifest, mcpServers: handle.mcpServers, allowedTools }");
     expect(chatRunDriverSource).toContain("mint: createGmailConnectorSessionMinter");
-    expect(chatRunDriverSource).toContain("acquiredConnector?.connector.allowedTools");
+    expect(chatRunDriverSource).toContain("connector?.allowedTools");
   });
 
   it("derives only ADR-013's approved destinations and fails closed otherwise", () => {
