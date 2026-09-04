@@ -4281,7 +4281,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-145
 **Title:** Push-notification backend — device registry, transport port, event triggers
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (broadcast-targeting decision and its rationale — no per-user accounts yet, so broadcast-to-all-registered-devices is the honest model, documented not faked); services/control-api/src/ports.ts (`createDatabaseBackedDeps` — where the notify hook composes); packages/db/src/database.ts + siblings (module conventions to mirror)
@@ -4302,12 +4302,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T19:38:46Z] [SV:CX] Preflight completed; implementation stopped before code changes because approval-created notifications require an unowned worker/approval callback.
 - [2026-09-04T21:50:00Z] [ORCH] Unblocked by redesign, not widening: chatRunDriver.ts is owned by ACTIVE TASK-146 — widening would be a live collision. Instead the triggers move entirely into ports.ts around the awaited runChatTask: on resolve, derive the event from the run's own state (pending approvals ⇒ approval-pending push; else run-completed push). Architecturally cleaner anyway — push stays a control-api concern, worker untouched. Description/AC revised. Resuming on task/TASK-145-cx.
 - [2026-09-04T23:10:00Z] [ORCH] Session died without emitting a control block (transcript ends mid-diff while writing services/control-api/src/sse.test.ts; no codex process alive; no .done marker). Cause not established — I am not guessing at one. **Substantial UNCOMMITTED work is intact in your worktree and must not be lost:** 010_device_tokens.up/down.sql, packages/db/src/deviceTokens.ts + test, and edits to control-api app.ts/ports.ts/sse.test.ts/chat.routes.test.ts. The dispatcher's resume path deliberately does not refresh a worktree that is on a branch, so those files are still there. **FIRST ACTION on resume: `git status`, review what is already written, and COMMIT it before doing anything else** — do not restart from scratch, do not `git checkout .`, do not discard. Then continue from there.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-04T21:12:08Z] [SV:CX] Implemented device registry, authenticated registration route, env-gated FCM transport, and broadcast post-chat-run push triggers; committed and documented verification.
+**Artifacts:** infra/postgres/migrations/010_device_tokens.up.sql, infra/postgres/migrations/010_device_tokens.down.sql, packages/db/src/deviceTokens.ts, packages/db/src/deviceTokens.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/pushTransport.ts, services/control-api/src/pushTransport.test.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, dossiers/TASK-145.md
+**Test_Evidence:** Node v22.23.2: pnpm --filter @oikonomos/db test (28 files, 139 passed/2 skipped); pnpm --filter @oikonomos/control-api test (10 files, 140 passed); pnpm -r test exit 0; pnpm -r build exit 0; pnpm lint exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T21:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T21:12:08Z
 
 ### TASK-146
 **Title:** Connectors-2 fast-follows — multi-connector mount identity + reverse mutation-proof direction
