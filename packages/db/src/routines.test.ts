@@ -47,9 +47,21 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
     expect(created.lane).toBe("background");
     expect(created.enabled).toBe(true);
     expect(created.lastFireStatus).toBeNull();
+    expect(created.nextFireAt).toBeNull();
 
     const fetched = await getRoutine({ connectionString: connectionString! }, created.routineId);
     expect(fetched).toEqual(created);
+  });
+
+  it("persists a creation-time nextFireAt without recording a fire", async () => {
+    const nextFireAt = new Date("2030-01-02T03:04:00.000Z");
+    const created = await createRoutine(
+      { connectionString: connectionString! },
+      { roleId, tenantId, name: "scheduled", schedule: "4 3 2 1 *", definition: {}, nextFireAt },
+    );
+    expect(created.nextFireAt).toEqual(nextFireAt);
+    expect(created.lastFireAt).toBeNull();
+    expect(created.lastFireStatus).toBeNull();
   });
 
   it("getRoutine returns null for an unknown routineId", async () => {

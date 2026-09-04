@@ -350,4 +350,28 @@ describe("ChatPage", () => {
     expect(await screen.findByLabelText("Permissions")).toBeInTheDocument();
     expect(await screen.findByText("email.send")).toBeInTheDocument();
   });
+
+  it("loads the active bot's real routines into the Routines tab through ChatPage", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+      if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
+      if (url.endsWith("/roles/role-1/routines")) {
+        return new Response(JSON.stringify([{ routineId: "routine-1", name: "Daily briefing", schedule: "0 8 * * *" }]), { status: 200 });
+      }
+      if (url.endsWith("/roles/role-1/grants")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.includes("/threads/thread-1/stream")) {
+        return new Response(new ReadableStream({ start() {} }), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const user = userEvent.setup({ delay: null });
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "Routines" }));
+    expect(await screen.findByText("Daily briefing")).toBeInTheDocument();
+    expect(screen.getByText("0 8 * * *")).toBeInTheDocument();
+  });
 });

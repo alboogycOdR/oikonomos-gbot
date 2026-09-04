@@ -25,6 +25,8 @@ export interface NewRoutine {
   lane?: RoutineLane;
   enabled?: boolean;
   definition: Record<string, unknown>;
+  /** Initial scheduler cursor, computed by the control API at creation time. */
+  nextFireAt?: Date | null;
 }
 
 export interface Routine {
@@ -137,8 +139,8 @@ export async function createRoutine(
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RoutineRow>(
-      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition)
-       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb)
+      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition, next_fire_at)
+       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb, $8)
        RETURNING ${routineColumns}`,
       [
         roleId,
@@ -148,6 +150,7 @@ export async function createRoutine(
         lane,
         input.enabled ?? true,
         JSON.stringify(input.definition),
+        input.nextFireAt ?? null,
       ],
     );
 
