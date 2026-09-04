@@ -100,11 +100,15 @@ export {
 } from "./roleMessages.js";
 export {
   addThreadMember,
+  createGroupThread,
   createThread,
   getOrCreateThreadForRole,
   getThreadsForRole,
   listThreadMembers,
+  listAllThreadsWithMembers,
   listThreads,
+  type GroupThread,
+  type NewGroupThread,
   type NewThread,
   type Thread,
   type ThreadMember,
