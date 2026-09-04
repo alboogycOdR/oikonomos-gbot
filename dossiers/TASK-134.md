@@ -21,3 +21,5 @@
   ```
 
 - [2026-09-04T17:05:00Z] [CX] Blocked before source changes: TASK-134 requires `cron-parser` as a direct dependency of `services/control-api`, because the create-routine handler is in `services/control-api/src/app.ts`. Its manifest, `services/control-api/package.json`, is not an Owned_Path; the listed `services/worker/package.json` cannot satisfy direct dependency resolution for the control-api package. Need ORCH to add `services/control-api/package.json` to Owned_Paths (or explicitly revise the direct-dependency requirement).
+
+- [2026-09-04T17:12:00Z] [CX] Resume preflight found a sync mismatch: the dispatcher-provided live TASK-134 block grants `services/control-api/package.json`, but `python scripts/preflight_paths.py TASK-134` in this worktree still reports the older `services/worker/package.json` grant. The required direct dependency belongs in the control-api manifest, so no source edits were made. Next: synchronize this worktree's task metadata with the corrected main PLAN.md, then rerun preflight and proceed.
