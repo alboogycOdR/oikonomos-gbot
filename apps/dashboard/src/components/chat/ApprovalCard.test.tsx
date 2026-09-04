@@ -12,6 +12,14 @@ const PENDING: ApprovalRender = {
   status: "pending",
 };
 
+/** TASK-118: capability+tier present, as the real /threads/:id/messages projection now sends. */
+const PENDING_WITH_GRANT_DATA = {
+  ...PENDING,
+  capabilityId: "email.send",
+  maxTier: "T3_external",
+};
+const ROLE_ID = "chat-bot";
+
 /**
  * TASK-109 AC coverage: `action_render` renders verbatim as plain text
  * (never interpreted as Markdown/HTML — same rule TASK-082 proved for the
@@ -110,5 +118,80 @@ describe("ApprovalCard", () => {
     expect(screen.getByText(/Status: Approved/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("hides Always Allow when capability/tier/roleId aren't available", () => {
+    render(<ApprovalCard approval={PENDING} />);
+    expect(screen.queryByRole("button", { name: "Always Allow" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * TASK-118 AC coverage: clicking "Always Allow" decides the approval via
+   * the exact same `POST /approvals/:nonce/decide` call "Approve" makes
+   * (reused, not duplicated), then writes a standing grant via
+   * `POST /roles/:roleId/grants` — and the nonce discipline TASK-109
+   * proved never leaks into the URL/history/storage, extended here to
+   * cover this new decide+grant path too.
+   */
+  it("Always Allow decides the approval AND writes a standing grant, with the nonce never leaking", async () => {
+    const user = userEvent.setup();
+    const calls: { url: string; body: unknown }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body === undefined ? undefined : (JSON.parse(String(init.body)) as unknown);
+      calls.push({ url, body });
+      if (url.includes("/approvals/")) {
+        expect(url).toContain(encodeURIComponent(PENDING.nonce));
+        expect((body as { decision: string }).decision).toBe("granted");
+        return new Response(
+          JSON.stringify({ decided: true, approval: { nonce: PENDING.nonce, status: "granted" } }),
+          { status: 200 },
+        );
+      }
+      expect(url).toBe(`/roles/${ROLE_ID}/grants`);
+      expect(body).toEqual({ capabilityId: "email.send", maxTier: "T3_external" });
+      return new Response(
+        JSON.stringify({ roleId: ROLE_ID, capabilityId: "email.send", maxTier: "T3_external", constraints: {} }),
+        { status: 201 },
+      );
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<ApprovalCard approval={PENDING_WITH_GRANT_DATA} roleId={ROLE_ID} />);
+    await user.click(screen.getByRole("button", { name: "Always Allow" }));
+
+    await waitFor(() => expect(screen.getByText(/Approved/)).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // decide is called before the grant write (Approve's exact call path, reused first).
+    expect(calls[0]!.url).toContain("/approvals/");
+    expect(calls[1]!.url).toBe(`/roles/${ROLE_ID}/grants`);
+
+    expect(window.location.href).not.toContain(PENDING.nonce);
+    expect(window.location.pathname).not.toContain(PENDING.nonce);
+    expect(localStorage.getItem(PENDING.nonce)).toBeNull();
+    expect(Object.values(localStorage).join()).not.toContain(PENDING.nonce);
+    expect(Object.values(sessionStorage).join()).not.toContain(PENDING.nonce);
+    // the grant call body never carries the nonce either.
+    expect(JSON.stringify(calls[1]!.body)).not.toContain(PENDING.nonce);
+
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Always Allow" })).not.toBeInTheDocument();
+  });
+
+  it("Always Allow surfaces a 409 (already decided) without writing a grant", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain("/approvals/");
+      return new Response(null, { status: 409 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<ApprovalCard approval={PENDING_WITH_GRANT_DATA} roleId={ROLE_ID} />);
+    await user.click(screen.getByRole("button", { name: "Always Allow" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Already decided or no longer valid."),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
