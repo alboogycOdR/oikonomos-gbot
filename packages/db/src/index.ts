@@ -44,6 +44,7 @@ export {
   listOpenRuns,
   listRuns,
   openRunStatuses,
+  parkRun,
   resumeRun,
   runStatuses,
   RunNotFoundError,

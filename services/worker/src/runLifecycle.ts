@@ -4,6 +4,7 @@ import {
   failRun,
   getRun,
   listRuns,
+  parkRun,
   resumeRun,
   startRun,
   type DatabaseOptions,
@@ -57,6 +58,18 @@ export async function failTaskRun(
   failureNote: string,
 ): Promise<Run> {
   return failRun(options, runId, failureNote);
+}
+
+/**
+ * Park a run awaiting a human approval decision (TASK-136). The thin wrapper
+ * a real `RunParkPort` implementation calls into from `chatRunDriver.ts`,
+ * mirroring `completeTaskRun`/`failTaskRun`'s shape exactly.
+ */
+export async function parkTaskRun(
+  options: DatabaseOptions,
+  runId: string,
+): Promise<Run> {
+  return parkRun(options, runId);
 }
 
 export async function completeTaskRun(

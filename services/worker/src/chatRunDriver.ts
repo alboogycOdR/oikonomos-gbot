@@ -13,8 +13,9 @@ import {
 import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
-import { completeTaskRun, failTaskRun, startTaskRun } from "./runLifecycle.js";
+import { completeTaskRun, failTaskRun, parkTaskRun, startTaskRun } from "./runLifecycle.js";
 import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
+import type { RunParkPort } from "@oikonomos/harness-factory/compose";
 
 export interface ChatRunRequest { readonly task: Task; readonly threadId: string; }
 export interface ChatRunDriver { run(request: ChatRunRequest): Promise<void>; }
@@ -105,6 +106,7 @@ async function runChatTask(
         ...(connector === undefined ? {} : { connector }),
         brokerDependencies: createBrokerDependencies(options, database, registry, policy),
         auditSink: completionAuditSink(options, run),
+        park: createRunParkPort(options, run.runId),
       });
     } finally {
       if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
@@ -190,6 +192,30 @@ async function resolveGrantedGmailConnector(input: {
     pool,
     handle,
     connector: { manifest, mcpServers: handle.mcpServers, allowedTools },
+  };
+}
+
+/**
+ * TASK-136 — the real `RunParkPort` `runChatTask` wires into `executeTaskRun`.
+ * `withPark` in `packages/harness-factory` calls `park()` exactly once, only
+ * when L1 denies a tool use for a reason in `PARK_REASONS` (`approval_pending`
+ * plus the fail-closed broker-error reasons, CAN-04) — this transitions the
+ * run's DB status to `waiting_approval` via the typed `parkTaskRun` accessor,
+ * closing the gap TASK-135 documented (no chat run ever reached that status
+ * in production before this). The Agent SDK query loop continues after a
+ * denial (the tool call simply fails for that turn), so the run still runs
+ * to completion/failure normally afterward; `completeRun`/`failRun` both
+ * already accept `waiting_approval` as a legal source status, so no further
+ * change is needed for the run to still terminate correctly. Deliberately
+ * scoped to reaching-and-proving `waiting_approval` only, per this task's own
+ * Description: the harder "resume the live session after a human grants the
+ * approval" question is out of scope for this task (see dossier).
+ */
+function createRunParkPort(options: DatabaseOptions, runId: string): RunParkPort {
+  return {
+    park: async () => {
+      await parkTaskRun(options, runId);
+    },
   };
 }
 
