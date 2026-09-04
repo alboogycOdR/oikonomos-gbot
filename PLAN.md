@@ -3835,13 +3835,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-129-s5
 **Started_At:** 2026-09-04T13:36:25Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-04T13:37:11Z] [ORCH] First dispatch produced no real TASK-129 work: S5's worktree was still sitting on the old, already-merged `task/TASK-127-s5` branch (dispatch.ps1 deliberately never force-resets a worktree on a real branch, to protect in-flight work — correct, documented behavior), and the session re-verified that old TASK-127 work instead of following its own prompt's explicit step 2 ("If newly claimed: create branch task/TASK-129-s5"). Its emitted control block even named `"task": "TASK-127"`, not TASK-129 — the dispatcher correctly did not apply it to this task's frontmatter. Cleaned the worktree directly (discarded a stray uncommitted edit to ORCH-owned AUTOPILOT_LOG.md that shouldn't have been touched, detached to master tip) and redispatching S5 with a clean, unambiguous starting point.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T13:36:25Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T13:45:00Z
 
 ### TASK-130
 **Title:** OIK-105 — pg-boss integration + job definitions
