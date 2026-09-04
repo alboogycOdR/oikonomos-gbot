@@ -4164,7 +4164,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-141
 **Title:** OIK-103 — live two-role bot handoff demo through the real broker tool path
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-103/104; evals/harness/test/ome-two-role-handoff.test.ts (TASK-100's existing service-layer ACL/versioning proof — already thorough, real Postgres, exercises `sendToRole`/`resolve` directly, do not duplicate its coverage); TASK-131 (registered `mcp__workspace__send_to_role` as a real invokable broker tool — the piece that was missing when OIK-103 was first scoped, now done)
@@ -4179,13 +4179,14 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-141-cx
 **Started_At:** 2026-09-04T17:57:27Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-04T18:04:08Z] [SV:CX] Added and committed a real-Postgres two-role broker-path handoff liveness test using the mounted workspace stdio MCP bridge, identity-spoof guard, audit verification, and ACL proof.
+**Artifacts:** evals/harness/test/ome-two-role-handoff-live.test.ts, dossiers/TASK-141.md
+**Test_Evidence:** Focused live test 1/1 passed; evals harness 13 files/19 tests passed; pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T17:57:27Z
+**Updated_At:** 2026-09-04T18:04:08Z
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
