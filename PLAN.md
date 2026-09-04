@@ -3543,7 +3543,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-119
 **Title:** Bot permissions view — list and revoke standing grants (Grants-1c)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Grok Bot reference product, confirmed 2026-09-03: no documented standalone permissions page exists in the reference product either (uninstall/disconnect is its only confirmed revoke path) — OIKONOMOS builds a minimal one anyway since capability grants (unlike connector installs) have no equivalent "disconnect" affordance today. Depends_On TASK-118 in addition to TASK-117 (added at plan-validation time) purely to serialize both tasks' shared touch on services/control-api/src/app.ts/ports.ts — not a functional dependency.
@@ -3562,10 +3562,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T05:39:54Z] [SV:S5] Implemented Database.revokeRoleGrant, GET/DELETE /roles/:roleId/grants control-api routes (auth-gated), and RightPanel Members-tab permissions list+revoke UI. Documented ownership gap (ChatShell/api.ts not in Owned_Paths, so RightPanel self-fetches and takes an optional activeRoleId prop that nothing wires yet) mirroring TASK-118's accepted precedent.
 **Artifacts:** packages/db/src/database.ts, packages/db/src/database.test.ts, services/control-api/src/ports.ts, services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, dossiers/TASK-119.md
 **Test_Evidence:** pnpm --filter @oikonomos/db test = 125/125 (2 skipped, unrelated guard), incl. new database.test.ts (3/3, real Postgres, revoke precision proven). pnpm --filter @oikonomos/control-api test = 121/121 incl. 4 new TASK-119 tests (2 unit + 2 real-Postgres integration for GET/DELETE grants). pnpm --filter @oikonomos/dashboard test = 64/64 incl. 4 new RightPanel permission tests. pnpm -r build = 17/17 clean. pnpm lint clean. pnpm -r test (full recursive): 1 pre-existing failure in packages/agent-providers/test/providers.grok.test.ts (subprocess timing flake, package untouched by this diff), re-ran isolated and passed 96/96 confirming unrelated flake.
-**Review_Findings:** —
+- [2026-09-04T07:48:00Z] [ORCH] APPROVED, first-pass. `revokeRoleGrant` verified precise (deletes exactly the targeted row, a second real capability's grant proven to survive in the same test) and its read-time effect proven via the exact `getRoleGrant` mechanism the broker's fail-closed gate depends on (same accepted tradeoff as TASK-118: doesn't re-drive a live SDK call to reprove an already-proven mechanism). `activeRoleId` gap is the same honest, disciplined pattern TASK-118/123 already established — degrades safely, clearly documented, not hidden. Independently re-ran on a fresh worktree (this one predated my chatRunDriver.test.ts fix, so verified on master post-merge instead): full pnpm -r build (19/19), lint clean, full pnpm -r test (311 assertions, zero failures — no flake reproduced this run). Merged --no-ff (02604ed). **Opened TASK-124** as the RightPanel equivalent of TASK-123 — wire `activeRoleId` from `ChatShell`/`ChatPage` so the permissions view is actually visible, same pattern, same urgency.
+**Artifacts:** packages/db/src/database.ts, packages/db/src/database.test.ts, services/control-api/src/ports.ts, services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, dossiers/TASK-119.md
+**Review_Findings:** APPROVE, first-pass. Real gap (activeRoleId wiring) spun out as TASK-124, not silently accepted.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T05:39:54Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:48:00Z
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
@@ -3627,7 +3629,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8; Grok Bot reference product, confirmed 2026-09-03: a single 1:1 bot-to-bot delegation ping needs no human approval; fan-out to several bots or a whole group does
 **Owned_Paths:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/lib/api.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
-**Depends_On:** TASK-121, TASK-123
+**Depends_On:** TASK-121, TASK-123, TASK-124
 **Description:** Frontend: a "New group" affordance (mirrors `CreateBotDialog`'s pattern) that multi-selects existing bots and calls `POST /threads/group` (TASK-121); `BotSidebar` shows group threads distinctly from 1:1 ones; `ConversationPane`/`MessageBubble` attribute each message to the correct bot by name (using `senderRoleId`/`senderName` from TASK-121) instead of assuming a single bot. Backend/driver: this is where the fan-out rule becomes real, not just documented — when `chatRunDriver` processes a run whose task originated from one bot messaging **multiple** other bots or an entire group in one action, that specific action requires a real approval (reuse the existing approval-issuance path, do not invent a new one) before any of the messages are sent; a single bot messaging exactly one other bot does not. Keep the mechanism narrow: this task does not need to solve general multi-agent orchestration, only gate the fan-out case per the confirmed rule.
 **Acceptance_Criteria:**
 - [ ] Creating a group thread via the UI results in a real thread with the selected bots as real `thread_members`, and the conversation pane correctly attributes each message to the right bot by name
@@ -3670,3 +3672,27 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T07:40:00Z
+
+### TASK-124
+**Title:** Wire activeRoleId into RightPanel through the live chat UI (Grants-1e, fast-follow)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** TASK-119's own Review_Findings — the same class of gap TASK-123 fixed for ApprovalCard: RightPanel's permissions view is real and tested but invisible because activeRoleId never reaches it through ChatShell/ChatPage
+**Owned_Paths:** apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx
+**Depends_On:** TASK-119, TASK-123
+**Description:** RightPanel.tsx already accepts an optional activeRoleId prop and does the right thing once it arrives (TASK-119). ChatShell.tsx renders RightPanel today without passing it; ChatPage.tsx knows the active bot (it already threads roleId to ApprovalCard via ConversationPane, TASK-123 - the active bot's roleId is available in the same place). Thread it through: ChatShell needs an activeRoleId prop (or derive it from whatever identifies the currently-selected bot in its own state - check how it already tracks the active bot before adding a parallel piece of state), and ChatPage needs to pass the active bot's roleId to ChatShell the same way it already resolves it for the conversation pane. Do not touch RightPanel.tsx or ApprovalCard.tsx - neither needs changes.
+**Acceptance_Criteria:**
+- [ ] The permissions view (TASK-119) is visible and shows real grants when a bot with grants is selected in the live component tree - tested by rendering ChatShell/ChatPage with real fixture data and asserting the permissions section appears, not just that RightPanel alone renders it when handed the prop directly
+- [ ] Switching the selected bot updates which bot's grants the permissions view shows - tested
+- [ ] Existing ChatShell/ChatPage tests pass unmodified except for the additions this task makes
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T07:48:00Z

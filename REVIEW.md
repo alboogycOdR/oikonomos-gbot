@@ -168,3 +168,4 @@ TASK-120 | S5 | approved | first-pass; highest-risk migration this wave, verifie
 TASK-117 | CX | approved | first-pass (post 3-round unblock, 2 of 3 rounds ORCH's own gaps); non-default-tier test mutates real capability row and restores it; T0 liveness proof genuine, real allow event + zero pending approvals | first-pass? yes
 TASK-118 | S5 | approved | first-pass; grant-write mechanism real and tested, nonce discipline extended correctly; frontend wiring gap honestly documented, spun out as TASK-123 fast-follow | first-pass? yes
 TASK-123 | CX | approved | first-pass; minimal diff, real component-tree test coverage; ORCH caught + fixed an unrelated cross-package regression (thread_members FK vs chatRunDriver.test.ts cleanup) during full-suite verification | first-pass? yes
+TASK-119 | S5 | approved | first-pass; revoke precision verified, real getRoleGrant read-mechanism proven; activeRoleId wiring gap spun out as TASK-124 | first-pass? yes
