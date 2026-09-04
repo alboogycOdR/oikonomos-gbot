@@ -3675,7 +3675,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-124
 **Title:** Wire activeRoleId into RightPanel through the live chat UI (Grants-1e, fast-follow)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-119's own Review_Findings — the same class of gap TASK-123 fixed for ApprovalCard: RightPanel's permissions view is real and tested but invisible because activeRoleId never reaches it through ChatShell/ChatPage
@@ -3687,12 +3687,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Switching the selected bot updates which bot's grants the permissions view shows - tested
 - [ ] Existing ChatShell/ChatPage tests pass unmodified except for the additions this task makes
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-124-s5
+**Started_At:** 2026-09-04T05:46:04Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T07:48:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T05:46:04Z
