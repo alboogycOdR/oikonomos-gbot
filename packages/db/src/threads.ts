@@ -169,11 +169,21 @@ export async function createGroupThread(options: DatabaseOptions, input: NewGrou
   });
 }
 
-/** Lists all v1 bot conversations, most recently active first. */
+/**
+ * Lists all v1 (1:1) bot conversations, most recently active first.
+ *
+ * TASK-121 exposed a real bug here: this query had no `WHERE role_id IS NOT
+ * NULL` filter, so as soon as any real group thread existed in the table
+ * (role_id null), `toThread`'s fail-loud null check threw for the *entire*
+ * result set — breaking every caller of this 1:1-only function, not just
+ * group-thread callers. `listThreads` is documented as 1:1-only ("v1 bot
+ * conversations"); group threads are `listAllThreadsWithMembers`'s job
+ * (TASK-125). Filtering here restores that scope rather than widening it.
+ */
 export async function listThreads(options: DatabaseOptions): Promise<Thread[]> {
   return withPool(options, async (pool) => {
     const result = await pool.query<ThreadRow>(
-      `SELECT ${threadColumns} FROM threads ORDER BY updated_at DESC, id DESC`,
+      `SELECT ${threadColumns} FROM threads WHERE role_id IS NOT NULL ORDER BY updated_at DESC, id DESC`,
     );
     return result.rows.map(toThread);
   });
