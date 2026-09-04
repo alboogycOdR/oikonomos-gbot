@@ -4342,7 +4342,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-147
 **Title:** Mobile Wave 1b — bot roster, live chat screen, create-bot flow
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (reference UX: the Grok Bot screenshots — roster with avatar/last-message/timestamp, create-bot with name + color/shape picker); TASK-144 (the API/SSE client this consumes); apps/dashboard/src/components/chat/BotSidebar.tsx, CreateBotDialog.tsx, ChatPage.tsx (the web equivalents — mirror behavior and endpoints, not DOM structure)
@@ -4358,12 +4358,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-04T19:50:52Z
 **Progress_Notes:** —
 - [2026-09-04T23:10:00Z] [ORCH] Session died without emitting a control block (no claude process alive for this dispatch; no .done marker; transcript empty). Cause not established — I am not guessing at one. **Substantial UNCOMMITTED work is intact in your worktree and must not be lost:** apps/mobile/lib/screens/chat_screen.dart and create_bot_screen.dart (both new), plus edits to api_client.dart, login_screen.dart and their tests. The dispatcher's resume path deliberately does not refresh a worktree that is on a branch, so those files are still there. **FIRST ACTION on resume: `git status`, review what is already written, and COMMIT it before doing anything else** — do not restart from scratch, do not `git checkout .`, do not discard. Then continue. (Separately: ORCH discarded a stale staged PLAN.md in this worktree — that was orchestration state, never yours to carry; do not re-add it.)
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-04T21:47:57Z] [SV:S5] Recovered and committed prior session's uncommitted roster/chat/create-bot screens + avatar widget. Full flutter test run found two real bugs (chat_screen_test 10-min hang from closing a fake SSE stream after subscriber cancellation; avatar_test missing ensureSemantics + Semantics not marked as container) and fixed both. flutter analyze clean, flutter test 35/35 passed. All AC met.
+**Artifacts:** apps/mobile/lib/screens/roster_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/widgets/avatar.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/screens/login_screen.dart, apps/mobile/test/screens/roster_screen_test.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/widgets/avatar_test.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/screens/login_screen_test.dart, apps/mobile/test/support/fake_http_client.dart, dossiers/TASK-147.md
+**Test_Evidence:** flutter analyze: No issues found! flutter test: 35/35 passed (api_client 10, sse_client 5, chat_screen 4, create_bot_screen 2, login_screen 4, roster_screen 5, avatar 5).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-04T19:50:52Z
+**Updated_At:** 2026-09-04T21:47:57Z
 
 ### TASK-148
 **Title:** Mobile Wave 2a — approval cards, routines tab, auto-review settings screen
