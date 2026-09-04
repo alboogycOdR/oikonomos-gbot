@@ -3988,7 +3988,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-135
 **Title:** OIK-107 — prove durable resume never re-executes a pending-approval tool call
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md E11 (OIK-107 — "Resumes into waiting_approval, never re-executes"); TASK-133's `reconcileInterruptedRuns`/`resumeInterruptedRun` (already scans and resumes `waiting_approval` runs as part of its open-status set — this task is specifically about proving/hardening the approval-wait case, which TASK-133 didn't specifically end-to-end test)
@@ -3999,12 +3999,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] A run genuinely parked in `waiting_approval` (real pending approval row) is resumed via reconciliation without re-invoking the tool that created the approval — tested against real Postgres, real proof the tool wasn't called twice (not just "no error")
 - [ ] The original approval nonce is still the one that, once approved, completes the run — tested
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-135-s5
+**Started_At:** 2026-09-04T14:59:13Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T16:56:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T14:59:13Z
