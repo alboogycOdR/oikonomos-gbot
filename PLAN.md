@@ -3483,13 +3483,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-117
 **Title:** Default built-in capability grants at bot creation (Grants-1a)
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** WBS OIK-131 ("Default general role with conservative ceiling") — corrected 2026-09-03: TASK-106 shipped zero grants instead of a default ceiling, diverging from OIK-131's own intent; a real-world reference product's confirmed behavior (new bot works immediately with a per-tool default set, T2+ still asks every time) now informs the correct v1 shape, recorded here rather than a separate ADR since it does not touch a protected path
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/**/*.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
 **Depends_On:** —
-**Description:** Not a protected path. On `POST /roles`, after creating the role, grant it every currently-registered `sdk:builtin` capability at that capability's own `default_tier` — do **not** invent a blanket ceiling constant or import `BUILTIN_TOOLS` from `packages/broker` (control-api has no dependency on `packages/broker` today and should not gain one for this). Instead: `Database.listCapabilities()` (already real, `packages/db/src/database.ts:91`), filter `adapter === 'sdk:builtin'`, and call `Database.upsertRoleGrant({roleId, capabilityId, maxTier: capability.defaultTier, constraints: {}})` for each — this is purely data-driven off whatever `register-capabilities` (TASK-114) has actually registered, so it stays correct if the built-in table ever changes. This makes T0 actions (Read/Glob/Grep) frictionless immediately, matching OIK-131's intent — T2+ actions (Edit/Write/Bash) are still gated by the existing per-call approval requirement, unchanged. Do not touch `CreateBotDialog.tsx` or any frontend file — this is entirely a control-api-side default.
+**Description:** Not a protected path. On `POST /roles`, after creating the role, grant it every currently-registered `sdk:builtin` capability at that capability's own `default_tier` — do **not** invent a blanket ceiling constant or import `BUILTIN_TOOLS` from `packages/broker` (control-api has no dependency on `packages/broker` today and should not gain one for this). Instead: `Database.listCapabilities()` (already real, `packages/db/src/database.ts:91`), filter `adapter === 'sdk:builtin'`, and call `Database.upsertRoleGrant({roleId, capabilityId, maxTier: capability.defaultTier, constraints: {}})` for each — this is purely data-driven off whatever `register-capabilities` (TASK-114) has actually registered, so it stays correct if the built-in table ever changes. This makes T0 actions (Read/Glob/Grep) frictionless immediately, matching OIK-131's intent — T2+ actions (Edit/Write/Bash) are still gated by the existing per-call approval requirement, unchanged. Do not touch `CreateBotDialog.tsx` or any frontend file — this is entirely a control-api-side default. **Corrected 2026-09-04**: `chatRunDriver.ts` currently hard-mounts only `["Bash(*)"]`, so AC #3's T0 proof is otherwise untestable — added it to Owned_Paths. Extend the mounted set to `["Bash(*)", "Read(*)"]` (minimal, matches this task's own scope — do not mount Write/Edit/Glob/Grep here, that is a separate future decision); this also directly serves the wave's actual goal, since granting T0 capabilities is pointless if the driver never attempts anything but Bash.
 **Acceptance_Criteria:**
 - [ ] `POST /roles` results in real `role_grants` rows for every registered `sdk:builtin` capability, each at that capability's own `default_tier`, verified against real Postgres
 - [ ] The granted `max_tier` for each row exactly equals the capability's `default_tier` at grant time — not a hardcoded constant, tested by registering a capability with a non-default tier value and confirming the grant follows it
@@ -3500,12 +3500,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Started_At:** 2026-09-03T21:48:27Z
 **Progress_Notes:**
 - [2026-09-04T04:14:50Z] [SV:CX] Blocked before source changes: the required T0 chat-run proof cannot run because chatRunDriver mounts only Bash.
+- [2026-09-04T05:55:00Z] [ORCH] Unblocking. Real finding — chatRunDriver.ts is currently hard-coded to `["Bash(*)"]` only, so AC #3 was untestable as scoped. Added services/worker/src/chatRunDriver.ts + its test to Owned_Paths; extend the mounted set to `["Bash(*)", "Read(*)"]` (minimal, matches this task's scope). This also directly serves the wave's goal — a T0 grant is meaningless if nothing but Bash is ever attempted. Resume on task/TASK-117-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: AC #3 requires services/worker/src/chatRunDriver.ts (and likely its test) to mount a T0 tool such as Read, but those paths are outside TASK-117 territory.
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T04:14:50Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T05:55:00Z
 
 ### TASK-118
 **Title:** "Always Allow" standing grant from the inline ApprovalCard (Grants-1b)
