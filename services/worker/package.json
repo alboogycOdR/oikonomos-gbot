@@ -23,7 +23,8 @@
     "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/harness-factory": "workspace:*",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "pg-boss": "12.30.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
