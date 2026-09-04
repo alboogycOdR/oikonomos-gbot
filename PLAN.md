@@ -3560,7 +3560,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-120
 **Title:** Multi-bot group thread schema (Chat-2a)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md §8 (Chat-2, group threads); WBS OIK-150 (multi-agent thread with human visibility); Grok Bot reference product, confirmed 2026-09-03: bot-to-bot messages use the acting bot's own permissions (already true by construction in our broker — no change needed there), and a single 1:1 delegation ping needs no human approval while fan-out to several bots/a group does (a rule for TASK-122 to enforce, not this task)
@@ -3579,10 +3579,12 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T04:14:50Z] [SV:S5] Migration 009 (thread_members join table, nullable threads.role_id via partial unique index, messages.sender_role_id) plus addThreadMember/listThreadMembers accessors and insertMessage senderRoleId support, all test-covered against real Postgres including migration up/down round trips. Handled the control-api cross-package type ripple entirely within packages/db (kept Thread.roleId as string, made Message.senderRoleId optional) rather than touching services/control-api, which is outside Owned_Paths.
 **Artifacts:** infra/postgres/migrations/009_group_threads.up.sql, infra/postgres/migrations/009_group_threads.down.sql, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/messages.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
 **Test_Evidence:** pnpm --filter @oikonomos/db test: 122/124 passed (2 skipped, MIGRATION_ROUND_TRIP-gated), one transient roles.test.ts DDL-deadlock flake isolated away on re-run (documented pre-existing contention flake, not caused by this change). MIGRATION_ROUND_TRIP=1 pnpm --filter @oikonomos/db test -- src/threads.test.ts: 124/124 passed including both 009-alone and 008+009 down/up round trips. pnpm --filter @oikonomos/control-api test: 110/110 passed (chat.routes.test.ts and real-Postgres integration.test.ts unaffected). pnpm -r build: 19/19 clean. pnpm lint: clean. pnpm -r test (full recursive): all packages pass except services/worker's registerCapabilities.test.ts 'is never called from a service process entrypoint', reproduced byte-identically on stashed pre-TASK-120 HEAD (ab79525) confirming it predates and is unrelated to this task's diff.
-**Review_Findings:** —
+- [2026-09-04T06:25:00Z] [ORCH] APPROVED, first-pass. Territory clean (6 files, all Owned_Paths). The migration is the highest-risk part of this wave (alters an existing production column's nullability + constraint, not just adding new tables) — verified it for real, not just via CI: ran it against the actual shared dev Postgres myself (MIGRATION_ROUND_TRIP=1), then directly inspected `\d threads`/`\d thread_members` afterward — the partial unique index and join table exist exactly as designed. `createThread`/`getOrCreateThreadForRole`'s `ON CONFLICT` clauses were correctly updated to match the new partial index (`WHERE role_id IS NOT NULL`) — a real, easy-to-miss detail that would have broken silently otherwise; `toThread` fails loudly rather than silently coercing a null role_id, appropriately conservative for a schema-only task that doesn't yet handle group threads' read path. S5's negative-control finding ("predates this task, reproduced on stashed pre-TASK-120 HEAD") was correct in conclusion — the actual cause, found during this review, was a comment I left in `services/control-api/src/index.ts` during an earlier fix this session, containing the literal string the test's grep matches on. Fixed (c0c70ce) and independently reverified: full pnpm -r build (19/19), lint clean, full pnpm -r test now genuinely clean except one of the two already-documented pre-existing contention flakes (registerCapabilities idempotency), confirmed via isolated re-run (37/38, including a fresh real ~15s Claude call). Merged --no-ff (d0ed662). Unlocks TASK-121 (once TASK-119 also lands, per the app.ts sequencing).
+**Artifacts:** infra/postgres/migrations/009_group_threads.up.sql, infra/postgres/migrations/009_group_threads.down.sql, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/messages.ts, packages/db/src/messages.test.ts, packages/db/src/index.ts
+**Review_Findings:** APPROVE, first-pass. The one real full-suite failure traced to ORCH's own prior comment (fixed), not this task.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-04T04:14:50Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-04T06:25:00Z
 
 ### TASK-121
 **Title:** Group thread control-api endpoints (Chat-2b)
