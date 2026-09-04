@@ -4380,7 +4380,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-148
 **Title:** Mobile Wave 2a — approval cards, routines tab, auto-review settings screen
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** WORKFLOW_MOBILE_W1_W2_2026-09-04.md (the "Usage %" figure is explicitly OUT — blocked on the frozen budget work; ship settings without it); apps/dashboard/src/components/chat/ApprovalCard.tsx (approve/deny data + endpoints); services/control-api routes GET /approvals (pending list), POST /approvals/:nonce/decide, GET+POST /roles/:roleId/routines, require-approval-rules routes (see src/app.ts); the Grok Bot screenshots (settings screen: "Auto-review — Require approval for risky shell, MCP, and computer actions" — reuse that plain-language framing for UI copy)
@@ -4399,9 +4399,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-04T22:13:39Z] [SV:CX9] Implemented approval cards, lazy read-only routines tab, and per-bot auto-review settings; no unsupported rules API or usage figure added.
 **Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-148.md
 **Test_Evidence:** C:\tool\flutter\bin\flutter.bat analyze exit 0 (no issues); C:\tool\flutter\bin\flutter.bat test exit 0 (42 tests passed); git diff --check clean.
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass. Territory clean (6 files, all apps/mobile/** + own dossier). Every AC has a dedicated named test, verified individually rather than inferred from the total: approve/deny request bodies, single-use 409 handled gracefully without a crash, the raw nonce never rendered, read-only routines data, and — the constraint most likely to be quietly ignored — `shows auto-review settings without a usage figure`, asserting `find.textContaining('Usage')` is `findsNothing`. ORCH swept the diff for a usage figure sneaking in and found only that absence assertion plus dossier prose, so the deliberate omission (it cannot be real until the frozen budget thread lands) is enforced by a test, not just intended. **The best judgement call in this diff is a refusal:** the task allowed a rules-creation UI only if existing routes supported it, and CX9 searched `services/control-api/src/app.ts`, found no require-approval-rules route, and declined to invent one — shipping the supported plain-language policy instead of fabricating a backend contract or reaching outside its territory. ORCH independently confirmed that claim (zero matches in app.ts). That is the second time this unit has tested a stated premise instead of assuming it, after refuting ORCH's own flake hypothesis on TASK-151. Verification re-run by ORCH: `flutter analyze` clean, `flutter test` 42/42 (up from 36). Merged --no-ff. **Unlocks TASK-149, the last task of this wave.**
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-04T22:13:39Z
 
 ### TASK-149
