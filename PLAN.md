@@ -4189,7 +4189,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-142
 **Title:** OIK-113/114 Wave 1 slice — OpenSandbox client wrapper + connectivity proof
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** infra/sandbox/README.md (OIK-042 — the real, already-deployed OpenSandbox server on clawsrv, Tailscale-only, `100.78.70.2:8080`, API key required via `OPEN-SANDBOX-API-KEY` header); docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md (R14 pin-don't-track-latest, R16 Docker-backend-only — this task's client must not assume/require Kubernetes); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-113/114 (the full epic — this task is deliberately only its first slice, NOT the full trace-capture-to-routine-spec pipeline)
@@ -4202,13 +4202,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] No literal API key, or any other credential, appears anywhere in a log, error message, or test fixture — reviewed directly
 - [ ] An optional real-server integration test (gated behind an env var, skipped when unset) proves actual connectivity to the live clawsrv server — document in the dossier whether it was actually run against the real server this session, and its result, since ORCH cannot verify Tailscale connectivity from every environment
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-142-s5
+**Started_At:** 2026-09-04T17:57:38Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-04T20:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-04T17:57:38Z
 **Updated_At:** 2026-09-04T17:40:11Z
