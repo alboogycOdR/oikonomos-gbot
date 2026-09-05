@@ -4593,12 +4593,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-05T10:25:17Z
 **Progress_Notes:**
 - [2026-09-05T10:38:37Z] [SV:CX9] Implemented and committed resume-after-grant wiring (0d08907); targeted typechecks, route tests, real-Postgres worker resume/failure tests, and lint pass. NEXT: Re-run pnpm -r build and pnpm -r test to obtain final aggregate exit summaries, then submit for review.
+- [2026-09-05T11:04:22Z] [SV:CX9] Implemented and committed approval continuation plus a real route-to-worker Postgres integration test (9515627). Targeted control-api and worker tests, typechecks, and lint pass; aggregate test/build exits could not be conclusively captured by this host. NEXT: Run pnpm -r test and pnpm -r build to completion in a non-truncated execution host, then submit for review if both exit 0.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-05T10:38:37Z
+**Updated_At:** 2026-09-05T11:04:22Z
 
 ### TASK-157
 **Title:** Mobile polish bundle — markdown rendering, system-event styling, personalized placeholder, title field
