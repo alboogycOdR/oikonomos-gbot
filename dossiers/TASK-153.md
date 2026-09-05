@@ -15,3 +15,6 @@
 
 - `pnpm --filter @oikonomos/worker typecheck` — exit 0.
 - `pnpm --filter @oikonomos/worker test` — exit 0; 13 files passed, 66 tests passed, 1 skipped. Includes TASK-153 Bash/cwd/env/cleanup test and existing real TASK-116/117/128/139/146 coverage.
+- `pnpm -r build` — exit 0.
+- `pnpm lint` — exit 0.
+- `pnpm -r test` — attempted twice; both runs failed only in out-of-territory `packages/db` tests: `src/capabilities.test.ts` (2 failures) and `test/inbox-triage.integration.test.ts` (1 failure), each with `insert or update on table "role_grants" violates foreign key constraint "role_grants_role_id_fkey"`. Worker tests passed in the first run. This is a shared Postgres fixture/parallel-test failure and cannot be repaired within TASK-153's Owned_Paths.
