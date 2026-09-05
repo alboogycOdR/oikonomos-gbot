@@ -1,8 +1,8 @@
 ---
-plan_version: 13.5
-last_updated: 2026-09-05T22:10:00Z
+plan_version: 13.6
+last_updated: 2026-09-05T22:20:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-169 (execd client) code approved+merged, but task left BLOCKED not done: the required live-server proof needs OpenSandbox credentials (SANDBOX_INTEGRATION_URL, OIK_SECRET_OPENSANDBOX_API_KEY, OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN) unavailable to any builder/ORCH session on this dev machine - genuine human-action item, not resolvable by dispatch. TASK-170 should not proceed past design/prep until this closes. Real per-user auth work opened per user request: TASK-172 (backend - verify Firebase/Google ID tokens, replace 8 hardcoded 'basileia' tenant literals in app.ts with real per-user tenantId derived from the verified Firebase UID, keep the existing shared-bearer-token admin path working separately) and TASK-173 (mobile - replace the shared-token login screen with real Google Sign-In, Depends_On TASK-172). User has enabled Google as a Firebase sign-in provider; still needed from them: the debug-keystore SHA-1 fingerprint registered in Firebase (value already given) and a fresh google-services.json download. Backlog unchanged: TASK-161/162/163/164 unassigned."
+orchestrator_notes: "TASK-169 (execd client) code approved+merged, task left BLOCKED pending real OpenSandbox credential access (human action item). TASK-172 (backend Google auth) sent to REWORK for one real, demonstrated gap: its real-Postgres two-user isolation test creates roles but never cleans them up - proven with live evidence (8 leftover rows found accumulated in shared dev Postgres from review runs alone, cleaned up by ORCH), same class of bug TASK-121 was reworked for earlier this session. Core implementation is genuinely correct (verified directly, not trusted): real JWKS verification against Google's actual Firebase key endpoint, correct issuer/audience, all 8 hardcoded 'basileia' sites replaced with real per-user tenantId, bearer-token admin path preserved. Redispatching CX for the one-line cleanup fix. TASK-173 (mobile Google Sign-In) still queued behind it - google-services.json is now in place with the real SHA-1 fingerprint and Web OAuth client ID recorded. Backlog unchanged: TASK-161/162/163/164 unassigned."
 ---
 
 # Project Plan
@@ -5087,7 +5087,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** User-requested real gap: today every bot is created under one hardcoded literal tenant, "basileia" — confirmed by grep, exactly 8 sites in services/control-api/src/app.ts (lines 358, 663, 683, 728-729, 784, 799, 822). Whoever logs in with the single shared CONTROL_API_TOKEN sees every bot ever created, with no real per-person ownership — the opposite of the reference product (Grok Bot), where signing in with a different Google account shows a different, private bot roster. The data layer is already real and ready: packages/db/src/roles.ts's listRoles/createRole already require a real tenantId, not optional — this is purely an HTTP-layer identity gap, no schema migration needed for the core scoping. The human has enabled Google as a Firebase sign-in provider for the existing Firebase project (basileia-oikonomos-gmail, already wired for push in TASK-149) and will provide an updated google-services.json with the Android app's debug-keystore SHA-1 fingerprint registered.
@@ -5104,12 +5104,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-05T20:03:48Z
 **Progress_Notes:**
 - [2026-09-05T22:10:00Z] [ORCH] The human's updated `google-services.json` is now in place (`apps/mobile/android/app/google-services.json`, gitignored per existing convention — do not add it to Owned_Paths or commit it). Real values for ID-token verification: Firebase project ID `basileia-oikonomos-gmail` (project number `461377597606`) — verify `aud === "basileia-oikonomos-gmail"` and `iss === "https://securetoken.google.com/basileia-oikonomos-gmail"` on every Firebase ID token, per Firebase's own documented token contract. Confirm this against real documentation/the token's actual decoded shape, not just this note, before hardcoding it.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-05T20:14:00Z] [CX] Implemented: `jose`-based JWKS verifier against Google's real Firebase key endpoint (correct issuer/audience/algorithm, plus issued-at/auth_time sanity checks), UID-scoped session tokens, `POST /auth/google`, all 8 formerly-hardcoded `"basileia"` call sites replaced with `request.tenantId`, bearer-token path preserved with an explicit `SERVICE_TENANT_ID` constant. Reported control-api 161/161, full recursive suite/build/lint green.
+- [2026-09-05T22:20:00Z] [ORCH] Read the actual implementation directly, not taken on trust — genuinely correct: real JWKS endpoint, correct issuer/audience per Firebase's documented contract, RS256 enforced, all 8 sites verified replaced, the real-Postgres two-user isolation test (`POST /auth/google` → real `POST /roles` → real `GET /roles`, two fake-verified UIDs) genuinely proves disjoint role lists through the full real pipeline, not mocked. **REWORK for one real, demonstrated gap**: the live-Postgres integration test creates two real roles but never cleans them up — confirmed by direct query, 8 leftover rows had already accumulated in shared dev Postgres from review runs alone (cleaned up by ORCH). This is the exact same class of issue TASK-121 was sent to rework for earlier this session (a real production bug — `listThreads` — was traced back to an identical uncleaned-fixture pattern). Add a `finally`-block cleanup deleting the two created roles (and anything else they cascade-create) after the test, matching `chatRunDriver.test.ts`'s/`roles.test.ts`'s existing `cleanup()` convention in this codebase. Everything else is approved as-is; resubmit once this one test gains real cleanup.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/package.json, pnpm-lock.yaml, dossiers/TASK-172.md
+**Test_Evidence:** Independently re-verified: control-api 162/162 (matches, plus confirms no regression), read the real JWKS/issuer/audience verification code directly and confirmed it's correct.
+**Review_Findings:** REWORK — one real gap (missing test cleanup, demonstrated with live evidence: 8 leftover rows found and removed), not a design or security defect. Core implementation (token verification, tenant scoping, all 8 replaced call sites, bearer-token path preservation) is correct and will not need to change.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T20:03:48Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T22:20:00Z
 
 ### TASK-173
 **Title:** Real per-user auth (mobile) — replace the shared-token login screen with Google Sign-In
