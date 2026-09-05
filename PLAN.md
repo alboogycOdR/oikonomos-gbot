@@ -4989,7 +4989,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-169
 **Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenSandbox server is real and deployed (OIK-042, infra/sandbox/README.md, live over Tailscale). packages/sandbox-client (TASK-142, done) proved connectivity and basic lifecycle — but its real exported SandboxClient interface (packages/sandbox-client/src/client.ts) has ONLY createSandbox/destroySandbox — confirmed by reading the file directly, no execute/run-command/exec method exists at all. OIK-043 (route real chat/task execution through an OpenSandbox sandbox instead of TASK-153's local scoped temp-dir isolation) is now dependency-eligible (OIK-033/harness-factory landed) but genuinely CANNOT be built yet — there is nothing to route work through inside a sandbox once created. This task is the missing prerequisite slice, matching TASK-142's own thin-slice discipline.
@@ -5002,15 +5002,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Unit tests cover request/response shaping against a fake transport, including a timeout/failure path
 - [ ] The API key/credential handling matches TASK-142's existing resolver convention — no new credential-handling pattern invented
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-169-cx9
+**Started_At:** 2026-09-05T17:48:39Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T19:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T17:48:39Z
 
 ### TASK-170
 **Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
