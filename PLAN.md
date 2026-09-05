@@ -1,8 +1,8 @@
 ---
-plan_version: 14.8
-last_updated: 2026-09-06T00:55:00Z
+plan_version: 14.9
+last_updated: 2026-09-06T01:00:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-180 (CX9, group routing engine, one legitimate scope-narrowing round) and TASK-161 (GB, bash->Node isolation-test fix, caught a real mistake in ORCH's own earlier re-point) both approved and merged. Found and fixed two real, load-bearing bugs in TASK-176's already-merged skills.ts (broken UUID regex, ambiguous-column join) that went undetected during that review because the integration tests meant to catch them were silently skipped (migration 014 wasn't applied to the dev DB during that review) — corrected honestly in TASK-176's own record, commit 1daec39. TASK-184 (CX, protected) still resuming after a second real widen (connectorResolution.ts, grant-to-tool admission gap). TASK-177 (S5) needs_review, not yet processed this pass. TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
+orchestrator_notes: "TASK-177 (S5, Skills API + /skill prompt injection) approved and merged, including flipping its .skip'd integration test back to real (now that TASK-176's UUID bug is fixed) and adding the fixture cleanup it was missing. Its review surfaced a real, CRITICAL, live security gap: GET/PATCH /skills/:id and the pre-existing GET /runs/:id, /runs/:id/evidence, /threads/:id(/stream) all fetch/mutate by bare ID with no tenant-ownership check — a cross-tenant IDOR that was harmless under the old single-tenant model but is now genuinely exploitable since TASK-172 made tenants real per-user identities. Opened TASK-190 (critical priority) and dispatched immediately to S5 rather than leaving it in backlog. Real on-device mobile testing is also underway with the user directly (localhost->Tailscale-IP baseUrl config issue found and fixed via --dart-define rebuild; a diagnostic error-message improvement shipped to unblock further triage). TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
 ---
 
 # Project Plan
@@ -5235,7 +5235,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-177
 **Title:** G-01b — Skills API + `/skill` resolution into the run's system context
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01 (AC anchors: injected exactly once, below the persona; disabled skill not invocable, enforced server-side); report §6.1 instruction precedence stack (skill body sits below Bot description, above the message); Addendum F §3.2 N12
@@ -5243,19 +5243,21 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** TASK-175, TASK-176
 **Description:** Two halves. (A) control-api: CRUD routes for skills (`GET/POST /skills`, `GET/PATCH /skills/:id`, `PUT /roles/:roleId/skills/:skillId {enabled}`, `GET /roles/:roleId/skills`), auth-gated like every other route, added to openapi.ts. (B) worker: when a user message contains one or more `/name` tokens that match a skill ENABLED for the task's role, promptAssembly.ts appends a single `## Skill: name` block (when_to_use, steps body, validate, returns, approvals) to the system prompt AFTER the role persona block and never duplicates a skill referenced twice. A `/name` that matches a skill not enabled for this role (or non-existent) is left as plain text and a system-visible note `skill 'name' is not enabled for this bot` is added to the run's system context — the enforcement is server-side in the worker, not in the composer UI. The skill block is prompt material only: nothing in packages/policy or packages/broker reads it (N12). Do not touch chatRunDriver.ts — TASK-175 carved promptAssembly.ts precisely so this task owns its own file.
 **Acceptance_Criteria:**
-- [ ] A run whose message contains `/weekly-export` for an enabled skill has exactly one `## Skill: weekly-export` block in the assembled system prompt, positioned after the persona block (unit test on promptAssembly with a fake skill reader)
-- [ ] The same token for a skill disabled for that role yields no block and the not-enabled note (unit test); the route layer cannot bypass this because injection happens in the worker
-- [ ] All five routes are auth-gated and covered by skills.routes.test.ts; openapi.ts documents them
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-177-s5
+- [x] A run whose message contains `/weekly-export` for an enabled skill has exactly one `## Skill: weekly-export` block in the assembled system prompt, positioned after the persona block (unit test on promptAssembly with a fake skill reader)
+- [x] The same token for a skill disabled for that role yields no block and the not-enabled note (unit test); the route layer cannot bypass this because injection happens in the worker
+- [x] All five routes are auth-gated and covered by skills.routes.test.ts; openapi.ts documents them
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** task/TASK-177-s5 (merged, deleted)
 **Started_At:** 2026-09-05T22:05:11Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T00:20:00Z] [S5] Implemented both halves exactly to spec. `chatRunDriver.ts` deliberately untouched (real live wiring of `assembleSystemPrompt` into the driver is a later task's job). Discovered but correctly did not fix (out of Owned_Paths): `packages/db/src/skills.ts`'s `UUID_RE` bug (see TASK-176's correction note) breaks `GET/PATCH /skills/:id` against real data — flagged honestly, integration test committed `.skip`'d with a pointer to the bug rather than silently working around it or editing outside territory.
+- [2026-09-06T01:00:00Z] [ORCH] Independently re-verified: read the full diff — real per-tenant scoping on list/create (`request.tenantId`), correct 501-guard pattern for the optional `ControlApiDeps` fields (avoids an out-of-territory edit to unrelated fixtures), `assembleSystemPrompt`'s ordering/dedup/not-enabled-note logic matches spec exactly. Ran targeted tests, full `pnpm -r build`/`lint` myself (clean) and again after merge. Since `packages/db/src/skills.ts`'s bug was fixed on master in the meantime (commit `1daec39`), flipped the `.skip`'d integration test back to real per its own documented intent, and added fixture cleanup it was missing (role_skills → skills/role_grants → roles) — cleaned up 8 leftover roles/3 leftover skills already accumulated from prior runs. Verified 11/11, full control-api suite 173/173, build/lint clean (commit `797c64b`). **Separately found a real, pre-existing cross-tenant access-control gap while reviewing this task's new by-id routes** (see TASK-190) — not a defect introduced by this task (it matches the codebase's existing `GET /runs/:id` convention), but now genuinely exploitable given TASK-172 made tenants real per-user identities. Approved and merged on its own merits; TASK-190 opened separately for the broader fix.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/skills.routes.test.ts, services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts, dossiers/TASK-177.md
+**Test_Evidence:** Independently re-verified: skills.routes.test.ts 11/11 (integration test flipped from skip to real post-fix), promptAssembly.test.ts 12/12, full control-api suite 173/173, pnpm -r build/lint clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED first-pass. Spec-exact implementation on both halves; honestly flagged a real out-of-territory bug rather than working around it. Review itself surfaced a separate, real cross-tenant IDOR gap on by-id routes across the codebase (not unique to this task) — split into TASK-190, high priority.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T22:05:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T01:00:00Z
 
 ### TASK-178
 **Title:** G-01c — Skills on mobile: library screen, per-bot enable toggle, `/` picker in the composer
@@ -5563,3 +5565,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T00:20:00Z
+
+### TASK-190
+**Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** Found during TASK-177 review 2026-09-06: `GET /skills/:id`, `PATCH /skills/:id` (new, TASK-177) and the pre-existing `GET /runs/:id`, `GET /runs/:id/evidence`, `GET /threads/:id`, `GET /threads/:id/stream` all fetch or mutate a record by bare ID with **no check that the record belongs to the caller's tenant**. This is a real, not theoretical, cross-tenant IDOR: any authenticated user can read or overwrite another tenant's skill/run/thread by guessing or observing its UUID. It predates this session — the pattern was already there for `/runs/:id` — but was harmless while every session shared one hardcoded tenant (`basileia`). **TASK-172 made tenants real, distinct, per-Google-account identities, which makes this a genuine, live confidentiality+integrity gap starting now**, not a latent one. CLAUDE.md non-negotiable §7 ("ACL filter before vector similarity, never after") establishes the same principle for a different mechanism; this is its by-id-route analogue.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/app.test.ts (or per-route test files as they already exist — grep for the existing test file per route before creating a new one), packages/db/src/skills.ts, packages/db/src/runs.ts, packages/db/src/threads.ts (add tenant-checked variants or tenant params only where a real check is missing — READ each file first, some may already filter correctly at a layer this task hasn't seen yet)
+**Depends_On:** —
+**Description:** Audit first, fix second — do not assume every route in the grep result is actually vulnerable; some may already be scoped at a layer not visible from `app.ts` alone (check `deps.getRun`/`deps.getSkill`/etc.'s actual DB implementation, not just the route handler). For each confirmed gap: either (a) add a `tenantId` parameter to the DB-layer getter/updater that filters in the SQL `WHERE` clause (preferred — fails closed, matches `listSkills`'s existing `tenantId` filter pattern), or (b) if the DB layer can't easily take a tenant filter (e.g. `getRun` doesn't know about tenancy at all), check `request.tenantId === record.tenantId` in the route handler after fetching and return 404 (not 403 — never confirm existence to a non-owner) on mismatch. Pick (a) wherever the record's owning table already has a `tenant_id` column (skills does; check runs/threads). Write a real cross-tenant test for every fixed route: create the record under tenant A, request it authenticated as tenant B, assert 404. Do not weaken this to a 403 (that leaks existence) or skip it for "low value" routes — every by-id route in the audit list needs its own test.
+**Acceptance_Criteria:**
+- [ ] Every route named in Spec_References either has a demonstrated real tenant check (test: tenant A creates, tenant B requests, gets 404) or is proven already safe by an existing check this task found and documented (cite the exact line)
+- [ ] No route changes from 404 to 403 on a cross-tenant request (403 would confirm the record exists to a non-owner)
+- [ ] `PATCH`/mutating by-id routes are covered by the same cross-tenant test as `GET` ones — a write path with no isolation check is the higher-severity half of this bug
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T01:00:00Z
