@@ -343,3 +343,19 @@ TASK-176's original approval said its two-role enablement isolation test "genuin
 Once migration 014 was later applied to the real dev DB (by a subsequent builder session that needed it) and TASK-177 exercised `skills.ts` against real data for the first time, S5 found two real, load-bearing bugs: `UUID_RE` was missing a hex group (rejecting every real UUID — `getSkill`/`updateSkill`/`setEnabledForRole`/`listEnabledForRole` were all completely broken against real data), and `listEnabledForRole`'s join produced an ambiguous-column SQL error. Both confirmed and fixed directly (commit `1daec39`, `packages/db/src/skills.ts` was not owned by any active task) — verified `skills.test.ts` 4/4, full package suite 159/159.
 
 Lesson recorded for future reviews: a `DATABASE_URL`-integration-gated test suite must be checked for **actually running**, not merely present with good assertions — a migration-gate gap is exactly as dangerous as a fixture-cleanup gap, and this session has now hit both classes.
+
+## TASK-190 | S5 | approved (partial scope) | first-pass on the scope actually completed
+
+Cross-tenant IDOR fix, part 1: `GET/PATCH /skills/:id`, `GET /runs/:id`, `GET /runs/:id/evidence`. 404 (never 403 — a 403 leaks existence to a non-owner) on a cross-tenant request; `PATCH` verifies ownership before ever reaching `updateSkill`. Real regression tests, including one proving a cross-tenant PATCH never reaches the mutating call at all.
+
+The `/threads/:id/*` half was investigated (design fully worked out, left as a documented stub) but not shipped this round — a real, mechanically-confirmed tooling problem: TASK-190's own `Owned_Paths` field contained parenthetical rationale prose with commas, and the territory hook's naive comma-split corrupted the very path tokens the task needed to touch. This was an authoring mistake by ORCH (Owned_Paths must be a bare path list; rationale belongs in Description only), not a hook defect — confirmed by reading `hooks/lib.js` directly. Rather than force a fix through a broken parser or guess at a workaround, S5 reported it and reverted the incomplete work. Split into TASK-191 with corrected Owned_Paths.
+
+Independently re-verified: read the diff, ran the new tests, full control-api suite (177/177), and `pnpm -r build`/`lint` — clean, both in the worktree and after merge. Approved and merged the completed scope immediately rather than let a critical security fix wait on the untestable remainder. Live control-api server rebuilt and restarted with the fix.
+
+## TASK-191 | S5 | approved | first-pass: yes
+
+Cross-tenant IDOR fix, part 2 (closes the class opened by TASK-190): `GET/POST /threads/:id/messages`, `POST /threads/:id/attachments`, `GET /threads/:id/stream`. `findTenantOwnedThread()` resolves ownership via the existing `deps.listRoles({tenantId})` source of truth (no new SQL join needed) — a 1:1 thread via `roleId`, a group thread only if **every** `memberRoleIds` entry resolves under the caller's tenant (deliberately not "any member matches"). Both write routes verify ownership before ever reaching `insertMessage`/attachment persistence.
+
+Also fixed `chat.routes.test.ts`/`sse.test.ts`'s pre-existing fixtures to supply the role/thread data the real check now requires — every fix adds missing data to satisfy a real check, never loosens an assertion (confirmed by reading the diffs directly, including that the call-order assertions correctly grew a new `listRoles` step rather than being weakened around it).
+
+Independently re-verified: read the full diff, ran the complete control-api suite myself (183/183, including a real-Postgres group-thread integration test on the actual production path), `pnpm -r build`/`lint` — clean, both in the worktree and after merge. Merged --no-ff. This closes the cross-tenant IDOR class entirely; live server rebuilt and restarted with the complete fix.

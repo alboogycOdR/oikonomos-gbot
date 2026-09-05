@@ -1,8 +1,8 @@
 ---
-plan_version: 15.1
-last_updated: 2026-09-06T02:00:00Z
+plan_version: 15.2
+last_updated: 2026-09-06T01:50:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-184 (CX, protected, request_secret) is PAUSED after a third correctly-diagnosed block: no sealed-secret vault/resolver subsystem exists anywhere in this codebase (only a path-denial guard and a static env-var resolver convention) — this task's Description quietly assumed one already existed. Unlike its first two blocks (real but narrow integration gaps, fixed by targeted widens), this is real, undesigned architecture — stopping the widen-and-redispatch cycle rather than improvise a secret-at-rest storage decision under review pressure. Needs a proper design pass (ADR-candidate) and a re-decompose into a dependency chain (vault/resolver, TASK-067 renderer extension, then this tool) before further work. Not urgent — request_secret is a net-new feature, nothing live is exploitable. TASK-190's skills/runs IDOR fix is merged and live (control-api rebuilt+restarted); TASK-191 (threads half) dispatched to S5 with a corrected, clean-path-list Owned_Paths after S5 found a real authoring mistake in my own TASK-190 (rationale-with-commas corrupting the territory hook's parser — lesson: Owned_Paths must always be a bare path list, rationale goes in Description only). Real on-device mobile Google auth confirmed working end-to-end by the user. TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
+orchestrator_notes: "The cross-tenant IDOR class opened by TASK-177's review is now FULLY CLOSED: TASK-190 (skills/runs) and TASK-191 (threads, including group-thread 'every member' semantics) both approved, merged, and live — control-api rebuilt and restarted with the complete fix. TASK-184 (CX, protected, request_secret) remains PAUSED after a third correctly-diagnosed block: no sealed-secret vault/resolver subsystem exists anywhere in this codebase, only a path-denial guard and a static env-var convention — real, undesigned architecture, needs a proper design pass (ADR-candidate) before further work, not urgent since nothing live is exploitable. Real on-device mobile Google auth confirmed working end-to-end by the user this session. TASK-169 stays blocked on the human action item (real OpenSandbox API key). No builders currently active — S5/CX9/GB idle, CX paused on TASK-184."
 ---
 
 # Project Plan
@@ -5596,7 +5596,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-191
 **Title:** Security — enforce tenant ownership on `/threads/:id/*` by-id routes (cross-tenant IDOR, part 2)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Split from TASK-190 (see its Progress_Notes 2026-09-06T01:30:00Z) — same real, live cross-tenant IDOR class, this time on `GET /threads/:id/messages`, `POST /threads/:id/messages`, `POST /threads/:id/attachments`, and `GET /threads/:id/stream`. The design is already worked out: a `threadBelongsToTenant` stub/comment exists at each affected route in `app.ts` from TASK-190's investigation — derive ownership from `thread.roleId` (1:1) via `deps.listRoles({ tenantId })`, or, for a group thread, require EVERY id in `thread.memberRoleIds` to resolve to a role owned by the caller's tenant.
@@ -5604,17 +5604,19 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Implement the design already left in `app.ts`'s comments from TASK-190. `chat.routes.test.ts`/`sse.test.ts`'s existing fixtures will need their `listRoles`/thread/member-role setup updated to match real ownership (several exercise group threads whose member roles must resolve correctly under the new check) — expect to touch both files' fixtures, not just add new tests. Same non-negotiables as TASK-190: 404 never 403 on a cross-tenant request; a real cross-tenant test for every route (tenant A creates/owns the thread, tenant B requests it, gets 404); the write paths (`POST /threads/:id/messages`, `POST /threads/:id/attachments`) are the higher-severity half — each needs its own test proving a cross-tenant write never reaches `insertMessage`/attachment persistence at all. If `packages/db/src/threads.ts` needs a tenant-aware variant of an existing getter to make this clean, add it there rather than only checking post-fetch in `app.ts`, matching TASK-190's stated preference for a SQL-level filter when the table already carries `tenant_id` (it does, via the owning role's roles table — join or two-step lookup, whichever `threads.ts`'s existing conventions favor).
 **Acceptance_Criteria:**
-- [ ] `GET/POST /threads/:id/messages`, `POST /threads/:id/attachments`, `GET /threads/:id/stream` each 404 (never 403) on a cross-tenant request (real test: tenant A's thread, tenant B's session)
-- [ ] The two write routes (`POST /threads/:id/messages`, `POST /threads/:id/attachments`) are proven to never reach `insertMessage`/attachment persistence for a cross-tenant request (test)
-- [ ] A group thread is correctly denied to a caller whose tenant does not own EVERY member role, not just one (test) — do not accept "any member matches" as sufficient
-- [ ] All of chat.routes.test.ts and sse.test.ts's existing tests still pass (fixtures updated to match, not the check weakened)
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** task/TASK-191-s5
+- [x] `GET/POST /threads/:id/messages`, `POST /threads/:id/attachments`, `GET /threads/:id/stream` each 404 (never 403) on a cross-tenant request (real test: tenant A's thread, tenant B's session)
+- [x] The two write routes (`POST /threads/:id/messages`, `POST /threads/:id/attachments`) are proven to never reach `insertMessage`/attachment persistence for a cross-tenant request (test)
+- [x] A group thread is correctly denied to a caller whose tenant does not own EVERY member role, not just one (test) — do not accept "any member matches" as sufficient
+- [x] All of chat.routes.test.ts and sse.test.ts's existing tests still pass (fixtures updated to match, not the check weakened)
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** task/TASK-191-s5 (merged, deleted)
 **Started_At:** 2026-09-05T23:30:19Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T01:45:00Z] [S5] Implemented `findTenantOwnedThread()` at the app.ts route layer (no packages/db/src/threads.ts change needed — resolves ownership via the existing `deps.listRoles({tenantId})` source of truth, same one GET /threads already uses, rather than adding a SQL join for a table this module doesn't otherwise touch): a 1:1 thread is owned via `thread.roleId`; a group thread requires EVERY `memberRoleIds` entry to resolve under the caller's tenant. Wired into all four named routes; write paths (POST messages/attachments) check ownership before ever calling insertMessage/attachment persistence. Fixed chat.routes.test.ts/sse.test.ts's pre-existing fixtures to supply real, matching listRoles/thread data rather than weakening any assertion — the call-order assertions now correctly include the new listRoles call. 6 new regression tests added via TASK-190's in-source includeSource pattern. Full control-api suite 183/183, pnpm -r build/lint clean.
+- [2026-09-06T01:50:00Z] [ORCH] Independently re-verified, not trusted: read the full app.ts diff (findTenantOwnedThread's group-thread "every member" logic matches spec exactly, 404-never-403 uniform, write-path pre-checks correct) and both fixture diffs (chat.routes.test.ts's changes add the missing roles/thread data the real check now requires — including the exact "listRoles" step in the call-order assertions — never loosen an assertion; sse.test.ts adds a matching role fixture for the SERVICE_TENANT_ID bearer-token path). Ran the full control-api suite myself (183/183, including a real-Postgres group-thread integration test exercising the actual production DB path) and pnpm -r build/lint (clean) — both in the worktree and again in the main checkout after merge. Approved, merged --no-ff. Rebuilt and restarted the live control-api server with the complete fix (both TASK-190 and TASK-191).
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, dossiers/TASK-191.md
+**Test_Evidence:** Independently re-verified: full control-api suite 183/183 (including real-Postgres integration coverage), pnpm -r build/lint clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED first-pass. Correct, complete implementation closing the cross-tenant IDOR class TASK-190 opened — group-thread "every member" semantics, 404-never-403, write-path pre-checks, and genuinely-fixed (not weakened) pre-existing test fixtures. This closes the critical security finding from TASK-177's review.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T23:30:19Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T01:50:00Z
