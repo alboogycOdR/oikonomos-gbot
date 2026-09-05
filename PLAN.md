@@ -5199,7 +5199,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-176
 **Title:** G-01a — Skills primitive: schema, migration, typed query layer (packages/db)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01; docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §12.3 schemas/skill.yaml; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.4 (six-part structure); Addendum F §3.2 N12 (a skill body is prompt material, never a control)
@@ -5211,15 +5211,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A skill name that violates the slash-token regex is rejected by the DB constraint AND by the typed layer (both tested)
 - [ ] listEnabledForRole returns only skills whose role_skills.enabled is true for that role, never another role's enablement (tested with two roles, one skill)
 - [ ] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-176-cx9
+**Started_At:** 2026-09-05T21:31:08Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T21:31:08Z
 
 ### TASK-177
 **Title:** G-01b — Skills API + `/skill` resolution into the run's system context
