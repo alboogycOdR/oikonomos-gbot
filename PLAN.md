@@ -4904,7 +4904,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-166
 **Title:** Chat file/image attachments — real upload capability, currently entirely absent
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** Real gap named by the user comparing against the Grok Bot reference app's `+` attach button (image/file upload in the composer): confirmed by grep, ZERO attachment/upload capability exists anywhere in this codebase today — no upload endpoint, no attachment column on `packages/db/src/messages.ts`'s `Message`/`NewMessage`, no storage location, no agent-side way to read an uploaded file. This is a real, sizable capability gap, not UI polish — do not scope this as "add a button."
@@ -4918,15 +4918,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A genuine end-to-end round trip proves the agent can actually access an uploaded file's content, not just that it was stored — tested
 - [ ] Reasonable size/type limits are enforced server-side (not just client-side), with a clear rejection message on violation
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-166-gb
+**Started_At:** 2026-09-05T15:37:19Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T18:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T15:37:19Z
 
 ### TASK-167
 **Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
