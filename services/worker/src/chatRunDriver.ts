@@ -21,11 +21,16 @@ import {
 import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
-import { completeTaskRun, failTaskRun, parkTaskRun, startTaskRun } from "./runLifecycle.js";
+import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
 import type { RunParkPort } from "@oikonomos/harness-factory/compose";
 
-export interface ChatRunRequest { readonly task: Task; readonly threadId: string; }
+export interface ChatRunRequest {
+  readonly task: Task;
+  readonly threadId: string;
+  /** Continue this persisted Agent SDK session instead of starting a new run. */
+  readonly resume?: { readonly runId: string; readonly sessionRef: string };
+}
 export interface ChatRunDriver { run(request: ChatRunRequest): Promise<void>; }
 export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly manifestsDir?: string;
@@ -158,8 +163,20 @@ async function runChatTask(
       policies: mountedToolNames.map((toolName) => ({ toolName })),
       manifestToolNames: [...registry.enabledToolNames],
     });
-    const run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
-    runId = run.runId;
+    let run;
+    if (request.resume === undefined) {
+      run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
+      runId = run.runId;
+    } else {
+      runId = request.resume.runId;
+      if (request.resume.sessionRef.trim().length === 0) {
+        throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is empty.`);
+      }
+      run = await resumeInterruptedRun(options, runId);
+      if (run.sessionRef === null) {
+        throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
+      }
+    }
     const workspace = await createChatRunWorkspace(run.runId);
     let result;
     try {
@@ -170,7 +187,11 @@ async function runChatTask(
         allowedTools: ["Bash(*)", "Read(*)"],
         // Never inherit the worker process cwd or environment into a bot.
         // The Agent SDK forwards these values to its Bash/Read tool process.
-        agentSdkOptions: { cwd: workspace, env: {} },
+        agentSdkOptions: {
+          cwd: workspace,
+          env: {},
+          ...(request.resume === undefined ? {} : { resume: run.sessionRef }),
+        },
         ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
         ...(connector === undefined ? {} : { connector }),
         brokerDependencies: createBrokerDependencies(options, database, registry, policy),
@@ -465,4 +486,7 @@ export async function deliverBotToBotMessage(
 function assertRequest(request: ChatRunRequest): void {
   if (typeof request?.threadId !== "string" || request.threadId.trim().length === 0) throw new Error("chat run requires threadId.");
   if (typeof request?.task?.taskId !== "string" || request.task.taskId.trim().length === 0) throw new Error("chat run requires task.");
+  if (request.resume !== undefined && (typeof request.resume.runId !== "string" || request.resume.runId.trim().length === 0 || typeof request.resume.sessionRef !== "string")) {
+    throw new Error("chat run resume requires a runId and sessionRef.");
+  }
 }

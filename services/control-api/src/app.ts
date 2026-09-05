@@ -984,6 +984,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         const { decision, decidedBy } = request.body;
         const result = await deps.decideApproval(request.params.nonce, decision, decidedBy);
         if (result.decided) {
+          if (decision === "granted") {
+            await resumeApprovedChatRun(deps, result.approval, request.log);
+          }
           await reply.code(200).send({ decided: true, approval: serializeApproval(result.approval) });
           return;
         }
@@ -1056,4 +1059,30 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   );
 
   return app;
+}
+
+/**
+ * An approval belongs to a run, while the chat worker needs the task and
+ * thread. Chat tasks persist that thread identity in requestedBy; only a
+ * parked chat run with a real Agent SDK session is eligible for continuation.
+ */
+async function resumeApprovedChatRun(
+  deps: ControlApiDeps,
+  approval: Approval,
+  log: { error(error: unknown, message: string): void },
+): Promise<void> {
+  const run = await deps.getRun(approval.runId);
+  if (run?.status !== "waiting_approval" || run.sessionRef === null) return;
+  const task = await deps.getTask(run.taskId);
+  const threadId = task === null ? undefined : chatThreadId(task.requestedBy);
+  if (task === null || threadId === undefined) return;
+  void deps.runChatTask({ task, threadId, resume: { runId: run.runId, sessionRef: run.sessionRef } }).catch((error: unknown) => {
+    log.error(error, "chat run failed while resuming after approval");
+  });
+}
+
+function chatThreadId(requestedBy: string): string | undefined {
+  const prefix = "chat:thread:";
+  const threadId = requestedBy.startsWith(prefix) ? requestedBy.slice(prefix.length).trim() : "";
+  return threadId.length === 0 ? undefined : threadId;
 }

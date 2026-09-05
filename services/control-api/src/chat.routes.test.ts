@@ -4,7 +4,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   Database,
   defaultPoolConfig,
+  createTask,
+  insertApproval,
   insertMessage,
+  listMessages,
+  listRuns,
+  parkRun,
+  startRun,
   listAllThreadsWithMembers,
   listRoutines,
   listThreadMembers,
@@ -102,6 +108,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     insertMessage: async (input) => { calls.push("insertMessage"); return makeMessage(input); },
     listMessages: async () => { calls.push("listMessages"); return [makeMessage()]; },
     listTasks: async () => ({ tasks: [], nextCursor: null }),
+    getTask: async () => null,
     listRuns: async () => ({ runs: [], nextCursor: null }),
     getRun: async () => null,
     listPendingApprovals: async () => [],
@@ -264,6 +271,31 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(calls).toEqual(["listAllThreadsWithMembers", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
+    await app.close();
+  });
+
+  it("grants a parked chat approval by dispatching the persisted run/session back to the worker, but never dispatches on rejection (TASK-155)", async () => {
+    const runId = randomUUID();
+    const sessionRef = randomUUID();
+    const task = makeTask();
+    const approval = makeApproval(runId);
+    const dispatched: Array<Record<string, unknown>> = [];
+    const { deps } = createDeps({
+      decideApproval: async (_nonce, decision) => decision === "granted"
+        ? { decided: true, rowCount: 1, approval: { ...approval, status: "granted" } }
+        : { decided: true, rowCount: 1, approval: { ...approval, status: "rejected" } },
+      getRun: async () => ({ runId, taskId: task.taskId, tenantId: task.tenantId, provider: "claude", sessionRef, status: "waiting_approval", startedAt: new Date(), endedAt: null, failureNote: null }),
+      getTask: async () => task,
+      runChatTask: async (input) => { dispatched.push(input as unknown as Record<string, unknown>); },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const granted = await app.inject({ method: "POST", url: `/approvals/${approval.nonce}/decide`, headers: authHeaders(), payload: { decision: "granted", decidedBy: "human:test" } });
+    expect(granted.statusCode).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(dispatched).toEqual([expect.objectContaining({ task, threadId, resume: { runId, sessionRef } })]);
+    const rejected = await app.inject({ method: "POST", url: `/approvals/${approval.nonce}/decide`, headers: authHeaders(), payload: { decision: "rejected", decidedBy: "human:test" } });
+    expect(rejected.statusCode).toBe(200);
+    expect(dispatched).toHaveLength(1);
     await app.close();
   });
 
@@ -648,6 +680,95 @@ integration("Role routines — cron scheduling, real Postgres (TASK-134)", () =>
       expect(JSON.parse(listRes.body)).toEqual(expect.arrayContaining([expect.objectContaining({ routineId: created.routineId })]));
     } finally {
       await app.close();
+    }
+  });
+});
+
+integration("POST /approvals/:nonce/decide — continues a parked chat run, real Postgres (TASK-155)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("grants a real pending approval, resumes its persisted SDK session, and appends the continuation to the original thread", async () => {
+    const roleId = `task-155-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+    let app: ReturnType<typeof buildApp> | undefined;
+    try {
+      const roleResult = await pool.query<{ role_id: string }>(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description)
+         VALUES ($1, 'basileia', $1, 'TASK-155 route fixture', 'TASK-155 route fixture')
+         RETURNING role_id`,
+        [roleId],
+      );
+      expect(roleResult.rows[0]?.role_id).toBe(roleId);
+      const threadResult = await pool.query<{ id: string }>(
+        "INSERT INTO threads (role_id) VALUES ($1) RETURNING id",
+        [roleId],
+      );
+      const resumedThreadId = threadResult.rows[0]!.id;
+      const task = await createTask(options, {
+        roleId,
+        title: "TASK-155 approval continuation",
+        goal: "Continue after the operator grants approval.",
+        requestedBy: `chat:thread:${resumedThreadId}`,
+      });
+      const sessionRef = randomUUID();
+      const parked = await startRun(options, {
+        taskId: task.taskId,
+        provider: "claude",
+        tenantId: task.tenantId,
+        sessionRef,
+      });
+      await parkRun(options, parked.runId);
+      const approval = await insertApproval(options, {
+        runId: parked.runId,
+        capabilityId: "email.send",
+        actionDigest: Buffer.from("task-155-approval"),
+        actionRender: "Continue the parked chat run",
+        destination: "operator@example.test",
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      let observedResume: unknown;
+      const queryFn = async function* (input: { options?: { resume?: unknown } }) {
+        observedResume = input.options?.resume;
+        yield { type: "result" as const, result: "The resumed SDK session completed." };
+      };
+      app = buildApp(
+        createDatabaseBackedDeps({ ...options, chatRunDriverOptions: { queryFn } }),
+        { authToken: TOKEN, logger: false },
+      );
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/approvals/${approval.nonce}/decide`,
+        headers: authHeaders(),
+        payload: { decision: "granted", decidedBy: "human:task-155" },
+      });
+      expect(response.statusCode).toBe(200);
+
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const run = (await listRuns(options, { taskId: task.taskId })).runs[0];
+        if (run?.status === "completed") break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(observedResume).toBe(sessionRef);
+      expect((await listRuns(options, { taskId: task.taskId })).runs[0]).toMatchObject({
+        runId: parked.runId,
+        status: "completed",
+        sessionRef,
+      });
+      expect((await listMessages(options, resumedThreadId)).find((message) => message.runId === parked.runId)?.body)
+        .toBe("The resumed SDK session completed.");
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
     }
   });
 });

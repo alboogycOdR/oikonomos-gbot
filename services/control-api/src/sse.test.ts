@@ -62,6 +62,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     insertMessage: async (input) => makeMessage(input),
     listMessages: async () => [],
     listTasks: async () => ({ tasks: [], nextCursor: null }),
+    getTask: async () => null,
     listRuns: async () => ({ runs: [], nextCursor: null }),
     getRun: async () => null,
     listPendingApprovals: async () => [],
