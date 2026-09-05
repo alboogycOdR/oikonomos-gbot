@@ -104,6 +104,13 @@ const CREATE_ROLE_SCHEMA = {
   properties: { name: { type: "string" }, description: { type: "string" } },
 } as const;
 
+const UPDATE_ROLE_INSTRUCTIONS_SCHEMA = {
+  type: "object",
+  required: ["instructions"],
+  additionalProperties: false,
+  properties: { instructions: { type: "string" } },
+} as const;
+
 const CREATE_THREAD_SCHEMA = {
   type: "object",
   required: ["roleId"],
@@ -447,6 +454,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           get: { summary: "List chat bots", operationId: "listRoles", responses: { "200": { description: "Chat bots" } } },
           post: { summary: "Create a chat bot", operationId: "createRole", responses: { "201": { description: "Chat bot created" } } },
         },
+        "/roles/{roleId}": {
+          patch: { summary: "Set chat bot instructions", operationId: "updateRoleInstructions", responses: { "200": { description: "Chat bot updated" } } },
+        },
         "/threads": {
           get: { summary: "List chat threads", operationId: "listThreads", responses: { "200": { description: "Chat threads" } } },
           post: { summary: "Create or return a chat thread", operationId: "createThread", responses: { "201": { description: "Chat thread" } } },
@@ -570,6 +580,23 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           ),
         );
         await reply.code(201).send(serializeRole(role));
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.patch<{ Params: { roleId: string }; Body: { instructions: string } }>(
+    "/roles/:roleId",
+    { schema: { body: UPDATE_ROLE_INSTRUCTIONS_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const role = await deps.updateRoleInstructions(request.params.roleId, request.body.instructions);
+        if (role === null) {
+          await reply.code(404).send({ error: "role not found" });
+          return;
+        }
+        await reply.code(200).send(serializeRole(role));
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }

@@ -5,6 +5,7 @@ import {
   Database,
   defaultPoolConfig,
   createTask,
+  getRole,
   insertApproval,
   insertMessage,
   listMessages,
@@ -54,7 +55,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
 
 function makeRole(overrides: Partial<Role> = {}): Role {
   return {
-    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", status: "active",
+    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", instructions: null, status: "active",
     createdAt: new Date(), updatedAt: new Date(), ...overrides,
   };
 }
@@ -100,6 +101,10 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     listRoleGrants: async () => { calls.push("listRoleGrants"); return []; },
     revokeRoleGrant: async (grantRoleId, capabilityId) => { calls.push(`revokeRoleGrant:${grantRoleId}:${capabilityId}`); },
     listRoles: async () => { calls.push("listRoles"); return [makeRole()]; },
+    updateRoleInstructions: async (updatedRoleId, instructions) => {
+      calls.push("updateRoleInstructions");
+      return makeRole({ roleId: updatedRoleId, instructions });
+    },
     listRoutines: async () => { calls.push("listRoutines"); return []; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
@@ -130,6 +135,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const requests = [
       { method: "GET" as const, url: "/roles" },
       { method: "POST" as const, url: "/roles", payload: { name: "Bot", description: "d" } },
+      { method: "PATCH" as const, url: `/roles/${roleId}`, payload: { instructions: "persona" } },
       { method: "GET" as const, url: "/threads" },
       { method: "POST" as const, url: "/threads", payload: { roleId } },
       { method: "POST" as const, url: "/threads/group", payload: { roleIds: [roleId, "second-bot"] } },
@@ -194,6 +200,33 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { roleId: expect.any(String), capabilityId: "fs.read", maxTier: "T1_draft", constraints: {} },
       { roleId: expect.any(String), capabilityId: "runtime.bash", maxTier: "T3_external", constraints: {} },
     ]);
+    await app.close();
+  });
+
+  it("persists a role's custom instructions through PATCH /roles/:roleId", async () => {
+    const persisted: Array<[string, string]> = [];
+    const { deps } = createDeps({
+      updateRoleInstructions: async (updatedRoleId, instructions) => {
+        persisted.push([updatedRoleId, instructions]);
+        return makeRole({ roleId: updatedRoleId, instructions });
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({
+      method: "PATCH", url: `/roles/${roleId}`, headers: authHeaders(),
+      payload: { instructions: "Answer as a calm research assistant." },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(persisted).toEqual([[roleId, "Answer as a calm research assistant."]]);
+    await app.close();
+  });
+
+  it("rejects a role-instructions PATCH without its required field before persistence", async () => {
+    const { deps, calls } = createDeps();
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({ method: "PATCH", url: `/roles/${roleId}`, headers: authHeaders(), payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(calls).not.toContain("updateRoleInstructions");
     await app.close();
   });
 
@@ -481,6 +514,26 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
       );
     } finally {
       await database.close();
+      await app.close();
+    }
+  });
+
+  it("persists PATCHed role instructions through the real API and Postgres (TASK-156)", async () => {
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const created = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name: `Persona ${randomUUID()}`, description: "Database persona fixture" },
+      });
+      expect(created.statusCode).toBe(201);
+      const role = JSON.parse(created.body) as { id: string };
+      const instructions = "Answer as this bot's dedicated product researcher.";
+      const updated = await app.inject({
+        method: "PATCH", url: `/roles/${role.id}`, headers: authHeaders(), payload: { instructions },
+      });
+      expect(updated.statusCode).toBe(200);
+      expect((await getRole(options, role.id))?.instructions).toBe(instructions);
+    } finally {
       await app.close();
     }
   });

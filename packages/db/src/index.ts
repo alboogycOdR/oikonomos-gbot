@@ -71,6 +71,7 @@ export {
   createRole,
   getRole,
   listRoles,
+  updateRoleInstructions,
   roleStatuses,
   type NewRole,
   type Role,

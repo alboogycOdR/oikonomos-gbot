@@ -302,6 +302,55 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     expect(messages.find((message) => message.runId === parked.runId)?.body).toBe("Approval granted; the original SDK session continued.");
   });
 
+  it("builds a system prompt from the persisted role identity and custom instructions (TASK-156)", async () => {
+    const instructions = "Always introduce yourself as the Northstar analyst.";
+    await pool.query(
+      `UPDATE roles SET name = $2, title = $3, description = $4, instructions = $5 WHERE role_id = $1`,
+      [roleId, "Northstar", "Market Analyst", "Explains market movements with sources.", instructions],
+    );
+    const personaTask = await createTask(options, {
+      roleId,
+      title: "TASK-156 persona fixture",
+      goal: "Say hello.",
+      requestedBy: "task-156-suite",
+    });
+    let observedSystemPrompt: unknown;
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      observedSystemPrompt = (input.options as { systemPrompt?: unknown }).systemPrompt;
+      yield { type: "result", result: "Northstar is ready." };
+    };
+
+    await createChatRunDriver({ ...options, queryFn }).run({ task: personaTask, threadId });
+
+    expect(observedSystemPrompt).toContain("Northstar");
+    expect(observedSystemPrompt).toContain("Market Analyst");
+    expect(observedSystemPrompt).toContain("Explains market movements with sources.");
+    expect(observedSystemPrompt).toContain(instructions);
+  });
+
+  it("uses a non-empty default identity prompt when role instructions are unset (TASK-156)", async () => {
+    await pool.query(`UPDATE roles SET instructions = NULL WHERE role_id = $1`, [roleId]);
+    const defaultPromptTask = await createTask(options, {
+      roleId,
+      title: "TASK-156 default persona fixture",
+      goal: "Say hello without custom instructions.",
+      requestedBy: "task-156-suite",
+    });
+    let observedSystemPrompt: unknown;
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      observedSystemPrompt = (input.options as { systemPrompt?: unknown }).systemPrompt;
+      yield { type: "result", result: "Default identity is ready." };
+    };
+
+    await createChatRunDriver({ ...options, queryFn }).run({ task: defaultPromptTask, threadId });
+
+    expect(observedSystemPrompt).toContain("Northstar");
+    expect(observedSystemPrompt).toContain("Market Analyst");
+    expect(observedSystemPrompt).toContain("Explains market movements with sources.");
+    expect(observedSystemPrompt).toMatch(/\S/);
+    expect(observedSystemPrompt).not.toContain("Your custom instructions:");
+  });
+
   it("fails a parked run cleanly when its SDK continuation fails, without fabricating a bot response (TASK-155)", async () => {
     const resumeTask = await createTask(options, {
       roleId,
