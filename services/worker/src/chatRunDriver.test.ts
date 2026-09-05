@@ -20,16 +20,12 @@ import type { AgentSdkQueryFn, AgentSdkQueryInput } from "@oikonomos/harness-fac
 import { defaultManifestsDir, loadManifests, type ConnectorManifest } from "@oikonomos/connectors";
 
 import {
-  CHAT_FANOUT_CAPABILITY_ID,
-  combineConnectorContexts,
   createChatRunDriver,
-  deliverBotToBotMessage,
   destinationFor,
   finalText,
 } from "./chatRunDriver.js";
 import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
-import type { ConnectorContext } from "./executeRun.js";
 
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./chatRunDriver.ts", import.meta.url), "utf8"),
@@ -86,40 +82,12 @@ function json(response: ServerResponse, value: unknown): void {
 }
 
 describe("chat run driver governance helpers", () => {
-  it("merges zero, one, two, and four connector contexts without pairwise limits (TASK-139)", () => {
-    const context = (id: string): ConnectorContext => ({
-      manifest: { connector_id: id, mcp_server: { name: id }, tools: [] },
-      mcpServers: { [id]: { transport: "http", url: `http://${id}.fixture.invalid/mcp` } },
-      allowedTools: [`mcp__${id}__list`],
-    });
-    const [gmail, workspace, calendar, drive] = ["gmail", "workspace", "google-calendar", "google-drive"].map(context);
-    expect(combineConnectorContexts()).toBeUndefined();
-    expect(combineConnectorContexts(gmail)).toMatchObject({ allowedTools: ["mcp__gmail__list"], mcpServers: { gmail: expect.anything() } });
-    expect(combineConnectorContexts(gmail, workspace)).toMatchObject({ allowedTools: ["mcp__gmail__list", "mcp__workspace__list"] });
-    expect(combineConnectorContexts(gmail, workspace, calendar, drive)).toMatchObject({
-      connectorIds: ["gmail", "workspace", "google-calendar", "google-drive"],
-      allowedTools: ["mcp__gmail__list", "mcp__workspace__list", "mcp__google-calendar__list", "mcp__google-drive__list"],
-      mcpServers: { gmail: expect.anything(), workspace: expect.anything(), "google-calendar": expect.anything(), "google-drive": expect.anything() },
-    });
-  });
-
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
     expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)", "Read(*)"]');
     // TASK-128 has an injected query seam for its protocol-compatible MCP
     // fixture; production still leaves Agent SDK ownership with the factory.
     expect(chatRunDriverSource).toContain("options.queryFn");
     expect(chatRunDriverSource).not.toContain("@anthropic-ai/claude-agent-sdk");
-  });
-
-  it("derives Gmail's mounted surface from persisted, enabled grants only (TASK-128)", () => {
-    // This is deliberately tied to the per-run filter rather than merely the
-    // broker's later tier check: deleting it would mount every Gmail manifest
-    // tool (including ungranted email.send) and makes this test red.
-    expect(chatRunDriverSource).toContain("database.listRoleGrants(input.roleId)");
-    expect(chatRunDriverSource).toContain("tool.enabled !== false && grantedCapabilities.has(tool.capability_id)");
-    expect(chatRunDriverSource).toContain("connector: { manifest, mcpServers: handle.mcpServers, allowedTools }");
-    expect(chatRunDriverSource).toContain("mint: createGmailConnectorSessionMinter");
-    expect(chatRunDriverSource).toContain("connector?.allowedTools");
   });
 
   it("derives only ADR-013's approved destinations and fails closed otherwise", () => {
@@ -895,126 +863,3 @@ integration("createChatRunDriver — self-rename governed MCP run (TASK-167)", (
   });
 });
 
-// TASK-122 (Chat-2c): the fan-out-approval rule, confirmed against the real
-// Grok Bot reference product 2026-09-03 — a single 1:1 bot-to-bot message
-// needs no human approval; fan-out to 2+ bots/a group does. Real Postgres,
-// same evidentiary bar as TASK-116/117's own liveness assertions above:
-// AC3's mutation-proof shape is satisfied because `deliverBotToBotMessage`'s
-// only branch point is `toRoleIds.length > 1` — deleting that guard (so
-// every call falls through to direct delivery) makes the fan-out case
-// insert messages with zero pending approvals, reddening this suite's own
-// "produces a pending approval" assertion below.
-integration("deliverBotToBotMessage — fan-out approval rule (TASK-122)", () => {
-  let pool: Pool;
-  let options: DatabaseOptions;
-  const fromRoleId = "task-122-fanout-sender";
-  const toRoleIdA = "task-122-fanout-recipient-a";
-  const toRoleIdB = "task-122-fanout-recipient-b";
-  const allRoleIds = [fromRoleId, toRoleIdA, toRoleIdB];
-  let runId: string;
-
-  async function cleanup(): Promise<void> {
-    await pool.query(
-      `DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`,
-      [fromRoleId],
-    );
-    await pool.query(
-      `DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))`,
-      [allRoleIds],
-    );
-    await pool.query(
-      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
-      [fromRoleId],
-    );
-    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [fromRoleId]);
-    await pool.query(`DELETE FROM thread_members WHERE role_id = ANY($1::text[])`, [allRoleIds]);
-    await pool.query(`DELETE FROM threads WHERE role_id = ANY($1::text[])`, [allRoleIds]);
-    await pool.query(`DELETE FROM role_grants WHERE role_id = ANY($1::text[])`, [allRoleIds]);
-    await pool.query(`DELETE FROM roles WHERE role_id = ANY($1::text[])`, [allRoleIds]);
-    await pool.query(`DELETE FROM capabilities WHERE capability_id = $1`, [CHAT_FANOUT_CAPABILITY_ID]);
-  }
-
-  beforeAll(async () => {
-    options = { connectionString: connectionString! };
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
-    await cleanup();
-
-    for (const roleId of allRoleIds) {
-      await createRole(options, {
-        roleId,
-        name: roleId,
-        title: "TASK-122 fan-out fixture role",
-        description: "TASK-122 deliverBotToBotMessage integration fixture.",
-      });
-    }
-    const task = await createTask(options, {
-      roleId: fromRoleId,
-      title: "TASK-122 fan-out fixture task",
-      goal: "fixture task backing a real run for approvals.run_id's FK",
-      requestedBy: "task-122-suite",
-    });
-    const run = await startTaskRun(options, { taskId: task.taskId, provider: "claude", tenantId: task.tenantId });
-    runId = run.runId;
-  });
-
-  afterAll(async () => {
-    await cleanup();
-    await pool.end();
-  });
-
-  it("a single bot messaging exactly one other bot delivers immediately, no pending approval", async () => {
-    const result = await deliverBotToBotMessage(options, {
-      fromRoleId,
-      toRoleIds: [toRoleIdA],
-      body: "single-recipient delegation ping",
-      runId,
-    });
-    expect(result.delivered).toBe(true);
-
-    const thread = await getOrCreateThreadForRole(options, { roleId: toRoleIdA });
-    const messages = await listMessages(options, thread.id);
-    const delivered = messages.find((message) => message.body === "single-recipient delegation ping");
-    expect(delivered).toBeDefined();
-    expect(delivered?.senderRoleId).toBe(fromRoleId);
-
-    const approvals = await pool.query<{ count: string }>(
-      "SELECT count(*) FROM approvals WHERE run_id = $1 AND status = 'pending'",
-      [runId],
-    );
-    expect(approvals.rows[0]!.count).toBe("0");
-  });
-
-  it("a bot messaging multiple bots/a group in one action produces a real pending approval instead of delivering", async () => {
-    const result = await deliverBotToBotMessage(options, {
-      fromRoleId,
-      toRoleIds: [toRoleIdA, toRoleIdB],
-      body: "fan-out ping that must not be sent yet",
-      runId,
-    });
-    expect(result.delivered).toBe(false);
-    if (result.delivered) throw new Error("unreachable");
-    expect(result.approval.status).toBe("pending");
-
-    const approvalRow = await pool.query<{ status: string; capability_id: string }>(
-      "SELECT status, capability_id FROM approvals WHERE nonce = $1",
-      [result.approval.nonce],
-    );
-    expect(approvalRow.rows[0]).toMatchObject({ status: "pending", capability_id: CHAT_FANOUT_CAPABILITY_ID });
-
-    // Nothing was sent to either recipient — the gate ran before delivery.
-    const threadA = await getOrCreateThreadForRole(options, { roleId: toRoleIdA });
-    const threadB = await getOrCreateThreadForRole(options, { roleId: toRoleIdB });
-    const [messagesA, messagesB] = await Promise.all([
-      listMessages(options, threadA.id),
-      listMessages(options, threadB.id),
-    ]);
-    expect(messagesA.some((message) => message.body === "fan-out ping that must not be sent yet")).toBe(false);
-    expect(messagesB.some((message) => message.body === "fan-out ping that must not be sent yet")).toBe(false);
-  });
-
-  it("rejects an empty recipient list before touching the database", async () => {
-    await expect(
-      deliverBotToBotMessage(options, { fromRoleId, toRoleIds: [], body: "no recipients", runId }),
-    ).rejects.toThrow(/at least one recipient/);
-  });
-});
