@@ -4941,7 +4941,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots: asking the bot "How do I change your name?" gets both a settings-page pointer AND "Or just tell me what to call myself and I'll rename it" — a real in-conversation rename capability. Previously deferred (see [[grok-bot-mobile-reference]]) pending role-instructions/persona landing, which shipped at TASK-156. No rename capability exists anywhere today (confirmed by grep — zero `updateRoleName`/rename route/tool). Real pattern to follow, already proven in this codebase: `packages/broker/src/builtinTools.ts`'s `BUILTIN_TOOLS` declares `mcp__workspace__send_to_role` (MCP tool, `services/worker/src/workspaceMcpServer.ts` implements it) — a self-rename tool should follow the exact same registration shape (declared tool → capability → MCP server implementation), not a new ad-hoc mechanism.
-**Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/broker/src/builtinTools.ts, services/worker/src/workspaceMcpServer.ts, services/control-api/src/app.ts
+**Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/broker/src/builtinTools.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/app.ts
 **Depends_On:** TASK-166
 **Description:** Investigate first: read `workspaceMcpServer.ts`'s `send_to_role` implementation in full as the template (tool declaration in `builtinTools.ts`, capability ID, tier, MCP server wiring) before writing a new tool. Add `updateRoleName` (or equivalent) to `packages/db/src/roles.ts`, mirroring `updateRoleInstructions`'s shape/conventions exactly (nullable-vs-required semantics, 404-on-missing behavior). Register a new tool (e.g. `mcp__workspace__rename_self`, or a more precisely-scoped MCP server name if "workspace" doesn't fit conceptually — investigate and decide, document the choice) with a sensible tier (T1_draft or T2_internal — a bot renaming only itself is a narrow, low-risk action; ground the tier choice in the existing tier definitions rather than guessing) so the agent can call it when a user asks for a rename in conversation. The tool must only ever rename the CALLING role's own record — never accept an arbitrary roleId from the model that could rename a different bot (a real authorization boundary, not just an implicit assumption). Validate the new name (non-empty, reasonable length) before persisting. Real proof required: a governed chat run where the agent genuinely calls the rename tool in response to a user's request and the role's real name changes in the database — not a unit test of the tool function in isolation.
 **Owned_Paths note (ORCH, 2026-09-05):** rewritten from an earlier "TBD at decompose time — likely..." draft — that free-text prefix breaks `hooks/territory-precommit.js`'s parser (discovered live on TASK-166), which then blocks every commit as "outside territory" even for genuinely-listed files. Always author Owned_Paths as a clean comma-separated path list; put uncertainty in the Description, never in this field.
@@ -4954,13 +4954,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-167-cx
 **Started_At:** 2026-09-05T17:48:11Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T19:35:00Z] [CX] Correctly blocked before writing code: `chatRunDriver.ts` hard-mounts only `mcp__workspace__send_to_role` into `allowedTools` for a governed chat run, and hard-codes the one capability ID it checks — a new tool declared/implemented elsewhere would never actually be reachable by the agent, making this task's own real-governed-chat-run acceptance criterion unsatisfiable as scoped. No code changed, correctly escalated instead of guessing.
+- [2026-09-05T19:40:00Z] [ORCH] Widened Owned_Paths to include `services/worker/src/chatRunDriver.ts` + its test — verified no collision (every historic reference to this file belongs to already-merged tasks; nothing active touches it). Resuming on task/TASK-167-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T17:48:11Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T19:40:00Z
 
 ### TASK-168
 **Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
