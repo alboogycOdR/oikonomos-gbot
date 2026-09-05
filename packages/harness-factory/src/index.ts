@@ -357,8 +357,18 @@ function withSystemClaudeExecutable(input: AgentSdkQueryInput): AgentSdkQueryInp
     options: {
       ...input.options,
       pathToClaudeCodeExecutable: executable,
+      // A governed chat run explicitly scopes both its workspace and
+      // environment. A system-installed CLI may nevertheless discover
+      // account-backed connector configuration outside that environment, so
+      // restrict this invocation to the configuration Oikonomos supplies.
+      ...(isGovernedInvocation(input.options) ? { strictMcpConfig: true } : {}),
     },
   };
+}
+
+/** The chat driver supplies both values for every isolated, governed run. */
+function isGovernedInvocation(options: AgentSdkQueryInput["options"]): boolean {
+  return options?.cwd !== undefined && options.env !== undefined;
 }
 
 function resolveSystemClaudeExecutable(): string | undefined {
