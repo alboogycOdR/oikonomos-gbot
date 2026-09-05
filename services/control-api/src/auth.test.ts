@@ -1,9 +1,10 @@
 import { generateKeyPair, SignJWT } from "jose";
+import { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "./app.js";
 import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
-import type { DatabaseOptions } from "@oikonomos/db";
+import { defaultPoolConfig, type DatabaseOptions } from "@oikonomos/db";
 
 import {
   buildExpiredSessionCookie,
@@ -171,6 +172,8 @@ const integration = connectionString === undefined ? describe.skip : describe;
 integration("Firebase UID role isolation against real Postgres", () => {
   it("keeps roles created by two fake-verified UIDs disjoint", async () => {
     const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+    const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+    const fixtureRoleIds: string[] = [];
     const app = buildApp(createDatabaseBackedDeps(options), {
       authToken: SECRET,
       logger: false,
@@ -191,12 +194,21 @@ integration("Firebase UID role isolation against real Postgres", () => {
       ]);
       const createdAId = (createdA.json() as { id: string }).id;
       const createdBId = (createdB.json() as { id: string }).id;
+      fixtureRoleIds.push(createdAId, createdBId);
       expect((rolesA.json() as { id: string }[]).map((role) => role.id)).toContain(createdAId);
       expect((rolesA.json() as { id: string }[]).map((role) => role.id)).not.toContain(createdBId);
       expect((rolesB.json() as { id: string }[]).map((role) => role.id)).toContain(createdBId);
       expect((rolesB.json() as { id: string }[]).map((role) => role.id)).not.toContain(createdAId);
     } finally {
-      await app.close();
+      try {
+        await app.close();
+      } finally {
+        if (fixtureRoleIds.length > 0) {
+          await pool.query("DELETE FROM role_grants WHERE role_id = ANY($1::text[])", [fixtureRoleIds]);
+          await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [fixtureRoleIds]);
+        }
+        await pool.end();
+      }
     }
   });
 });
