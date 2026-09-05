@@ -228,9 +228,15 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = error.message);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _error = 'Sign-in failed. Please try again.');
+      // Diagnostic detail included deliberately: this catch-all fires for
+      // real SDK/platform failures (GoogleSignInException, PlatformException,
+      // etc.) that carry no secrets, and a bare "please try again" gives a
+      // real device failure no way to be diagnosed remotely.
+      final detail = error.toString();
+      setState(() => _error =
+          'Sign-in failed: ${detail.length > 200 ? detail.substring(0, 200) : detail}');
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
