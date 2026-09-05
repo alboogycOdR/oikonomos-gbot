@@ -30,6 +30,8 @@ export interface Role {
   name: string;
   title: string;
   description: string;
+  /** Optional custom system-prompt material; null means no custom persona. */
+  instructions: string | null;
   status: RoleStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -41,12 +43,13 @@ interface RoleRow extends QueryResultRow {
   name: string;
   title: string;
   description: string;
+  instructions: string | null;
   status: RoleStatus;
   created_at: Date;
   updated_at: Date;
 }
 
-const roleColumns = `role_id, tenant_id, name, title, description, status, created_at, updated_at`;
+const roleColumns = `role_id, tenant_id, name, title, description, instructions, status, created_at, updated_at`;
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -70,6 +73,7 @@ function toRole(row: RoleRow): Role {
     name: row.name,
     title: row.title,
     description: row.description,
+    instructions: row.instructions,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -148,6 +152,31 @@ export async function getRole(
   });
 }
 
+/**
+ * Persist optional role-specific system-prompt material. An empty string is
+ * intentional: it clears a previously configured custom instruction while
+ * preserving the nullable schema's distinction for pre-existing unset roles.
+ */
+export async function updateRoleInstructions(
+  options: DatabaseOptions,
+  roleId: string,
+  instructions: string,
+): Promise<Role | null> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `UPDATE roles
+       SET instructions = $2,
+           updated_at = now()
+       WHERE role_id = $1
+       RETURNING ${roleColumns}`,
+      [normalizedRoleId, instructions],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
+  });
+}
+
 export interface RoleListFilter {
   tenantId: string;
   status?: RoleStatus;
@@ -193,6 +222,7 @@ if (import.meta.vitest) {
         createRole(options, { roleId: "r1", name: "R1", title: "R1" }),
       ).rejects.toThrow(/connectionString/);
       await expect(getRole(options, "r1")).rejects.toThrow(/connectionString/);
+      await expect(updateRoleInstructions(options, "r1", "persona")).rejects.toThrow(/connectionString/);
       await expect(listRoles(options, { tenantId: "basileia" })).rejects.toThrow(
         /connectionString/,
       );
@@ -229,6 +259,7 @@ if (import.meta.vitest) {
     it("rejects an empty roleId on getRole and an empty tenantId on listRoles", async () => {
       const live: DatabaseOptions = { connectionString: "postgres://x" };
       await expect(getRole(live, "   ")).rejects.toThrow(/roleId/);
+      await expect(updateRoleInstructions(live, "   ", "persona")).rejects.toThrow(/roleId/);
       await expect(listRoles(live, { tenantId: "   " })).rejects.toThrow(/tenantId/);
     });
   });

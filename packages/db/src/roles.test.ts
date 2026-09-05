@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createRole, defaultPoolConfig, getRole, listRoles } from "./index.js";
+import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -51,6 +51,23 @@ integration("packages/db roles — read + CRUD + FK/backfill (TASK-084)", () => 
   it("getRole returns null for an unknown roleId", async () => {
     const result = await getRole({ connectionString: connectionString! }, "unknown-role-xyz");
     expect(result).toBeNull();
+  });
+
+  it("persists nullable role instructions against the live schema", async () => {
+    const created = await createRole(
+      { connectionString: connectionString! },
+      { roleId: "task-156-role-instructions", tenantId, name: "Instructions", title: "Instructions" },
+    );
+    expect(created.instructions).toBeNull();
+
+    const updated = await updateRoleInstructions(
+      { connectionString: connectionString! },
+      created.roleId,
+      "Always answer in the bot's named persona.",
+    );
+    expect(updated?.instructions).toBe("Always answer in the bot's named persona.");
+    expect((await getRole({ connectionString: connectionString! }, created.roleId))?.instructions)
+      .toBe("Always answer in the bot's named persona.");
   });
 
   it("listRoles is tenant-scoped: a role in another tenant never appears", async () => {

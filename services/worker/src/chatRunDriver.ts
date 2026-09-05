@@ -18,7 +18,7 @@ import {
   type CreateGoogleCalendarConnectorSessionMinterOptions,
   type CreateGoogleDriveConnectorSessionMinterOptions,
 } from "@oikonomos/connectors";
-import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
+import { Database, getOrCreateThreadForRole, getRole, insertMessage, type DatabaseOptions, type Role, type Task } from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
@@ -190,6 +190,7 @@ async function runChatTask(
         agentSdkOptions: {
           cwd: workspace,
           env: {},
+          systemPrompt: buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId),
           ...(request.resume === undefined ? {} : { resume: run.sessionRef }),
         },
         ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
@@ -210,6 +211,20 @@ async function runChatTask(
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+/** Build a useful identity even when an older role has no custom instructions. */
+function buildRoleSystemPrompt(role: Role | null, fallbackRoleId: string): string {
+  const name = role?.name ?? fallbackRoleId;
+  const title = role?.title ?? name;
+  const description = role?.description.trim() ?? "";
+  const instructions = role?.instructions?.trim() ?? "";
+  const identity = [
+    `You are ${name}, serving as ${title}.`,
+    description.length === 0 ? "Represent this bot identity clearly and helpfully." : `Your role description: ${description}`,
+  ];
+  if (instructions.length > 0) identity.push(`Your custom instructions:\n${instructions}`);
+  return identity.join("\n\n");
 }
 
 /** A fresh disposable working directory prevents one chat run seeing another. */
