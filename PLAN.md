@@ -4656,7 +4656,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-156
 **Title:** Role instructions/persona — real bot identity via SDK systemPrompt
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Confirmed missing at the schema level tonight: `roles` has no `instructions`/system-prompt column at all (verified directly against Postgres). This contributed to tonight's ORCH-persona incident — a bot had nothing of its own to fall back on. The SDK genuinely supports this: `Options.systemPrompt?: string` (verified in sdk.d.ts), and `chatRunDriver.ts` currently passes only `prompt: request.task.goal` with no `systemPrompt` at all. TASK-155 (merged) is the reason this was sequenced rather than run in parallel — both need `chatRunDriver.ts`'s `runChatTask`, so this had to wait.
@@ -4670,12 +4670,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A chat run for a role WITHOUT instructions set behaves identically to today (sensible default, no error, no empty prompt) — tested
 - [ ] TASK-153 (cwd/env isolation) and TASK-155 (resume) behavior is unaffected — existing tests for both pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-156-cx
+**Started_At:** 2026-09-05T11:14:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T11:14:16Z
