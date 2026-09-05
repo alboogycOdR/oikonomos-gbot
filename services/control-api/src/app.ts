@@ -26,10 +26,19 @@ import {
 import {
   buildExpiredSessionCookie,
   buildSessionCookie,
+  authenticate,
+  createFirebaseIdTokenVerifier,
   createSessionToken,
-  isAuthorized,
   isValidLoginToken,
+  type FirebaseIdTokenVerifier,
 } from "./auth.js";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Tenant established by the global auth pre-handler. */
+    tenantId: string;
+  }
+}
 
 export interface BuildAppOptions {
   /** `false` disables logging entirely (route tests default to this). */
@@ -51,6 +60,10 @@ export interface BuildAppOptions {
    * unauthenticated.
    */
   authToken?: string;
+  /** Firebase project that issues end-user ID tokens. Defaults to the configured project. */
+  firebaseProjectId?: string;
+  /** Injectable only to make endpoint tests exercise the real auth boundary deterministically. */
+  verifyFirebaseIdToken?: FirebaseIdTokenVerifier;
   /**
    * TASK-129 (RT-01): interval the `/threads/:id/stream` SSE route polls
    * `deps.listMessages` at, in ms. There is no cross-route pub/sub bus in
@@ -117,6 +130,13 @@ const LOGIN_SCHEMA = {
   properties: {
     token: { type: "string" },
   },
+} as const;
+
+const GOOGLE_LOGIN_SCHEMA = {
+  type: "object",
+  required: ["idToken"],
+  additionalProperties: false,
+  properties: { idToken: { type: "string", minLength: 1 } },
 } as const;
 
 const CREATE_ROLE_SCHEMA = {
@@ -347,6 +367,7 @@ async function inlineTextAttachments(
 
 async function loadMessageShapingContext(
   deps: ControlApiDeps,
+  tenantId: string,
 ): Promise<{
   approvalsByRunId: Map<string, Approval>;
   defaultTierByCapabilityId: Map<string, string>;
@@ -355,7 +376,7 @@ async function loadMessageShapingContext(
   const [approvals, capabilities, roles] = await Promise.all([
     deps.listPendingApprovals(),
     deps.listCapabilities(),
-    deps.listRoles({ tenantId: "basileia", status: "active" }),
+    deps.listRoles({ tenantId, status: "active" }),
   ]);
   return {
     approvalsByRunId: new Map(approvals.map((approval) => [approval.runId, approval])),
@@ -471,6 +492,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     );
   }
   const authToken = resolvedAuthToken;
+  const firebaseProjectId = options.firebaseProjectId ?? process.env.FIREBASE_PROJECT_ID ?? "basileia-oikonomos-gmail";
+  const verifyFirebaseIdToken = options.verifyFirebaseIdToken ?? createFirebaseIdTokenVerifier(firebaseProjectId);
   const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
 
   const app = Fastify({
@@ -491,6 +514,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             },
           },
   });
+  app.decorateRequest("tenantId", "");
 
   // TASK-101: global fail-closed auth gate. Runs as a preHandler (after
   // routing, so `routeOptions.config` is populated) for every route
@@ -502,7 +526,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     if (config?.public === true) {
       return;
     }
-    if (isAuthorized({ authorization: request.headers.authorization, cookie: request.headers.cookie }, authToken)) {
+    const principal = authenticate({ authorization: request.headers.authorization, cookie: request.headers.cookie }, authToken);
+    if (principal !== undefined) {
+      request.tenantId = principal.tenantId;
       return;
     }
     await reply.code(401).send({ error: "unauthorized" });
@@ -533,6 +559,20 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             responses: {
               "200": { description: "Session cookie issued" },
               "401": { description: "Invalid token" },
+            },
+          },
+        },
+        "/auth/google": {
+          post: {
+            summary: "Exchange a verified Firebase ID token for a user session cookie (TASK-172)",
+            operationId: "googleLogin",
+            requestBody: {
+              required: true,
+              content: { "application/json": { schema: { $ref: "#/components/schemas/GoogleLoginRequest" } } },
+            },
+            responses: {
+              "200": { description: "UID-scoped session cookie issued" },
+              "401": { description: "Invalid or expired Firebase ID token" },
             },
           },
         },
@@ -597,6 +637,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             required: ["token"],
             properties: { token: { type: "string" } },
           },
+          GoogleLoginRequest: {
+            type: "object",
+            required: ["idToken"],
+            properties: { idToken: { type: "string" } },
+          },
           TaskListPage: {
             type: "object",
             properties: {
@@ -620,6 +665,21 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
       const session = createSessionToken(authToken);
       await reply.header("set-cookie", buildSessionCookie(session)).code(200).send({ authenticated: true });
+    },
+  );
+
+  app.post<{ Body: { idToken: string } }>(
+    "/auth/google",
+    { config: { public: true }, schema: { body: GOOGLE_LOGIN_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const { uid } = await verifyFirebaseIdToken(request.body.idToken);
+        const session = createSessionToken(authToken, uid);
+        await reply.header("set-cookie", buildSessionCookie(session)).code(200).send({ authenticated: true });
+      } catch (error) {
+        request.log.warn({ err: error }, "Rejected Firebase ID token");
+        await reply.code(401).send({ error: "invalid or expired Firebase ID token" });
+      }
     },
   );
 
@@ -658,9 +718,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     },
   );
 
-  app.get("/roles", async (_request, reply) => {
+  app.get("/roles", async (request, reply) => {
     try {
-      const roles = await deps.listRoles({ tenantId: "basileia", status: "active" });
+      const roles = await deps.listRoles({ tenantId: request.tenantId, status: "active" });
       await reply.code(200).send(roles.map(serializeRole));
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
@@ -680,7 +740,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         }
         const role = await deps.createRole({
           roleId: randomUUID(),
-          tenantId: "basileia",
+          tenantId: request.tenantId,
           name,
           title: name,
           description,
@@ -725,8 +785,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   app.get<{ Params: { roleId: string } }>("/roles/:roleId/messages", async (request, reply) => {
     try {
       const [sent, received] = await Promise.all([
-        deps.listRoleMessages({ tenantId: "basileia", fromRoleId: request.params.roleId }),
-        deps.listRoleMessages({ tenantId: "basileia", toRoleId: request.params.roleId }),
+        deps.listRoleMessages({ tenantId: request.tenantId, fromRoleId: request.params.roleId }),
+        deps.listRoleMessages({ tenantId: request.tenantId, toRoleId: request.params.roleId }),
       ]);
       await reply.code(200).send(mergeRoleMessages(sent, received));
     } catch (error) {
@@ -781,7 +841,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       try {
         const routine = await deps.createRoutine({
           roleId: request.params.roleId,
-          tenantId: "basileia",
+          tenantId: request.tenantId,
           name: request.body.name.trim(),
           schedule: request.body.schedule.trim(),
           definition: request.body.definition ?? {},
@@ -796,7 +856,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
 
   app.get<{ Params: { roleId: string } }>("/roles/:roleId/routines", async (request, reply) => {
     try {
-      const routines = await deps.listRoutines({ tenantId: "basileia", roleId: request.params.roleId });
+      const routines = await deps.listRoutines({ tenantId: request.tenantId, roleId: request.params.roleId });
       await reply.code(200).send(routines);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
@@ -815,11 +875,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     },
   );
 
-  app.get("/threads", async (_request, reply) => {
+  app.get("/threads", async (request, reply) => {
     try {
       const [threads, roles] = await Promise.all([
         deps.listAllThreadsWithMembers(),
-        deps.listRoles({ tenantId: "basileia", status: "active" }),
+        deps.listRoles({ tenantId: request.tenantId, status: "active" }),
       ]);
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
       const result = await Promise.all(
@@ -891,7 +951,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       try {
         const [messages, context] = await Promise.all([
           deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
-          loadMessageShapingContext(deps),
+          loadMessageShapingContext(deps, request.tenantId),
         ]);
         // TASK-118: the grants a client can request via "Always Allow"
         // are capability+tier scoped, but `Approval` itself never
@@ -964,7 +1024,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       try {
         const [messages, context] = await Promise.all([
           deps.listMessages(threadId, cursor === undefined ? {} : { after: cursor }),
-          loadMessageShapingContext(deps),
+          loadMessageShapingContext(deps, request.tenantId),
         ]);
         for (const message of messages) {
           cursor = message.id;
