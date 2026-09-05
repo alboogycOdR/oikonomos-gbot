@@ -1,8 +1,8 @@
 ---
-plan_version: 14.3
-last_updated: 2026-09-05T21:31:13Z
+plan_version: 14.4
+last_updated: 2026-09-05T21:45:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave OFFICE-1 dispatch, both lanes now running: TASK-181 (CX, charter template, mobile) from the GB/CX-scoped dispatch, plus TASK-175 (S5, carve chatRunDriver.ts — the territory prerequisite blocking 161/163/164/170/177/179/180) and TASK-176 (CX9, skills DB schema) from the S5/CX9 lane. Territory disjointness confirmed pairwise across all three active tasks (mobile vs worker vs db/migrations). TASK-184 (CX, protected, request_secret) remains genuinely blocked on TASK-176 — dispatch once 176 merges. GB still has no eligible task (185/186 depend on TASK-170, which itself depends on 175/179/169). TASK-169 stays blocked on the human action item (real OpenSandbox API key). After TASK-175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files and TASK-177/179/180 can dispatch."
+orchestrator_notes: "TASK-181 (CX) came back BLOCKED honestly on a real, narrow cross-file regression: its new PATCH /roles/:id call (charter seeding) shifted roster_screen_test.dart's fake-response queue out of sequence, breaking one out-of-territory test. Independently reproduced (matches CX's own diagnosis exactly) — not a design defect, a shared-fixture gap. Widened TASK-181's Owned_Paths to include that one test file and unblocked; redispatching CX. TASK-175 (S5, chatRunDriver carve) and TASK-176 (CX9, skills schema) still running. TASK-184 (CX, protected) remains blocked on TASK-176. GB still has no eligible task (185/186 depend on TASK-170). TASK-169 stays blocked on the human action item (real OpenSandbox API key). After TASK-175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files and TASK-177/179/180 can dispatch."
 ---
 
 # Project Plan
@@ -5321,11 +5321,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-181
 **Title:** G-09 — Six-part Bot charter seeded on create (mobile), filled in conversationally
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-09 (OIK-129 bar: prose template, not a form); docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §5.3 six-part pattern and example charter; docs/research/grok-bot-technical-report-2026-09-05.pdf §8.4 identity pack, §4.1 three instruction channels; TASK-167 conversational rename (the interaction pattern to extend)
-**Owned_Paths:** apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/charter/charter_template.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/charter/charter_template_test.dart
+**Owned_Paths:** apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/charter/charter_template.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/charter/charter_template_test.dart, apps/mobile/test/screens/roster_screen_test.dart
 **Depends_On:** —
 **Description:** Grok Bot's documented quality comes from narrow charters, not persona. On create, seed the bot's `instructions` with a prose template carrying six headings — `# Job (and what I refuse)`, `# Connections`, `# Routines`, `# Skills`, `# Handoffs`, `# Check with me before…` — each with a one-line placeholder in the user's voice, plus a closing line instructing the bot to offer, on its first turn, to fill these in by asking questions (the TASK-167 pattern: the bot proposes edits to its own instructions through the existing rename/instructions API — no new server endpoint). No schema change; no server change. The template lives in charter_template.dart so it is testable and reusable. Keep OIK-129: the create screen stays name + optional title; the charter is pre-filled prose the user can ignore.
 **Acceptance_Criteria:**
@@ -5335,13 +5335,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
 **Branch:** task/TASK-181-cx
 **Started_At:** 2026-09-05T21:26:21Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-05T21:37:00Z] [CX] Implemented `botCharterTemplate` (six headings + closing instruction) and seeded it via a new `updateRoleInstructions` PATCH call inserted between `createRole` and `createThread` in `create_bot_screen.dart`. Focused tests (charter_template_test.dart, create_bot_screen_test.dart) pass, flutter analyze clean. Correctly identified and honestly flagged rather than silently worked around: the new PATCH call shifts `roster_screen_test.dart`'s "creating a bot and returning reloads the roster with it" fake-response queue out of sequence (that test queues exactly `POST /roles` then `POST /threads`, with nothing for the now-inserted PATCH) — that file was outside this task's Owned_Paths, so reported `blocked: OWNERSHIP_CONFLICT` rather than edit out-of-territory.
+- [2026-09-05T21:45:00Z] [ORCH] Independently reproduced the exact failure (flutter test test/screens/roster_screen_test.dart: 1 failing, "creating a bot and returning reloads the roster with it" — CreateBotScreen still on screen where RosterScreen was expected, matching CX's own diagnosis exactly). This is a real, narrow, mechanical fixture gap directly caused by TASK-181's own change, not a design flaw — widened Owned_Paths to include `apps/mobile/test/screens/roster_screen_test.dart` (one test file, one fixture fix: queue a successful PATCH /roles/:id response before the existing POST /threads one) and unblocked. Everything else in this task (template content, six headings, no-new-mandatory-field, PATCH wiring) is approved as-is.
+**Artifacts:** apps/mobile/lib/charter/charter_template.dart, apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/test/charter/charter_template_test.dart, apps/mobile/test/screens/create_bot_screen_test.dart, dossiers/TASK-181.md
+**Test_Evidence:** flutter test test/charter/charter_template_test.dart test/screens/create_bot_screen_test.dart — 5 passed; flutter analyze — no issues. Full flutter test fails only in roster_screen_test.dart (fixture gap, see Progress_Notes) — independently reproduced by ORCH.
+**Review_Findings:** Implementation is correct and complete. Blocked status was a real, honestly-reported ownership conflict (a shared test fixture broken by this task's own new API call), not a design defect — resolved by widening Owned_Paths to the one affected fixture file rather than declining or silently editing outside territory. Resubmit once the fixture is updated and the full suite is green.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T21:26:21Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:45:00Z
 
 ### TASK-182
 **Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
