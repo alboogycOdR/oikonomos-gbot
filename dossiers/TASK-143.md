@@ -274,6 +274,68 @@ Real findings, addressed in commit `f287540`:
 **Confirmed correct, unchanged:** currency handling and SQL, exactly as the
 reviewer found — no changes needed there.
 
+## REWORK — session 3 (2026-09-05, ~15:25Z onward)
+
+ORCH root-caused the escalation from session 2: `Owned_Paths` had carried a
+path typo since its first widen (`services/worker/src/executeRun.test.ts` —
+never existed; real file is `services/worker/test/executeRun.test.ts`).
+ORCH corrected it in PLAN.md and made the call: option (a) — make `budget`
+mandatory now that the path is fixed, not accept-and-document (unlike
+TOCTOU, this is a pure API-safety gap with a small mechanical fix, not a
+real design trade-off).
+
+Synced my worktree first (`git merge mainco/master`) to pick up the
+corrected `Owned_Paths` before touching the now-in-territory test file —
+the territory-firewall hook still blocked the edit against my stale local
+`PLAN.md` copy until I did.
+
+### Changes (commit `7f0d9cf`)
+
+- `services/worker/src/subprocessProviders.ts`: `createGatedSubprocessProviders`
+  now throws (`"...requires a \`budget\` option..."`) unless `budget` is
+  supplied or the caller explicitly passes `unsafeAllowUnbudgeted: true`.
+  Replaced the old "escalating, not fixing" doc comment with one describing
+  the actual liveness assertion now in place.
+- `services/worker/test/executeRun.test.ts` (now correctly in-territory):
+  its "wires gated Codex/Grok providers from the production factory" test
+  updated with `unsafeAllowUnbudgeted: true` (it only exercises provider
+  construction, not a real budget-gated run) plus a new dedicated test
+  asserting the throw when neither `budget` nor the opt-out is supplied.
+- `services/worker/src/subprocessProviders.test.ts`: same treatment — the
+  existing "passes the gate through unchanged" test renamed and given the
+  opt-out, plus a new throw-assertion test.
+
+Note: the production-callsite gap itself (zero real callers of
+`createGatedSubprocessProviders` anywhere in `services/`/`apps/`) is
+unchanged and still pre-existing product-scope debt outside this task —
+this session closes the *type-level* silent-bypass gap ORCH identified as
+the fixable piece, not the "nothing calls this yet" piece (that's the
+Codex/Grok routing feature's own wiring, a separate larger task).
+
+### Test evidence (session 3)
+
+- `pnpm --filter @oikonomos/worker build`: clean.
+- `pnpm --filter @oikonomos/worker test`: clean; 14 files, **84** tests
+  passed (was 82), 1 skipped. New throw-assertion tests pass in both
+  `subprocessProviders.test.ts` (13 tests, was 12) and
+  `test/executeRun.test.ts` (9 tests, was 8, now includes the throw case
+  alongside the fixed wiring test).
+- `pnpm -r build`: clean across all 18 buildable workspaces.
+- `pnpm lint`: clean (`eslint .` exit 0).
+- `pnpm -r test` (full recursive, with `DATABASE_URL` set): two runs, each
+  with exactly one failure — `packages/db/src/runs.test.ts`'s
+  `listOpenRuns` test (`Test timed out in 5000ms`), same class of
+  shared-Postgres-contention flake documented in sessions 1/2, not touched
+  by this task's `Owned_Paths` and not a regression: confirmed standalone
+  (`vitest run src/runs.test.ts`) → `13 tests passed`.
+
+## Handoff (session 3)
+
+Status: **needs_review** (resubmission). This closes the final must-fix
+finding from ORCH's session-2 redispatch (mandatory `budget`), building on
+the 5 findings already fixed in session 2. All 7 original acceptance
+criteria remain met; Claude-SDK chat path exclusion caveat unchanged.
+
 ### Test evidence (session 2)
 
 - `pnpm --filter @oikonomos/broker build`/`test`: clean; 12 files, **129**
