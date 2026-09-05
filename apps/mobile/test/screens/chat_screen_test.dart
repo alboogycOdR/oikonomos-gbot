@@ -81,7 +81,7 @@ void main() {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]); // transcript
-    fake.queueJson(200, [
+    fake.queueJsonFor('GET', '/roles/role-1/messages', 200, [
       {
         'messageId': 'handoff-1',
         'fromRoleId': 'role-1',
@@ -90,8 +90,13 @@ void main() {
         'createdAt': '2026-09-05T12:00:00Z',
       },
     ]);
-    fake.queueJson(200, [
-      {'id': 'role-2', 'name': 'Trevor', 'description': 'Specialist', 'avatarSeed': 'seed-2'},
+    fake.queueJsonFor('GET', '/roles', 200, [
+      {
+        'id': 'role-2',
+        'name': 'Trevor',
+        'description': 'Specialist',
+        'avatarSeed': 'seed-2'
+      },
     ]);
     fake.queueHangingStream(200);
 

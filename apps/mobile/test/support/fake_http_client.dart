@@ -16,6 +16,7 @@ class FakeHttpClient extends http.BaseClient {
   Future<http.StreamedResponse> Function(http.BaseRequest request)? handler;
 
   final List<_QueuedResponse> _responses = [];
+  final Map<String, List<_QueuedResponse>> _pathResponses = {};
   final List<http.BaseRequest> requests = [];
 
   void queueJson(
@@ -39,6 +40,24 @@ class FakeHttpClient extends http.BaseClient {
     );
   }
 
+  /// Queues a response for one exact method/path pair without consuming the
+  /// chronological queue used by existing screen tests. This keeps optional
+  /// background requests from shifting the response intended for the primary
+  /// user interaction under test.
+  void queueJsonFor(
+    String method,
+    String path,
+    int statusCode,
+    Object? body, {
+    Map<String, String> headers = const {},
+  }) {
+    final encoded = body == null ? '' : jsonEncode(body);
+    final key = _requestKey(method, path);
+    (_pathResponses[key] ??= []).add(
+      _QueuedResponse(statusCode: statusCode, body: encoded, headers: headers),
+    );
+  }
+
   /// TASK-147 (Mobile Wave 1b) — queues a response whose body stream is
   /// never closed, simulating a real SSE connection held open
   /// indefinitely. Without this, every queued SSE response completes
@@ -48,7 +67,8 @@ class FakeHttpClient extends http.BaseClient {
   /// reaches `ChatScreen`'s live subscription queues this for the
   /// `/stream` request instead, and disposes the screen (which cancels
   /// the subscription, not a Timer) to clean up.
-  void queueHangingStream(int statusCode, {Map<String, String> headers = const {}}) {
+  void queueHangingStream(int statusCode,
+      {Map<String, String> headers = const {}}) {
     _responses.add(
       _QueuedResponse(statusCode: statusCode, body: null, headers: headers),
     );
@@ -81,10 +101,30 @@ class FakeHttpClient extends http.BaseClient {
     if (handler != null) {
       return handler!(request);
     }
+    final pathResponses =
+        _pathResponses[_requestKey(request.method, request.url.path)];
+    if (pathResponses != null && pathResponses.isNotEmpty) {
+      return _toStreamedResponse(pathResponses.removeAt(0));
+    }
+    // Handoffs are non-essential timeline decoration. Existing ChatScreen
+    // tests intentionally only script the transcript and live stream, so
+    // model the normal no-handoffs response without consuming their queues.
+    if (request.method == 'GET' &&
+        RegExp(r'^/roles/[^/]+/messages$').hasMatch(request.url.path)) {
+      return _toStreamedResponse(
+        _QueuedResponse(statusCode: 200, body: '[]', headers: const {}),
+      );
+    }
     if (_responses.isEmpty) {
       throw StateError('FakeHttpClient: no queued response for ${request.url}');
     }
-    final queued = _responses.removeAt(0);
+    return _toStreamedResponse(_responses.removeAt(0));
+  }
+
+  String _requestKey(String method, String path) =>
+      '${method.toUpperCase()} $path';
+
+  http.StreamedResponse _toStreamedResponse(_QueuedResponse queued) {
     if (queued.stream != null) {
       return http.StreamedResponse(
         queued.stream!,
@@ -93,7 +133,8 @@ class FakeHttpClient extends http.BaseClient {
       );
     }
     if (queued.body == null) {
-      final controller = StreamController<Uint8List>(); // deliberately never closed
+      final controller =
+          StreamController<Uint8List>(); // deliberately never closed
       return http.StreamedResponse(
         controller.stream,
         queued.statusCode,

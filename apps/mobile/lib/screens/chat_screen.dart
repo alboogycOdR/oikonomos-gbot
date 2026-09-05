@@ -196,14 +196,19 @@ class ChatScreenState extends State<ChatScreen>
   /// Handoffs are optional timeline decoration: a failure must not hide chat.
   Future<void> _loadHandoffs() async {
     try {
-      final results = await Future.wait([
-        widget.apiClient.listRoleHandoffs(widget.bot.roleId),
-        widget.apiClient.listRoles(),
-      ]);
+      final handoffs =
+          await widget.apiClient.listRoleHandoffs(widget.bot.roleId);
       if (!mounted) return;
-      final roles = results[1] as List<Role>;
+      // Most timelines have no role-to-role traffic. Avoid a second request
+      // unless there is a chip that needs the other role's display details.
+      if (handoffs.isEmpty) {
+        setState(() => _handoffs = handoffs);
+        return;
+      }
+      final roles = await widget.apiClient.listRoles();
+      if (!mounted) return;
       setState(() {
-        _handoffs = results[0] as List<RoleHandoff>;
+        _handoffs = handoffs;
         _rolesById = {for (final role in roles) role.id: role};
       });
     } on UnauthorizedError {
