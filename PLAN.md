@@ -5175,7 +5175,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-175
 **Title:** Carve services/worker chatRunDriver.ts into single-purpose modules (territory prerequisite for Wave Office-1)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 (G-01b, G-03, G-04 all need distinct worker territories); CLAUDE.md 'shared files get their own single-owner integration tasks'; existing regression suite TASK-116 (services/worker/src/chatRunDriver.test.ts) must remain byte-for-byte green
@@ -5187,15 +5187,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Every export previously importable from services/worker (index.ts) is still importable with the same name and signature — proven by `pnpm -r build` and by the unchanged TASK-116 regression tests passing without edits to their assertions
 - [ ] `git diff` on test files shows only moves/imports, no changed assertions (reviewer check)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-175-s5
+**Started_At:** 2026-09-05T21:30:54Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T21:30:54Z
 
 ### TASK-176
 **Title:** G-01a — Skills primitive: schema, migration, typed query layer (packages/db)
