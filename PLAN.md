@@ -1,8 +1,8 @@
 ---
-plan_version: 14.6
-last_updated: 2026-09-05T22:20:00Z
+plan_version: 14.7
+last_updated: 2026-09-06T00:30:00Z
 overall_status: in_progress
-orchestrator_notes: "First Wave OFFICE-1 batch complete: TASK-175 (S5, carve chatRunDriver.ts — verified function-by-function and assertion-by-assertion byte-identical, genuinely zero behaviour change), TASK-176 (CX9, skills DB schema — migration reversibility independently verified against a scratch DB clone), and TASK-181 (CX, bot charter template — one honest rework round for a real shared-fixture regression, fixed and re-verified) all approved and merged. Real, pre-existing Postgres-contention flakiness observed during review (different unrelated file failing each pnpm -r test run, always clean in isolation) — same known class as backlog item TASK-162, not a regression from any of these three tasks; worth prioritizing TASK-162 given three concurrent builders now make this worse. TASK-161's Owned_Paths re-pointed to services/worker/src/runWorkspace.test.ts (where its target test now lives post-carve); TASK-170 sequenced after it (Depends_On) since both now genuinely touch that file. TASK-163/164/170 otherwise checked and needed no re-pointing. TASK-177/179/180 (depend on 175/176) and TASK-184 (depends on 176) are now unblocked and ready to dispatch. TASK-161 assigned to GB (idle capacity — GB's real backlog TASK-185/186 still waits on TASK-170) rather than left TBD. TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
+orchestrator_notes: "Second wave dispatch produced three honest, correctly-diagnosed blocks — triaged individually rather than blanket-widened: (1) TASK-184 (CX, protected) needed real worker-side integration (workspaceMcpServer.ts mounting, chatRunDriver.ts RunParkPort wiring) that the original decompose under-scoped — widened Owned_Paths to the minimal real surface and redispatched. (2) TASK-180 (CX9) surfaced a genuinely undecided piece of architecture (no Tier-0/budgeted-classifier composition seam exists anywhere yet) — did NOT improvise a production adapter choice; re-read the task's own ACs, confirmed they're fully satisfiable within its original four files via injection/stubbing, narrowed scope back to that, and split the live-wiring gap into new task TASK-189 (TBD) rather than bolt undecided architecture onto a blocked task under time pressure. (3) TASK-161 (GB) caught a real mistake of my own: my earlier re-point to runWorkspace.test.ts was wrong — the actual failing bash-spawn test never moved there, it's still in chatRunDriver.test.ts exactly where TASK-175's carve deliberately left it. Corrected the re-point, reverted the now-unnecessary TASK-170 dependency I'd added for the wrong reason, and redispatched GB. TASK-177 (S5) still running. TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
 ---
 
 # Project Plan
@@ -4783,7 +4783,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent full-suite verification (2026-09-05): `services/worker/src/chatRunDriver.test.ts` (TASK-153's fresh-workspace isolation test) fails with `execvpe(/bin/bash) failed: No such file or directory` on this machine when run via the full recursive `pnpm -r test` — bash.exe/WSL is not resolvable from this environment's PATH in that context. Not a code defect: TASK-153's actual isolation logic (cwd/env scoping) is unaffected; this is the test's own reliance on a `bash` binary being present.
-**Owned_Paths:** services/worker/src/runWorkspace.test.ts
+**Owned_Paths:** services/worker/src/chatRunDriver.test.ts
 **Depends_On:** TASK-175
 **Description:** Investigate what the test actually shells out to and why (likely a minimal `bash -c` invocation used as the SDK's "fake" agent process for the isolation assertion). Fix at the test level — either resolve a real bash-compatible binary in a way that works on this dev machine (e.g. via Node's own `child_process` instead of assuming `/bin/bash` on PATH), or replace the fake process invocation with something that doesn't require a POSIX shell at all. Do not weaken or skip the isolation assertion itself — the fix must keep genuinely proving cwd/env scoping, just without depending on an unavailable shell binary.
 **Acceptance_Criteria:**
@@ -4793,13 +4793,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** task/TASK-161-gb
 **Started_At:** 2026-09-05T22:05:54Z
 **Progress_Notes:**
-- [2026-09-05T22:15:00Z] [ORCH] TASK-175 merged — Owned_Paths re-pointed from chatRunDriver.test.ts to services/worker/src/runWorkspace.test.ts, where TASK-153's isolation test now genuinely lives (confirmed by reading the file). Ready to dispatch. TASK-163/164/170's Owned_Paths were checked against the carve too: all three still correctly reference chatRunDriver.ts (the driver itself, which stayed there) and needed no change; TASK-170 already correctly anticipated runWorkspace.ts/runWorkspace.test.ts.
-**Artifacts:** —
+- [2026-09-05T22:15:00Z] [ORCH] TASK-175 merged — Owned_Paths re-pointed from chatRunDriver.test.ts to services/worker/src/runWorkspace.test.ts. **This was wrong** (see next note) — I mistook runWorkspace.test.ts's doc comment for confirmation the isolation test moved there, without actually checking the file's contents.
+- [2026-09-06T00:25:00Z] [GB] BLOCKED — OWNERSHIP_CONFLICT, and correctly so: the real failing spawn (`execFileAsync("bash.exe", ...)`, TASK-153's cwd/env isolation proof) is still in `chatRunDriver.test.ts:367-377`, exactly where TASK-175's own carve deliberately left it ("the existing chatRunDriver.test.ts keeps every test that exercises the driver end-to-end"). `runWorkspace.test.ts` only has two filesystem-seam tests, no process spawn at all. Reproduced the exact `execvpe(/bin/bash) failed` error independently, proposed a `process.execPath`-based fix in the dossier without applying it (correctly out of territory). No false claim of a green run.
+- [2026-09-06T00:30:00Z] [ORCH] GB's diagnosis is correct — read chatRunDriver.test.ts:367-377 myself and confirmed the bash.exe spawn is there, not in runWorkspace.test.ts. My own re-point was a real mistake: I trusted a doc comment instead of checking the actual test body. Corrected Owned_Paths to chatRunDriver.test.ts (the file that genuinely needs the fix) and reverted the TASK-170 Depends_On addition I made for the wrong reason (that dependency no longer applies now that TASK-161 and TASK-170 don't share a file). Unblocked, redispatching GB.
+**Artifacts:** dossiers/TASK-161.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T22:05:54Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T00:30:00Z
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
@@ -5045,7 +5047,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** medium
 **Spec_References:** docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution (integration shape decided: execd via endpoints/44772, sandbox per role paused on idle, per-turn /command); ADR-006 B; ADR-010 + Addendum F §2 (durable environment), §5 (tier map); Master_Work_Breakdown E5 OIK-043; infra/sandbox/README.md §7.1 trigger; TASK-153/154 guarantees; ADR-001; ADR-005 liveness. PROTECTED PATH packages/harness-factory/** — author must be CX/CX9 (different model from ORCH reviewer)
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/runWorkspace.ts, services/worker/src/runWorkspace.test.ts, services/worker/test/executeRun.test.ts, packages/harness-factory/src/**, packages/db/src/roleSandboxes.ts, packages/db/src/roleSandboxes.test.ts, infra/postgres/migrations/018_role_sandboxes.up.sql, infra/postgres/migrations/018_role_sandboxes.down.sql
-**Depends_On:** TASK-169, TASK-175, TASK-179, TASK-161
+**Depends_On:** TASK-169, TASK-175, TASK-179
 **Description:** The design is settled (resolution doc) — this task implements it, it does not re-derive it. Model: **one OpenSandbox sandbox per role, hibernated via `pause` when idle** (matches ADR-010's persistent-office-computer intent and the Grok Bot reference model), not a fresh sandbox per chat turn — per-turn create/destroy remains available separately for Tier-3/4 isolated runs (OIK-045c) but is not this task's default path. Per chat turn: resolve (or create, if none exists/paused too long) the role's sandbox, call TASK-169's `runCommand()` to run the harness (Claude Agent SDK / `claude -p`) inside it via execd's `/command`, with the SAME scoped `env`/`cwd` values TASK-153 already computes passed as the `/command` request body (not the sandbox's own host env — the sandbox has none). Investigate real latency of sandbox resolve/create before assuming this is fast enough for interactive chat; report actual numbers in the dossier, don't assume. Preserve every guarantee TASK-153/154 already built — those tests must keep passing unmodified. Apply `infra/sandbox/README.md` §7.1's deferred `DOCKER-USER` iptables remedy BEFORE merging this task — its own stated trigger ("before the first real workload runs in a sandbox") fires here; verify by observed refusal from a non-Tailscale path, not by re-reading `ufw status` (that config already exists and is documented in the README, it has just never been applied). This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154/166 (different model than author) given it touches the actual execution isolation boundary and opens a new attack-surface class (an exposed sandbox port, even proxied). **[ORCH 2026-09-05T21:20:00Z] GROUNDED — premise resolved, see docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution.** Shape: (1) `role_sandboxes(role_id PK, sandbox_id, state, execd_token_ref, created_at, last_used_at)` — ONE sandbox per role (ADR-010's persistent office computer), created lazily on first run, `pause`d after an idle window and `resume`d on the next run (execd endpoint may change after resume — re-resolve), never created per turn. (2) runWorkspace.ts (carved by TASK-175) gains a sandbox-backed implementation: the run's cwd is `/workspace/<role>` inside the sandbox; the harness command is executed via TASK-169's runCommand with an explicitly constructed env (no host env — this is TASK-153's guarantee by construction); the image has no ~/.claude.json or .mcp.json (TASK-154). (3) harness-factory: the loopback MCP bridge (TASK-079) is reachable from inside the sandbox over the Tailscale address, so every tool call still hits the broker PreToolUse hook (ADR-001). (4) Liveness: a tool call from inside the sandbox that the broker denies must be observed denied — the assertion keys on the hook's denial event, not on config. (5) Local fallback (TASK-153's temp dir) remains selectable by config for dev machines; production default is sandbox. Sequenced after TASK-179 because both touch promptAssembly/driver context and 179 is the smaller change.
 **Acceptance_Criteria:**
 - [ ] A chat run for a role with no sandbox creates one, records it in role_sandboxes, and a second run for the same role reuses it (integration test, gated on the live server; unit test with a fake sandbox client)
@@ -5059,6 +5061,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** —
 **Progress_Notes:**
 - [2026-09-05T22:15:00Z] [ORCH] Added TASK-161 to Depends_On: TASK-175's merge re-pointed TASK-161's Owned_Paths onto services/worker/src/runWorkspace.test.ts, which now genuinely intersects this task's own runWorkspace.test.ts ownership (validate_plan.py caught this as a latent isolation warning). TASK-161 is small/mechanical (a test-only WSL/bash fix) — sequencing it first rather than carving runWorkspace.test.ts further.
+- [2026-09-06T00:30:00Z] [ORCH] Reverted the TASK-161 dependency added above: that re-point was itself a mistake (GB caught it — the real failing test never moved to runWorkspace.test.ts; TASK-175's carve deliberately kept it in chatRunDriver.test.ts). TASK-161 is now correctly pointed at chatRunDriver.test.ts instead, which this task does not touch, so no dependency is needed between them.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -5302,13 +5305,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-180
 **Title:** G-04 — Single-owner group routing: exactly one responder when nobody is @-mentioned
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04 (AC anchors: unaddressed message in a 3-Bot room yields run count = 1; classifier billed to Tier-0); report §12.5(f) group_host.route, §6.4 'group chatter cost', §10.6; TASK-122's fan-out approval rule stays intact
 **Owned_Paths:** services/worker/src/groupRouting.ts, services/worker/src/groupRouting.test.ts, services/worker/src/groupFanout.ts, services/worker/src/groupFanout.test.ts
 **Depends_On:** TASK-175
-**Description:** Today a group-thread message fans out to every member (TASK-122 gates 2+ recipients behind an approval). Add a routing step BEFORE fan-out in groupFanout.ts, implemented in groupRouting.ts: `@name` tokens → exactly those members; `@everyone` → all members (still subject to the fan-out approval); no mention → ONE responder chosen by a cheap should-respond score over each member's title+description via the Tier-0 provider (packages/agent-providers, budgeted — never `unsafeAllowUnbudgeted`), ties broken by the thread's most recent responder. Enforce a hard cap of 6 members at routing time (reject with a clear error; do not silently truncate). Wake-up budget: a single inbound message may start at most `members × 1` runs. Pure routing function is unit-tested without a model; the classifier call is injected.
+**Description:** Today a group-thread message fans out to every member (TASK-122 gates 2+ recipients behind an approval). Add a routing step BEFORE fan-out in groupFanout.ts, implemented in groupRouting.ts: `@name` tokens → exactly those members; `@everyone` → all members (still subject to the fan-out approval); no mention → ONE responder chosen by a cheap should-respond score over each member's title+description via the Tier-0 provider (packages/agent-providers, budgeted — never `unsafeAllowUnbudgeted`), ties broken by the thread's most recent responder. Enforce a hard cap of 6 members at routing time (reject with a clear error; do not silently truncate). Wake-up budget: a single inbound message may start at most `members × 1` runs. Pure routing function is unit-tested without a model; the classifier call is injected. **[ORCH 2026-09-06T00:20:00Z] SCOPE CLARIFIED after a blocker (see Progress_Notes): this task's job is the routing engine (route() + a real default Tier-0-budgeted scorer construction, both living in groupRouting.ts/groupFanout.ts and satisfying the ACs exactly as written — every AC anchor is testable within the original 4 files via an injected/stubbed scorer). Wiring route() into the LIVE production call site (services/control-api's requestGroupFanout/app.ts: parsing @mentions out of the message, threading member title/description and recent-responder context through, deciding the concrete production Tier-0 adapter) is real, valuable, and explicitly OUT of this task's scope — that is a genuine, undecided architecture question (no Tier-0/budgeted-classifier composition seam exists anywhere in the codebase yet) that deserves its own grounded task, not a builder's unilateral call under a blocked-task deadline. Split off as TASK-189.**
 **Acceptance_Criteria:**
 - [ ] route() with no mention over 3 members returns exactly one member (unit test with a stubbed scorer); with `@everyone` returns all; with two `@name` tokens returns those two
 - [ ] A 7-member thread is rejected at routing with an explicit error (test)
@@ -5317,13 +5320,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
 **Branch:** task/TASK-180-cx9
 **Started_At:** 2026-09-05T22:05:25Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-06T00:00:00Z] [CX9] BLOCKED — OWNERSHIP_CONFLICT: the live call site (services/control-api/src/ports.ts's requestGroupFanout, called unconditionally from app.ts with every memberRoleId, confirmed by reading both files) has no mention-parsing, no classifier, and no member-profile/recent-responder context threaded through — none of which is fixable inside TASK-180's four Owned_Paths. Correctly did not reach outside territory or invent a production Tier-0 adapter unilaterally.
+- [2026-09-06T00:20:00Z] [ORCH] Confirmed the diagnosis is accurate (read ports.ts:228-241 and app.ts:1167 directly — fan-out is unconditional today, no routing step exists at all). Did NOT widen Owned_Paths to app.ts/ports.ts: re-read this task's own Acceptance_Criteria and found every anchor is actually satisfiable within the original four files — route()'s behavior and the default scorer's budgeted-path construction are both unit-testable via injection/stubbing, with no live end-to-end wiring required by the ACs as literally written. The live-wiring gap CX9 found is real but is a separate, larger, genuinely-undecided piece of architecture (which concrete Tier-0/FreeLLMAPI adapter, how member profiles and recent-responder context reach the call site) — split off as TASK-189 rather than improvised here or bolted onto this task under time pressure. Unblocked with this narrower, ACs-only scope; redispatching CX9.
+**Artifacts:** dossiers/TASK-180.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T22:05:25Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T00:20:00Z
 
 ### TASK-181
 **Title:** G-09 — Six-part Bot charter seeded on create (mobile), filled in conversationally
@@ -5404,28 +5409,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05 (AC anchors: value appears in zero rows of messages/audit_events/worker logs; ref resolves only for the requesting role); report C13, §8.2, §12.2 'Secure secret request'; ADR-010 Amendment (secret handling on the enforced line, N4); TASK-088/093 sealed-secret guard; TASK-131 sendToRole as the pattern for a real invokable broker tool. PROTECTED PATH packages/broker/** — author CX (Codex), reviewer ORCH on opus-4-8 satisfies the different-model rule (Directive §3).
-**Owned_Paths:** packages/broker/src/requestSecret.ts, packages/broker/src/requestSecret.test.ts, packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/index.ts, infra/postgres/migrations/017_secret_requests.up.sql, infra/postgres/migrations/017_secret_requests.down.sql, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts
+**Owned_Paths:** packages/broker/src/requestSecret.ts, packages/broker/src/requestSecret.test.ts, packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/index.ts, infra/postgres/migrations/017_secret_requests.up.sql, infra/postgres/migrations/017_secret_requests.down.sql, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts, packages/db/src/index.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/chatRunDriver.ts
 **Depends_On:** TASK-176
-**Description:** A bot that needs an API key must never receive it through the transcript. Add a built-in broker tool `request_secret({label, purpose})` (registered like sendToRole, TASK-131) that creates a `secret_requests(request_id, tenant_id, role_id, run_id, label, purpose, status pending|fulfilled|declined, secret_ref text null, created_at, fulfilled_at)` row and parks the run exactly as an approval does (reuse the RunParkPort path — this IS an enforced-line action per ADR-010). Fulfilment (the API/UI half is TASK-187) stores the value under the existing D3 sealed-secret root (TASK-088/097 constant) and writes only `secret://<ref>` to the row; the tool's result to the model is `{status:'fulfilled', ref:'secret://…'}` — never the value. The describe-or-deny renderer (TASK-067) must render this tool's approval card as `Bot <name> is asking for: <label> — <purpose>`. Audit records request and fulfilment with the ref only. Depends on TASK-176 solely for the packages/db/src/index.ts export line — coordinate by rebasing after 176 merges.
+**Description:** A bot that needs an API key must never receive it through the transcript. Add a built-in broker tool `request_secret({label, purpose})` (registered like sendToRole, TASK-131) that creates a `secret_requests(request_id, tenant_id, role_id, run_id, label, purpose, status pending|fulfilled|declined, secret_ref text null, created_at, fulfilled_at)` row and parks the run exactly as an approval does (reuse the RunParkPort path — this IS an enforced-line action per ADR-010). Fulfilment (the API/UI half is TASK-187) stores the value under the existing D3 sealed-secret root (TASK-088/097 constant) and writes only `secret://<ref>` to the row; the tool's result to the model is `{status:'fulfilled', ref:'secret://…'}` — never the value. The describe-or-deny renderer (TASK-067) must render this tool's approval card as `Bot <name> is asking for: <label> — <purpose>`. Audit records request and fulfilment with the ref only. Depends on TASK-176 solely for the packages/db/src/index.ts export line — coordinate by rebasing after 176 merges. **[ORCH 2026-09-06T00:15:00Z] Owned_Paths widened after a real, correctly-diagnosed OWNERSHIP_CONFLICT (see Progress_Notes): mounting/dispatch for a real invokable tool lives in `workspaceMcpServer.ts` (the `sendToRole`/`rename_self` pattern this task is explicitly told to follow), and "parks the run...reuse the RunParkPort path" requires wiring in `chatRunDriver.ts` where `RunParkPort`/`BrokerDependencies` are actually composed — confirmed by reading both files; no PreToolUse-deny-based approval flow can produce "the request row is pending AND the model already got a result", which is what this task's own AC anchors require. Both files are currently unowned by any other active task.**
 **Acceptance_Criteria:**
-- [ ] request_secret is a registered, describable broker tool; an undescribable payload (>10k chars, missing label) is denied per TASK-067 (test)
+- [ ] request_secret is a registered, describable broker tool, mounted and dispatchable end-to-end (worker-side, matching the sendToRole/rename_self pattern); an undescribable payload (>10k chars, missing label) is denied per TASK-067 (test)
 - [ ] Calling it parks the run in the same waiting state approvals use, with the request row pending (test)
 - [ ] After fulfilment through the typed layer, the fragment-assembled fake value appears in zero rows of secret_requests, audit_events, and the run's messages/events, and the model-visible tool result contains only the ref (integration test, DATABASE_URL-gated)
 - [ ] The ref resolves through the existing sealed-secret resolver for the requesting role and is refused for another role (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
 **Branch:** task/TASK-184-cx
 **Started_At:** 2026-09-05T22:05:39Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-06T00:00:00Z] [CX] BLOCKED — OWNERSHIP_CONFLICT, correctly diagnosed: real tool mounting/dispatch lives in `services/worker/src/workspaceMcpServer.ts` (the sendToRole/rename_self pattern this task was told to follow); parking via `RunParkPort` requires wiring in `services/worker/src/chatRunDriver.ts`/`packages/harness-factory/src/compose.ts`; the D3 sealed-secret resolver lives in `packages/shared/src/sealedSecretRoot.ts`; and a public `packages/db` consumer needs an `index.ts` export. None was in the original Owned_Paths. Reported rather than reached outside territory or silently narrowed the AC.
+- [2026-09-06T00:15:00Z] [ORCH] Independently confirmed the diagnosis by reading `workspaceMcpServer.ts` and `chatRunDriver.ts` directly — CX is right: existing broker tools that park (none do today; only PreToolUse denials park, generically) don't cover "the tool's own handler runs, creates a row, and the run parks waiting on it", which is what this task's AC literally requires. Widened Owned_Paths to `workspaceMcpServer.ts`, `chatRunDriver.ts`, and `packages/db/src/index.ts` — the minimal real integration surface, not the whole worker package. Not splitting into a separate task: the mount/dispatch/park pieces are too tightly coupled to test independently from the broker tool itself. Unblocked, redispatching CX.
+**Artifacts:** dossiers/TASK-184.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T22:05:39Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T00:15:00Z
 
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
@@ -5524,3 +5531,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-189
+**Title:** G-04b — Wire single-owner group routing into the live production call site
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Split off TASK-180 (see its Progress_Notes 2026-09-06T00:20:00Z): TASK-180 builds the routing engine (route() + a real budgeted default Tier-0 scorer, both fully unit-testable in isolation); this task makes it the thing that actually decides who responds to a real group message. specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.routes.test.ts (group-fanout tests only — coordinate with any other active app.ts task via Depends_On before dispatch, do not co-activate blindly)
+**Depends_On:** TASK-180
+**Description:** Real, undecided architecture question this task must resolve, not assume: (1) which concrete Tier-0 provider/adapter from `packages/agent-providers` actually backs the "budgeted" classifier call in production — investigate what's real and available (FreeLLMAPI per CLAUDE.md's budget rule) before wiring anything, matching this session's own "investigate first" discipline; (2) how `@name`/`@everyone`/no-mention parsing happens on the inbound message body (likely in `app.ts`'s chat-POST handler, before `requestGroupFanout` is called); (3) how member title/description and the thread's most-recent-responder get threaded from `ports.ts`'s existing DB access into `groupRouting.ts`'s `route()` call, without `ports.ts` doing SQL itself (CLAUDE.md convention — call the typed `packages/db` layer). Ground each of these against the real current code before writing anything; report honestly if any piece needs its own further split.
+**Acceptance_Criteria:**
+- [ ] An unaddressed message in a real 3-Bot group thread produces exactly one real chat run (integration test, DATABASE_URL-gated) — not a stubbed route() call, the actual production path
+- [ ] `@name` and `@everyone` are parsed from a real message body and route exactly as TASK-180's route() specifies
+- [ ] The classifier call in production is genuinely budgeted (asserted via the real budget sink/spend row, not just "the code path exists")
+- [ ] TASK-122's existing fan-out approval behavior is unchanged for `@everyone`/multi-`@name` cases
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T00:20:00Z
