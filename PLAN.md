@@ -1,8 +1,8 @@
 ---
-plan_version: 12.5
-last_updated: 2026-09-05T18:20:00Z
+plan_version: 12.6
+last_updated: 2026-09-05T18:30:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-165 (serializeRole title/instructions + mobile UI) submitted by GB, needs_review - independent verification in progress. Live on-device testing surfaced two more real gaps vs. the Grok Bot reference app: file/image upload (zero attachment capability exists anywhere today, confirmed by grep - logged as TASK-166, medium priority, real open design question about whether services/workspace/src/paths.ts's WORKSPACE_ROOT is a real mounted path or design-only, must be investigated not guessed) and conversational self-rename (logged as TASK-167, low priority, depends on TASK-166 for apps/mobile/app.ts sequencing, real tool-registration pattern already proven via mcp__workspace__send_to_role). Voice input and the live-agent/monitor icon remain explicitly out of scope (no STT pipeline; needs OpenSandbox wiring). CX/CX9/S5 worktrees all still stuck on the same Windows file-lock class of issue - logged as DEVDEPARTMENT_FEEDBACK finding #11 (pack-level, not project-specific). GB is the only builder with a clean worktree right now."
+orchestrator_notes: "TASK-165 approved and merged - real capability-exposure fix (bot title/instructions now actually reachable through the app), independently re-verified clean. Dispatching TASK-166 (chat file/image attachments, real open design question about WORKSPACE_ROOT's reality) to GB next, the only builder with a clean worktree. TASK-167 (conversational self-rename) queued behind it, Depends_On TASK-166 for apps/mobile sequencing. Voice input and the live-agent/monitor icon remain explicitly out of scope. CX/CX9/S5 worktrees still stuck on Windows file locks (likely Defender scanning a large post-build tree) - logged as DEVDEPARTMENT_FEEDBACK finding #11."
 ---
 
 # Project Plan
@@ -4874,7 +4874,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** Live gap found during real-device testing, 2026-09-05: `services/control-api/src/app.ts`'s `serializeRole()` (used by every role-returning route) only returns `{id, name, description, avatarSeed}` — `title` and `instructions` are real, tested, working columns on `packages/db/src/roles.ts`'s `Role` type (instructions persisted via the real `PATCH /roles/:roleId` route built in TASK-156) but are never serialized over HTTP. This is why the mobile settings screen (TASK-157) shows a hardcoded "No title set" placeholder instead of real data, and why there is no instructions field on mobile at all despite the backend fully supporting it — a bot's persona/instructions can only be set today via a raw API call, not through the app.
@@ -4882,28 +4882,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Backend first: extend `serializeRole()` to include `title` and `instructions` (both nullable, matching the real `Role` type — do not invent a different shape). Verify this doesn't break any existing test asserting the old narrower shape (update them honestly if the shape assertion needs to grow, don't loosen an assertion to dodge a real check). Then mobile: fix the settings screen's Title display to show the real value (still read-only — no title-update route exists, that's out of scope, keep the existing honest "read-only, no update endpoint" framing exactly where it's still true), and add a real, editable multi-line **Instructions** field that calls the existing `PATCH /roles/:roleId` route (`{instructions: string}`, note: required in the schema, not optional — sending an empty string is the real way to clear it, confirmed in TASK-156's dossier) with a save action, a visible loading/error state on failure, and the field pre-filled from the real fetched value. This is a genuine capability gap closing, not polish — a user has no other way to give their bot a persona today.
 **Acceptance_Criteria:**
-- [ ] `serializeRole()` includes real `title` and `instructions` values (both nullable) — tested against real Postgres
-- [ ] Existing tests asserting the old role shape still pass or are honestly updated, not loosened
-- [ ] The settings screen displays the bot's real title (not a hardcoded placeholder) when one exists, and the existing "no title set"/read-only messaging only when it's genuinely null
-- [ ] A real editable Instructions field exists, pre-filled from the real value, that PATCHes the real endpoint on save — tested against a fake client
-- [ ] A failed save surfaces a visible error, not a silent failure
-- [ ] Clearing instructions to empty and saving genuinely clears them (matches the real API contract) — tested
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** task/TASK-165-gb
+- [x] `serializeRole()` includes real `title` and `instructions` values (both nullable) — tested against real Postgres
+- [x] Existing tests asserting the old role shape still pass or are honestly updated, not loosened
+- [x] The settings screen displays the bot's real title (not a hardcoded placeholder) when one exists, and the existing "no title set"/read-only messaging only when it's genuinely null
+- [x] A real editable Instructions field exists, pre-filled from the real value, that PATCHes the real endpoint on save — tested against a fake client
+- [x] A failed save surfaces a visible error, not a silent failure
+- [x] Clearing instructions to empty and saving genuinely clears them (matches the real API contract) — tested
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** task/TASK-165-gb (merged, deleted)
 **Started_At:** 2026-09-05T15:02:10Z
 **Progress_Notes:**
 - [2026-09-05T18:05:00Z] [ORCH] Reassigned CX→S5→GB — CX, CX9, and S5's worktree directories are all currently stuck on the same Windows file-lock class of issue (each partially removed: git metadata gone but the physical directory remains and is busy). GB's worktree is the only clean one available. Worth investigating the root cause of this lock separately (likely a lingering process/handle from repeated dispatch cycles this session), but not worth blocking dispatch on right now.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-05T15:18:00Z] [GB] Implementation complete: `serializeRole()` extended with `title`/`instructions`, existing shape assertions genuinely grown (not loosened), plus empty-string-PATCH, 404, and live-Postgres round-trip coverage. Mobile: `Role` model parses both fields, settings screen shows the real title (placeholder only when genuinely null) and a real editable multi-line Instructions field with Save/Saving/error states, wired to the existing `PATCH /roles/:roleId`.
+- [2026-09-05T18:30:00Z] [ORCH] Independently re-verified, not trusted on the dossier's word: control-api 151/151 (chat.routes.test.ts 37/37), `flutter analyze` clean, `flutter test` 82/82, full recursive `pnpm --no-bail -r test` clean on run 1 and only the two already-known pre-existing flakes (runs.test.ts timeout, workerJobQueue.test.ts pg-boss timing) on run 2, build/lint clean. Read the actual `serializeRole()` diff and the mobile settings widget directly — both match the dossier's claims exactly, including the honest empty-string-means-clear contract (no silent null conversion) and the Title field correctly staying read-only with its existing "no update endpoint" messaging. Approved, merged --no-ff.
+**Artifacts:** services/control-api/src/app.ts (serializeRole), services/control-api/src/chat.routes.test.ts, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/chat_screen.dart, dossiers/TASK-165.md
+**Test_Evidence:** Independently re-verified: control-api 151/151, flutter analyze clean, flutter test 82/82, full recursive suite clean modulo 2 pre-existing known flakes, build/lint clean.
+**Review_Findings:** APPROVED, first-pass. Real capability-exposure fix, not polish — a bot's persona/instructions can now actually be set through the app, closing the gap the user found on-device. No discrepancies between the dossier's claims and independent verification across every checked item (backend serialization, mobile UI, save/error states, empty-string-clear contract).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T15:02:10Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T18:30:00Z
 
 ### TASK-166
 **Title:** Chat file/image attachments — real upload capability, currently entirely absent
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** Real gap named by the user comparing against the Grok Bot reference app's `+` attach button (image/file upload in the composer): confirmed by grep, ZERO attachment/upload capability exists anywhere in this codebase today — no upload endpoint, no attachment column on `packages/db/src/messages.ts`'s `Message`/`NewMessage`, no storage location, no agent-side way to read an uploaded file. This is a real, sizable capability gap, not UI polish — do not scope this as "add a button."
 **Owned_Paths:** TBD at decompose time — likely packages/db/src/messages.ts, packages/db/src/messages.test.ts, infra/postgres/migrations/**, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, apps/mobile/**, possibly services/workspace/src/** if attachments land in the agent-visible workspace
