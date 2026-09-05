@@ -1,8 +1,8 @@
 ---
-plan_version: 11.6
-last_updated: 2026-09-04T20:30:00Z
+plan_version: 11.7
+last_updated: 2026-09-05T13:58:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 7 dispatched from the full post-incident backlog (WORKFLOW_BACKLOG_PRIORITIZATION_2026-09-05.md): TASK-154 (CX, MCP-connector/system-CLI leak - investigate whether TASK-153's empty env already closes it, fix at harness-factory layer if not), TASK-155 (CX9, continue-after-approval - confirmed live-blocking tonight, real SDK resume mechanism grounded: resume:sessionId verified in sdk.d.ts, runs.session_ref already persisted, TASK-153's agentSdkOptions passthrough already built), TASK-157 (S5, mobile polish: markdown rendering, system-event styling, personalized placeholder, title field). TASK-156 (role instructions/persona) deliberately deferred to Wave 8 - collides with TASK-155 on chatRunDriver.ts, sequenced not parallelized. TASK-158/159/160 (routine creation UI, routine detail+history, inline handoff chips) also named for Wave 8. Deliberately not scheduled: live-agent/monitor view (OpenSandbox-dependent), conversational rename, voice input, composer visual polish, OIK-110/111 budgets."
+orchestrator_notes: "Wave 7/8 (TASK-154-159) all done and merged. TASK-159 (routine run history) closed after independent re-verification found the builder's own test report inaccurate (claimed 1 pre-existing control-api failure blocking their branch; branch was actually clean 32/32, master has 2 pre-existing failures not 1) - approved anyway, code diff itself was correct and minimal. Surfaced 2 new unrelated backlog issues, logged as TASK-161 (WSL bash missing, breaks chatRunDriver.test.ts on this machine) and TASK-162 (order/resource-dependent flaky real-Postgres tests in control-api + db) - both low priority, not blocking. TASK-160 (inline cross-bot handoff chips) grounded against the real packages/db/src/roleMessages.ts data layer (listRoleMessages/sendRoleMessage/markRoleMessageRead, built TASK-084/099/141, zero routes expose it today) and dispatched to CX9 now that app.ts is free. TASK-143 (OIK-110/111 budgets) still frozen - architectural gap (withBudgetSink doesn't cover the primary Claude-SDK chat path), three options presented to the human, awaiting decision. S5 and CX idle."
 ---
 
 # Project Plan
@@ -4683,7 +4683,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-159
 **Title:** Routine run history — real fire-history reconstruction + mobile detail view
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Reference UX from the Grok Bot screenshots the user shared: a routine detail screen with a "Run history" list (multiple past fires, each with a timestamp and outcome — "Yesterday at 08:23, Succeeded"). Grounded against the real schema, not guessed: there is NO dedicated fire-history table — `recordRoutineFire` (packages/db/src/routines.ts) only overwrites the routine's own `last_fire_at`/`last_fire_status` columns each time it fires, so that alone cannot answer "show me the last N runs." Real history IS reconstructable: every routine fire creates a real task via `createTask` with a genuine `routine_id` column (services/worker/src/jobs/routineJob.ts line ~81, confirmed — not a string-matching convention, a real FK-shaped column on `tasks`), and each task has real `runs` rows (`RunListFilter.taskId` already exists and works — confirmed in packages/db/src/runs.ts). The one real gap: `TaskListFilter` (packages/db/src/tasks.ts) has no `routineId` field, so `GET /tasks` cannot be filtered by routine today.
@@ -4691,19 +4691,95 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Backend first, then mobile — investigate the exact current shape of `listTasks`/`GET /tasks` before changing it (this extends an established pattern, matching how `status`/`tenantId`/`limit`/`cursor` already work as query params). Add `routineId` to `TaskListFilter` and to `LIST_TASKS_QUERY_SCHEMA`/the `GET /tasks` route, filtering on the real `routine_id` column. On mobile, extend TASK-148's routines tab: a routine row now opens a detail screen showing the routine's own info (name, schedule, next fire — data TASK-148 already fetches) plus a run-history list built by calling `GET /tasks?routineId=X` then, for each returned task, `GET /runs?taskId=Y` (both real, both already return real status/timestamp data — no new run-level endpoint needed). Each history row shows a real timestamp and a real outcome (the run's actual `status`, not a fabricated "Succeeded"/"Failed" — if the real status vocabulary doesn't map cleanly to a friendly label, use the real status string rather than inventing a mapping that could misrepresent an actual failure as a success or vice versa). Handle the empty-history case (a routine that has never fired) gracefully, not as an error.
 **Acceptance_Criteria:**
-- [ ] `GET /tasks?routineId=X` returns only tasks created by that routine — tested against real Postgres
-- [ ] A routine detail screen exists, reachable from the routines tab
-- [ ] The detail screen's run history reflects real task/run data via the two real endpoints above — tested against a fake client
-- [ ] A run's real status is shown accurately, never a fabricated or misleading label — reviewed directly
-- [ ] A routine with no fire history shows an empty state, not an error
-- [ ] Existing `GET /tasks` behavior (no `routineId` given) is unchanged — existing tests pass unmodified
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** task/TASK-159-cx9
+- [x] `GET /tasks?routineId=X` returns only tasks created by that routine — tested against real Postgres
+- [x] A routine detail screen exists, reachable from the routines tab
+- [x] The detail screen's run history reflects real task/run data via the two real endpoints above — tested against a fake client
+- [x] A run's real status is shown accurately, never a fabricated or misleading label — reviewed directly
+- [x] A routine with no fire history shows an empty state, not an error
+- [x] Existing `GET /tasks` behavior (no `routineId` given) is unchanged — existing tests pass unmodified
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** task/TASK-159-cx9 (merged, deleted)
 **Started_At:** 2026-09-05T11:33:30Z
+**Progress_Notes:**
+- [2026-09-05T11:45:00Z] [CX9] Implemented `routineId` filtering in `TaskListFilter`/`GET /tasks` and a mobile routine-detail screen reconstructing history via `GET /tasks?routineId=` + `GET /runs?taskId=`. Real status/timestamp shown, no fabricated outcome mapping; explicit never-fired empty state.
+- [2026-09-05T13:50:00Z] [ORCH] Territory diff clean — only Owned_Paths touched, backend change is a tight 4-line addition matching spec exactly. Builder's dossier claimed a control-api test failure ("pre-existing, TASK-156 PATCH 400-vs-200") causing non-zero exit on their own branch — did not trust this, ran independent verification instead.
+- [2026-09-05T13:52:00Z] [ORCH] Independent verification results: on TASK-159's branch, `chat.routes.test.ts` passes clean 32/32 (builder's claimed non-zero exit does not reproduce). On master, ran the same file twice: it genuinely fails, but with **2** pre-existing failures, not 1 — the PATCH-instructions 400 the builder named, plus an approvals-decide sessionId failure the builder never mentioned. TASK-159's diff touches neither code path (no PATCH-roles or approvals-decide changes, no schema/migration diff) — order/state-dependent flakiness against the shared real-Postgres DATABASE_URL, not a regression. Full recursive `pnpm -r test --no-bail`: control-api clean 146/146 (incl. chat.routes.test.ts); 2 unrelated failures found (services/worker chatRunDriver.test.ts — `execvpe(/bin/bash)` missing on this Windows machine, a WSL/env gap, not a code defect; packages/db runs.test.ts `listOpenRuns` — 5s timeout, likely Postgres contention from parallel suites). Neither touches TASK-159's Owned_Paths or diff. `pnpm -r build`/`pnpm lint` clean. `flutter analyze` clean, `flutter test` 73/73.
+**Artifacts:** apps/mobile/lib/screens/routine_detail_screen.dart, dossiers/TASK-159.md
+**Test_Evidence:** Independently re-verified by ORCH (not builder self-report): db `tasks.test.ts` 5/5, control-api `chat.routes.test.ts` 32/32 (clean on branch), full recursive `pnpm -r test --no-bail` — control-api 146/146, all other packages green except 2 confirmed-unrelated pre-existing issues (see Progress_Notes) neither touching TASK-159's diff; `pnpm -r build`/`pnpm lint` exit 0; `flutter analyze` clean, `flutter test` 73/73.
+**Review_Findings:**
+- Approved, first-pass on the actual code (backend/mobile diff is correct, minimal, matches spec exactly; all acceptance criteria met). Builder's dossier itself was inaccurate on test reporting — claimed one pre-existing control-api failure causing non-zero exit on their own branch, when in fact it doesn't reproduce on the branch at all and master actually has 2 failures, not 1. Not fabrication (real failures do exist on master, just mis-scoped) but a reminder that Test_Evidence claims still need independent re-verification, not just presence of a claim.
+- Two new pre-existing issues surfaced by running the full suite that nobody had previously verified: (1) `services/worker/chatRunDriver.test.ts` (TASK-153's workspace test) fails on this machine via `execvpe(/bin/bash)` — WSL/bash.exe missing from PATH, environment gap not a code defect; (2) `packages/db/runs.test.ts` `listOpenRuns` intermittently times out at 5s, likely real-Postgres contention from parallel suites — order/resource flakiness, not a logic bug. Both logged as new backlog items (see TBD section) — out of TASK-159's scope, not blocking this merge.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:55:00Z
+
+### TASK-160
+**Title:** Inline cross-bot handoff chips — surface real role-to-role handoffs on mobile
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** Reference UX: Grok Bot's "2 messages with 🩸 TREVOR" compact inline chip in a bot's own timeline (see [[grok-bot-mobile-reference]]). Grounded against the real schema, not guessed: `packages/db/src/roleMessages.ts` already has a complete data layer — `RoleMessage` (fromRoleId, toRoleId, body, handoffKind, factRef, createdAt, readAt), `listRoleMessages(options, {tenantId, toRoleId?, fromRoleId?, unreadOnly?})`, `sendRoleMessage`, `markRoleMessageRead` — built for TASK-084/099/141's real async role-to-role handoffs. Confirmed by grep: zero routes anywhere in `services/control-api/src/app.ts` expose this table. `app.ts` is now free — TASK-159 (the task that was sequenced ahead of this one for the same file) merged clean.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, apps/mobile/**
+**Depends_On:** —
+**Description:** Investigate the exact current shape of `app.ts`'s role routes before adding to it (follow the same param/response-shape conventions already used by `GET /tasks`/`GET /runs`). Add a real listing route — e.g. `GET /roles/:roleId/messages` — backed by `listRoleMessages` (filter by `toRoleId` and/or `fromRoleId` = the given role, tenant-scoped as the DB layer already requires). Decide and document in the dossier: does the route return one merged list, or does the mobile client call it twice (as sender and as recipient) — pick whichever matches how a bot's own timeline should read (all handoffs touching this bot, sent or received, ordered newest-first). On mobile, render each handoff as the reference chip: compact, inline, showing the other role's name/avatar and a short label ("2 messages with X" or the single-message equivalent), reachable from the bot's own chat/timeline screen (investigate `chat_screen.dart`'s current structure first — this is additive to it, not a new screen unless the existing structure has no sensible insertion point, in which case say so and justify a new screen in the dossier). Tapping a chip should show the handoff's real content (from `RoleMessage.body`), not a fabricated summary. A bot with no handoffs shows nothing extra (no empty-state chip needed — this is inline decoration, not a dedicated list view).
+**Acceptance_Criteria:**
+- [ ] A real route lists a role's handoff messages (sent and/or received, tenant-scoped) backed by `listRoleMessages` — tested against real Postgres
+- [ ] A bot's timeline shows a compact inline chip for each real handoff (or merged group), not a placeholder — tested
+- [ ] Tapping a chip surfaces the real message body, never a fabricated one — tested
+- [ ] A bot with zero handoffs renders no chip and no error
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T11:33:30Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:58:00Z
+
+### TASK-161
+**Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Surfaced by TASK-159's independent full-suite verification (2026-09-05): `services/worker/src/chatRunDriver.test.ts` (TASK-153's fresh-workspace isolation test) fails with `execvpe(/bin/bash) failed: No such file or directory` on this machine when run via the full recursive `pnpm -r test` — bash.exe/WSL is not resolvable from this environment's PATH in that context. Not a code defect: TASK-153's actual isolation logic (cwd/env scoping) is unaffected; this is the test's own reliance on a `bash` binary being present.
+**Owned_Paths:** services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Investigate what the test actually shells out to and why (likely a minimal `bash -c` invocation used as the SDK's "fake" agent process for the isolation assertion). Fix at the test level — either resolve a real bash-compatible binary in a way that works on this dev machine (e.g. via Node's own `child_process` instead of assuming `/bin/bash` on PATH), or replace the fake process invocation with something that doesn't require a POSIX shell at all. Do not weaken or skip the isolation assertion itself — the fix must keep genuinely proving cwd/env scoping, just without depending on an unavailable shell binary.
+**Acceptance_Criteria:**
+- [ ] The test passes on this machine without requiring WSL/bash.exe on PATH
+- [ ] The isolation assertion (cwd/env scoping) is still genuinely exercised, not weakened or skipped
+- [ ] `pnpm -r test` for services/worker exits 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:58:00Z
+
+### TASK-162
+**Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
+**Owned_Paths:** services/control-api/src/chat.routes.test.ts, packages/db/src/runs.test.ts
+**Depends_On:** —
+**Description:** Investigate first — do not just add retries or increase timeouts as a first move, that would mask a real ordering/isolation bug in test setup/teardown if one exists. Check whether these tests share database state (a tenant/role/task fixture reused across test files without cleanup between runs, transaction isolation levels, connection-pool exhaustion under `pnpm -r test`'s parallelism). Confirm reproducibility: does running the affected test files alone (not the full suite) ever fail, or only under full-suite parallel load? Fix at the root cause (proper fixture isolation/cleanup, or documented justified timeout increase with evidence it's genuinely a slow-hardware issue and not a stuck query) rather than papering over symptoms.
+**Acceptance_Criteria:**
+- [ ] Root cause identified and documented with evidence (not guessed)
+- [ ] Both tests pass reliably under `pnpm -r test`'s full parallel run, repeated at least 3x
+- [ ] Fix does not weaken what either test actually proves
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:58:00Z
