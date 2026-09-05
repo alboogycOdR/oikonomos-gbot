@@ -4964,7 +4964,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-168
 **Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots (see [[grok-bot-mobile-reference]] items 6-8): a pill-shaped composer with attach/voice affordances, a frosted/floating header over scrolling content, and date/session divider labels between message clusters. Purely cosmetic — no capability gap, no backend change. Current composer is a plain rectangular TextField (apps/mobile/lib/screens/chat_screen.dart around line 544-546); the attach button from TASK-166 already exists and must be preserved/reflowed, not replaced.
@@ -4977,15 +4977,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Date divider labels appear between message clusters that cross a real day boundary, computed from real timestamps — tested with fixture messages spanning two days
 - [ ] No existing chat_screen_test.dart test regresses
 - [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-168-s5
+**Started_At:** 2026-09-05T17:48:25Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T19:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T17:48:25Z
 
 ### TASK-169
 **Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
