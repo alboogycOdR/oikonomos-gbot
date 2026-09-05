@@ -4937,7 +4937,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-167
 **Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots: asking the bot "How do I change your name?" gets both a settings-page pointer AND "Or just tell me what to call myself and I'll rename it" — a real in-conversation rename capability. Previously deferred (see [[grok-bot-mobile-reference]]) pending role-instructions/persona landing, which shipped at TASK-156. No rename capability exists anywhere today (confirmed by grep — zero `updateRoleName`/rename route/tool). Real pattern to follow, already proven in this codebase: `packages/broker/src/builtinTools.ts`'s `BUILTIN_TOOLS` declares `mcp__workspace__send_to_role` (MCP tool, `services/worker/src/workspaceMcpServer.ts` implements it) — a self-rename tool should follow the exact same registration shape (declared tool → capability → MCP server implementation), not a new ad-hoc mechanism.
@@ -4952,15 +4952,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Invalid names (empty, absurdly long) are rejected with a clear error, not silently accepted or silently truncated
 - [ ] A real, governed end-to-end chat run proves the agent can actually invoke the tool and the rename is genuinely persisted — not a mocked/unit-only proof
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-167-cx
+**Started_At:** 2026-09-05T17:48:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T18:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T17:48:11Z
 
 ### TASK-168
 **Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
