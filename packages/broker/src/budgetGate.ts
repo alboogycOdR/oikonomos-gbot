@@ -50,14 +50,17 @@ export function resolveBudgetGate(input: BudgetGateInput): BudgetGateDecision {
   const platformSpendUsd = requireFiniteNonNegative(input.platformSpendUsd, "platformSpendUsd");
   const platformCeilingUsd = requireFiniteNonNegative(input.platformCeilingUsd, "platformCeilingUsd");
 
-  if (platformSpendUsd > platformCeilingUsd) {
+  // Ceiling semantics are "hard ceiling" (CLAUDE.md "Budget"): spend AT the
+  // ceiling must already deny the next spawn, not allow one more turn past
+  // it. `>=`, not `>` (REWORK finding, 2026-09-05).
+  if (platformSpendUsd >= platformCeilingUsd) {
     return { decision: "deny", reason: "budget.platform_exceeded" };
   }
 
   if (input.routineBudgetUsd !== null && input.routineSpendUsd !== null) {
     const routineSpendUsd = requireFiniteNonNegative(input.routineSpendUsd, "routineSpendUsd");
     const routineBudgetUsd = requireFiniteNonNegative(input.routineBudgetUsd, "routineBudgetUsd");
-    if (routineSpendUsd > routineBudgetUsd) {
+    if (routineSpendUsd >= routineBudgetUsd) {
       return { decision: "deny", reason: "budget.routine_exceeded" };
     }
   }
@@ -131,6 +134,28 @@ if (import.meta.vitest) {
           routineSpendUsd: 999,
           routineBudgetUsd: 1,
           platformSpendUsd: 2_000,
+          platformCeilingUsd: 1_000,
+        }),
+      ).toEqual({ decision: "deny", reason: "budget.platform_exceeded" });
+    });
+
+    it("denies budget.routine_exceeded when spend equals the ceiling exactly (hard ceiling, REWORK fix)", () => {
+      expect(
+        resolveBudgetGate({
+          routineSpendUsd: 10,
+          routineBudgetUsd: 10,
+          platformSpendUsd: 1,
+          platformCeilingUsd: 1_000,
+        }),
+      ).toEqual({ decision: "deny", reason: "budget.routine_exceeded" });
+    });
+
+    it("denies budget.platform_exceeded when spend equals the ceiling exactly, including a zero/zero routine (hard ceiling, REWORK fix)", () => {
+      expect(
+        resolveBudgetGate({
+          routineSpendUsd: 0,
+          routineBudgetUsd: 0,
+          platformSpendUsd: 1_000,
           platformCeilingUsd: 1_000,
         }),
       ).toEqual({ decision: "deny", reason: "budget.platform_exceeded" });

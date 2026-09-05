@@ -57,6 +57,18 @@ describe("services/worker subprocessProviders — wrapGateWithBudget (TASK-143, 
     const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
     expect(result.allow).toBe(false);
   });
+
+  it("fails closed when platformCeilingZar is not a finite non-negative number (REWORK fix)", async () => {
+    const budget: GatedSubprocessBudgetOptions = {
+      db: { connectionString: "postgres://unreachable-host-for-test:1/db" },
+      runId: "run-x",
+      routineId: null,
+      platformCeilingZar: Number.NaN,
+    };
+    const gated = wrapGateWithBudget(allowAll, budget);
+    const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
+    expect(result.allow).toBe(false);
+  });
 });
 
 integration("services/worker subprocessProviders — live budget enforcement (TASK-143)", () => {
@@ -179,6 +191,18 @@ integration("services/worker subprocessProviders — live budget enforcement (TA
     const spend = await getRoutineSpendUsd(db, routineIdWithBudget);
     // 6 (recorded above) + 1000 isn't in this routine; only the 6 + this 0.42 turn.
     expect(spend).toBeCloseTo(6.42);
+  });
+
+  it("fails closed (denies) on a dangling routineId that doesn't resolve to any role_routines row (REWORK fix)", async () => {
+    const budget: GatedSubprocessBudgetOptions = {
+      db,
+      runId: "task-143-sp-run-dangling",
+      routineId: "task-143-nonexistent-routine-id",
+    };
+    const gated = wrapGateWithBudget(allowAll, budget);
+    const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
+    expect(result.allow).toBe(false);
+    expect((result as { message: string }).message).toMatch(/budget\.check_failed/);
   });
 
   it("exposes the documented placeholder defaults", () => {

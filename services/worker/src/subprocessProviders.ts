@@ -46,18 +46,52 @@ export interface GatedSubprocessBudgetOptions {
  * Reads a routine's configured budget ceiling from `role_routines.definition
  * .budgetUsd` (TASK-143's investigated location — no dedicated column
  * exists, and this task's Owned_Paths does not include `routines.ts`, so it
- * reads the field via the already-exported `getRoutine`). Absent/malformed
- * data means "no configured ceiling" (null), not zero: a missing ceiling is
- * not the same as a zero-spend allowance, and must not fail closed here —
- * only a live spend-read failure fails closed (see `wrapGateWithBudget`).
+ * reads the field via the already-exported `getRoutine`). A `budgetUsd`
+ * field that is absent or not a finite non-negative number means "no
+ * configured ceiling" (null) — a routine with no budget set is not the same
+ * as a zero-spend allowance.
+ *
+ * A `routineId` that does not resolve to any `role_routines` row is a
+ * DIFFERENT case: it is a dangling/inconsistent reference (the caller
+ * asserted a routine owns this run, but the DB disagrees), and per
+ * CLAUDE.md non-negotiable 3 that must fail closed, not silently degrade to
+ * "unlimited" (REWORK finding, 2026-09-05).
  */
 async function getRoutineBudgetUsd(db: DatabaseOptions, routineId: string): Promise<number | null> {
   const routine = await getRoutine(db, routineId);
   if (routine === null) {
-    return null;
+    throw new Error(`budget.dangling_routine: routine ${routineId} not found`);
   }
   const value = (routine.definition as Record<string, unknown> | null)?.budgetUsd;
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Bounded deadline for the live budget-decision DB reads (CLAUDE.md
+ * non-negotiable 3: "timeout (>10s) ⇒ deny"). A connected-but-blocked query
+ * has no outer deadline of its own (`packages/db`'s pool only bounds
+ * connection *acquisition*, not an in-flight query) — race it against this
+ * timer so a stuck read denies instead of hanging (REWORK finding,
+ * 2026-09-05).
+ */
+export const BUDGET_READ_TIMEOUT_MS = 9_500;
+
+function withBudgetReadTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`budget.read_timeout: exceeded ${BUDGET_READ_TIMEOUT_MS}ms`));
+    }, BUDGET_READ_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error as Error);
+      },
+    );
+  });
 }
 
 /**
@@ -67,25 +101,53 @@ async function getRoutineBudgetUsd(db: DatabaseOptions, routineId: string): Prom
  * since these providers hand a whole turn to the CLI rather than
  * per-tool-call broker roundtrips) re-reads current spend before deciding.
  *
- * Fail-closed (CLAUDE.md non-negotiable 3): a DB read failure or malformed
- * routine-budget record denies the spawn rather than falling through to the
- * real gate.
+ * Fail-closed (CLAUDE.md non-negotiable 3): a DB read failure, a read that
+ * exceeds `BUDGET_READ_TIMEOUT_MS`, a dangling routine reference, or a
+ * malformed ceiling/rate config all deny the spawn rather than falling
+ * through to the real gate.
+ *
+ * **Known accepted limitation (TOCTOU, documented per the REWORK finding
+ * rather than silently assumed correct):** this check and `withRecordedSpend`
+ * are not one atomic transaction. Concurrent spawns can each read the same
+ * pre-spend total, all pass, then each record cost afterward — able to
+ * exceed a ceiling by multiple in-flight turns' worth of spend before the
+ * next spawn's read observes it. A full fix needs a transactional
+ * reservation (e.g. an atomic "reserve then confirm/release" spend row,
+ * mirroring the nonce-consumption pattern CLAUDE.md non-negotiable 8 uses
+ * for approvals) — tracked as follow-on work, not built in this session.
+ * Accepted for now because: subprocess spawns are turn-granular (not
+ * per-tool-call), so the worst-case overshoot is bounded by concurrent
+ * in-flight turns, and the platform ceiling is a soft monthly guardrail,
+ * not a hard per-call limit like the ACL/approval controls.
  */
 export function wrapGateWithBudget(gate: GateSubprocess, budget: GatedSubprocessBudgetOptions): GateSubprocess {
   return async (request) => {
     let decision;
     try {
-      const routineId = budget.routineId ?? null;
-      const [routineSpendUsd, routineBudgetUsd, platformSpendUsd] = await Promise.all([
-        routineId === null ? Promise.resolve(null) : getRoutineSpendUsd(budget.db, routineId),
-        routineId === null ? Promise.resolve(null) : getRoutineBudgetUsd(budget.db, routineId),
-        getPlatformSpendUsd(budget.db),
-      ]);
+      // Validate config BEFORE any I/O: fails fast on a malformed rate/
+      // ceiling without spending a DB round trip, and keeps this branch
+      // testable without a live database (REWORK fix, 2026-09-05).
       const rate = budget.usdToZarRate ?? DEFAULT_USD_TO_ZAR_RATE;
       if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
         throw new Error("USD_TO_ZAR_RATE must be a finite number > 0");
       }
       const platformCeilingZar = budget.platformCeilingZar ?? DEFAULT_PLATFORM_CEILING_ZAR;
+      if (
+        typeof platformCeilingZar !== "number" ||
+        !Number.isFinite(platformCeilingZar) ||
+        platformCeilingZar < 0
+      ) {
+        throw new Error("platformCeilingZar must be a finite number >= 0");
+      }
+
+      const routineId = budget.routineId ?? null;
+      const [routineSpendUsd, routineBudgetUsd, platformSpendUsd] = await withBudgetReadTimeout(
+        Promise.all([
+          routineId === null ? Promise.resolve(null) : getRoutineSpendUsd(budget.db, routineId),
+          routineId === null ? Promise.resolve(null) : getRoutineBudgetUsd(budget.db, routineId),
+          getPlatformSpendUsd(budget.db),
+        ]),
+      );
       decision = resolveBudgetGate({
         routineSpendUsd,
         routineBudgetUsd,
@@ -137,13 +199,37 @@ export function withRecordedSpend<TProvider extends { id: string }>(
  * `budget`, when provided, composes both halves of TASK-143's enforcement
  * for the Codex/Grok path: a live pre-spawn budget check (via `gate`) and
  * real spend recording (via `withBudgetSink`) on every completed turn.
- * Omitting it preserves the previous ungated construction exactly.
+ *
+ * **Liveness assertion, scoped to what this task's territory can enforce
+ * (REWORK finding, 2026-09-05):** an attempt was made in this same session
+ * to make `budget` a hard-required argument (throwing unless a caller
+ * explicitly opts out via `unsafeAllowUnbudgeted: true`). That change had
+ * to be reverted: it broke `services/worker/test/executeRun.test.ts`'s
+ * existing "wires gated Codex/Grok providers from the production factory"
+ * test, which is OUTSIDE this task's `Owned_Paths` (confirmed blocked by
+ * the territory-firewall hook) and cannot be edited from here. Making a
+ * breaking API change I then can't fix everywhere it lands is worse than
+ * the finding itself. **Escalated in the dossier as an explicit,
+ * documented cross-territory limitation for ORCH**, exactly per this same
+ * REWORK's own precedent for the TOCTOU finding ("or explicitly accepted +
+ * documented, ORCH's call, not the reviewer's alone"): omitting `budget`
+ * remains possible and silent at the type level. TASK-143's investigation
+ * found ZERO production call sites for this factory anywhere in the
+ * repository — the Codex/Grok routing path itself has no production
+ * wiring yet, independent of budget (pre-existing, not introduced by this
+ * task) — so today this is a real but currently-unexercised gap, not a
+ * live silent-bypass in a path anything actually calls. `unsafeAllowUnbudgeted`
+ * is defined below as the forward-looking mechanism: once a real production
+ * caller is written (wherever that lands), wire the throw back in there
+ * and require it to either supply `budget` or explicitly opt out.
  */
 export function createGatedSubprocessProviders(
   options: {
     readonly codex: GatedCodexOptions;
     readonly grok: GatedGrokOptions;
     readonly budget?: GatedSubprocessBudgetOptions;
+    /** Reserved for the future production call site's explicit opt-out; not enforced here (see doc comment above). */
+    readonly unsafeAllowUnbudgeted?: boolean;
   },
 ): SubprocessProviderFactories<CodexProvider, GrokProvider> {
   if (typeof options !== "object" || options === null) {
