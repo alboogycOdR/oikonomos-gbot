@@ -1,8 +1,8 @@
 ---
-plan_version: 13.0
-last_updated: 2026-09-05T20:00:00Z
+plan_version: 13.1
+last_updated: 2026-09-05T20:35:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-168 (composer polish) approved+merged, independently verified. TASK-169 (sandbox-client exec capability) legitimately BLOCKED, not a builder failure: CX9 checked the real live OpenSandbox OpenAPI spec and found zero exec/command endpoint exists at all (independently reconfirmed by ORCH against the same live server) - only lifecycle/diagnostics/proxy/endpoints/pools/snapshots. This changes the whole OIK-043 premise: real integration model is likely 'run a persistent process inside the sandbox, reach it via proxy/{port}' not 'remote-exec one-off commands' - updated TASK-170's Description with this finding so it isn't re-investigated from scratch. Also hit a real dispatch tooling bug (CX9's session had DEVTEAM_UNIT=CX instead of CX9, blocking even its dossier commit) - not yet root-caused, logged for follow-up, work content independently verified and preserved regardless. TASK-167 (rename) resumed after a legitimate chatRunDriver.ts territory widen and its done marker just fired - reviewing next."
+orchestrator_notes: "TASK-167 (self-rename) approved+merged after 4 legitimate territory-gap rounds (chatRunDriver.ts mount point, packages/db barrel, builtinTools.test.ts exact-registry-shape, registerCapabilities.test.ts exact-registry-shape) - none were code defects, all caught before speculative code was written. Independently re-verified: worker 88/88, broker 129/129, db 153/153, full build/lint clean. Wrote up the TASK-169 OpenSandbox exec-API finding as a formal problem statement (docs/research/opensandbox-exec-api-gap-2026-09-05.md) for the human to relay to their senior architect - real architectural blocker, not resolvable by a builder. Also fixed two session-wide environment gaps discovered along the way: Docker Desktop + the oikonomos-postgres-local container were both dead after the earlier machine restart (fixed), and CX's worktree had zero node_modules installed (fixed via pnpm install). TASK-168 (composer polish) done/merged. Backlog unchanged: TASK-161/162/163/164 unassigned; TASK-170/171 blocked pending the OpenSandbox architecture decision."
 ---
 
 # Project Plan
@@ -4937,7 +4937,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-167
 **Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots: asking the bot "How do I change your name?" gets both a settings-page pointer AND "Or just tell me what to call myself and I'll rename it" — a real in-conversation rename capability. Previously deferred (see [[grok-bot-mobile-reference]]) pending role-instructions/persona landing, which shipped at TASK-156. No rename capability exists anywhere today (confirmed by grep — zero `updateRoleName`/rename route/tool). Real pattern to follow, already proven in this codebase: `packages/broker/src/builtinTools.ts`'s `BUILTIN_TOOLS` declares `mcp__workspace__send_to_role` (MCP tool, `services/worker/src/workspaceMcpServer.ts` implements it) — a self-rename tool should follow the exact same registration shape (declared tool → capability → MCP server implementation), not a new ad-hoc mechanism.
@@ -4948,11 +4948,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Acceptance_Criteria:**
 - [ ] `updateRoleName` persists a real name change, tested against real Postgres
 - [ ] A new self-rename tool is properly declared/registered following the existing `BUILTIN_TOOLS` pattern, with a deliberately-chosen tier (documented why)
-- [ ] The tool can only rename the calling role's own record — proven with a test that attempts a cross-role rename and confirms it's rejected, not silently ignored
-- [ ] Invalid names (empty, absurdly long) are rejected with a clear error, not silently accepted or silently truncated
-- [ ] A real, governed end-to-end chat run proves the agent can actually invoke the tool and the rename is genuinely persisted — not a mocked/unit-only proof
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** task/TASK-167-cx
+- [x] The tool can only rename the calling role's own record — proven with a test that attempts a cross-role rename and confirms it's rejected, not silently ignored
+- [x] Invalid names (empty, absurdly long) are rejected with a clear error, not silently accepted or silently truncated
+- [x] A real, governed end-to-end chat run proves the agent can actually invoke the tool and the rename is genuinely persisted — not a mocked/unit-only proof
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** task/TASK-167-cx (merged, deleted)
 **Started_At:** 2026-09-05T17:48:11Z
 **Progress_Notes:**
 - [2026-09-05T19:35:00Z] [CX] Correctly blocked before writing code: `chatRunDriver.ts` hard-mounts only `mcp__workspace__send_to_role` into `allowedTools` for a governed chat run, and hard-codes the one capability ID it checks — a new tool declared/implemented elsewhere would never actually be reachable by the agent, making this task's own real-governed-chat-run acceptance criterion unsatisfiable as scoped. No code changed, correctly escalated instead of guessing.
@@ -4964,11 +4964,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-05T18:13:08Z] [CX] Implemented the full self-rename slice: `updateRoleName` (trimmed, non-empty, ≤100 chars), `mcp__workspace__rename_self` declared as `workspace.rename_self` at T1_draft, mounted only from a persisted grant, deriving the rename target solely from the worker-bound `fromRoleId` (rejects any model-supplied `roleId`). Real Postgres coverage for DB/MCP/governed-chat-run added. Could not run `pnpm -r test`/`build`/`lint` at all — this worktree had zero `node_modules` installed (environment gap, not code), reported honestly rather than fabricating a pass. Committed as `f82fccc`.
 - [2026-09-05T20:20:00Z] [ORCH] Fixed the environment gap myself: `pnpm install` (462 packages) + `pnpm -r build` both clean. Ran real tests: db 153/153 (2 skipped) clean including the new roles tests; broker 129/129 clean including builtinTools; worker had exactly ONE real, reproducible regression (confirmed on 2 separate runs) — `registerCapabilities.test.ts`'s exact-shape assertion hardcodes the workspace MCP connector as having exactly one capability, and CX's new second capability (`workspace.rename_self`) breaks it. This file is a 4th instance of the exact same class of gap (an exact-registry-shape test not in Owned_Paths) — swept the rest of the repo for similar hardcoded-shape tests referencing BUILTIN_TOOLS/workspace.send_to_role first (capabilityRegistry.test.ts builds its expectations dynamically, unaffected; ome-two-role-handoff-live.test.ts matches by exact capability ID string, unaffected) — this is the only remaining one. Also had to start Docker Desktop and the `oikonomos-postgres-local` container myself, both dead after the earlier machine restart — unrelated to this task, a session-level environment step. Widening Owned_Paths one more time to include `services/worker/src/registerCapabilities.test.ts`. Resuming on task/TASK-167-cx.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** Independently re-verified: worker 88/88 (incl. real governed chat-run self-rename proof), broker 129/129, db 153/153 (2 skipped), full pnpm -r build/lint clean.
+**Review_Findings:** APPROVED, first-pass on the actual implementation — the four blockers were all legitimate territory gaps, not code defects, and each was caught before speculative code was written. Real end-to-end proof genuinely exercises the mounted MCP tool through the real dispatch path (fake queryFn calls the real handler, real Postgres row updated, real audit event recorded) — matches this codebase's established pattern for "real governed chat run" proofs (same shape as TASK-131's send_to_role precedent). Cross-role rejection and invalid-name rejection both have dedicated tests. Self-rename correctly derives its target only from the worker-bound `fromRoleId`, never a model-supplied `roleId` — the real authorization boundary the task required.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T20:20:00Z
+**Updated_At:** 2026-09-05T20:35:00Z
 
 ### TASK-168
 **Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
