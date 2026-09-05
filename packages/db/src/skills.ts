@@ -71,7 +71,9 @@ interface SkillRow extends QueryResultRow {
 
 const skillColumns = `skill_id, tenant_id, name, description, when_to_use, body,
        inputs, access, approvals, failure_policy, version, status, created_at, updated_at`;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const qualifiedSkillColumns = `skills.skill_id, skills.tenant_id, skills.name, skills.description, skills.when_to_use, skills.body,
+       skills.inputs, skills.access, skills.approvals, skills.failure_policy, skills.version, skills.status, skills.created_at, skills.updated_at`;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 
 function requireNonEmpty(value: string, field: string): string {
@@ -248,7 +250,7 @@ export async function listEnabledForRole(
   const normalizedRoleId = requireNonEmpty(roleId, "roleId");
   return withPool(options, async (pool) => {
     const result = await pool.query<SkillRow>(
-      `SELECT ${skillColumns} FROM skills
+      `SELECT ${qualifiedSkillColumns} FROM skills
        INNER JOIN role_skills ON role_skills.skill_id = skills.skill_id
        WHERE role_skills.role_id = $1 AND role_skills.enabled = true
        ORDER BY skills.name`,
