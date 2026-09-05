@@ -5568,7 +5568,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-190
 **Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Found during TASK-177 review 2026-09-06: `GET /skills/:id`, `PATCH /skills/:id` (new, TASK-177) and the pre-existing `GET /runs/:id`, `GET /runs/:id/evidence`, `GET /threads/:id`, `GET /threads/:id/stream` all fetch or mutate a record by bare ID with **no check that the record belongs to the caller's tenant**. This is a real, not theoretical, cross-tenant IDOR: any authenticated user can read or overwrite another tenant's skill/run/thread by guessing or observing its UUID. It predates this session — the pattern was already there for `/runs/:id` — but was harmless while every session shared one hardcoded tenant (`basileia`). **TASK-172 made tenants real, distinct, per-Google-account identities, which makes this a genuine, live confidentiality+integrity gap starting now**, not a latent one. CLAUDE.md non-negotiable §7 ("ACL filter before vector similarity, never after") establishes the same principle for a different mechanism; this is its by-id-route analogue.
@@ -5580,12 +5580,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] No route changes from 404 to 403 on a cross-tenant request (403 would confirm the record exists to a non-owner)
 - [ ] `PATCH`/mutating by-id routes are covered by the same cross-tenant test as `GET` ones — a write path with no isolation check is the higher-severity half of this bug
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-190-s5
+**Started_At:** 2026-09-05T23:03:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T01:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T23:03:01Z
