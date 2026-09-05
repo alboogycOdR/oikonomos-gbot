@@ -163,3 +163,28 @@ filesystem default, so `index.ts` needs no edit.
   All staged paths sit inside the cleaned Owned_Paths plus this dossier.
   Committing, then re-running `pnpm -r test/build/lint` and
   `flutter analyze/test` for fresh Test_Evidence.
+
+- [2026-09-05T16:50:44Z] [GB] Commit `ba20d0e` on `task/TASK-166-gb`
+  (`feat(chat): add file/image attachments with prompt injection [TASK-166]`).
+  Territory-precommit accepted the cleaned Owned_Paths from the main
+  checkout. Fresh Test_Evidence this session:
+
+  - `pnpm lint` exit 0
+  - `pnpm -r build` exit 0
+  - First `pnpm -r test` failed on the pre-existing
+    `services/worker/src/jobs/workerJobQueue.test.ts` queued-vs-missed
+    flake (outside territory). Isolated retry
+    `pnpm --filter @oikonomos/worker test -- src/jobs/workerJobQueue.test.ts`
+    6/6 pass. Full `pnpm -r test` rerun exit 0 (18/19 workspaces).
+  - `@oikonomos/control-api` 156/156 including upload→structured
+    ref→goal injection, server-side size/type reject, missing-id /
+    attachments-only empty body, and live-Postgres
+    `the chat driver actually reads the contents`.
+  - `@oikonomos/db` messages suite: structured attachments persist+reread
+    against real Postgres.
+  - `C:\tool\flutter\bin\flutter.bat analyze` — No issues found (17.2s).
+  - `C:\tool\flutter\bin\flutter.bat test` — All tests passed (92),
+    including attach progress/error, pending chip → attachmentIds,
+    picker cancel, contentType mapping.
+
+  Review_Findings empty. All ACs met. Handing off needs_review.
