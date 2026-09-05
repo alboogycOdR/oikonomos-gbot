@@ -32,3 +32,5 @@ Read the Spec pointers first, then the existing files named in Territory (run th
   ```
 
 - [2026-09-05T21:37:00Z] [CX] Implemented the reusable six-part template and seeded it through the existing role-instructions PATCH before thread creation. Focused charter/create-screen tests pass and `flutter analyze` is clean. The full `flutter test` suite is blocked by `apps/mobile/test/screens/roster_screen_test.dart`: its existing fake response queue assumes create is POST /roles then POST /threads and lacks the required PATCH /roles/:id response. That file is outside TASK-181 Owned_Paths, so it was not edited.
+
+- [2026-09-05T22:00:00Z] [CX] Resumed after ORCH widened territory for the reviewed fixture gap. Updated `roster_screen_test.dart` to queue the successful `PATCH /roles/:id` charter response between its existing create-role and create-thread responses. `dart format` changed only that test file; `flutter analyze` is clean and the full `flutter test` suite passes.
