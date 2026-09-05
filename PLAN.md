@@ -1,8 +1,8 @@
 ---
-plan_version: 14.0
-last_updated: 2026-09-05T21:20:00Z
+plan_version: 14.1
+last_updated: 2026-09-05T21:40:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v14.0 — Wave OFFICE-1 decomposed from specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md (14 new tasks TASK-175..188) plus the OpenSandbox exec-API resolution (TASK-169 re-scoped, TASK-170/171 grounded). FIRST DISPATCH WAVE (all deps satisfied now, pairwise-disjoint): TASK-175 carve chatRunDriver (S5), TASK-176 skills schema (CX9), TASK-181 charter template mobile (CX), TASK-184 request_secret broker tool (CX, protected). TASK-174 (S5, rework) is still active — dispatch 175 to S5 only after 174 lands or accept two S5 sessions. Serial chain on the worker: 175 → 177 → 179 → 170 → 185 → 186 → 188; 180 and 182 hang off 175/176. Mobile chain: 178 → 183 → 171/187. TASK-169 stays blocked on the human action item (real OpenSandbox API key in a Tailscale-reachable builder env) — design is resolved; unit half is buildable, ORCH may dispatch with the live AC deferred. TASK-027 absorbed into TASK-185. GB remains deactivated (weekly limit) — protected-path tasks 184/185/186 assigned to CX; if CX is also capped, do NOT hand them to S5 without a non-Anthropic reviewer (Directive §3). After 175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files."
+orchestrator_notes: "Plan v14.0 — Wave OFFICE-1 decomposed from specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md (14 new tasks TASK-175..188) plus the OpenSandbox exec-API resolution (TASK-169 re-scoped, TASK-170/171 grounded). FIRST DISPATCH WAVE (all deps satisfied now, pairwise-disjoint): TASK-175 carve chatRunDriver (S5), TASK-176 skills schema (CX9), TASK-181 charter template mobile (CX), TASK-184 request_secret broker tool (CX, protected). TASK-174 (S5, rework) is still active — dispatch 175 to S5 only after 174 lands or accept two S5 sessions. Serial chain on the worker: 175 → 177 → 179 → 170 → 185 → 186 → 188; 180 and 182 hang off 175/176. Mobile chain: 178 → 183 → 171/187. TASK-169 stays blocked on the human action item (real OpenSandbox API key in a Tailscale-reachable builder env) — design is resolved; unit half is buildable, ORCH may dispatch with the live AC deferred. TASK-027 absorbed into TASK-185. GB RE-ACTIVATED 2026-09-05 (weekly limit reset): TASK-185/186 re-assigned to GB, TASK-184 stays on CX — protected-path load split across both non-Anthropic builders. GB has no immediately-eligible task (185 waits on 170) — hand GB TASK-176 or TASK-181 at dispatch if idle capacity matters more than the heuristic fit. After 175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files."
 ---
 
 # Project Plan
@@ -5420,7 +5420,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-08 (AC anchors: observed refusal from inside allowlist_only; liveness — sandbox with policy absent is refused before any command); report §10.3 four modes, §12.5(a) egress deny; OIK-045b (Addendum B §2, pulled forward); infra/sandbox/README.md §7.1 remedy and trigger (fires with TASK-170); TASK-027 (absorbed — its DOCKER-USER rule is applied here); ADR-005 liveness. PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8.
 **Owned_Paths:** packages/policy/src/egress.ts, packages/policy/src/egress.test.ts, packages/policy/src/index.ts, packages/sandbox-client/src/egress.ts, packages/sandbox-client/src/egress.test.ts, infra/sandbox/README.md, infra/sandbox/egress/**, infra/sandbox/scripts/**
@@ -5440,12 +5440,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_At:** 2026-09-05T21:40:00Z
 
 ### TASK-186
 **Title:** G-06 — Browser lane v1: Steel Browser inside the role sandbox, bot-private profile, governed `browser.*` capability family (protected paths)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-06 (AC anchors: profile cookies unreadable from a /command run — observed denial; CAPTCHA raises human_takeover_required, no solve attempt); ADR-006 Addendum B (Steel inside OpenSandbox; OIK-076/077 narrowing); ADR-010 Amendment + Addendum F N13 (browser credentials inaccessible by construction); CLAUDE.md NN#6 (stealth off, no circumvention); report §12.5(d), §12.7; ADR-013 (manifest declares tiers). PROTECTED PATHS packages/connectors/manifests/**, packages/harness-factory/** — author CX, reviewer ORCH opus-4-8.
 **Owned_Paths:** packages/connectors/manifests/steel-browser.json, infra/sandbox/images/office-browser/**, packages/harness-factory/src/browserLane.ts, packages/harness-factory/src/browserLane.test.ts, packages/connectors/src/steelSession.ts, packages/connectors/src/steelSession.test.ts
@@ -5465,7 +5465,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_At:** 2026-09-05T21:40:00Z
 
 ### TASK-187
 **Title:** G-05b — Secret intake UX: masked inline card on mobile + fulfilment API
