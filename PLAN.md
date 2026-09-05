@@ -1,8 +1,8 @@
 ---
-plan_version: 14.5
-last_updated: 2026-09-05T22:15:00Z
+plan_version: 14.6
+last_updated: 2026-09-05T22:20:00Z
 overall_status: in_progress
-orchestrator_notes: "First Wave OFFICE-1 batch complete: TASK-175 (S5, carve chatRunDriver.ts — verified function-by-function and assertion-by-assertion byte-identical, genuinely zero behaviour change), TASK-176 (CX9, skills DB schema — migration reversibility independently verified against a scratch DB clone), and TASK-181 (CX, bot charter template — one honest rework round for a real shared-fixture regression, fixed and re-verified) all approved and merged. Real, pre-existing Postgres-contention flakiness observed during review (different unrelated file failing each pnpm -r test run, always clean in isolation) — same known class as backlog item TASK-162, not a regression from any of these three tasks; worth prioritizing TASK-162 given three concurrent builders now make this worse. TASK-161's Owned_Paths re-pointed to services/worker/src/runWorkspace.test.ts (where its target test now lives post-carve) and is ready to dispatch; TASK-163/164/170 checked and needed no re-pointing. TASK-177/179/180 (all depend on 175/176) and TASK-184 (depends on 176) are now unblocked and ready to dispatch. GB still has no eligible task (185/186 depend on TASK-170). TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
+orchestrator_notes: "First Wave OFFICE-1 batch complete: TASK-175 (S5, carve chatRunDriver.ts — verified function-by-function and assertion-by-assertion byte-identical, genuinely zero behaviour change), TASK-176 (CX9, skills DB schema — migration reversibility independently verified against a scratch DB clone), and TASK-181 (CX, bot charter template — one honest rework round for a real shared-fixture regression, fixed and re-verified) all approved and merged. Real, pre-existing Postgres-contention flakiness observed during review (different unrelated file failing each pnpm -r test run, always clean in isolation) — same known class as backlog item TASK-162, not a regression from any of these three tasks; worth prioritizing TASK-162 given three concurrent builders now make this worse. TASK-161's Owned_Paths re-pointed to services/worker/src/runWorkspace.test.ts (where its target test now lives post-carve); TASK-170 sequenced after it (Depends_On) since both now genuinely touch that file. TASK-163/164/170 otherwise checked and needed no re-pointing. TASK-177/179/180 (depend on 175/176) and TASK-184 (depends on 176) are now unblocked and ready to dispatch. TASK-161 assigned to GB (idle capacity — GB's real backlog TASK-185/186 still waits on TASK-170) rather than left TBD. TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
 ---
 
 # Project Plan
@@ -4780,7 +4780,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-161
 **Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** GB
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent full-suite verification (2026-09-05): `services/worker/src/chatRunDriver.test.ts` (TASK-153's fresh-workspace isolation test) fails with `execvpe(/bin/bash) failed: No such file or directory` on this machine when run via the full recursive `pnpm -r test` — bash.exe/WSL is not resolvable from this environment's PATH in that context. Not a code defect: TASK-153's actual isolation logic (cwd/env scoping) is unaffected; this is the test's own reliance on a `bash` binary being present.
 **Owned_Paths:** services/worker/src/runWorkspace.test.ts
