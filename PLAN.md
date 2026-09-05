@@ -4488,7 +4488,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-152
 **Title:** APK → Gofile → Telegram release delivery script
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** User-provided spec "_APK PUBLISH TO TELEGRAM - SPEC" (2026-09-05): three-call flow — `GET https://api.gofile.io/servers` (pick `data.servers[0].name`, no auth), `POST https://<server>.gofile.io/contents/uploadfile` (multipart, field `file`, no auth, ~10-day expiry, no size cap), `POST https://api.telegram.org/bot<TOKEN>/sendMessage` (plain text, **no `parse_mode`** — the spec's own documented lesson: Telegram legacy Markdown aborts on any unmatched `_`/`*`/backtick in a commit message, and MarkdownV2 requires escaping ~15 characters; plain text is the reliable choice and Telegram auto-links URLs regardless). Reference Node.js implementation in the spec is adapted to Dart for this repo — see Description.
@@ -4504,10 +4504,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` (or `dart test` if this lives outside the widget-test tree) exit 0; nothing outside Owned_Paths touched
 **Branch:** task/TASK-152-s5
 **Started_At:** 2026-09-05T05:01:16Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-05T05:10:10Z] [SV:S5] Implemented apps/mobile/tool/release_remote.dart (Gofile servers -> multipart upload -> Telegram sendMessage, no parse_mode, env-only credentials, clear pre-network errors for missing file/env vars, no git shell-out). 17 tests against FakeHttpClient (reused read-only from test/support), 0 real network calls. flutter analyze clean; full flutter test suite (59 tests) unaffected. pubspec.yaml gained a 'test' dev dependency; pubspec.lock intentionally excluded from commit per territory firewall (outside Owned_Paths) - flagged for ORCH.
+**Artifacts:** apps/mobile/tool/release_remote.dart, apps/mobile/tool/release_remote_test.dart, apps/mobile/pubspec.yaml, dossiers/TASK-152.md
+**Test_Evidence:** dart test tool/release_remote_test.dart -> +17: All tests passed! (0 network calls); flutter analyze -> No issues found! exit 0; flutter test (full suite) -> +59: All tests passed!
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-05T05:01:16Z
+**Updated_At:** 2026-09-05T05:10:10Z
