@@ -1,5 +1,5 @@
 ---
-plan_version: 11.4
+plan_version: 11.5
 last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave 7 dispatched from the full post-incident backlog (WORKFLOW_BACKLOG_PRIORITIZATION_2026-09-05.md): TASK-154 (CX, MCP-connector/system-CLI leak - investigate whether TASK-153's empty env already closes it, fix at harness-factory layer if not), TASK-155 (CX9, continue-after-approval - confirmed live-blocking tonight, real SDK resume mechanism grounded: resume:sessionId verified in sdk.d.ts, runs.session_ref already persisted, TASK-153's agentSdkOptions passthrough already built), TASK-157 (S5, mobile polish: markdown rendering, system-event styling, personalized placeholder, title field). TASK-156 (role instructions/persona) deliberately deferred to Wave 8 - collides with TASK-155 on chatRunDriver.ts, sequenced not parallelized. TASK-158/159/160 (routine creation UI, routine detail+history, inline handoff chips) also named for Wave 8. Deliberately not scheduled: live-agent/monitor view (OpenSandbox-dependent), conversational rename, voice input, composer visual polish, OIK-110/111 budgets."
@@ -4653,3 +4653,29 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T11:04:22Z
+
+### TASK-156
+**Title:** Role instructions/persona — real bot identity via SDK systemPrompt
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** Confirmed missing at the schema level tonight: `roles` has no `instructions`/system-prompt column at all (verified directly against Postgres). This contributed to tonight's ORCH-persona incident — a bot had nothing of its own to fall back on. The SDK genuinely supports this: `Options.systemPrompt?: string` (verified in sdk.d.ts), and `chatRunDriver.ts` currently passes only `prompt: request.task.goal` with no `systemPrompt` at all. TASK-155 (merged) is the reason this was sequenced rather than run in parallel — both need `chatRunDriver.ts`'s `runChatTask`, so this had to wait.
+**Owned_Paths:** infra/postgres/migrations/**, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Investigate current shape before writing code — read `packages/db/src/roles.ts` and confirm the exact migration convention this repo uses (check `infra/postgres/migrations/` for the numbering/naming pattern already established) before adding a new one. Add an `instructions` column to `roles` (nullable text, no default — an unset bot has no custom instructions, which must degrade gracefully, not error). Add a `PATCH /roles/:roleId` route (or extend an existing one if one already exists close to this shape — check first) accepting `{instructions?: string}` and persisting it. Then, in `chatRunDriver.ts`'s `runChatTask`, build a real `systemPrompt` from the role's name/title/description/instructions (a sensible default framing plus the custom instructions when present) and pass it in `agentSdkOptions.systemPrompt` alongside the existing `cwd`/`env`/`resume` fields already in that object — do not disturb TASK-153/155's isolation or resume wiring, this is an additive field on the same options object. A role with no instructions set must behave exactly as today (some sensible default identity, not an empty/broken prompt). Real proof required: a governed chat run where the injected systemPrompt is captured via a fake queryFn and shown to include the role's real instructions text — not just that the field is passed, that it's built from the right source data.
+**Acceptance_Criteria:**
+- [ ] Migration adds `roles.instructions` (nullable), tested against real Postgres
+- [ ] A route to set a role's instructions exists and persists them — tested
+- [ ] A chat run for a role WITH instructions set includes them in the constructed `systemPrompt` — tested, capturing the real value via a fake queryFn
+- [ ] A chat run for a role WITHOUT instructions set behaves identically to today (sensible default, no error, no empty prompt) — tested
+- [ ] TASK-153 (cwd/env isolation) and TASK-155 (resume) behavior is unaffected — existing tests for both pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:15:00Z
