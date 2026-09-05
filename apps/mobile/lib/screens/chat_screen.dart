@@ -595,25 +595,30 @@ class _SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<_SettingsScreen> {
-  bool _loadingTitle = true;
-  String? _title;
+  bool _loadingRole = true;
   String? _titleError;
+  String? _instructionsError;
+  bool _savingInstructions = false;
+  final _titleController = TextEditingController();
+  final _instructionsController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadTitle();
+    _loadRole();
   }
 
-  /// TASK-157 (4) — `roles.title` is a real column (confirmed against the
-  /// live schema) but `GET /roles` doesn't serialize it yet
-  /// (`services/control-api/src/app.ts`'s `serializeRole`, outside this
-  /// task's `apps/mobile/**` territory to fix) and there is no `PATCH
-  /// /roles/:roleId` route to write it either. Per the task's own scoping
-  /// instruction ("read-only display if no update route exists yet"), this
-  /// fetches the role and shows whatever title comes back (`null` today)
-  /// read-only, rather than inventing a write path that doesn't exist.
-  Future<void> _loadTitle() async {
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _instructionsController.dispose();
+    super.dispose();
+  }
+
+  /// Title is still read-only: no title-update route exists. Instructions
+  /// are writable via the real `PATCH /roles/:roleId` body
+  /// `{instructions: string}` (empty string clears).
+  Future<void> _loadRole() async {
     try {
       final roles = await widget.apiClient.listRoles();
       Role? match;
@@ -625,14 +630,49 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _title = match?.title;
-        _loadingTitle = false;
+        _titleController.text = match?.title ?? '';
+        _instructionsController.text = match?.instructions ?? '';
+        _loadingRole = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _titleError = 'Could not load title.';
-        _loadingTitle = false;
+        _instructionsError = 'Could not load instructions.';
+        _loadingRole = false;
+      });
+    }
+  }
+
+  Future<void> _saveInstructions() async {
+    if (_savingInstructions) return;
+    setState(() {
+      _savingInstructions = true;
+      _instructionsError = null;
+    });
+    try {
+      await widget.apiClient.updateRoleInstructions(
+        widget.bot.roleId,
+        _instructionsController.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _savingInstructions = false;
+      });
+    } on UnauthorizedError {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _instructionsError = error.message;
+        _savingInstructions = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _instructionsError = 'Failed to save instructions.';
+        _savingInstructions = false;
       });
     }
   }
@@ -658,7 +698,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          if (_loadingTitle)
+          if (_loadingRole)
             const SizedBox(
               key: Key('title-loading'),
               height: 20,
@@ -669,13 +709,45 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             TextField(
               key: const Key('title-field'),
               readOnly: true,
-              controller: TextEditingController(text: _title ?? ''),
+              controller: _titleController,
               decoration: InputDecoration(
                 hintText: 'No title set',
                 helperText: _titleError ??
                     'Read-only — no update endpoint exists for this yet.',
               ),
             ),
+          const SizedBox(height: 20),
+          const Text(
+            'Instructions',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (!_loadingRole) ...[
+            TextField(
+              key: const Key('instructions-field'),
+              controller: _instructionsController,
+              minLines: 4,
+              maxLines: 8,
+              enabled: !_savingInstructions,
+              decoration: const InputDecoration(
+                hintText: 'Custom persona / system prompt for this bot',
+              ),
+            ),
+            if (_instructionsError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _instructionsError!,
+                key: const Key('instructions-error'),
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ElevatedButton(
+              key: const Key('instructions-save'),
+              onPressed: _savingInstructions ? null : _saveInstructions,
+              child: Text(_savingInstructions ? 'Saving…' : 'Save instructions'),
+            ),
+          ],
           const SizedBox(height: 20),
           const Text(
             'App info',

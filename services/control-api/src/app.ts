@@ -290,8 +290,28 @@ async function loadMessageShapingContext(
   };
 }
 
-function serializeRole(role: { roleId: string; name: string; description: string }) {
-  return { id: role.roleId, name: role.name, description: role.description, avatarSeed: role.roleId };
+function serializeRole(role: {
+  roleId: string;
+  name: string;
+  description: string;
+  title: string;
+  instructions: string | null;
+}): {
+  id: string;
+  name: string;
+  description: string;
+  avatarSeed: string;
+  title: string | null;
+  instructions: string | null;
+} {
+  return {
+    id: role.roleId,
+    name: role.name,
+    description: role.description,
+    avatarSeed: role.roleId,
+    title: role.title,
+    instructions: role.instructions,
+  };
 }
 
 /** A bot's handoff timeline is the union of its inbox and outbox. */

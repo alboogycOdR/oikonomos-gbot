@@ -108,6 +108,13 @@ class ApiClient {
           body: body == null ? null : jsonEncode(body),
         );
         break;
+      case 'PATCH':
+        response = await _client.patch(
+          uri,
+          headers: _headers(),
+          body: body == null ? null : jsonEncode(body),
+        );
+        break;
       default:
         throw ArgumentError('unsupported method $method');
     }
@@ -143,6 +150,20 @@ class ApiClient {
       'POST',
       '/roles',
       body: {'name': name, 'description': description},
+    );
+    return Role.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `PATCH /roles/:roleId` — `{instructions: string}` is required. Send
+  /// an empty string to clear a previously set persona (TASK-156 contract).
+  Future<Role> updateRoleInstructions(
+    String roleId,
+    String instructions,
+  ) async {
+    final json = await _request(
+      'PATCH',
+      '/roles/${Uri.encodeComponent(roleId)}',
+      body: {'instructions': instructions},
     );
     return Role.fromJson(json as Map<String, dynamic>);
   }
