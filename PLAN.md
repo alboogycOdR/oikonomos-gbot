@@ -4598,7 +4598,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-157
 **Title:** Mobile polish bundle — markdown rendering, system-event styling, personalized placeholder, title field
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Live on-device testing, 2026-09-05: chat bubbles render raw markdown syntax unrendered (confirmed by the user's own screenshot). Reference UX from the Grok Bot app screenshots the user shared: rich list/bold rendering in chat bubbles; a small, centered, muted, icon-prefixed message style for state-change events ("Renamed to X"), visually distinct from a normal chat bubble; a composer placeholder personalized to the bot's name ("Ask NewStuffBot001") rather than generic text; a "Title (optional)" field on the bot settings screen, separate from Name. roles.title already exists as a real column in the live schema (confirmed directly against Postgres) — it is simply never surfaced in apps/mobile's settings screen (TASK-148's scope did not include it).
@@ -4611,12 +4611,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Composer placeholder includes the bot's name — tested
 - [ ] Settings screen shows the title field — tested; if wired to a real update, prove the request shape matches whatever real route exists
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-157-s5
+**Started_At:** 2026-09-05T10:25:24Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T12:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:25:24Z
