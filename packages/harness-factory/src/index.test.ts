@@ -56,6 +56,27 @@ describe("defaultSdkQuery system Claude resolution", () => {
     });
   });
 
+  it("uses strict MCP configuration for a governed system-CLI invocation", async () => {
+    execFileSync.mockReturnValue(`${SYSTEM_CLAUDE}\n`);
+
+    const input = await invokeDefaultQuery({
+      cwd: "/isolated/chat-run",
+      env: {},
+      mcpServers: { oikonomos: { type: "http", url: "https://connector.invalid/mcp" } },
+    });
+
+    // `strictMcpConfig` maps to the CLI's --strict-mcp-config flag: it keeps
+    // this explicit server map while excluding user, project, and plugin MCP
+    // configuration. Removing the production guard makes this test fail.
+    expect(input.options).toMatchObject({
+      cwd: "/isolated/chat-run",
+      env: {},
+      mcpServers: { oikonomos: { type: "http", url: "https://connector.invalid/mcp" } },
+      pathToClaudeCodeExecutable: SYSTEM_CLAUDE,
+      strictMcpConfig: true,
+    });
+  });
+
   it("never overwrites a caller-supplied executable", async () => {
     const callerExecutable = "/caller/claude";
 
