@@ -4488,7 +4488,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-152
 **Title:** APK → Gofile → Telegram release delivery script
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** User-provided spec "_APK PUBLISH TO TELEGRAM - SPEC" (2026-09-05): three-call flow — `GET https://api.gofile.io/servers` (pick `data.servers[0].name`, no auth), `POST https://<server>.gofile.io/contents/uploadfile` (multipart, field `file`, no auth, ~10-day expiry, no size cap), `POST https://api.telegram.org/bot<TOKEN>/sendMessage` (plain text, **no `parse_mode`** — the spec's own documented lesson: Telegram legacy Markdown aborts on any unmatched `_`/`*`/backtick in a commit message, and MarkdownV2 requires escaping ~15 characters; plain text is the reliable choice and Telegram auto-links URLs regardless). Reference Node.js implementation in the spec is adapted to Dart for this repo — see Description.
@@ -4502,12 +4502,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A missing target file produces a clear error before any HTTP call — tested
 - [ ] No literal bot token, chat ID, or other credential-shaped literal appears anywhere in source or test fixtures — reviewed directly
 - [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` (or `dart test` if this lives outside the widget-test tree) exit 0; nothing outside Owned_Paths touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-152-s5
+**Started_At:** 2026-09-05T05:01:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T06:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T05:01:16Z
