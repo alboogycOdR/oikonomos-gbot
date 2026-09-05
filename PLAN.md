@@ -1,8 +1,8 @@
 ---
-plan_version: 14.2
-last_updated: 2026-09-05T21:26:27Z
+plan_version: 14.3
+last_updated: 2026-09-05T21:31:13Z
 overall_status: in_progress
-orchestrator_notes: "Dispatch wave (GB/CX, Phase 2 devteam-dispatch): validated clean (0 warnings), no tasks were active. Of GB/CX's pending assignments, only TASK-181 (charter template, CX) had all Depends_On actually done — dispatched. TASK-184 (CX, protected, request_secret) is NOT yet eligible despite v14.0's dispatch-wave note calling it ready: its Depends_On field genuinely lists TASK-176 (still pending, assigned CX9, outside this dispatch's GB/CX scope) — the prose note overstated readiness; the structured field is authoritative and was followed. GB has no eligible task this round: both TASK-185/186 depend on TASK-170, not done. Re-dispatch GB/TASK-184 once TASK-170/176 land. S5/CX9 tasks (175/176/177/179/180) are a separate dispatch lane, not touched by this GB/CX-scoped run. TASK-169 stays blocked on the human action item (real OpenSandbox API key). After TASK-175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files."
+orchestrator_notes: "Wave OFFICE-1 dispatch, both lanes now running: TASK-181 (CX, charter template, mobile) from the GB/CX-scoped dispatch, plus TASK-175 (S5, carve chatRunDriver.ts — the territory prerequisite blocking 161/163/164/170/177/179/180) and TASK-176 (CX9, skills DB schema) from the S5/CX9 lane. Territory disjointness confirmed pairwise across all three active tasks (mobile vs worker vs db/migrations). TASK-184 (CX, protected, request_secret) remains genuinely blocked on TASK-176 — dispatch once 176 merges. GB still has no eligible task (185/186 depend on TASK-170, which itself depends on 175/179/169). TASK-169 stays blocked on the human action item (real OpenSandbox API key). After TASK-175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files and TASK-177/179/180 can dispatch."
 ---
 
 # Project Plan
