@@ -1,5 +1,8 @@
 import { issueApproval, verifyAndConsume, type ApprovalWaitSignal } from "@oikonomos/approvals";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
   createConnectorSessionPool,
@@ -157,6 +160,7 @@ async function runChatTask(
     });
     const run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
     runId = run.runId;
+    const workspace = await createChatRunWorkspace(run.runId);
     let result;
     try {
       result = await executeTaskRun({
@@ -164,6 +168,9 @@ async function runChatTask(
         run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
         // L2 requires the scoped form; PolicyRegistry receives its bare name.
         allowedTools: ["Bash(*)", "Read(*)"],
+        // Never inherit the worker process cwd or environment into a bot.
+        // The Agent SDK forwards these values to its Bash/Read tool process.
+        agentSdkOptions: { cwd: workspace, env: {} },
         ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
         ...(connector === undefined ? {} : { connector }),
         brokerDependencies: createBrokerDependencies(options, database, registry, policy),
@@ -174,6 +181,7 @@ async function runChatTask(
       for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
+      await removeChatRunWorkspace(workspace);
     }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
     await completeTaskRun(options, run.runId);
@@ -181,6 +189,16 @@ async function runChatTask(
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+/** A fresh disposable working directory prevents one chat run seeing another. */
+async function createChatRunWorkspace(runId: string): Promise<string> {
+  const safeRunId = runId.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return mkdtemp(join(tmpdir(), `oikonomos-chat-${safeRunId}-`));
+}
+
+async function removeChatRunWorkspace(workspace: string): Promise<void> {
+  await rm(workspace, { recursive: true, force: true, maxRetries: 3 });
 }
 
 const WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID = "workspace.send_to_role";

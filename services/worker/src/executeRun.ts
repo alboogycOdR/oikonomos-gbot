@@ -80,6 +80,12 @@ export interface ExecuteTaskRunInput<TCodex = unknown, TGrok = unknown> {
     input: Record<string, unknown>;
   }) => string | undefined;
   connector?: ConnectorContext;
+  /**
+   * Explicit SDK process settings supplied by the chat execution boundary.
+   * They are deliberately passed through untouched: the harness factory owns
+   * the rest of the Agent SDK options composition.
+   */
+  agentSdkOptions?: Readonly<Record<string, unknown>>;
 }
 
 export interface ExecuteTaskRunResult<TCodex = unknown, TGrok = unknown> {
@@ -110,7 +116,10 @@ export async function executeTaskRun<TCodex = unknown, TGrok = unknown>(
   });
 
   const events: unknown[] = [];
-  for await (const event of runtime.harness.query({ prompt: input.prompt })) {
+  for await (const event of runtime.harness.query({
+    prompt: input.prompt,
+    ...(input.agentSdkOptions === undefined ? {} : { options: input.agentSdkOptions }),
+  })) {
     events.push(event);
   }
 
@@ -221,6 +230,12 @@ function assertExecuteInput<TCodex, TGrok>(
   }
   if (input.queryFn !== undefined && typeof input.queryFn !== "function") {
     throw new WorkerExecutionError("queryFn must be a function when provided", "INVALID_QUERY");
+  }
+  if (
+    input.agentSdkOptions !== undefined
+    && (typeof input.agentSdkOptions !== "object" || input.agentSdkOptions === null || Array.isArray(input.agentSdkOptions))
+  ) {
+    throw new WorkerExecutionError("agentSdkOptions must be an options object", "INVALID_SDK_OPTIONS");
   }
 }
 

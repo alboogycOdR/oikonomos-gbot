@@ -11,6 +11,9 @@ import {
 } from "@oikonomos/db";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
+import { execFile } from "node:child_process";
+import { access } from "node:fs/promises";
+import { promisify } from "node:util";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentSdkQueryFn, AgentSdkQueryInput } from "@oikonomos/harness-factory";
@@ -31,6 +34,7 @@ import type { ConnectorContext } from "./executeRun.js";
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./chatRunDriver.ts", import.meta.url), "utf8"),
 );
+const execFileAsync = promisify(execFile);
 
 const base = {
   toolUseId: "tool-use", runId: "11111111-1111-1111-1111-111111111111", roleId: "chat-bot", tenantId: "basileia",
@@ -265,6 +269,51 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const botMessage = messages.find((message) => message.role === "bot" && message.runId === run.runId);
       expect(botMessage).toBeDefined();
       expect(botMessage?.body.length).toBeGreaterThan(0);
+    },
+    120_000,
+  );
+
+  it(
+    "runs Bash in a fresh workspace with an empty environment and removes it afterward (TASK-153)",
+    async () => {
+      const secretName = "TASK_153_TEST_PROCESS_SECRET";
+      const secretValue = `injected-${Date.now()}`;
+      const previousSecret = process.env[secretName];
+      process.env[secretName] = secretValue;
+      let workspace: string | undefined;
+      try {
+        const isolationTask = await createTask(options, {
+          roleId,
+          title: "TASK-153 workspace isolation fixture",
+          goal: "Exercise the chat workspace boundary.",
+          requestedBy: "task-153-suite",
+        });
+        const queryFn: AgentSdkQueryFn = async function* (input) {
+          const sdkOptions = input.options as { cwd?: string; env?: Record<string, string> };
+          workspace = sdkOptions.cwd;
+          expect(workspace).toBeTruthy();
+          expect(sdkOptions.env).toEqual({});
+          // This is the driver-to-SDK seam: execute the same real shell a
+          // Bash tool would receive, using the exact cwd/env it was given.
+          const shell = process.platform === "win32" ? "bash.exe" : "bash";
+          const { stdout } = await execFileAsync(shell, ["-lc", `pwd; printf '\\n%s' \"$${secretName}\"`], {
+            cwd: workspace,
+            env: sdkOptions.env,
+          });
+          const [reportedCwd, reportedSecret] = stdout.trimEnd().split(/\r?\n/, 2);
+          if (process.platform === "win32") expect(reportedCwd).toContain("oikonomos-chat-");
+          else expect(reportedCwd).toBe(workspace);
+          expect(reportedSecret ?? "").not.toBe(secretValue);
+          yield { type: "result", result: "workspace isolation verified" };
+        };
+
+        await createChatRunDriver({ ...options, queryFn }).run({ task: isolationTask, threadId });
+      } finally {
+        if (previousSecret === undefined) delete process.env[secretName];
+        else process.env[secretName] = previousSecret;
+      }
+      expect(workspace).toBeDefined();
+      await expect(access(workspace!)).rejects.toThrow();
     },
     120_000,
   );

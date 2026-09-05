@@ -58,6 +58,22 @@ describe("executeTaskRun — production caller", () => {
     expect(result.events).toEqual([{ type: "result", toolUseId: "worker-e4-liveness-1" }]);
   });
 
+  it("forwards caller-supplied Agent SDK process options through the composed harness", async () => {
+    const captured: AgentSdkQueryInput[] = [];
+    await executeTaskRun({
+      prompt: "inspect the isolated workspace",
+      run: workerRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createWorkerBrokerDeps(createDecisionLog()),
+      auditSink: createCompletionSink(),
+      agentSdkOptions: { cwd: "/isolated/run", env: {} },
+      queryFn: async function* (input) { captured.push(input); },
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.options).toMatchObject({ cwd: "/isolated/run", env: {} });
+  });
+
   it("wires gated Codex/Grok providers from the production factory", async () => {
     const audit = createDecisionLog();
     const result = await executeTaskRun({
