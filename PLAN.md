@@ -1,5 +1,5 @@
 ---
-plan_version: 11.3
+plan_version: 11.4
 last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave 7 dispatched from the full post-incident backlog (WORKFLOW_BACKLOG_PRIORITIZATION_2026-09-05.md): TASK-154 (CX, MCP-connector/system-CLI leak - investigate whether TASK-153's empty env already closes it, fix at harness-factory layer if not), TASK-155 (CX9, continue-after-approval - confirmed live-blocking tonight, real SDK resume mechanism grounded: resume:sessionId verified in sdk.d.ts, runs.session_ref already persisted, TASK-153's agentSdkOptions passthrough already built), TASK-157 (S5, mobile polish: markdown rendering, system-event styling, personalized placeholder, title field). TASK-156 (role instructions/persona) deliberately deferred to Wave 8 - collides with TASK-155 on chatRunDriver.ts, sequenced not parallelized. TASK-158/159/160 (routine creation UI, routine detail+history, inline handoff chips) also named for Wave 8. Deliberately not scheduled: live-agent/monitor view (OpenSandbox-dependent), conversational rename, voice input, composer visual polish, OIK-110/111 budgets."
@@ -4626,3 +4626,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T10:39:55Z
+
+### TASK-158
+**Title:** Mobile routine creation UI
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** Reference UX from the Grok Bot screenshots the user shared: a routine detail screen with Active toggle, Schedule ("Weekdays at 8:00 AM" / "Next run"), and an "Instruction" field describing what the routine does. The real backend route already exists and is grounded here, not guessed: `POST /roles/:roleId/routines` (services/control-api/src/app.ts), body `{name: string, schedule: string, definition?: object}`, `name`+`schedule` required (non-empty strings), `schedule` is validated server-side as a real cron expression (rejects invalid cron with a 400). `definition.goal` (services/worker/src/jobs/routineJob.ts) is the field the routine-fire job actually reads as the created task's instruction — this is the real field to expose as "Instruction" in the UI, not an arbitrary key. TASK-148 already built a read-only routines list tab; this task adds the missing creation flow only.
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** —
+**Description:** Investigate TASK-148's existing routines tab implementation before adding to it — this extends that screen, it does not replace it. Add a create-routine flow (a form screen or dialog, whichever fits the existing navigation pattern already established by `create_bot_screen.dart`) with three real inputs: a name (required, non-empty), a schedule (required — expose this as a real cron-expression text field for now; a friendlier "weekdays at 8:00 AM"-style picker that translates to cron is a nicer UX but is a separable follow-up, not required here — note in the dossier which you chose and why), and an instruction/goal (optional, maps to `definition: {goal: value}` when non-empty, omit `definition` entirely when empty rather than sending `{goal: ""}`). Submitting calls the real `POST /roles/:roleId/routines`; a validation error from the server (e.g. bad cron) must surface to the user as a real error message, not a silent failure or a generic crash. On success, the routines tab must show the new routine without requiring the user to leave and re-enter the screen. Do NOT attempt natural-language-to-cron translation or a chat-composer-driven creation flow ("Set up a routine to...") — that needs a real backend NL-parsing capability that does not exist yet; this task is the direct form-based creation path only.
+**Acceptance_Criteria:**
+- [ ] A real POST to `/roles/:roleId/routines` fires with the exact body shape the server expects (name, schedule, and definition only when a goal was entered) — tested against a fake client
+- [ ] A server-side validation error (e.g. invalid cron) surfaces as a visible error to the user — tested
+- [ ] After a successful creation, the routines tab reflects the new routine without a manual screen re-entry — tested
+- [ ] Empty name or empty schedule is prevented client-side before any request fires — tested
+- [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:00:00Z
