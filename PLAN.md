@@ -1,8 +1,8 @@
 ---
-plan_version: 12.4
-last_updated: 2026-09-05T18:00:00Z
+plan_version: 12.5
+last_updated: 2026-09-05T18:20:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-143 (budgets, Codex/Grok path) APPROVED and merged after 2 rounds of mandatory protected-path adversarial review (Codex CLI, different model than author S5). 5/6 findings fixed and confirmed twice; the 6th (zero production call sites for the entire Codex/Grok routing feature) is a pre-existing gap outside this task's scope - logged as TASK-164, tracked honestly rather than pursued via more rework. Budget logic is correct and will engage live the moment TASK-164 wires a real call site. TASK-159/160 also done/merged - Wave 7/8 backlog fully cleared except TASK-161/162/163/164, all low/medium priority, unassigned. S5, CX, CX9 all idle. CX/CX9 worktrees still stuck on Windows file locks (non-blocking)."
+orchestrator_notes: "TASK-165 (serializeRole title/instructions + mobile UI) submitted by GB, needs_review - independent verification in progress. Live on-device testing surfaced two more real gaps vs. the Grok Bot reference app: file/image upload (zero attachment capability exists anywhere today, confirmed by grep - logged as TASK-166, medium priority, real open design question about whether services/workspace/src/paths.ts's WORKSPACE_ROOT is a real mounted path or design-only, must be investigated not guessed) and conversational self-rename (logged as TASK-167, low priority, depends on TASK-166 for apps/mobile/app.ts sequencing, real tool-registration pattern already proven via mcp__workspace__send_to_role). Voice input and the live-agent/monitor icon remain explicitly out of scope (no STT pipeline; needs OpenSandbox wiring). CX/CX9/S5 worktrees all still stuck on the same Windows file-lock class of issue - logged as DEVDEPARTMENT_FEEDBACK finding #11 (pack-level, not project-specific). GB is the only builder with a clean worktree right now."
 ---
 
 # Project Plan
@@ -4899,3 +4899,55 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-05T15:02:10Z
+
+### TASK-166
+**Title:** Chat file/image attachments — real upload capability, currently entirely absent
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Real gap named by the user comparing against the Grok Bot reference app's `+` attach button (image/file upload in the composer): confirmed by grep, ZERO attachment/upload capability exists anywhere in this codebase today — no upload endpoint, no attachment column on `packages/db/src/messages.ts`'s `Message`/`NewMessage`, no storage location, no agent-side way to read an uploaded file. This is a real, sizable capability gap, not UI polish — do not scope this as "add a button."
+**Owned_Paths:** TBD at decompose time — likely packages/db/src/messages.ts, packages/db/src/messages.test.ts, infra/postgres/migrations/**, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, apps/mobile/**, possibly services/workspace/src/** if attachments land in the agent-visible workspace
+**Depends_On:** —
+**Description:** Investigate first, real open design question that must be resolved with evidence, not guessed: `services/workspace/src/paths.ts` defines a conceptual `/oikonomos/workspace` (WORKSPACE_ROOT) D1 tier that the SPEC describes as agent-readable — but TASK-153 (security fix) gives every real chat run a fresh, scoped, per-run temp directory as `cwd` for isolation. Determine whether `WORKSPACE_ROOT` corresponds to any real mounted/writable path in the actual running system today, or whether it's design-only/future. If real: landing an uploaded file there (in a durable, thread- or role-scoped subdirectory) would let the agent read it with its EXISTING Read/Bash tools, zero new agent-side tooling. If not real: a different storage/delivery mechanism is needed (e.g. injecting the file's content or a reference directly into the prompt/context, or storing to a plain local/cloud object store with no agent read path at all yet) — say so honestly and scope accordingly, do not force a fit to an aspirational path that doesn't exist. Once the storage design is grounded: (1) a real upload endpoint (size-limited, content-type-validated) that persists the file and records a real reference on the message (extend `NewMessage`/`Message`, do not bolt attachments on as an unstructured blob in `body`); (2) mobile `+` button wired to a real file/image picker and the real upload call, with a visible upload-progress/error state; (3) the attachment reference must be genuinely usable by the agent for the feature to be real — round-trip this end-to-end (upload → agent asked about the file → agent's response demonstrates it could actually access the content), not just "the file lands in storage."
+**Acceptance_Criteria:**
+- [ ] The real storage/agent-access design question above is answered with evidence in the dossier, not assumed
+- [ ] A real upload endpoint persists a file and records a structured reference on the message — tested against real Postgres
+- [ ] The mobile composer's `+` button opens a real file/image picker and uploads through the real endpoint, with visible progress and error states — tested
+- [ ] A genuine end-to-end round trip proves the agent can actually access an uploaded file's content, not just that it was stored — tested
+- [ ] Reasonable size/type limits are enforced server-side (not just client-side), with a clear rejection message on violation
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T18:20:00Z
+
+### TASK-167
+**Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Reference UX from the Grok Bot screenshots: asking the bot "How do I change your name?" gets both a settings-page pointer AND "Or just tell me what to call myself and I'll rename it" — a real in-conversation rename capability. Previously deferred (see [[grok-bot-mobile-reference]]) pending role-instructions/persona landing, which shipped at TASK-156. No rename capability exists anywhere today (confirmed by grep — zero `updateRoleName`/rename route/tool). Real pattern to follow, already proven in this codebase: `packages/broker/src/builtinTools.ts`'s `BUILTIN_TOOLS` declares `mcp__workspace__send_to_role` (MCP tool, `services/worker/src/workspaceMcpServer.ts` implements it) — a self-rename tool should follow the exact same registration shape (declared tool → capability → MCP server implementation), not a new ad-hoc mechanism.
+**Owned_Paths:** TBD at decompose time — likely packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/broker/src/builtinTools.ts, services/worker/src/workspaceMcpServer.ts (or a new dedicated MCP server file if that one is scoped narrower than "workspace" concerns), services/control-api/src/app.ts (if a name-serialization/route change is also needed)
+**Depends_On:** TASK-166
+**Description:** Investigate first: read `workspaceMcpServer.ts`'s `send_to_role` implementation in full as the template (tool declaration in `builtinTools.ts`, capability ID, tier, MCP server wiring) before writing a new tool. Add `updateRoleName` (or equivalent) to `packages/db/src/roles.ts`, mirroring `updateRoleInstructions`'s shape/conventions exactly (nullable-vs-required semantics, 404-on-missing behavior). Register a new tool (e.g. `mcp__workspace__rename_self`, or a more precisely-scoped MCP server name if "workspace" doesn't fit conceptually — investigate and decide, document the choice) with a sensible tier (T1_draft or T2_internal — a bot renaming only itself is a narrow, low-risk action; ground the tier choice in the existing tier definitions rather than guessing) so the agent can call it when a user asks for a rename in conversation. The tool must only ever rename the CALLING role's own record — never accept an arbitrary roleId from the model that could rename a different bot (a real authorization boundary, not just an implicit assumption). Validate the new name (non-empty, reasonable length) before persisting. Real proof required: a governed chat run where the agent genuinely calls the rename tool in response to a user's request and the role's real name changes in the database — not a unit test of the tool function in isolation.
+**Acceptance_Criteria:**
+- [ ] `updateRoleName` persists a real name change, tested against real Postgres
+- [ ] A new self-rename tool is properly declared/registered following the existing `BUILTIN_TOOLS` pattern, with a deliberately-chosen tier (documented why)
+- [ ] The tool can only rename the calling role's own record — proven with a test that attempts a cross-role rename and confirms it's rejected, not silently ignored
+- [ ] Invalid names (empty, absurdly long) are rejected with a clear error, not silently accepted or silently truncated
+- [ ] A real, governed end-to-end chat run proves the agent can actually invoke the tool and the rename is genuinely persisted — not a mocked/unit-only proof
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T18:20:00Z

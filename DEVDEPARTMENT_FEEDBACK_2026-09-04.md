@@ -46,6 +46,12 @@ Hit this legitimately **four times** in one week (each a real, correctly-self-di
 
 **Recommendation:** state this explicitly as a named rule in `docs/MODEL_DISCIPLINE.md` (or wherever the reviewer-parity rule already lives): *"A second-login unit is a valid protected-path author only if its CLI/model family differs from ORCH's own — never assume validity just because it's a distinct unit ID."*
 
+### 5. Windows worktree directories can end up permanently stuck on a file lock after normal dispatch/cleanup, silently taking a builder out of rotation
+
+Hit this on 2026-09-05: three separate builder worktrees (CX, CX9, S5) each independently ended up with their directory locked at the OS level (`Device or resource busy` / `Invalid argument` on delete, even after `git worktree remove` succeeded at the metadata level) after a normal dispatch → work → merge → cleanup cycle — no crash, no obviously-anomalous session. `git worktree list` stops showing the entry (metadata is gone) but the physical directory remains, non-empty, and un-deletable, so the next dispatch to that unit fails with `exists but is not a registered worktree of this repo`. Root cause not fully diagnosed (a lingering process/handle from the builder's own CLI session is suspected but not confirmed) — reassigning to a different unit each time was the workaround, which is viable short-term but not once enough units are simultaneously stuck (this session briefly had 3 of 4 in that state at once).
+
+**Recommendation:** `dispatch.ps1` should detect this state explicitly (directory exists, not a registered worktree, delete attempt fails) and surface a clear, named error/remediation step (e.g. "reboot to release the lock" or "check for a lingering `claude.exe`/`node.exe`/`codex.exe` holding a handle in this path") rather than the current generic git error, so ORCH doesn't have to rediscover this each time. Longer-term: investigate whether builders should tear down more explicitly at session end (closing file watchers, editor-like background processes) to avoid leaving a handle open at all.
+
 ---
 
 ## Already known — local CLAUDE.md amendments worth pushing into the pack itself
