@@ -4515,7 +4515,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-153
 **Title:** SECURITY — chat runs have zero workspace isolation; every bot inherits the worker process's real cwd, env, and filesystem access
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Live incident, 2026-09-05: on real-device testing, a freshly-created bot ("miniMe") was asked a plain "hello" and responded in-character as **ORCH**, naming a real file (`.devteam/CHECKPOINT.md`) and a real live task (TASK-143) from the actual running oikonomos repo. Root cause traced and confirmed by ORCH: `packages/harness-factory/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`'s `Options` type supports both `cwd?: string` and `env?: Record<string, string>`, but nothing in `services/worker/src/executeRun.ts` or `chatRunDriver.ts` ever sets either — the Agent SDK's `query()` therefore defaults to `process.cwd()` and inherits the full `process.env` of whatever process is running `control-api`. Combined with TASK-116/117's established baseline (a zero-grant role still gets `Bash`+`Read`), **every chat bot, by default, gets a real shell into wherever the server happens to be running, with the server's full environment** — including, in tonight's incident, this actual git repo, its `CLAUDE.md` orchestration instructions, `PLAN.md`, and whatever secrets (`DATABASE_URL`, `CONTROL_API_TOKEN`, etc.) were in the process environment. ORCH's interim mitigation (relaunching the test server from a neutral empty directory) is explicitly NOT a fix — a bot can still `cd` anywhere reachable on the host, read any inherited env var, and reach the network; it only stops the single most damaging case (this specific repo's own control-plane) for tonight's manual test.
@@ -4534,9 +4534,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-05T09:34:12Z] [SV:CX9] Implemented per-run temporary cwd, explicit empty SDK environment, cleanup, and end-to-end Bash isolation coverage; commits f945972 and 75de15f.
 - [2026-09-05T11:47:00Z] [ORCH] Unblocked — and this one was ORCH's own fault, not a pre-existing flake. Traced the real cause: packages/db/src/capabilities.test.ts's "connector registration persistence" test relies on a seeded `inbox-triage` role that my own earlier DB cleanup (this session, `TRUNCATE roles CASCADE` with explicit user confirmation) removed along with the fixture pollution it was meant to clear — I didn't realize `inbox-triage` was real seed data rather than a fixture. Re-seeded it directly via `seedInboxTriage()` (packages/db's own exported seeding function, matching how the demo was originally provisioned). Re-verified: packages/db isolated 28/28, and — since I'd broken shared seed state, not just one package — ran the FULL recursive `pnpm -r test` twice to be sure: first run clean (18/18 workspaces), confirmed again on a second run. CX9's TASK-153 code was never the problem; its own diagnosis (a shared-Postgres failure outside its territory) was correct, it just correctly declined to guess at fixing infrastructure it doesn't own. Resuming on task/TASK-153-cx9.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-05T10:00:14Z] [SV:CX9] Per-run temporary cwd and explicit empty Agent SDK environment are implemented, cleaned up after each run, and proven through the governed chat-run Bash liveness test.
+**Artifacts:** services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-153.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker typecheck; pnpm --filter @oikonomos/worker test (13 files, 66 passed, 1 skipped); pnpm -r build; pnpm lint; pnpm -r test â€” all exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T09:34:12Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:00:14Z
