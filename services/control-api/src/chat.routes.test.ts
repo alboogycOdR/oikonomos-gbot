@@ -228,11 +228,22 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const created = await app.inject({ method: "POST", url: "/roles", headers: authHeaders(), payload: { name: " Bot ", description: " Helpful " } });
     expect(created.statusCode).toBe(201);
-    expect(JSON.parse(created.body)).toMatchObject({ name: "Bot", description: "Helpful", avatarSeed: expect.any(String) });
+    expect(JSON.parse(created.body)).toMatchObject({
+      name: "Bot",
+      description: "Helpful",
+      avatarSeed: expect.any(String),
+      title: "Bot",
+      instructions: null,
+    });
     expect(calls).toEqual(["createRole", "listCapabilities", "upsertRoleGrant:fs.read:T0_observe"]);
     const listed = await app.inject({ method: "GET", url: "/roles", headers: authHeaders() });
     expect(listed.statusCode).toBe(200);
-    expect(JSON.parse(listed.body)[0]).toMatchObject({ id: roleId, name: "Chat bot" });
+    expect(JSON.parse(listed.body)[0]).toMatchObject({
+      id: roleId,
+      name: "Chat bot",
+      title: "Chat bot",
+      instructions: null,
+    });
     await app.close();
   });
 
@@ -270,7 +281,45 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       payload: { instructions: "Answer as a calm research assistant." },
     });
     expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: roleId,
+      title: "Chat bot",
+      instructions: "Answer as a calm research assistant.",
+    });
     expect(persisted).toEqual([[roleId, "Answer as a calm research assistant."]]);
+    await app.close();
+  });
+
+  it("returns 404 from PATCH /roles/:roleId when the role does not exist", async () => {
+    const { deps } = createDeps({
+      updateRoleInstructions: async () => null,
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({
+      method: "PATCH", url: `/roles/${roleId}`, headers: authHeaders(),
+      payload: { instructions: "persona" },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(JSON.parse(response.body)).toEqual({ error: "role not found" });
+    await app.close();
+  });
+
+  it("clears custom instructions by PATCHing an empty string", async () => {
+    const persisted: Array<[string, string]> = [];
+    const { deps } = createDeps({
+      updateRoleInstructions: async (updatedRoleId, instructions) => {
+        persisted.push([updatedRoleId, instructions]);
+        return makeRole({ roleId: updatedRoleId, instructions });
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const response = await app.inject({
+      method: "PATCH", url: `/roles/${roleId}`, headers: authHeaders(),
+      payload: { instructions: "" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({ id: roleId, instructions: "" });
+    expect(persisted).toEqual([[roleId, ""]]);
     await app.close();
   });
 
@@ -585,7 +634,67 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
         method: "PATCH", url: `/roles/${role.id}`, headers: authHeaders(), payload: { instructions },
       });
       expect(updated.statusCode).toBe(200);
+      expect(JSON.parse(updated.body)).toMatchObject({
+        id: role.id,
+        title: expect.stringContaining("Persona "),
+        instructions,
+      });
       expect((await getRole(options, role.id))?.instructions).toBe(instructions);
+
+      const listedAfterPatch = await app.inject({ method: "GET", url: "/roles", headers: authHeaders() });
+      expect(listedAfterPatch.statusCode).toBe(200);
+      const serialized = (JSON.parse(listedAfterPatch.body) as Array<{
+        id: string;
+        title: string | null;
+        instructions: string | null;
+      }>).find((entry) => entry.id === role.id);
+      expect(serialized).toMatchObject({ id: role.id, title: expect.stringContaining("Persona "), instructions });
+
+      const cleared = await app.inject({
+        method: "PATCH", url: `/roles/${role.id}`, headers: authHeaders(), payload: { instructions: "" },
+      });
+      expect(cleared.statusCode).toBe(200);
+      expect(JSON.parse(cleared.body)).toMatchObject({ id: role.id, instructions: "" });
+      expect((await getRole(options, role.id))?.instructions).toBe("");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("serializes real title and null instructions from Postgres on GET /roles (TASK-165)", async () => {
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const name = `Title ${randomUUID()}`;
+      const created = await app.inject({
+        method: "POST", url: "/roles", headers: authHeaders(),
+        payload: { name, description: "Serialize-role fixture" },
+      });
+      expect(created.statusCode).toBe(201);
+      const body = JSON.parse(created.body) as {
+        id: string;
+        name: string;
+        title: string | null;
+        instructions: string | null;
+      };
+      expect(body).toMatchObject({ name, title: name, instructions: null });
+      const persisted = await getRole(options, body.id);
+      expect(persisted?.title).toBe(name);
+      expect(persisted?.instructions).toBeNull();
+      expect(body.title).toBe(persisted?.title ?? null);
+      expect(body.instructions).toBe(persisted?.instructions ?? null);
+
+      const listed = await app.inject({ method: "GET", url: "/roles", headers: authHeaders() });
+      expect(listed.statusCode).toBe(200);
+      const serialized = (JSON.parse(listed.body) as Array<{
+        id: string;
+        title: string | null;
+        instructions: string | null;
+      }>).find((entry) => entry.id === body.id);
+      expect(serialized).toEqual(expect.objectContaining({
+        id: body.id,
+        title: persisted?.title,
+        instructions: null,
+      }));
     } finally {
       await app.close();
     }
