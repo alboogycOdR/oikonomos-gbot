@@ -5229,7 +5229,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-177
 **Title:** G-01b — Skills API + `/skill` resolution into the run's system context
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01 (AC anchors: injected exactly once, below the persona; disabled skill not invocable, enforced server-side); report §6.1 instruction precedence stack (skill body sits below Bot description, above the message); Addendum F §3.2 N12
@@ -5241,15 +5241,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The same token for a skill disabled for that role yields no block and the not-enabled note (unit test); the route layer cannot bypass this because injection happens in the worker
 - [ ] All five routes are auth-gated and covered by skills.routes.test.ts; openapi.ts documents them
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-177-s5
+**Started_At:** 2026-09-05T22:05:11Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T22:05:11Z
 
 ### TASK-178
 **Title:** G-01c — Skills on mobile: library screen, per-bot enable toggle, `/` picker in the composer
