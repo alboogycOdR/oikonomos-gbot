@@ -1,8 +1,8 @@
 ---
-plan_version: 12.8
-last_updated: 2026-09-05T17:00:00Z
+plan_version: 12.9
+last_updated: 2026-09-05T19:20:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-166 (attachments) approved and merged - real capability gap closed (real gen file/image upload, server-side limits, verified no path-traversal, genuine agent-reads-content proof). One documented non-blocking limitation: content-type validation trusts the client header, no byte-sniffing. TASK-167 (conversational rename) now unblocked (Depends_On TASK-166). Fixed a real task-authoring bug found live on TASK-166: an Owned_Paths 'TBD at decompose time - likely...' prefix breaks territory-precommit's parser and silently blocks legitimate commits - fixed on TASK-163/164/166/167. User separately researched github.com/affaan-m/ECC for DEVDEPARTMENT pack improvements; 3 concrete candidates identified (a dedup+adversarial-verify review workflow, a secret-scanning PreToolUse hook we currently lack, a file-pattern-to-doc routing table) - not yet turned into tasks, awaiting direction. CX/CX9 worktrees free; S5 still stuck (Defender-suspected, non-blocking). User plans to restart the machine once TASK-166 was confirmed merged - this note is that confirmation."
+orchestrator_notes: "Post-restart session. Machine rebooted per user plan after TASK-166 merged (confirmed clean, nothing lost) - reboot also cleared the stuck CX/CX9/S5 worktree locks. Backend control-api restarted fresh, reachable over Tailscale with the same access code as before. User directed next wave from the mobile stock-take: TASK-167 (conversational rename, dispatching to CX) and TASK-168 (composer visual polish, dispatching to S5) are ready now. Live-agent/monitor view is real but gated behind a 2-stage prerequisite chain, properly investigated rather than one vague task: TASK-169 (extend packages/sandbox-client with a real command-execution method - the client only has create/destroySandbox today, confirmed by reading the code) dispatching to CX9; TASK-170 (OIK-043, route real chat execution through OpenSandbox) depends on 169 and is deliberately left ungrounded until 169's real API shape is known; TASK-171 (the actual mobile UI) depends on 170. Voice input logged to backlog per user instruction, not scoped. ECC-derived pack-improvement candidates from the prior session (review workflow, secret-scan hook, doc-routing table) still awaiting direction, not yet tasked."
 ---
 
 # Project Plan
@@ -4938,7 +4938,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-167
 **Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots: asking the bot "How do I change your name?" gets both a settings-page pointer AND "Or just tell me what to call myself and I'll rename it" — a real in-conversation rename capability. Previously deferred (see [[grok-bot-mobile-reference]]) pending role-instructions/persona landing, which shipped at TASK-156. No rename capability exists anywhere today (confirmed by grep — zero `updateRoleName`/rename route/tool). Real pattern to follow, already proven in this codebase: `packages/broker/src/builtinTools.ts`'s `BUILTIN_TOOLS` declares `mcp__workspace__send_to_role` (MCP tool, `services/worker/src/workspaceMcpServer.ts` implements it) — a self-rename tool should follow the exact same registration shape (declared tool → capability → MCP server implementation), not a new ad-hoc mechanism.
 **Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/broker/src/builtinTools.ts, services/worker/src/workspaceMcpServer.ts, services/control-api/src/app.ts
@@ -4961,3 +4961,93 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T18:20:00Z
+
+### TASK-168
+**Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** Reference UX from the Grok Bot screenshots (see [[grok-bot-mobile-reference]] items 6-8): a pill-shaped composer with attach/voice affordances, a frosted/floating header over scrolling content, and date/session divider labels between message clusters. Purely cosmetic — no capability gap, no backend change. Current composer is a plain rectangular TextField (apps/mobile/lib/screens/chat_screen.dart around line 544-546); the attach button from TASK-166 already exists and must be preserved/reflowed, not replaced.
+**Owned_Paths:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart
+**Depends_On:** —
+**Description:** Investigate the current chat screen's layout structure first (message list, composer row, header) before restyling — this is a visual refactor of existing widgets, not a rewrite. (1) Restyle the composer row into a pill shape (rounded container, not a plain TextField) while preserving the existing attach button (TASK-166) and send button and all their real behavior/keys — do not regress existing widget-test keys used by chat_screen_test.dart. (2) Give the app bar/header a frosted/translucent effect over scrolling content (BackdropFilter plus a semi-transparent color is the standard Flutter approach) rather than a solid opaque bar. (3) Insert date/session divider labels between message clusters that cross a day boundary (compute from real createdAt timestamps already on each message — no fabricated grouping). Respect the theme-aware/accessibility conventions already established elsewhere in this app. This is visual-only: no new API calls, no schema change, no new capability.
+**Acceptance_Criteria:**
+- [ ] Composer renders as a pill shape with the existing attach and send buttons still present and functional — tested (existing attach/send widget tests must still pass unmodified in behavior, only visual wrapper changes)
+- [ ] Header has a frosted/translucent effect over scrolled content — verified visually and via a widget test asserting the relevant widget is present
+- [ ] Date divider labels appear between message clusters that cross a real day boundary, computed from real timestamps — tested with fixture messages spanning two days
+- [ ] No existing chat_screen_test.dart test regresses
+- [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T19:20:00Z
+
+### TASK-169
+**Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** OpenSandbox server is real and deployed (OIK-042, infra/sandbox/README.md, live over Tailscale). packages/sandbox-client (TASK-142, done) proved connectivity and basic lifecycle — but its real exported SandboxClient interface (packages/sandbox-client/src/client.ts) has ONLY createSandbox/destroySandbox — confirmed by reading the file directly, no execute/run-command/exec method exists at all. OIK-043 (route real chat/task execution through an OpenSandbox sandbox instead of TASK-153's local scoped temp-dir isolation) is now dependency-eligible (OIK-033/harness-factory landed) but genuinely CANNOT be built yet — there is nothing to route work through inside a sandbox once created. This task is the missing prerequisite slice, matching TASK-142's own thin-slice discipline.
+**Owned_Paths:** packages/sandbox-client/src/**
+**Depends_On:** —
+**Description:** Investigate first, same discipline as TASK-142: read the live OpenSandbox server's real API surface (its own OpenAPI/docs endpoint if exposed, do not guess from the README) to find its real command-execution/exec endpoint shape. Add a typed executeCommand/runCommand method (name it to match the real API, not a guess) to SandboxClient, covering: running a command inside a created sandbox, capturing stdout/stderr/exit code, and a sensible timeout. Tests against the real live server gated behind the existing env-var pattern (mirror TASK-142's integration/describe.skip convention); unit tests against a fake HTTP transport for request/response shaping. This task does NOT wire chat execution to use this — that is a separate, larger follow-on (OIK-043 proper) once this primitive exists and is proven. Do not touch services/worker/** or chatRunDriver.ts in this task.
+**Acceptance_Criteria:**
+- [ ] SandboxClient gains a real, typed command-execution method, its shape verified against the live OpenSandbox server's actual API (not guessed) — documented in the dossier with evidence
+- [ ] A real integration test (gated, skips cleanly without the live server) proves a command genuinely runs inside a real sandbox and its real output is captured
+- [ ] Unit tests cover request/response shaping against a fake transport, including a timeout/failure path
+- [ ] The API key/credential handling matches TASK-142's existing resolver convention — no new credential-handling pattern invented
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T19:20:00Z
+
+### TASK-170
+**Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md; Master_Work_Breakdown E5. Depends on TASK-169's command-execution primitive existing first. This is the real architectural step that would let a live-agent/monitor view mean something — today no chat run touches OpenSandbox at all; TASK-153 gives each run a local scoped temp directory on the same host process instead.
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/test/executeRun.test.ts, packages/harness-factory/src/**
+**Depends_On:** TASK-169
+**Description:** NOT yet ready to ground precisely — the real design depends on what TASK-169 discovers about OpenSandbox's actual command-execution semantics (streaming output, one-shot exec, or a persistent shell session). When grounding this for real: decide whether every chat run moves into a sandbox or only specific tiers/routines (a real product/cost/latency trade-off — creating and destroying a sandbox per chat turn may be far slower than the current local temp-dir approach; investigate real latency before assuming full replacement is right). Must preserve every guarantee TASK-153/154 already built (env isolation, no secret leakage, no MCP-connector leak) — those tests must keep passing. This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154 (different model than author) given it touches the actual execution isolation boundary. TASK-027 (host firewall hardening, currently deliberately deferred) has an explicit trigger condition that fires when this task's real workload starts running — do not silently skip re-evaluating it once this lands.
+**Acceptance_Criteria:** TBD at proper decompose time once TASK-169 lands — do not write speculative criteria for an ungrounded design.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T19:20:00Z
+
+### TASK-171
+**Title:** Mobile live-agent/monitor view (the Grok Bot reference UI's header icon)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Reference UX: Grok Bot's top-right chat-header icon opens a live view of the agent's current session/actions (see [[grok-bot-mobile-reference]] item 2). Meaningless until TASK-170 (OIK-043) actually routes execution through a real sandbox — there is nothing live to view before then.
+**Owned_Paths:** apps/mobile/**, services/control-api/src/app.ts
+**Depends_On:** TASK-170
+**Description:** NOT yet groundable. Once TASK-170 lands, investigate what OpenSandbox actually exposes for observing a running sandbox (logs, an exec-attach stream, or a browser/VNC view for Steel Browser sessions specifically per ADR-006's own notes) before designing any mobile UI — do not build a generic placeholder screen that shows nothing real.
+**Acceptance_Criteria:** TBD at proper decompose time.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T19:20:00Z
