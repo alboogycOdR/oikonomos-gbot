@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -316,6 +318,21 @@ class ChatScreenState extends State<ChatScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // TASK-168: frosted/floating header — a translucent background with
+        // a backdrop blur over whatever has scrolled beneath it, rather than
+        // a solid opaque bar. `flexibleSpace` + BackdropFilter is the
+        // standard Flutter approach for this effect.
+        backgroundColor:
+            Theme.of(context).colorScheme.surface.withValues(alpha: 0.72),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        flexibleSpace: ClipRect(
+          child: BackdropFilter(
+            key: const Key('chat-header-frost'),
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: const SizedBox.expand(),
+          ),
+        ),
         title: Row(
           children: [
             BotAvatar(
@@ -416,6 +433,57 @@ class ChatScreenState extends State<ChatScreen>
           itemCount: _messages.length,
           itemBuilder: (context, index) {
         final message = _messages[index];
+        final showDateDivider = index == 0 ||
+            !_isSameDay(_messages[index - 1].createdAt, message.createdAt);
+        final bubble = _buildMessageBubble(context, message);
+        if (!showDateDivider) return bubble;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DateDivider(
+              key: Key('date-divider-${message.id}'),
+              label: _dateDividerLabel(message.createdAt),
+            ),
+            bubble,
+          ],
+        );
+          },
+        )),
+      ],
+    );
+  }
+
+  /// TASK-168: parses the leading `YYYY-MM-DD` of an ISO-8601 `createdAt`
+  /// string. Real timestamps are always UTC (`Z`-suffixed) from the server;
+  /// no timezone conversion is attempted here — this is a lightweight
+  /// same-day grouping heuristic, not a calendar computation.
+  bool _isSameDay(String a, String b) {
+    return _dateOnly(a) == _dateOnly(b);
+  }
+
+  String _dateOnly(String isoTimestamp) {
+    final tIndex = isoTimestamp.indexOf('T');
+    return tIndex == -1 ? isoTimestamp : isoTimestamp.substring(0, tIndex);
+  }
+
+  String _dateDividerLabel(String createdAt) {
+    final parsed = DateTime.tryParse(createdAt);
+    if (parsed == null) return _dateOnly(createdAt);
+    final local = parsed.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(local.year, local.month, local.day);
+    final diffDays = today.difference(messageDay).inDays;
+    if (diffDays == 0) return 'Today';
+    if (diffDays == 1) return 'Yesterday';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[local.month - 1]} ${local.day}, ${local.year}';
+  }
+
+  Widget _buildMessageBubble(BuildContext context, ThreadMessage message) {
         if (message.role == 'system') {
           return _SystemEventLine(message: message);
         }
@@ -484,10 +552,6 @@ class ChatScreenState extends State<ChatScreen>
             ),
           ),
         );
-          },
-        )),
-      ],
-    );
   }
 
   Widget _buildComposeBox() {
@@ -532,30 +596,47 @@ class ChatScreenState extends State<ChatScreen>
                   ],
                 ),
               ),
-            Row(
-              children: [
-                IconButton(
-                  key: const Key('attach-button'),
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Attach file or image',
-                  onPressed: _sending || _uploading ? null : _attach,
-                ),
-                Expanded(
-                  child: TextField(
-                    key: const Key('compose-field'),
-                    controller: _composeController,
-                    decoration: InputDecoration(
-                      hintText: 'Ask ${widget.bot.botName}',
-                    ),
-                    onSubmitted: (_) => _send(),
+            // TASK-168: pill-shaped composer — a rounded translucent
+            // container wrapping the existing attach/text/send row, rather
+            // than a plain rectangular TextField. All existing keys and
+            // behavior (attach button from TASK-166, send button) are
+            // preserved unchanged; only the visual wrapper changes.
+            Container(
+              key: const Key('composer-pill'),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(28),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    key: const Key('attach-button'),
+                    icon: const Icon(Icons.add),
+                    tooltip: 'Attach file or image',
+                    onPressed: _sending || _uploading ? null : _attach,
                   ),
-                ),
-                IconButton(
-                  key: const Key('send-button'),
-                  icon: const Icon(Icons.send),
-                  onPressed: _sending || _uploading ? null : _send,
-                ),
-              ],
+                  Expanded(
+                    child: TextField(
+                      key: const Key('compose-field'),
+                      controller: _composeController,
+                      decoration: InputDecoration(
+                        hintText: 'Ask ${widget.bot.botName}',
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
+                      ),
+                      onSubmitted: (_) => _send(),
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('send-button'),
+                    icon: const Icon(Icons.send),
+                    onPressed: _sending || _uploading ? null : _send,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -594,6 +675,38 @@ class ChatScreenState extends State<ChatScreen>
           onTap: () => _openRoutineDetail(routine),
         );
       },
+    );
+  }
+}
+
+/// TASK-168: small centered label inserted between message clusters that
+/// cross a real day boundary (computed from `ThreadMessage.createdAt`).
+class _DateDivider extends StatelessWidget {
+  const _DateDivider({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final mutedColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: mutedColor.withValues(alpha: 0.3))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: mutedColor),
+            ),
+          ),
+          Expanded(child: Divider(color: mutedColor.withValues(alpha: 0.3))),
+        ],
+      ),
     );
   }
 }
