@@ -215,3 +215,14 @@ Territory diff clean — only Owned_Paths touched. Backend change (`routineId` o
 Builder's own Test_Evidence was NOT trusted at face value and was independently re-run: claimed a pre-existing control-api failure blocking their own branch's exit — this does not reproduce (branch is clean 32/32). Master, re-checked twice, actually carries 2 pre-existing failures, not the 1 the builder named. Neither pre-existing failure is touched by TASK-159's diff (no PATCH-roles/approvals-decide code paths in it) — order/state-dependent flakiness against the shared real-Postgres instance, not a regression. Full recursive `pnpm -r test --no-bail` surfaced 2 further unrelated pre-existing issues (WSL/bash missing for a TASK-153 test; a DB test timeout) — logged as new backlog tasks TASK-161/TASK-162, not blocking this merge.
 
 Approved and merged `--no-ff`. Lesson reinforced: Test_Evidence is a claim, not proof — independent re-verification caught a real (if minor) inaccuracy in a dossier that otherwise represented correct, well-scoped work.
+
+## TASK-160 — Inline cross-bot handoff chips (CX)
+**Verdict:** REWORK · **Date:** 2026-09-05
+
+Backend (`GET /roles/:roleId/messages`, merged sent+received handoff feed via the real `packages/db/src/roleMessages.ts` layer) is correct, tenant-scoped, and genuinely wired — independently confirmed (control-api 148/148, real-Postgres route wiring traced through `ports.ts`, not a stub).
+
+CX honestly reported it could not run any Flutter checks at all (dart/flutter not discoverable on its worktree's PATH) rather than fabricate a result — good-faith disclosure, not a violation. ORCH ran the checks CX couldn't: `flutter analyze` clean, but `flutter test` came back 64/74 with all 10 failures in `chat_screen_test.dart`. Bisected against master in a temp worktree to rule out "pre-existing": the same file is 15/15 clean there — this is a genuine regression from this branch's `chat_screen.dart` diff, not a flake.
+
+Root cause identified for the resubmission: `_loadHandoffs()` runs unconditionally in `initState`, adding two new API calls per `ChatScreen` build that the existing widget tests' fake client (apparently call-order-dependent) never anticipated — plausibly explaining otherwise-unrelated-looking failures (wrong HTTP method recorded, wrong field value read back). Findings written into `Review_Findings` for CX: fix at the root (explicit method/URL-matched stubbing, or scope when the new calls fire), not by special-casing the failures away, and prove both the 10 previously-passing tests and the new handoff tests pass together.
+
+Not merged. Branch/worktree left as-is for CX's resumption.

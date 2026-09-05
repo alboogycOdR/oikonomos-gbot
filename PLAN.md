@@ -1,8 +1,8 @@
 ---
-plan_version: 11.7
-last_updated: 2026-09-05T13:58:00Z
+plan_version: 11.8
+last_updated: 2026-09-05T14:25:00Z
 overall_status: in_progress
-orchestrator_notes: "Wave 7/8 (TASK-154-159) all done and merged. TASK-159 (routine run history) closed after independent re-verification found the builder's own test report inaccurate (claimed 1 pre-existing control-api failure blocking their branch; branch was actually clean 32/32, master has 2 pre-existing failures not 1) - approved anyway, code diff itself was correct and minimal. Surfaced 2 new unrelated backlog issues, logged as TASK-161 (WSL bash missing, breaks chatRunDriver.test.ts on this machine) and TASK-162 (order/resource-dependent flaky real-Postgres tests in control-api + db) - both low priority, not blocking. TASK-160 (inline cross-bot handoff chips) grounded against the real packages/db/src/roleMessages.ts data layer (listRoleMessages/sendRoleMessage/markRoleMessageRead, built TASK-084/099/141, zero routes expose it today) and dispatched to CX9 now that app.ts is free. TASK-143 (OIK-110/111 budgets) still frozen - architectural gap (withBudgetSink doesn't cover the primary Claude-SDK chat path), three options presented to the human, awaiting decision. S5 and CX idle."
+orchestrator_notes: "TASK-159 done/merged (see prior note). TASK-160 (handoff chips) sent to REWORK, not merged: backend route is correct and independently verified (control-api 148/148, real DB wiring confirmed), but the mobile diff regresses chat_screen_test.dart from 15/15 (confirmed clean on master via bisect) to 64/74 - CX's unconditional _loadHandoffs() call in initState fires 2 new API calls on every ChatScreen build, breaking 10 existing tests' call-order-dependent fake client. CX never ran flutter checks at all (dart/flutter not on its worktree PATH) - ORCH ran them independently and caught the regression before merge. Findings written for CX to fix at the root cause, not paper over. TASK-161/162 backlog logged, unassigned. TASK-143 (OIK-110/111 budgets) still frozen, awaiting human decision on the three options presented. S5 and CX9 idle; CX is back in_progress on TASK-160 rework."
 ---
 
 # Project Plan
@@ -4715,7 +4715,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-160
 **Title:** Inline cross-bot handoff chips — surface real role-to-role handoffs on mobile
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** Reference UX: Grok Bot's "2 messages with 🩸 TREVOR" compact inline chip in a bot's own timeline (see [[grok-bot-mobile-reference]]). Grounded against the real schema, not guessed: `packages/db/src/roleMessages.ts` already has a complete data layer — `RoleMessage` (fromRoleId, toRoleId, body, handoffKind, factRef, createdAt, readAt), `listRoleMessages(options, {tenantId, toRoleId?, fromRoleId?, unreadOnly?})`, `sendRoleMessage`, `markRoleMessageRead` — built for TASK-084/099/141's real async role-to-role handoffs. Confirmed by grep: zero routes anywhere in `services/control-api/src/app.ts` expose this table. `app.ts` is now free — TASK-159 (the task that was sequenced ahead of this one for the same file) merged clean.
@@ -4730,13 +4730,20 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
 **Branch:** task/TASK-160-cx
 **Started_At:** 2026-09-05T12:05:13Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-05T14:14:00Z] [CX] Added a merged tenant-scoped `GET /roles/:roleId/messages` route (dedupes sent+received by messageId, sorts newest-first) backed by the real `listRoleMessages`, plus mobile handoff chips on the chat timeline that open the real persisted body. Honestly reported: could not run `flutter analyze`/`flutter test` at all — dart/flutter not discoverable on this worktree's PATH (Flutter lives at `C:\tool\flutter`, not global).
+- [2026-09-05T14:25:00Z] [ORCH] Territory diff clean. Independently verified control-api: 148/148 (2 new tests over the 146 baseline), real-Postgres route wiring confirmed genuine (`ports.ts` wires `listRoleMessages` straight to `packages/db/src/roleMessages.ts`, not a stub). Full recursive suite clean except one confirmed cross-package test-pollution race (`packages/db/database.test.ts` TASK-140 capability-flip test failing only under `pnpm -r test`'s concurrency, passing 141/141 in isolation — pre-existing test-infra issue, unrelated to this diff, not blocking). Build/lint clean.
+- [2026-09-05T14:25:00Z] [ORCH] Ran the Flutter checks CX couldn't: `flutter analyze` clean, but `flutter test` — **64/74 pass, 10 failures, all in `chat_screen_test.dart`**. Bisected against master in a temp worktree: the SAME file passes 15/15 clean on master. This is a real regression introduced by this branch's `chat_screen.dart` diff, not pre-existing — sending back for rework rather than merging.
+**Artifacts:** services/control-api/src/app.ts (new GET /roles/:roleId/messages route), apps/mobile/lib/screens/chat_screen.dart, dossiers/TASK-160.md
+**Test_Evidence:** Backend independently verified clean (control-api 148/148, real DB wiring confirmed genuine — not a stub). `flutter analyze` clean. `flutter test`: 64/74, **10 FAILURES**, all in `chat_screen_test.dart` — confirmed a genuine regression by bisecting against master, where the same file is 15/15 clean.
+**Review_Findings:**
+- **REWORK.** Backend route is correct, well-scoped, and genuinely wired to real data — no changes needed there.
+- The regression: `_loadHandoffs()` is called unconditionally in `initState` (alongside the existing `_load()`), firing two new API calls (`listRoleHandoffs`, `listRoles`) on every single `ChatScreen` construction — including the 10 existing widget tests that never anticipated these calls. Likely mechanism (confirm and fix, don't just guess): the fake/test API client used across these widget tests appears to serve canned responses in call order, so two new unaccounted-for calls per screen build are shifting what data every later mocked call in the same test returns — plausibly explaining unrelated-looking failures like "Expected: 'POST' Actual: 'GET'" and "Expected: 'Front Desk Lead' Actual: ''". Fix at the root: either make the existing widget tests' fake client tolerant of the new calls (stub them explicitly, matched by method/URL rather than call order), or scope `_loadHandoffs()` so it doesn't fire where those tests don't expect it — whichever is the more correct fix, not whichever is fastest. Do not special-case away the failures without understanding why they broke.
+- Every one of the 10 currently-failing tests must pass again, AND the new handoff-specific tests must still pass — prove both together in the resubmission, not just a re-run of the new tests alone.
+- Read this Review_Findings before restarting — it outranks anything in the previous dossier.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T12:05:13Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T14:25:00Z
 
 ### TASK-161
 **Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
