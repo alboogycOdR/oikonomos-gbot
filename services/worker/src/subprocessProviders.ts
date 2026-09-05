@@ -200,35 +200,28 @@ export function withRecordedSpend<TProvider extends { id: string }>(
  * for the Codex/Grok path: a live pre-spawn budget check (via `gate`) and
  * real spend recording (via `withBudgetSink`) on every completed turn.
  *
- * **Liveness assertion, scoped to what this task's territory can enforce
- * (REWORK finding, 2026-09-05):** an attempt was made in this same session
- * to make `budget` a hard-required argument (throwing unless a caller
- * explicitly opts out via `unsafeAllowUnbudgeted: true`). That change had
- * to be reverted: it broke `services/worker/test/executeRun.test.ts`'s
- * existing "wires gated Codex/Grok providers from the production factory"
- * test, which is OUTSIDE this task's `Owned_Paths` (confirmed blocked by
- * the territory-firewall hook) and cannot be edited from here. Making a
- * breaking API change I then can't fix everywhere it lands is worse than
- * the finding itself. **Escalated in the dossier as an explicit,
- * documented cross-territory limitation for ORCH**, exactly per this same
- * REWORK's own precedent for the TOCTOU finding ("or explicitly accepted +
- * documented, ORCH's call, not the reviewer's alone"): omitting `budget`
- * remains possible and silent at the type level. TASK-143's investigation
- * found ZERO production call sites for this factory anywhere in the
- * repository — the Codex/Grok routing path itself has no production
- * wiring yet, independent of budget (pre-existing, not introduced by this
- * task) — so today this is a real but currently-unexercised gap, not a
- * live silent-bypass in a path anything actually calls. `unsafeAllowUnbudgeted`
- * is defined below as the forward-looking mechanism: once a real production
- * caller is written (wherever that lands), wire the throw back in there
- * and require it to either supply `budget` or explicitly opt out.
+ * **Liveness assertion (REWORK session 3, 2026-09-05):** `budget` is now a
+ * hard-required argument — omitting it throws unless the caller explicitly
+ * opts out via `unsafeAllowUnbudgeted: true`. This closes the "inert in
+ * production" finding at the type level: no future integrator can silently
+ * construct an unbudgeted Codex/Grok provider by simply forgetting the
+ * `budget` option the way the previous optional-parameter shape allowed.
+ * ORCH's own root-cause fix (correcting the `Owned_Paths` typo,
+ * `src/executeRun.test.ts` -> `test/executeRun.test.ts`, the file that
+ * actually exists) is what unblocked this: that test now legitimately sits
+ * in-territory and is updated alongside this change (see its own commit).
  */
 export function createGatedSubprocessProviders(
   options: {
     readonly codex: GatedCodexOptions;
     readonly grok: GatedGrokOptions;
     readonly budget?: GatedSubprocessBudgetOptions;
-    /** Reserved for the future production call site's explicit opt-out; not enforced here (see doc comment above). */
+    /**
+     * Explicit, auditable opt-out of budget enforcement. Must be `true` if
+     * `budget` is omitted — CLAUDE.md's control-liveness rule requires a
+     * caller to say "I mean to skip enforcement" rather than silently
+     * doing so by forgetting an optional field.
+     */
     readonly unsafeAllowUnbudgeted?: boolean;
   },
 ): SubprocessProviderFactories<CodexProvider, GrokProvider> {
@@ -236,6 +229,12 @@ export function createGatedSubprocessProviders(
     throw new Error("createGatedSubprocessProviders requires provider options");
   }
   const budget = options.budget;
+  if (budget === undefined && options.unsafeAllowUnbudgeted !== true) {
+    throw new Error(
+      "createGatedSubprocessProviders requires a `budget` option (TASK-143 enforcement) " +
+        "— pass `unsafeAllowUnbudgeted: true` to explicitly construct unbudgeted Codex/Grok providers.",
+    );
+  }
   return {
     createCodex: (gate) => {
       const provider = new CodexProvider({

@@ -19,10 +19,11 @@ const integration = connectionString === undefined ? describe.skip : describe;
 const allowAll: GateSubprocess = async (request) => ({ allow: true, request });
 
 describe("services/worker subprocessProviders — createGatedSubprocessProviders (TASK-143)", () => {
-  it("passes the gate through unchanged when no budget option is supplied", () => {
+  it("passes the gate through unchanged when unsafeAllowUnbudgeted opts out of budget enforcement", () => {
     const factories = createGatedSubprocessProviders({
       codex: { bin: "codex", defaultModel: "gpt-5.4", sandbox: "workspace-write" },
       grok: { bin: "grok", defaultModel: "grok-5", sandbox: "workspace", alwaysApprove: true },
+      unsafeAllowUnbudgeted: true,
     });
     const codex = factories.createCodex(allowAll);
     expect(codex).toBeInstanceOf(CodexProvider);
@@ -30,6 +31,15 @@ describe("services/worker subprocessProviders — createGatedSubprocessProviders
 
   it("rejects a non-numeric options argument", () => {
     expect(() => createGatedSubprocessProviders(null as never)).toThrow(/requires provider options/);
+  });
+
+  it("requires a budget option or an explicit unsafeAllowUnbudgeted opt-out (REWORK session 3 liveness fix)", () => {
+    expect(() =>
+      createGatedSubprocessProviders({
+        codex: { bin: "codex", defaultModel: "gpt-5.4", sandbox: "workspace-write" },
+        grok: { bin: "grok", defaultModel: "grok-5", sandbox: "workspace", alwaysApprove: true },
+      }),
+    ).toThrow(/requires a `budget` option/);
   });
 });
 
