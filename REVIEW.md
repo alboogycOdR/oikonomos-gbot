@@ -235,3 +235,16 @@ Root cause fixed correctly, not patched around: the fake test client's FIFO resp
 Independently re-verified, not trusted: `flutter analyze` clean, `chat_screen_test.dart` 16/16, full `flutter test` 74/74 (all 10 previously-regressed tests now pass), control-api 148/148, full recursive suite clean except the already-known/logged TASK-161 WSL-bash gap (no new failures), build/lint clean. Two harmless local artifacts (pubspec.lock churn, a CRLF-only diff) discarded before merge — neither part of CX's actual committed work.
 
 Merged `--no-ff`. This closes out Wave 7/8's mobile backlog entirely; only TASK-143 (frozen, awaiting a human decision) and the two low-priority TASK-161/162 backlog items remain open.
+
+## TASK-143 — OIK-110/111 budgets, Codex/Grok subprocess path (S5)
+**Verdict:** approved, merged, after 2 rounds of mandatory protected-path adversarial review · **Date:** 2026-09-05
+
+This task touches `packages/broker/**`, a CLAUDE.md-protected path requiring adversarial review by a different model than the author. S5 (Claude Sonnet 5) authored it; ORCH is also Sonnet 5 this session, so self-review would have violated the non-negotiable directly. Invoked Codex CLI (gpt-5.6-terra) directly for two genuinely hostile passes rather than self-approve.
+
+Round 1 found 6 real issues (not a rubber stamp): inert production wiring, an off-by-one at the budget ceiling (`>` vs `>=`), a dangling-routine-record fail-open bug, no validation on the platform ceiling value, no bounded timeout on the budget DB reads (violating CLAUDE.md non-negotiable #3), and a TOCTOU race. S5 fixed 5 of 6 across two further sessions, each independently re-confirmed (by Codex again, and by a separate test/code-verification pass) with exact file:line quotes matching both times.
+
+The 6th finding evolved into a genuine scope question: `createGatedSubprocessProviders` (and the entire Codex/Grok subprocess-routing feature it belongs to, ADR-011) has zero production call sites anywhere in this repository — a pre-existing gap that predates TASK-143 and sits outside its Owned_Paths. Chasing this further inside TASK-143 would have meant expanding scope into wiring an unrelated, larger feature into production. Approved instead with the gap documented honestly (same pattern as the already-accepted Claude-SDK chat-path exclusion) and logged as **TASK-164**, tracked separately rather than silently resolved or endlessly re-worked.
+
+Also fixed a genuine `Owned_Paths` path typo mid-review (`src/executeRun.test.ts` never existed) that had been silently blocking a correct territory-firewall refusal since 2026-09-04.
+
+Merged `--no-ff`. This closes out the last active item from the post-incident backlog; only low/medium-priority tracked follow-ons (TASK-161/162/163/164) remain unassigned.
