@@ -1,0 +1,5 @@
+# TASK-169 — OpenSandbox Wave 2 execd client
+
+## Work Log
+
+- [2026-09-05T21:20:00Z] [CX9] Preflight completed before code changes: `[preflight] TASK-169 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE`; `GLOB packages/sandbox-client/src/** -> 5 file(s): client.ts, errors.ts, index.ts, secretResolver.ts, types.ts`. Read the live coordination-plan task block and the updated Resolution section from the primary checkout (the worktree copy of that document is stale because the primary checkout has the document modification uncommitted). Blocked before implementation: Owned_Paths permits only `packages/sandbox-client/src/**`, but required unit and gated live-test changes must be made in existing `packages/sandbox-client/test/sandboxClient.test.ts` and `packages/sandbox-client/test/sandboxClient.integration.test.ts`. The requested `getEndpoint`, `ping`, and `runCommand` APIs do not yet exist, so existing tests cannot cover their request/SSE behavior. Please widen Owned_Paths to include `packages/sandbox-client/test/**`; no source or test files changed.
