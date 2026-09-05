@@ -1,8 +1,8 @@
 ---
 plan_version: 14.0
-last_updated: 2026-09-05T21:25:00Z
+last_updated: 2026-09-05T21:20:00Z
 overall_status: in_progress
-orchestrator_notes: "Real per-user Google auth is fully complete end-to-end and merged: TASK-172 (backend), TASK-173 (mobile sign-in), TASK-174 (mobile sign-out UI, one rework round for a real Google-cache-clear defect, fixed and re-verified) all done. Different Google accounts now get genuinely separate, private bot rosters with a working sign-in/sign-out cycle. Also replaced the default Flutter launcher icon with a real Oikonomos mark (gold coin + navy Omega) across all Android densities. TASK-169 (execd client) remains BLOCKED pending real OpenSandbox credentials (human action item). Backlog unchanged: TASK-161/162/163/164 unassigned; no ready-next task currently queued for S5 - consider what's next."
+orchestrator_notes: "Plan v14.0 — Wave OFFICE-1 decomposed from specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md (14 new tasks TASK-175..188) plus the OpenSandbox exec-API resolution (TASK-169 re-scoped, TASK-170/171 grounded). FIRST DISPATCH WAVE (all deps satisfied now, pairwise-disjoint): TASK-175 carve chatRunDriver (S5), TASK-176 skills schema (CX9), TASK-181 charter template mobile (CX), TASK-184 request_secret broker tool (CX, protected). TASK-174 (S5, rework) is still active — dispatch 175 to S5 only after 174 lands or accept two S5 sessions. Serial chain on the worker: 175 → 177 → 179 → 170 → 185 → 186 → 188; 180 and 182 hang off 175/176. Mobile chain: 178 → 183 → 171/187. TASK-169 stays blocked on the human action item (real OpenSandbox API key in a Tailscale-reachable builder env) — design is resolved; unit half is buildable, ORCH may dispatch with the live AC deferred. TASK-027 absorbed into TASK-185. GB remains deactivated (weekly limit) — protected-path tasks 184/185/186 assigned to CX; if CX is also capped, do NOT hand them to S5 without a non-Anthropic reviewer (Directive §3). After 175 merges, re-point TASK-161/163/164 Owned_Paths at the carved module files."
 ---
 
 # Project Plan
@@ -886,8 +886,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Priority:** medium
 **Spec_References:** infra/sandbox/README.md §7 item 1; docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md §4; docs/specs/OIKONOMOS_WBS_Addendum_B_v1.0.md §2 (OIK-045b)
 **Owned_Paths:** infra/sandbox/**
-**Depends_On:** TASK-019
-**Description:** **DEFERRED BY ALISTER 2026-08-16 — DO NOT DISPATCH until the trigger below fires.** This is a deliberate deferral with a stated expiry, not a backlog item that drifted. It exists as a task so it surfaces in every `/devteam-status` scan rather than living only in a README paragraph. **THE SITUATION:** OpenSandbox publishes each sandbox's ports on `0.0.0.0`, and it offers no bind-address option — `config.py:831`'s `host_ip` is URL-rewriting only, so this cannot be fixed in configuration. clawsrv's `ufw` is default-deny and looks like it covers this; **it does not.** Docker published ports are DNAT'd in `nat/PREROUTING` and traverse FORWARD, never INPUT, so the entire ufw ruleset is bypassed for them — `ufw status` reporting a tidy default-deny is not evidence these ports are closed. Measured externally they TIME OUT rather than connecting, so something is dropping them; that something is almost certainly the Hetzner cloud firewall, which lives outside this host, is invisible to every command run on it, and can be changed from a web console by someone who will not know it is load-bearing for sandbox isolation. **WHY DEFERRAL IS DEFENSIBLE TODAY:** nothing runs in a sandbox. The runtime is deployed but unwired — OIK-043 is gated on OIK-033 and has not landed — so no agent workload occupies this band. The exposure is structural, not live, and hand-applying iptables rules to the production host carrying the live fleet in order to protect ports nothing listens on is the worse trade right now. **THE TRIGGER — THIS IS THE POINT OF THE TASK:** revisit BEFORE the first real workload runs in a sandbox, i.e. as part of OIK-043, not after an unscheduled "once we have tested live". Two conditions each force it earlier and independently: (a) any change to the Hetzner cloud firewall, since it is currently the only thing closing these ports; (b) any move of this deployment to a host lacking that upstream filtering. The remedy is already written and ready in `infra/sandbox/README.md` §7.
+**Depends_On:** TASK-185, TASK-186
+**Description:** **DEFERRED BY ALISTER 2026-08-16 — DO NOT DISPATCH until the trigger below fires.** This is a deliberate deferral with a stated expiry, not a backlog item that drifted. It exists as a task so it surfaces in every `/devteam-status` scan rather than living only in a README paragraph. **THE SITUATION:** OpenSandbox publishes each sandbox's ports on `0.0.0.0`, and it offers no bind-address option — `config.py:831`'s `host_ip` is URL-rewriting only, so this cannot be fixed in configuration. clawsrv's `ufw` is default-deny and looks like it covers this; **it does not.** Docker published ports are DNAT'd in `nat/PREROUTING` and traverse FORWARD, never INPUT, so the entire ufw ruleset is bypassed for them — `ufw status` reporting a tidy default-deny is not evidence these ports are closed. Measured externally they TIME OUT rather than connecting, so something is dropping them; that something is almost certainly the Hetzner cloud firewall, which lives outside this host, is invisible to every command run on it, and can be changed from a web console by someone who will not know it is load-bearing for sandbox isolation. **WHY DEFERRAL IS DEFENSIBLE TODAY:** nothing runs in a sandbox. The runtime is deployed but unwired — OIK-043 is gated on OIK-033 and has not landed — so no agent workload occupies this band. The exposure is structural, not live, and hand-applying iptables rules to the production host carrying the live fleet in order to protect ports nothing listens on is the worse trade right now. **THE TRIGGER — THIS IS THE POINT OF THE TASK:** revisit BEFORE the first real workload runs in a sandbox, i.e. as part of OIK-043, not after an unscheduled "once we have tested live". Two conditions each force it earlier and independently: (a) any change to the Hetzner cloud firewall, since it is currently the only thing closing these ports; (b) any move of this deployment to a host lacking that upstream filtering. The remedy is already written and ready in `infra/sandbox/README.md` §7. **[ORCH 2026-09-05T21:20:00Z] ABSORBED into TASK-185 (G-08): the DOCKER-USER rule is applied and verified there because its trigger (first real sandbox workload, TASK-170) fires in the same wave. Keep this task pending as the closure record; ORCH marks it done when TASK-185 merges.**
 **Acceptance_Criteria:**
 - [ ] The `DOCKER-USER` rules from README §7 are applied for both IPv4 and IPv6, and are PERSISTED across reboot (`netfilter-persistent` or a systemd unit) — an unpersisted rule is a control that disappears at the next restart, which is the inert-control failure class ADR-005 exists for
 - [ ] Verified by OBSERVED REFUSAL from an external non-Tailscale path against a live sandbox port in the 30000-30999 band, captured verbatim — NOT by re-reading `ufw status`, which will keep reporting a tidy default-deny whether or not this rule exists
@@ -904,7 +904,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-16T16:05:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-039
 **Title:** OIK-033 follow-on — route Codex/Grok spawns through gateSubprocess + guard hardening ⚑ protected
@@ -4784,8 +4784,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent full-suite verification (2026-09-05): `services/worker/src/chatRunDriver.test.ts` (TASK-153's fresh-workspace isolation test) fails with `execvpe(/bin/bash) failed: No such file or directory` on this machine when run via the full recursive `pnpm -r test` — bash.exe/WSL is not resolvable from this environment's PATH in that context. Not a code defect: TASK-153's actual isolation logic (cwd/env scoping) is unaffected; this is the test's own reliance on a `bash` binary being present.
 **Owned_Paths:** services/worker/src/chatRunDriver.test.ts
-**Depends_On:** —
-**Description:** Investigate what the test actually shells out to and why (likely a minimal `bash -c` invocation used as the SDK's "fake" agent process for the isolation assertion). Fix at the test level — either resolve a real bash-compatible binary in a way that works on this dev machine (e.g. via Node's own `child_process` instead of assuming `/bin/bash` on PATH), or replace the fake process invocation with something that doesn't require a POSIX shell at all. Do not weaken or skip the isolation assertion itself — the fix must keep genuinely proving cwd/env scoping, just without depending on an unavailable shell binary.
+**Depends_On:** TASK-175
+**Description:** Investigate what the test actually shells out to and why (likely a minimal `bash -c` invocation used as the SDK's "fake" agent process for the isolation assertion). Fix at the test level — either resolve a real bash-compatible binary in a way that works on this dev machine (e.g. via Node's own `child_process` instead of assuming `/bin/bash` on PATH), or replace the fake process invocation with something that doesn't require a POSIX shell at all. Do not weaken or skip the isolation assertion itself — the fix must keep genuinely proving cwd/env scoping, just without depending on an unavailable shell binary. **[ORCH 2026-09-05T21:20:00Z] Sequenced after TASK-175, which moves parts of chatRunDriver.test.ts into sibling files — the failing workspace test will live in services/worker/src/runWorkspace.test.ts after the carve; ORCH re-points Owned_Paths at re-grounding.**
 **Acceptance_Criteria:**
 - [ ] The test passes on this machine without requiring WSL/bash.exe on PATH
 - [ ] The isolation assertion (cwd/env scoping) is still genuinely exercised, not weakened or skipped
@@ -4798,7 +4798,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:58:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
@@ -4829,9 +4829,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** Real gap confirmed during TASK-143's investigation (2026-09-04/05): `withBudgetSink` (packages/agent-providers) only decorates `AgentProvider.sendPrompt()`, which covers the Codex/Grok subprocess-routing path (`subprocessProviders.ts`) — TASK-143 (narrowed per human decision, Option 2 of 3) ships budget enforcement for that path ONLY. The primary chat path (`chatRunDriver.ts` → direct Claude Agent SDK `query()` call, which carries most of oikonomos's real traffic) has ZERO cost-tracking of any kind today: `AgentSdkQueryFn`'s stream is typed `AsyncIterable<unknown>` with no cost/usage shape anywhere in `packages/harness-factory/src/ports.ts`/`compose.ts`. This task closes that gap — until it lands, the R30,000/month platform ceiling in CLAUDE.md is only enforced against a fraction of real spend.
-**Owned_Paths:** packages/harness-factory/src/**, packages/db/src/spend.ts, services/worker/src/chatRunDriver.ts
-**Depends_On:** TASK-143
-**Description:** Research first: the Claude Agent SDK's query-stream message shape — its documented final `result` message typically carries `total_cost_usd` and token counts. Design a proper interception point analogous to `withBudgetSink` but for `AgentSdkQueryFn` directly (a wrapping decorator, or a hook inside `packages/harness-factory/src/compose.ts`), reusing TASK-143's spend-recording DB module and broker-level enforcement pattern rather than duplicating them. This is genuine architecture work, not a quick wire-up — ground it against the real SDK types before writing code, same discipline as every other task this session.
+**Owned_Paths:** packages/harness-factory/src/compose.ts, packages/harness-factory/src/compose.test.ts, packages/db/src/spend.ts, services/worker/src/chatRunDriver.ts
+**Depends_On:** TASK-170, TASK-175, TASK-179
+**Description:** Research first: the Claude Agent SDK's query-stream message shape — its documented final `result` message typically carries `total_cost_usd` and token counts. Design a proper interception point analogous to `withBudgetSink` but for `AgentSdkQueryFn` directly (a wrapping decorator, or a hook inside `packages/harness-factory/src/compose.ts`), reusing TASK-143's spend-recording DB module and broker-level enforcement pattern rather than duplicating them. This is genuine architecture work, not a quick wire-up — ground it against the real SDK types before writing code, same discipline as every other task this session. **[ORCH 2026-09-05T21:20:00Z] Sequenced after TASK-175 (carve) and TASK-179 (context meter writes token accounting on the same driver path — cost interception should read the same numbers, not re-derive them).**
 **Owned_Paths note (ORCH, 2026-09-05):** rewritten from an earlier "TBD at decompose time — likely..." draft — that free-text prefix breaks `hooks/territory-precommit.js`'s parser (discovered live on TASK-166), which then blocks every commit as "outside territory" even for genuinely-listed files. Always author Owned_Paths as a clean comma-separated path list; put uncertainty in the Description, never in this field. The paths above are ORCH's best grounding, not a final decompose — confirm/widen at start via the normal blocked→triage flow if reality differs.
 **Acceptance_Criteria:**
 - [ ] Real cost/usage data is captured from a genuine Claude Agent SDK chat run's result message — tested, not assumed from documentation alone
@@ -4847,7 +4847,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T15:05:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-164
 **Title:** Wire Codex/Grok subprocess routing into a real production execution path
@@ -4856,8 +4856,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** low
 **Spec_References:** Surfaced during TASK-143's adversarial review (2026-09-05, confirmed independently twice, by Codex CLI and a separate verification pass): `createGatedSubprocessProviders` (services/worker/src/subprocessProviders.ts) and everything it builds (`CodexProvider`/`GrokProvider`, ADR-011's multi-provider support) has **zero non-test call sites anywhere in this repository**. The entire Codex/Grok subprocess-routing feature — not just its budget enforcement — has never been wired into any real chat/task execution path; `chatRunDriver.ts`, the actual production driver, only ever constructs the Claude Agent SDK `query()` path. This predates TASK-143 entirely and is a pre-existing product gap, not something TASK-143 broke or could fix within its own Owned_Paths (confirmed: an attempted fix inside TASK-143 was correctly blocked by the territory firewall). TASK-143's budget enforcement is correctly built and will engage automatically the moment this task wires a real call site — this task is the missing prerequisite, not new budget work.
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, packages/db/src/routines.ts
-**Depends_On:** TASK-143
-**Description:** Investigate first: why does this feature exist with zero callers — was it built ahead of a product decision that was never finalized, or is routing selection meant to live somewhere not yet built (e.g. a role/routine-level provider choice)? Ground the design in a real, current product need before wiring anything — do not wire a real call site just to satisfy a liveness check if there's no actual use case driving it yet. If a real need exists (e.g. routing certain routines through Codex/Grok instead of Claude), design and implement the actual selection/construction call site, passing `budget: {...}` (never `unsafeAllowUnbudgeted: true`) so TASK-143's enforcement is live from day one. If no real product need exists yet, say so honestly and consider whether this feature should be built out at all right now, rather than force a call site to exist.
+**Depends_On:** TASK-163, TASK-170, TASK-175, TASK-182
+**Description:** Investigate first: why does this feature exist with zero callers — was it built ahead of a product decision that was never finalized, or is routing selection meant to live somewhere not yet built (e.g. a role/routine-level provider choice)? Ground the design in a real, current product need before wiring anything — do not wire a real call site just to satisfy a liveness check if there's no actual use case driving it yet. If a real need exists (e.g. routing certain routines through Codex/Grok instead of Claude), design and implement the actual selection/construction call site, passing `budget: {...}` (never `unsafeAllowUnbudgeted: true`) so TASK-143's enforcement is live from day one. If no real product need exists yet, say so honestly and consider whether this feature should be built out at all right now, rather than force a call site to exist. **[ORCH 2026-09-05T21:20:00Z] Sequenced after TASK-175 (carve) and TASK-182 (routine parity rewrites packages/db/src/routines.ts and routineJob.ts — a per-routine provider choice, if it exists, belongs on the schema TASK-182 lands).**
 **Owned_Paths note (ORCH, 2026-09-05):** rewritten from an earlier "TBD at decompose time — likely..." draft — that free-text prefix breaks `hooks/territory-precommit.js`'s parser (discovered live on TASK-166), which then blocks every commit as "outside territory" even for genuinely-listed files. Always author Owned_Paths as a clean comma-separated path list; put uncertainty in the Description, never in this field. The paths above are ORCH's best grounding, not a final decompose — confirm/widen at start via the normal blocked→triage flow if reality differs.
 **Acceptance_Criteria:**
 - [ ] A real, documented product need for Codex/Grok subprocess routing is confirmed (not assumed) before implementation, OR this task is explicitly deferred/closed with that finding recorded
@@ -4872,7 +4872,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T17:50:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
@@ -4998,16 +4998,21 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Updated_At:** 2026-09-05T20:00:00Z
 
 ### TASK-169
-**Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
+**Title:** OpenSandbox Wave 2 slice — execd command-execution client on packages/sandbox-client (OIK-043 prerequisite) — RE-SCOPED 2026-09-05
 **Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
-**Spec_References:** RESOLVED, see `docs/research/opensandbox-exec-api-gap-2026-09-05.md` ("Resolution" section, human-architect-reviewed). The original block was a misreading of OpenSandbox's split architecture, not a missing capability: OpenSandbox ships **two** HTTP APIs — the Lifecycle API (`:8080`, what TASK-169's original investigation enumerated: create/pause/resume/delete/snapshots/pools/endpoint-resolution/proxy) and a separate **execd API** (a Go daemon injected into every sandbox on port `44772`, auth via optional `EXECD_ACCESS_TOKEN`) exposing `POST /command` (SSE-streamed stdout/stderr/exit), `/session` (persistent bash), `/files`, `/directories`, `/pty/{id}/ws`, `/v1/isolated/session`. Our own `infra/sandbox/README.md` §6 verification log already shows every sandbox we've ever created publishing two ports — `…->8080/tcp` (lifecycle) and `…->44772/tcp` (execd) — execd has been running unused this whole time. Upstream evidence and exact route/schema references are in the resolution doc. The original per-turn "create → exec → capture → destroy" shape IS supported, exactly as first assumed — reach it via `GET /v1/sandboxes/{id}/endpoints/44772` then `POST {endpoint}/command`.
+**Spec_References:** docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution (authoritative for this task: the exec API is execd on port 44772 inside every sandbox, reached via GET /v1/sandboxes/{id}/endpoints/44772, optionally `?use_server_proxy=true`); infra/sandbox/README.md §4 (execd_image pinned), §6 (44772 published per sandbox), §7.1; ADR-006 B R14/R16; CLAUDE.md NN#3 (fail closed >10s) and NN#4
 **Owned_Paths:** packages/sandbox-client/src/**, packages/sandbox-client/test/**
 **Depends_On:** —
-**Description:** Extend `SandboxClient` with `getEndpoint(port)`, `ping()`, and `runCommand()` (an SSE consumer resolving to `{stdout, stderr, exitCode}`) against execd's documented routes — read `docs/research/opensandbox-exec-api-gap-2026-09-05.md`'s Resolution section first for the exact route/schema references (upstream `components/execd/pkg/web/router.go`, `sdks/sandbox/javascript/src/adapters/sandboxesAdapter.ts`) rather than re-deriving them. Build choice already made in the resolution doc: hand-roll this against execd's routes (~300 lines), do NOT adopt the `@alibaba-group/opensandbox` SDK — keeps the review surface inside a package we already adversarially review, matches TASK-142's own discipline. `EXECD_ACCESS_TOKEN` must be passed at `createSandbox` time (in `env`) and sent on every execd request — resolve it via the existing `secret://` convention (`packages/sandbox-client/src/secretResolver.ts`), never hardcoded, never logged (NN#4). Default `use_server_proxy=true` so execd traffic routes through the Tailscale-bound, API-key-authenticated lifecycle server rather than the sandbox's directly-published `30000-30999` port. Do NOT touch `services/worker/**`/`chatRunDriver.ts` in this task — wiring chat execution to use this is TASK-170's job. Still verify empirically, do not assume the resolution doc's reasoning is sufficient on its own: the first real test must genuinely create a sandbox, hit its execd endpoint, and run a real command.
+**Description:** Extend `SandboxClient` with `getEndpoint(port)`, `ping()`, and `runCommand()` (an SSE consumer resolving to `{stdout, stderr, exitCode}`) against execd's documented routes — read `docs/research/opensandbox-exec-api-gap-2026-09-05.md`'s Resolution section first for the exact route/schema references (upstream `components/execd/pkg/web/router.go`, `sdks/sandbox/javascript/src/adapters/sandboxesAdapter.ts`) rather than re-deriving them. Build choice already made in the resolution doc: hand-roll this against execd's routes (~300 lines), do NOT adopt the `@alibaba-group/opensandbox` SDK — keeps the review surface inside a package we already adversarially review, matches TASK-142's own discipline. `EXECD_ACCESS_TOKEN` must be passed at `createSandbox` time (in `env`) and sent on every execd request — resolve it via the existing `secret://` convention (`packages/sandbox-client/src/secretResolver.ts`), never hardcoded, never logged (NN#4). Default `use_server_proxy=true` so execd traffic routes through the Tailscale-bound, API-key-authenticated lifecycle server rather than the sandbox's directly-published `30000-30999` port. Do NOT touch `services/worker/**`/`chatRunDriver.ts` in this task — wiring chat execution to use this is TASK-170's job. Still verify empirically, do not assume the resolution doc's reasoning is sufficient on its own: the first real test must genuinely create a sandbox, hit its execd endpoint, and run a real command. **[ORCH 2026-09-05T21:20:00Z] RE-SCOPED — the block was a misreading, see docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution.** Build: `getEndpoint(sandboxId, port, {useServerProxy})` → `GET /v1/sandboxes/{id}/endpoints/{port}` (default useServerProxy=true so traffic rides the Tailscale-bound, API-keyed server); `ping(endpoint)` → `GET {execd}/ping`; `runCommand(endpoint, {cmd, cwd, env, timeoutMs})` → `POST {execd}/command` consuming the SSE stream into `{stdout, stderr, exitCode}` (reference contract: upstream `sdks/sandbox/javascript/src/models/execd.ts` at commit 82143b6 — copy the types, not the SDK); `EXECD_ACCESS_TOKEN` generated per sandbox by the caller, passed in the create request `env`, sent as the execd auth header on every request, resolved via the existing secret:// convention and never logged. Timeout on the SSE read fails closed. Verify on the host and correct whichever is wrong: README says execd v1.0.22, upstream release notes top out at 1.0.12. Unit tests on the fake transport incl. SSE framing and timeout; live test gated exactly as TASK-142.
 **Acceptance_Criteria:**
-- [ ] A real live-server test creates a sandbox, calls `getEndpoint(44772)`, `ping()`s it, and runs `POST /command` with something trivial (e.g. `echo hello`) — asserts real stdout `hello`, exit 0. This is the empirical confirmation the resolution doc itself calls for; do not skip it because the design reasoning looks solid on paper.
+- [ ] getEndpoint/ping/runCommand exist with the shapes in the Description; runCommand returns stdout, stderr and exitCode assembled from execd's SSE stream (unit tests on a fake transport incl. a multi-event stream and a stream that stalls past timeoutMs → fail closed)
+- [ ] EXECD_ACCESS_TOKEN is sent on every execd request, resolved through the secret:// resolver, and an adversarial test proves it is absent from thrown errors and logs (TASK-142's own pattern)
+- [ ] useServerProxy defaults to true; a unit test asserts the endpoint request carries `use_server_proxy=true`
+- [ ] Gated live test (SANDBOX_INTEGRATION_URL + key) creates a sandbox with the idle entrypoint, pings execd, runs `echo hello`, captures `hello` and exit 0, destroys the sandbox — dossier records whether it ran this session
+- [ ] execd image version discrepancy (v1.0.22 vs 1.0.12) resolved and corrected in infra/sandbox/README.md OR reported in the dossier if the host is unreachable
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 - [x] `runCommand()` correctly parses the real SSE stream into `{stdout, stderr, exitCode}` — proven against a fake transport; NOT yet proven against the live server (see Blocked_Reason)
 - [x] `EXECD_ACCESS_TOKEN` is generated/passed per sandbox and required on every execd request — proven against a fake transport; the real-server auth-rejection proof is written (`sandboxClient.integration.test.ts`) but not yet run (see Blocked_Reason)
 - [x] `use_server_proxy=true` is the default — confirmed in code (`getEndpoint`'s default parameter) and asserted in the fake-transport test; NOT yet empirically confirmed to actually route traffic through the lifecycle server (requires the live proof)
@@ -5028,28 +5033,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Artifacts:** packages/sandbox-client/src/client.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/src/secretResolver.ts, packages/sandbox-client/test/sandboxClient.test.ts, packages/sandbox-client/test/sandboxClient.integration.test.ts, dossiers/TASK-169.md
 **Test_Evidence:** Independently re-verified: sandbox-client typecheck/build clean, package tests 21/23 (2 gated live tests correctly skipped without server credentials), full `pnpm -r build`/`pnpm lint` clean post-merge.
 **Review_Findings:** Code APPROVED and merged — correct, well-tested at the unit level, faithfully follows TASK-142's established credential/resolver conventions, zero production risk (no callers exist yet). Task itself remains BLOCKED, not done: the live empirical proof (real sandbox creation, real execd ping/command, real auth-rejection-without-token proof) genuinely cannot run without `SANDBOX_INTEGRATION_URL`, `OIK_SECRET_OPENSANDBOX_API_KEY`, and `OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN` — none available on this dev machine, all presumably held on clawsrv. **Human action needed**: provide access to these three values (or run the gated integration test directly on/against clawsrv) to close this task for real. TASK-170 should not proceed past its own design/prep work until this live proof exists — its own ACs depend on TASK-169 being genuinely proven, not just code-complete.
-**Blocked_Reason:** MISSING_DEPENDENCY: the required live-server proof needs OpenSandbox credentials (SANDBOX_INTEGRATION_URL, OIK_SECRET_OPENSANDBOX_API_KEY, OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN) not available to any builder or ORCH session on this machine. Code is merged and correct; only the empirical proof is outstanding, and it requires human action to supply credential access.
+**Blocked_Reason:** MISSING_DEPENDENCY: design resolved 2026-09-05 (see Spec_References); still blocked only on the human action item — a real OpenSandbox API key in a Tailscale-reachable builder environment for the gated live AC. Unit half is buildable now; ORCH may flip to pending with the live AC deferred to review.
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:58:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-170
 **Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX9
 **Priority:** medium
-**Spec_References:** docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md; Master_Work_Breakdown E5; `docs/research/opensandbox-exec-api-gap-2026-09-05.md` (Resolution section, human-architect-reviewed) — read this first, it is the real design, not a summary of one. Depends on TASK-169's execd-backed `runCommand()` existing first. Today no chat run touches OpenSandbox at all; TASK-153 gives each run a local scoped temp directory on the same host process instead — this task replaces that with a real sandboxed execution path.
-**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/test/executeRun.test.ts, packages/harness-factory/src/**
-**Depends_On:** TASK-169
-**Description:** The design is settled (resolution doc) — this task implements it, it does not re-derive it. Model: **one OpenSandbox sandbox per role, hibernated via `pause` when idle** (matches ADR-010's persistent-office-computer intent and the Grok Bot reference model), not a fresh sandbox per chat turn — per-turn create/destroy remains available separately for Tier-3/4 isolated runs (OIK-045c) but is not this task's default path. Per chat turn: resolve (or create, if none exists/paused too long) the role's sandbox, call TASK-169's `runCommand()` to run the harness (Claude Agent SDK / `claude -p`) inside it via execd's `/command`, with the SAME scoped `env`/`cwd` values TASK-153 already computes passed as the `/command` request body (not the sandbox's own host env — the sandbox has none). Investigate real latency of sandbox resolve/create before assuming this is fast enough for interactive chat; report actual numbers in the dossier, don't assume. Preserve every guarantee TASK-153/154 already built — those tests must keep passing unmodified. Apply `infra/sandbox/README.md` §7.1's deferred `DOCKER-USER` iptables remedy BEFORE merging this task — its own stated trigger ("before the first real workload runs in a sandbox") fires here; verify by observed refusal from a non-Tailscale path, not by re-reading `ufw status` (that config already exists and is documented in the README, it has just never been applied). This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154/166 (different model than author) given it touches the actual execution isolation boundary and opens a new attack-surface class (an exposed sandbox port, even proxied).
+**Spec_References:** docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution (integration shape decided: execd via endpoints/44772, sandbox per role paused on idle, per-turn /command); ADR-006 B; ADR-010 + Addendum F §2 (durable environment), §5 (tier map); Master_Work_Breakdown E5 OIK-043; infra/sandbox/README.md §7.1 trigger; TASK-153/154 guarantees; ADR-001; ADR-005 liveness. PROTECTED PATH packages/harness-factory/** — author must be CX/CX9 (different model from ORCH reviewer)
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/runWorkspace.ts, services/worker/src/runWorkspace.test.ts, services/worker/test/executeRun.test.ts, packages/harness-factory/src/**, packages/db/src/roleSandboxes.ts, packages/db/src/roleSandboxes.test.ts, infra/postgres/migrations/018_role_sandboxes.up.sql, infra/postgres/migrations/018_role_sandboxes.down.sql
+**Depends_On:** TASK-169, TASK-175, TASK-179
+**Description:** The design is settled (resolution doc) — this task implements it, it does not re-derive it. Model: **one OpenSandbox sandbox per role, hibernated via `pause` when idle** (matches ADR-010's persistent-office-computer intent and the Grok Bot reference model), not a fresh sandbox per chat turn — per-turn create/destroy remains available separately for Tier-3/4 isolated runs (OIK-045c) but is not this task's default path. Per chat turn: resolve (or create, if none exists/paused too long) the role's sandbox, call TASK-169's `runCommand()` to run the harness (Claude Agent SDK / `claude -p`) inside it via execd's `/command`, with the SAME scoped `env`/`cwd` values TASK-153 already computes passed as the `/command` request body (not the sandbox's own host env — the sandbox has none). Investigate real latency of sandbox resolve/create before assuming this is fast enough for interactive chat; report actual numbers in the dossier, don't assume. Preserve every guarantee TASK-153/154 already built — those tests must keep passing unmodified. Apply `infra/sandbox/README.md` §7.1's deferred `DOCKER-USER` iptables remedy BEFORE merging this task — its own stated trigger ("before the first real workload runs in a sandbox") fires here; verify by observed refusal from a non-Tailscale path, not by re-reading `ufw status` (that config already exists and is documented in the README, it has just never been applied). This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154/166 (different model than author) given it touches the actual execution isolation boundary and opens a new attack-surface class (an exposed sandbox port, even proxied). **[ORCH 2026-09-05T21:20:00Z] GROUNDED — premise resolved, see docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution.** Shape: (1) `role_sandboxes(role_id PK, sandbox_id, state, execd_token_ref, created_at, last_used_at)` — ONE sandbox per role (ADR-010's persistent office computer), created lazily on first run, `pause`d after an idle window and `resume`d on the next run (execd endpoint may change after resume — re-resolve), never created per turn. (2) runWorkspace.ts (carved by TASK-175) gains a sandbox-backed implementation: the run's cwd is `/workspace/<role>` inside the sandbox; the harness command is executed via TASK-169's runCommand with an explicitly constructed env (no host env — this is TASK-153's guarantee by construction); the image has no ~/.claude.json or .mcp.json (TASK-154). (3) harness-factory: the loopback MCP bridge (TASK-079) is reachable from inside the sandbox over the Tailscale address, so every tool call still hits the broker PreToolUse hook (ADR-001). (4) Liveness: a tool call from inside the sandbox that the broker denies must be observed denied — the assertion keys on the hook's denial event, not on config. (5) Local fallback (TASK-153's temp dir) remains selectable by config for dev machines; production default is sandbox. Sequenced after TASK-179 because both touch promptAssembly/driver context and 179 is the smaller change.
 **Acceptance_Criteria:**
-- [ ] A real chat run executes inside a real OpenSandbox sandbox via TASK-169's `runCommand()`, not the local-temp-dir path — proven end-to-end against the live server
-- [ ] Sandbox-per-role with `pause`-on-idle is implemented and proven (a second chat turn for the same role reuses/resumes the existing sandbox rather than creating a new one)
-- [ ] No host environment variable reaches the sandbox — the same class of proof TASK-153's own test uses (inject a real secret into the host env, prove it's genuinely absent inside the sandboxed run), adapted to this transport
-- [ ] The `PreToolUse` broker hook still gates every tool call from inside the sandbox exactly as it does for the local-subprocess path — WITH a liveness assertion (a tool call from inside the sandbox that the broker denies must be observably denied, evidence emitted by the hook, not config presence) per ADR-005
-- [ ] TASK-153/154's existing tests (env isolation, no MCP-connector leak) pass unmodified
-- [ ] The `infra/sandbox/README.md` §7.1 iptables remedy is applied and verified by an observed refused connection from an external non-Tailscale path — not by `ufw status`, which will report a misleading tidy default-deny regardless
-- [ ] `EXECD_ACCESS_TOKEN` per sandbox is genuinely required (unauthenticated execd access must be proven to fail)
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+- [ ] A chat run for a role with no sandbox creates one, records it in role_sandboxes, and a second run for the same role reuses it (integration test, gated on the live server; unit test with a fake sandbox client)
+- [ ] Idle sandboxes are paused and resumed transparently; the execd endpoint is re-resolved after resume (unit test)
+- [ ] Inside the sandbox, `env` contains none of the worker's host variables and no credential (gated live test greps the run's env dump for a fragment-assembled canary set in the worker process)
+- [ ] A denied tool call from inside the sandbox is observed denied by the broker hook (liveness assertion: the test fails if the hook is unwired)
+- [ ] All TASK-116/153/154 regression tests pass unchanged; the local temp-dir fallback still passes its own tests
+- [ ] infra/sandbox/README.md §7.1 trigger acknowledged: TASK-185 is dispatched in the same wave (ORCH check at review)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0; CI banned-mode grep clean
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:** —
@@ -5058,7 +5062,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:00:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-171
 **Title:** Mobile live-agent/monitor view (the Grok Bot reference UI's header icon)
@@ -5066,9 +5070,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** low
 **Spec_References:** Reference UX: Grok Bot's top-right chat-header icon opens a live view of the agent's current session/actions (see [[grok-bot-mobile-reference]] item 2). Has a real substrate now — see `docs/research/opensandbox-exec-api-gap-2026-09-05.md`'s Resolution section: execd (the daemon TASK-169 wires) exposes `/pty/{id}/ws?mode=viewer&since=0`, a read-only PTY stream with replay (the `since` param) that gives exactly this feature without granting write access to whoever's viewing. Still depends on TASK-170 existing (a real sandboxed chat run to view) — no sandbox execution, nothing to show.
-**Owned_Paths:** apps/mobile/**, services/control-api/src/app.ts
-**Depends_On:** TASK-170
-**Description:** Investigate the real execd PTY viewer contract first (`docs/components/execd.md` upstream, or the live server directly) — confirm the exact WebSocket message shape, the `since` replay semantics, and whether `mode=viewer` genuinely cannot send input (verify this claim, don't take it on faith given it's a real security property: a "view-only" mode that can secretly accept input would be a real hole). Backend: a route in `services/control-api/src/app.ts` that resolves a role's active sandbox (from TASK-170's per-role sandbox tracking) and either proxies the PTY WebSocket or hands the mobile client enough to connect directly (through the Tailscale-bound lifecycle server's proxy, never the sandbox's own directly-published port — same `use_server_proxy=true` principle as TASK-169). Mobile: a real live-updating view (terminal-output rendering, not a generic spinner) reachable from the chat header icon, showing genuine sandbox activity for that role's current or most recent run. A bot with no active/recent sandboxed run shows a clear empty state, not an error.
+**Owned_Paths:** apps/mobile/lib/screens/live_agent_screen.dart, apps/mobile/lib/widgets/live_agent_button.dart, apps/mobile/lib/api/live_agent_client.dart, apps/mobile/test/screens/live_agent_screen_test.dart, services/control-api/src/liveAgent.routes.ts, services/control-api/src/liveAgent.routes.test.ts, services/control-api/src/app.ts
+**Depends_On:** TASK-170, TASK-183
+**Description:** Investigate the real execd PTY viewer contract first (`docs/components/execd.md` upstream, or the live server directly) — confirm the exact WebSocket message shape, the `since` replay semantics, and whether `mode=viewer` genuinely cannot send input (verify this claim, don't take it on faith given it's a real security property: a "view-only" mode that can secretly accept input would be a real hole). Backend: a route in `services/control-api/src/app.ts` that resolves a role's active sandbox (from TASK-170's per-role sandbox tracking) and either proxies the PTY WebSocket or hands the mobile client enough to connect directly (through the Tailscale-bound lifecycle server's proxy, never the sandbox's own directly-published port — same `use_server_proxy=true` principle as TASK-169). Mobile: a real live-updating view (terminal-output rendering, not a generic spinner) reachable from the chat header icon, showing genuine sandbox activity for that role's current or most recent run. A bot with no active/recent sandboxed run shows a clear empty state, not an error. **[ORCH 2026-09-05T21:20:00Z] Substrate decided, see docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution:** the live view is execd's PTY viewer mode (`/pty/{id}/ws?mode=viewer&since=0` — replay then live, never acquires the write holder) proxied through control-api with the user's session auth; for browser work (TASK-186) it embeds the Steel session's live URL. Narrowed Owned_Paths so it is disjoint from TASK-174/178/181/183; depends on TASK-183 only for chat_screen.dart's header slot (the button widget is its own file).
 **Acceptance_Criteria:**
 - [ ] The PTY viewer connection genuinely cannot inject input — proven with a test that attempts to send data over the viewer-mode connection and confirms it has no effect on the sandbox
 - [ ] The mobile view shows real, live output from an actual sandboxed run — not mocked/placeholder content
@@ -5083,7 +5087,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:00:00Z
+**Updated_At:** 2026-09-05T21:20:00Z
 
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
@@ -5168,3 +5172,345 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T21:25:00Z
+
+### TASK-175
+**Title:** Carve services/worker chatRunDriver.ts into single-purpose modules (territory prerequisite for Wave Office-1)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 (G-01b, G-03, G-04 all need distinct worker territories); CLAUDE.md 'shared files get their own single-owner integration tasks'; existing regression suite TASK-116 (services/worker/src/chatRunDriver.test.ts) must remain byte-for-byte green
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts, services/worker/src/runWorkspace.ts, services/worker/src/runWorkspace.test.ts, services/worker/src/connectorResolution.ts, services/worker/src/connectorResolution.test.ts, services/worker/src/groupFanout.ts, services/worker/src/groupFanout.test.ts, services/worker/src/index.ts
+**Depends_On:** —
+**Description:** Pure mechanical extraction, zero behaviour change. chatRunDriver.ts (515 lines) is the one file five open tasks (TASK-161/163/164/170 and three new Office-1 tasks) all need to touch, which makes it un-parallelisable. Split it along its existing seams into four modules with the SAME exported names re-exported from chatRunDriver.ts/index.ts so no caller changes: (1) promptAssembly.ts — buildRoleSystemPrompt and everything that decides what goes into the system prompt / message history; (2) runWorkspace.ts — createChatRunWorkspace/removeChatRunWorkspace (TASK-153's isolation); (3) connectorResolution.ts — resolveGranted*Connector, combineConnectorContexts, resolveGmailMcpUrl; (4) groupFanout.ts — deliverBotToBotMessage, CHAT_FANOUT_CAPABILITY_ID, BotToBot* types. Move the matching tests into sibling *.test.ts files; the existing chatRunDriver.test.ts keeps every test that exercises the driver end-to-end. Do NOT change any logic, any string, any capability id, or any test assertion — reviewers will diff behaviour by running the pre-carve suite against the post-carve code. After merge ORCH re-points TASK-161/163/164/170's Owned_Paths at the new module files.
+**Acceptance_Criteria:**
+- [ ] chatRunDriver.ts is reduced to the driver (createChatRunDriver, runChatTask, port/sink factories) and re-exports; promptAssembly.ts, runWorkspace.ts, connectorResolution.ts, groupFanout.ts exist with the functions named in the Description
+- [ ] Every export previously importable from services/worker (index.ts) is still importable with the same name and signature — proven by `pnpm -r build` and by the unchanged TASK-116 regression tests passing without edits to their assertions
+- [ ] `git diff` on test files shows only moves/imports, no changed assertions (reviewer check)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-176
+**Title:** G-01a — Skills primitive: schema, migration, typed query layer (packages/db)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01; docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §12.3 schemas/skill.yaml; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.4 (six-part structure); Addendum F §3.2 N12 (a skill body is prompt material, never a control)
+**Owned_Paths:** infra/postgres/migrations/014_skills.up.sql, infra/postgres/migrations/014_skills.down.sql, packages/db/src/skills.ts, packages/db/src/skills.test.ts, packages/db/src/index.ts
+**Depends_On:** —
+**Description:** Create the Skills store. Table `skills(skill_id uuid PK, tenant_id text NOT NULL DEFAULT 'basileia', name text NOT NULL, description text NOT NULL, when_to_use text, body text NOT NULL, inputs jsonb NOT NULL DEFAULT '[]', access jsonb NOT NULL DEFAULT '[]', approvals jsonb NOT NULL DEFAULT '[]', failure_policy jsonb NOT NULL DEFAULT '{}', version int NOT NULL DEFAULT 1, status text NOT NULL DEFAULT 'active', created_at, updated_at)` with UNIQUE(tenant_id, name) and name constrained to `^[a-z0-9][a-z0-9-]{1,63}$` (it is the `/name` slash token). Table `role_skills(role_id text REFERENCES roles, skill_id uuid REFERENCES skills, enabled boolean NOT NULL DEFAULT true, PRIMARY KEY(role_id, skill_id))` — the per-Bot enable list. Typed layer in skills.ts following routines.ts conventions exactly (row interface, column list, mapper, create/get/list/update/setEnabledForRole/listEnabledForRole). Add a `Skill` export to index.ts. NOT in scope: API routes, prompt injection, UI, routine binding (TASK-177/178/182). Migration numbering: 013 is the latest; use 014.
+**Acceptance_Criteria:**
+- [ ] Migration 014 applies and reverses cleanly against a fresh Postgres (mirror the DATABASE_URL-gated integration pattern used by routines.test.ts)
+- [ ] A skill name that violates the slash-token regex is rejected by the DB constraint AND by the typed layer (both tested)
+- [ ] listEnabledForRole returns only skills whose role_skills.enabled is true for that role, never another role's enablement (tested with two roles, one skill)
+- [ ] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-177
+**Title:** G-01b — Skills API + `/skill` resolution into the run's system context
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01 (AC anchors: injected exactly once, below the persona; disabled skill not invocable, enforced server-side); report §6.1 instruction precedence stack (skill body sits below Bot description, above the message); Addendum F §3.2 N12
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/skills.routes.test.ts, services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts
+**Depends_On:** TASK-175, TASK-176
+**Description:** Two halves. (A) control-api: CRUD routes for skills (`GET/POST /skills`, `GET/PATCH /skills/:id`, `PUT /roles/:roleId/skills/:skillId {enabled}`, `GET /roles/:roleId/skills`), auth-gated like every other route, added to openapi.ts. (B) worker: when a user message contains one or more `/name` tokens that match a skill ENABLED for the task's role, promptAssembly.ts appends a single `## Skill: name` block (when_to_use, steps body, validate, returns, approvals) to the system prompt AFTER the role persona block and never duplicates a skill referenced twice. A `/name` that matches a skill not enabled for this role (or non-existent) is left as plain text and a system-visible note `skill 'name' is not enabled for this bot` is added to the run's system context — the enforcement is server-side in the worker, not in the composer UI. The skill block is prompt material only: nothing in packages/policy or packages/broker reads it (N12). Do not touch chatRunDriver.ts — TASK-175 carved promptAssembly.ts precisely so this task owns its own file.
+**Acceptance_Criteria:**
+- [ ] A run whose message contains `/weekly-export` for an enabled skill has exactly one `## Skill: weekly-export` block in the assembled system prompt, positioned after the persona block (unit test on promptAssembly with a fake skill reader)
+- [ ] The same token for a skill disabled for that role yields no block and the not-enabled note (unit test); the route layer cannot bypass this because injection happens in the worker
+- [ ] All five routes are auth-gated and covered by skills.routes.test.ts; openapi.ts documents them
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-178
+**Title:** G-01c — Skills on mobile: library screen, per-bot enable toggle, `/` picker in the composer
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01; docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §8.2 ('Reference a skill with /'); memory: docs/STUDY-grok-bot-018.md UI primitives
+**Owned_Paths:** apps/mobile/lib/screens/skills_screen.dart, apps/mobile/lib/screens/skill_edit_screen.dart, apps/mobile/lib/widgets/skill_picker.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/screens/skills_screen_test.dart, apps/mobile/test/widgets/skill_picker_test.dart, apps/mobile/test/screens/chat_screen_test.dart
+**Depends_On:** TASK-177
+**Description:** Flutter surface for TASK-177's API. A Skills library screen (list/create/edit — name, description, when-to-use, body as multiline markdown, approvals list) reached from the roster; a per-bot enable/disable toggle list on the bot settings surface (TASK-165 built title/instructions there — extend, don't fork); and a composer affordance: typing `/` in chat_screen's composer opens a bottom-sheet picker listing ONLY skills enabled for the active bot and inserts `/name` on tap. Match the Grok-Bot-reference visual bar (TASK-168 polish). Do not add any client-side enforcement beyond filtering the picker — the server decides (TASK-177).
+**Acceptance_Criteria:**
+- [ ] Skills screen lists, creates and edits skills through the real API client (widget tests with a fake client)
+- [ ] Per-bot toggle calls PUT /roles/:id/skills/:skillId and reflects the server's answer, not optimistic state
+- [ ] Typing `/` in the composer opens the picker showing only enabled skills; tapping inserts `/name` (widget test)
+- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-179
+**Title:** G-03a — Context hygiene backend: per-thread context meter, rolling compaction, 'start fresh'
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-03 (AC anchors incl. measured prompt-size reduction and no sealed secret in a summary); report §10.6 staff-confirmed Grok Bot gap, §12.3 memory.compaction, §13.2 item 3; Addendum F §3.3 ('memory is not the transcript'; nothing is written to memory as a side effect of a run)
+**Owned_Paths:** infra/postgres/migrations/015_thread_context.up.sql, infra/postgres/migrations/015_thread_context.down.sql, packages/db/src/threadContext.ts, packages/db/src/threadContext.test.ts, services/worker/src/contextCompaction.ts, services/worker/src/contextCompaction.test.ts, services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/threadContext.routes.test.ts
+**Depends_On:** TASK-177
+**Description:** Grok Bot's staff-confirmed gap: one unbounded thread per Bot, no compaction, no meter. Build: (1) `thread_context(thread_id PK, context_tokens int, context_limit int, compacted_through_message_id uuid null, epoch int NOT NULL DEFAULT 0, updated_at)` plus `thread_summaries(summary_id, thread_id, epoch, covers_through_message_id, body text, created_at)`. Summaries are THREAD state, not memory — Addendum F forbids memory writes as a run side-effect, so compaction never touches packages/memory. (2) contextCompaction.ts: after each run, estimate tokens of (persona + skills + summary + verbatim history); when above `context_limit * 0.8`, summarise all messages older than the last N=40 turns into a new thread_summaries row using the Tier-0 provider (CLAUDE.md budget rule: cheap model via FreeLLMAPI/agent-providers), run the packages/audit redaction middleware over the summary body before persisting, and advance compacted_through_message_id. (3) promptAssembly.ts assembles: persona → skills → latest summary → verbatim messages after compacted_through. (4) 'Start fresh' = `POST /threads/:id/fresh` increments epoch; assembly only includes messages/summaries of the current epoch (older turns stay visible in the UI, invisible to the model). (5) `GET /threads/:id` gains context_tokens/context_limit/epoch. A compaction emits a `system` message `Context compacted (N messages → summary)` so the UI can show it.
+**Acceptance_Criteria:**
+- [ ] Driving a thread past the threshold with a fake provider produces a thread_summaries row and the next assembled prompt's estimated tokens are below the threshold — asserted on the measured number, not inferred (integration test)
+- [ ] A summary generated from a transcript containing a fragment-assembled fake credential contains no such fragment after redaction (test reuses packages/audit's redaction fixtures discipline — no contiguous secret-shaped literal in source)
+- [ ] After POST /threads/:id/fresh the assembled prompt contains zero pre-fresh messages or summaries (test), while GET /threads/:id/messages still returns them
+- [ ] packages/memory is not imported by contextCompaction.ts (grep assertion in test); the compaction model call is routed to the Tier-0 provider
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-180
+**Title:** G-04 — Single-owner group routing: exactly one responder when nobody is @-mentioned
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04 (AC anchors: unaddressed message in a 3-Bot room yields run count = 1; classifier billed to Tier-0); report §12.5(f) group_host.route, §6.4 'group chatter cost', §10.6; TASK-122's fan-out approval rule stays intact
+**Owned_Paths:** services/worker/src/groupRouting.ts, services/worker/src/groupRouting.test.ts, services/worker/src/groupFanout.ts, services/worker/src/groupFanout.test.ts
+**Depends_On:** TASK-175
+**Description:** Today a group-thread message fans out to every member (TASK-122 gates 2+ recipients behind an approval). Add a routing step BEFORE fan-out in groupFanout.ts, implemented in groupRouting.ts: `@name` tokens → exactly those members; `@everyone` → all members (still subject to the fan-out approval); no mention → ONE responder chosen by a cheap should-respond score over each member's title+description via the Tier-0 provider (packages/agent-providers, budgeted — never `unsafeAllowUnbudgeted`), ties broken by the thread's most recent responder. Enforce a hard cap of 6 members at routing time (reject with a clear error; do not silently truncate). Wake-up budget: a single inbound message may start at most `members × 1` runs. Pure routing function is unit-tested without a model; the classifier call is injected.
+**Acceptance_Criteria:**
+- [ ] route() with no mention over 3 members returns exactly one member (unit test with a stubbed scorer); with `@everyone` returns all; with two `@name` tokens returns those two
+- [ ] A 7-member thread is rejected at routing with an explicit error (test)
+- [ ] The scorer call goes through the budgeted agent-providers path and is attributed to the Tier-0 provider, asserted via the budget sink in a test
+- [ ] TASK-122's existing fan-out approval tests pass unchanged
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-181
+**Title:** G-09 — Six-part Bot charter seeded on create (mobile), filled in conversationally
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-09 (OIK-129 bar: prose template, not a form); docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §5.3 six-part pattern and example charter; docs/research/grok-bot-technical-report-2026-09-05.pdf §8.4 identity pack, §4.1 three instruction channels; TASK-167 conversational rename (the interaction pattern to extend)
+**Owned_Paths:** apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/charter/charter_template.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/charter/charter_template_test.dart
+**Depends_On:** —
+**Description:** Grok Bot's documented quality comes from narrow charters, not persona. On create, seed the bot's `instructions` with a prose template carrying six headings — `# Job (and what I refuse)`, `# Connections`, `# Routines`, `# Skills`, `# Handoffs`, `# Check with me before…` — each with a one-line placeholder in the user's voice, plus a closing line instructing the bot to offer, on its first turn, to fill these in by asking questions (the TASK-167 pattern: the bot proposes edits to its own instructions through the existing rename/instructions API — no new server endpoint). No schema change; no server change. The template lives in charter_template.dart so it is testable and reusable. Keep OIK-129: the create screen stays name + optional title; the charter is pre-filled prose the user can ignore.
+**Acceptance_Criteria:**
+- [ ] A newly created bot's instructions contain all six headings (widget test asserting on the payload sent to the fake API client)
+- [ ] The create flow still requires only a name — no new mandatory fields (test)
+- [ ] Template text contains no secrets, URLs, or account names (test)
+- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-182
+**Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02 (AC anchors: zero provider spend on a stopped routine; 21st record evicts oldest; 51st routine rejected); report §12.3 schemas/routine.yaml, §12.5(b), C6; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.5; Addendum F §3.4 F7 (missed, never queued for catch-up)
+**Owned_Paths:** infra/postgres/migrations/016_routine_parity.up.sql, infra/postgres/migrations/016_routine_parity.down.sql, packages/db/src/routines.ts, packages/db/src/routines.test.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
+**Depends_On:** TASK-176, TASK-179
+**Description:** Bring routines to Grok Bot's documented edge semantics. Schema: `role_routines` gains `skill_id uuid null REFERENCES skills`, `on_missing_source text NOT NULL DEFAULT 'report_and_stop'`, `notify_threshold text NOT NULL DEFAULT 'changes_only'`, `paused boolean NOT NULL DEFAULT false`; a `routine_runs` retention rule keeping the 20 most recent fire records per routine (prune on insert, in the typed layer — TASK-159 reconstructs history from these). Worker: before creating the run, routineJob checks each declared input/connector in `definition.inputs` is grantable/available for the role; if not and policy is report_and_stop, record a fire with outcome `stopped` + reason and make NO model call. A routine bound to a skill_id fires with that skill injected exactly as TASK-177 does for `/name`. API: `POST /routines/:id/test-run` (fires now; response carries the literal warning 'test run performs real work'), `POST /routines/:id/pause|resume`, and creation rejects the 51st routine for a role with 409. Event triggers are NOT in scope (G-02b, needs a connector event pipeline that does not exist).
+**Acceptance_Criteria:**
+- [ ] A routine whose declared input connector is not granted produces a `stopped` fire record with a reason and zero provider spend (assert via the budget/spend records, not by absence of logs)
+- [ ] Inserting the 21st fire record leaves exactly 20 for that routine, the oldest gone (test)
+- [ ] Creating a 51st routine for a role returns 409 (test); paused routines are skipped by the scheduler with a `skipped_paused` outcome
+- [ ] A routine with skill_id fires with the skill block present in the assembled prompt (test through promptAssembly's public function)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-183
+**Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02, G-03 (visible meter in the mobile header); report §13.2 items 3–4 (context hygiene, transparent metering); TASK-158/159 routine screens and TASK-157 system-event styling are the surfaces to extend
+**Owned_Paths:** apps/mobile/lib/screens/create_routine_screen.dart, apps/mobile/lib/screens/routine_detail_screen.dart, apps/mobile/lib/widgets/context_meter.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/screens/routine_detail_screen_test.dart, apps/mobile/test/widgets/context_meter_test.dart, apps/mobile/test/screens/chat_screen_test.dart
+**Depends_On:** TASK-178, TASK-182
+**Description:** Surface TASK-179 and TASK-182 on mobile. Routine detail: Pause/Resume toggle, a 'Test run' button that shows the server's real-work warning in a confirm dialog before firing, and an optional skill selector (enabled skills only) on create/edit. Chat header: a compact context meter (used/limit, colour steps at 60/80%) fed by GET /threads/:id, and a 'Start fresh' action in the overflow menu with a confirm sheet explaining that earlier turns stay visible but the bot will not see them. Render the `Context compacted…` system message with TASK-157's system-event styling. Depends on TASK-178 only for the shared chat_screen.dart/api_client.dart territory — do not start until it is merged.
+**Acceptance_Criteria:**
+- [ ] Test-run confirm dialog displays the server-supplied warning string verbatim, and only fires after confirmation (widget test)
+- [ ] Context meter renders the real values from a fake thread payload and changes colour at the thresholds (widget test)
+- [ ] 'Start fresh' calls POST /threads/:id/fresh and the chat still shows earlier messages afterwards (widget test)
+- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-184
+**Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05 (AC anchors: value appears in zero rows of messages/audit_events/worker logs; ref resolves only for the requesting role); report C13, §8.2, §12.2 'Secure secret request'; ADR-010 Amendment (secret handling on the enforced line, N4); TASK-088/093 sealed-secret guard; TASK-131 sendToRole as the pattern for a real invokable broker tool. PROTECTED PATH packages/broker/** — author CX (Codex), reviewer ORCH on opus-4-8 satisfies the different-model rule (Directive §3).
+**Owned_Paths:** packages/broker/src/requestSecret.ts, packages/broker/src/requestSecret.test.ts, packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/index.ts, infra/postgres/migrations/017_secret_requests.up.sql, infra/postgres/migrations/017_secret_requests.down.sql, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts
+**Depends_On:** TASK-176
+**Description:** A bot that needs an API key must never receive it through the transcript. Add a built-in broker tool `request_secret({label, purpose})` (registered like sendToRole, TASK-131) that creates a `secret_requests(request_id, tenant_id, role_id, run_id, label, purpose, status pending|fulfilled|declined, secret_ref text null, created_at, fulfilled_at)` row and parks the run exactly as an approval does (reuse the RunParkPort path — this IS an enforced-line action per ADR-010). Fulfilment (the API/UI half is TASK-187) stores the value under the existing D3 sealed-secret root (TASK-088/097 constant) and writes only `secret://<ref>` to the row; the tool's result to the model is `{status:'fulfilled', ref:'secret://…'}` — never the value. The describe-or-deny renderer (TASK-067) must render this tool's approval card as `Bot <name> is asking for: <label> — <purpose>`. Audit records request and fulfilment with the ref only. Depends on TASK-176 solely for the packages/db/src/index.ts export line — coordinate by rebasing after 176 merges.
+**Acceptance_Criteria:**
+- [ ] request_secret is a registered, describable broker tool; an undescribable payload (>10k chars, missing label) is denied per TASK-067 (test)
+- [ ] Calling it parks the run in the same waiting state approvals use, with the request row pending (test)
+- [ ] After fulfilment through the typed layer, the fragment-assembled fake value appears in zero rows of secret_requests, audit_events, and the run's messages/events, and the model-visible tool result contains only the ref (integration test, DATABASE_URL-gated)
+- [ ] The ref resolves through the existing sealed-secret resolver for the requesting role and is refused for another role (test)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-185
+**Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-08 (AC anchors: observed refusal from inside allowlist_only; liveness — sandbox with policy absent is refused before any command); report §10.3 four modes, §12.5(a) egress deny; OIK-045b (Addendum B §2, pulled forward); infra/sandbox/README.md §7.1 remedy and trigger (fires with TASK-170); TASK-027 (absorbed — its DOCKER-USER rule is applied here); ADR-005 liveness. PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8.
+**Owned_Paths:** packages/policy/src/egress.ts, packages/policy/src/egress.test.ts, packages/policy/src/index.ts, packages/sandbox-client/src/egress.ts, packages/sandbox-client/src/egress.test.ts, infra/sandbox/README.md, infra/sandbox/egress/**, infra/sandbox/scripts/**
+**Depends_On:** TASK-170
+**Description:** Two layers, both required (Directive §2a R15). (1) packages/policy: a pure `resolveEgressPolicy(role, manifests) → {mode: allow_all|defaults_plus_allowlist|allowlist_only, hosts[]}` deriving allowed hosts from the role's granted connector manifests plus an explicit per-role list; zero I/O (lint-enforced). (2) Enforcement at sandbox creation: packages/sandbox-client translates the policy into whatever the pinned OpenSandbox v0.2.2 supports (check upstream `docs/components/egress.md` for the pinned version; if the pinned server lacks per-sandbox network policy, implement it as an in-sandbox proxy + nftables applied by the entrypoint and record that choice in infra/sandbox/README.md) — a deny is logged as an audit event with the host. (3) Host: apply the DOCKER-USER iptables rule from README §7.1 (persisted across reboot), verify by observed refusal from an external path, and record the evidence in the README; this retires TASK-027. Liveness: the broker refuses to run any command in a sandbox whose egress policy was not applied (evidence = a policy-applied marker the entrypoint writes, not config presence).
+**Acceptance_Criteria:**
+- [ ] resolveEgressPolicy is pure (no I/O imports; lint passes) and unit-tested for all three modes and manifest-derived hosts
+- [ ] From inside an allowlist_only sandbox, `curl` to a non-listed host fails (observed in the gated live test) and an audit event records the denial
+- [ ] Liveness assertion: a sandbox created with the policy deliberately not applied is refused before any command runs (test that fails if the marker check is removed)
+- [ ] Ports 30000–30999 refuse from an external path after the DOCKER-USER rule; the rule survives a reboot; both recorded as observed evidence in infra/sandbox/README.md §7.1 and TASK-027 is closed by ORCH
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-186
+**Title:** G-06 — Browser lane v1: Steel Browser inside the role sandbox, bot-private profile, governed `browser.*` capability family (protected paths)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-06 (AC anchors: profile cookies unreadable from a /command run — observed denial; CAPTCHA raises human_takeover_required, no solve attempt); ADR-006 Addendum B (Steel inside OpenSandbox; OIK-076/077 narrowing); ADR-010 Amendment + Addendum F N13 (browser credentials inaccessible by construction); CLAUDE.md NN#6 (stealth off, no circumvention); report §12.5(d), §12.7; ADR-013 (manifest declares tiers). PROTECTED PATHS packages/connectors/manifests/**, packages/harness-factory/** — author CX, reviewer ORCH opus-4-8.
+**Owned_Paths:** packages/connectors/manifests/steel-browser.json, infra/sandbox/images/office-browser/**, packages/harness-factory/src/browserLane.ts, packages/harness-factory/src/browserLane.test.ts, packages/connectors/src/steelSession.ts, packages/connectors/src/steelSession.test.ts
+**Depends_On:** TASK-170, TASK-185
+**Description:** Nothing in the product can click a website today. Build the image `office-browser` (Playwright/Chromium + Steel Browser, Xvfb screen, execd-compatible entrypoint) and a manifest `steel-browser.json` declaring the `browser.*` tools (navigate/read/click/type/screenshot) with default tiers per ADR-010's tier map (read-only T0/T1; writes T2; anything on a payment/login page escalates to human takeover). Profile directory is per role (`bot_private` — deliberately stricter than Grok Bot's user-shared profile) and lives under the D3 sealed root so the secretPathGuard (TASK-088/093) denies any `/command` or file-tool access to it. Steel's stealth/anti-detection features are OFF; a CAPTCHA/2FA/login-wall detection emits `human_takeover_required` (consumed by TASK-188) and never attempts a solve. The Steel session URL is what TASK-171's live view embeds. Application-layer egress allowlist in Steel session config stays as defence in depth beneath TASK-185's network layer (R15).
+**Acceptance_Criteria:**
+- [ ] Manifest validates, registers, and its declared tiers match the registry (C5 tier-drift check) — reviewer re-runs registration
+- [ ] Reading the profile directory from a `/command` run as the agent user is denied (observed denial in the gated live test), and the guard's denial is an audit event
+- [ ] A fixture page containing a CAPTCHA widget produces a human_takeover_required event and zero further browser actions (test with a local fixture page)
+- [ ] Steel session config has stealth disabled and the application-layer allowlist set (asserted in test, not by reading docs)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-187
+**Title:** G-05b — Secret intake UX: masked inline card on mobile + fulfilment API
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; report C13 ('masked, excluded from the transcript, not shown to the model'); TASK-109/148 ApprovalCard transport (RT-01 push, TASK-129) as the delivery mechanism
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/secretRequests.routes.test.ts, apps/mobile/lib/widgets/secret_request_card.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/widgets/secret_request_card_test.dart
+**Depends_On:** TASK-171, TASK-183, TASK-184
+**Description:** The human half of TASK-184. API: `GET /secret-requests?status=pending`, `POST /secret-requests/:id/fulfil {value}` (value goes to the sealed store via TASK-184's typed layer, is redacted from request logs by the existing redact.ts, and the response carries only the ref), `POST /secret-requests/:id/decline`. Pushed to the client over the same SSE/push path approvals use. Mobile: an inline card in the thread — `<bot> is asking for: <label>` with the purpose, a masked text field (obscureText, no autocorrect, no clipboard history where the platform allows), Provide / Decline. On Provide the card collapses to `Provided · secret://…` and the run resumes (TASK-155 continue-after-approval). The value must never be logged client-side or included in analytics.
+**Acceptance_Criteria:**
+- [ ] Fulfil route returns the ref only; the value is absent from the response, from the API's request log line, and from the audit row (test with a fragment-assembled fake)
+- [ ] Card renders from a pushed pending request, masks input, and posts to the fulfil route (widget test)
+- [ ] Declining marks the request declined and the parked run receives a model-directed refusal message (test)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint, flutter analyze, flutter test all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
+
+### TASK-188
+**Title:** G-07 — Human take-over: park on auth friction, user drives the live view, hand back and resume
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-07 (AC anchors: model receives no keystrokes/page content during take-over; resume reuses continue-after-approval with ADR-007 replay guarantees); report C14, §12.2 'Take-over'; ADR-010 Amendment enforced set (password/2FA/CAPTCHA/payment = human takeover, never typed by the model); TASK-136/155 park/resume machinery; TASK-171 live view; docs/research/opensandbox-exec-api-gap-2026-09-05.md (execd PTY holder/viewer roles)
+**Owned_Paths:** services/worker/src/takeover.ts, services/worker/src/takeover.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/takeover.routes.test.ts, apps/mobile/lib/widgets/takeover_card.dart, apps/mobile/lib/screens/live_agent_screen.dart, apps/mobile/test/widgets/takeover_card_test.dart
+**Depends_On:** TASK-186, TASK-171, TASK-187
+**Description:** On a `human_takeover_required` event (TASK-186), the worker parks the run via the RunParkPort with kind `takeover` (distinct from approval), the user gets a push + inline card ('<bot> needs you to sign in to <host>' with Take over / Cancel). Take over opens TASK-171's live view in INTERACTIVE mode for the human — the agent's own session is demoted to viewer for the duration (execd PTY `mode=viewer` for shell; for the browser, Steel's session is driven by the human's WebSocket and the agent's CDP handle is paused). Hand back: `POST /runs/:id/takeover/complete` resumes the run through TASK-155's continue-after-approval path with a single system message 'the human completed the step' — no credentials, no page content from the takeover window. Cancel refuses the run with a model-directed message. Every transition is an audit event.
+**Acceptance_Criteria:**
+- [ ] During take-over the agent process receives no input and no page content: the worker's event log for the run shows zero tool results between park and resume (test with a fake live-view port)
+- [ ] Hand-back resumes through the existing continue-after-approval path and re-uses its replay-window guarantees (test reuses TASK-135's durable-resume assertions)
+- [ ] Card renders from the pushed event and opens the live view in interactive mode only for the run's owner (widget + auth test)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint, flutter analyze, flutter test all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T21:20:00Z
