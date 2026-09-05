@@ -4716,7 +4716,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-160
 **Title:** Inline cross-bot handoff chips — surface real role-to-role handoffs on mobile
 **Status:** pending
-**Assigned_To:** CX9
+**Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** Reference UX: Grok Bot's "2 messages with 🩸 TREVOR" compact inline chip in a bot's own timeline (see [[grok-bot-mobile-reference]]). Grounded against the real schema, not guessed: `packages/db/src/roleMessages.ts` already has a complete data layer — `RoleMessage` (fromRoleId, toRoleId, body, handoffKind, factRef, createdAt, readAt), `listRoleMessages(options, {tenantId, toRoleId?, fromRoleId?, unreadOnly?})`, `sendRoleMessage`, `markRoleMessageRead` — built for TASK-084/099/141's real async role-to-role handoffs. Confirmed by grep: zero routes anywhere in `services/control-api/src/app.ts` expose this table. `app.ts` is now free — TASK-159 (the task that was sequenced ahead of this one for the same file) merged clean.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, apps/mobile/**
