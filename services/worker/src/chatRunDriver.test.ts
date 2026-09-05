@@ -838,6 +838,63 @@ integration("createChatRunDriver — send_to_role governed MCP run (TASK-131)", 
   });
 });
 
+integration("createChatRunDriver — self-rename governed MCP run (TASK-167)", () => {
+  const roleId = "task-167-chat-self-rename";
+  let pool: Pool;
+  let options: DatabaseOptions;
+  let threadId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  }
+
+  beforeAll(async () => {
+    process.env.OIKONOMOS_CAPABILITIES_ENABLED = "true";
+    options = { connectionString: connectionString! };
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(options, { roleId, name: "Before rename", title: "TASK-167 chat fixture", description: "TASK-167 real governed self-rename fixture." });
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({ capabilityId: "workspace.rename_self", description: "Rename the calling bot's own display name.", defaultTier: "T1_draft", adapter: "mcp:workspace", enabled: true });
+      await database.upsertRoleGrant({ roleId, capabilityId: "workspace.rename_self", maxTier: "T1_draft", constraints: {} });
+    } finally { await database.close(); }
+    threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
+  });
+
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  it("lets a granted agent call rename_self and persists its own real name", async () => {
+    const renamedTo = "The Conversation Bot";
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+      expect(input.prompt).toContain("call yourself");
+      expect(sdkOptions.mcpServers?.workspace).toBeDefined();
+      expect(sdkOptions.allowedTools).toContain("mcp__workspace__rename_self(*)");
+      expect(await callMountedTool(input, "mcp__workspace__rename_self", "task-167-granted", { name: renamedTo })).toBe(true);
+      const response = await handleWorkspaceMcpRequest(JSON.stringify({
+        jsonrpc: "2.0", id: "task-167-rename", method: "tools/call",
+        params: { name: "rename_self", arguments: { name: renamedTo } },
+      }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: roleId });
+      expect(response).toMatchObject({ result: { content: [{ text: expect.stringContaining(renamedTo) }] } });
+      yield { type: "result", result: `I will call myself ${renamedTo}.` };
+    };
+    const task = await createTask(options, { roleId, title: "TASK-167 self rename", goal: "Please call yourself The Conversation Bot.", requestedBy: "task-167-suite" });
+    await createChatRunDriver({ ...options, queryFn }).run({ task, threadId });
+    expect((await pool.query<{ name: string }>("SELECT name FROM roles WHERE role_id = $1", [roleId])).rows).toEqual([{ name: renamedTo }]);
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.rename_self")).toMatchObject({ payload: { verdict: "allow", toolName: "mcp__workspace__rename_self" } });
+  });
+});
+
 // TASK-122 (Chat-2c): the fan-out-approval rule, confirmed against the real
 // Grok Bot reference product 2026-09-03 — a single 1:1 bot-to-bot message
 // needs no human approval; fan-out to 2+ bots/a group does. Real Postgres,

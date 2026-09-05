@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { updateRoleName } from "@oikonomos/db";
 import { sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 
@@ -17,7 +18,8 @@ interface JsonRpcRequest {
   readonly params?: unknown;
 }
 
-const TOOL_NAME = "send_to_role";
+const SEND_TO_ROLE_TOOL_NAME = "send_to_role";
+const RENAME_SELF_TOOL_NAME = "rename_self";
 
 /**
  * Narrow stdio MCP bridge for the existing mailbox implementation. Identity
@@ -57,26 +59,38 @@ export async function handleWorkspaceMcpRequest(
     return resultResponse(request.id, { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "oikonomos-workspace", version: "1.0.0" } });
   }
   if (request.method === "tools/list") {
-    return resultResponse(request.id, { tools: [{ name: TOOL_NAME, description: "Send an asynchronous role-to-role handoff.", inputSchema: toolInputSchema }] });
+    return resultResponse(request.id, { tools: [
+      { name: SEND_TO_ROLE_TOOL_NAME, description: "Send an asynchronous role-to-role handoff.", inputSchema: sendToRoleInputSchema },
+      { name: RENAME_SELF_TOOL_NAME, description: "Rename the calling bot's own display name.", inputSchema: renameSelfInputSchema },
+    ] });
   }
   if (request.method !== "tools/call") {
     return errorResponse(request.id ?? null, -32601, "Method not found");
   }
   try {
-    const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, toSendInput(request.params, identity));
-    return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(acknowledgement) }] });
+    const call = parseToolCall(request.params);
+    if (call.name === SEND_TO_ROLE_TOOL_NAME) {
+      const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, toSendInput(call.arguments, identity));
+      return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(acknowledgement) }] });
+    }
+    const role = await updateRoleName({ connectionString: identity.connectionString }, identity.fromRoleId, toRenameInput(call.arguments));
+    if (role === null) throw new Error("Calling role was not found.");
+    return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, name: role.name }) }] });
   } catch (error) {
     return resultResponse(request.id, { content: [{ type: "text", text: error instanceof Error ? error.message : "Unable to send handoff." }], isError: true });
   }
 }
 
-function toSendInput(params: unknown, identity: WorkspaceMcpServerIdentity): {
-  tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs?: readonly string[]; handoffKind?: HandoffKind; factRef?: HandoffFactReference;
-} {
+function parseToolCall(params: unknown): { name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME; arguments: Record<string, unknown> } {
   if (typeof params !== "object" || params === null || Array.isArray(params)) throw new Error("tools/call requires params.");
   const call = params as { name?: unknown; arguments?: unknown };
-  if (call.name !== TOOL_NAME || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
-  const args = call.arguments as Record<string, unknown>;
+  if ((call.name !== SEND_TO_ROLE_TOOL_NAME && call.name !== RENAME_SELF_TOOL_NAME) || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
+  return { name: call.name, arguments: call.arguments as Record<string, unknown> };
+}
+
+function toSendInput(args: Record<string, unknown>, identity: WorkspaceMcpServerIdentity): {
+  tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs?: readonly string[]; handoffKind?: HandoffKind; factRef?: HandoffFactReference;
+} {
   if (typeof args.toRoleId !== "string" || typeof args.body !== "string") throw new Error("send_to_role requires string toRoleId and body.");
   if (args.workspaceRefs !== undefined && (!Array.isArray(args.workspaceRefs) || !args.workspaceRefs.every((value) => typeof value === "string"))) throw new Error("workspaceRefs must be an array of strings.");
   return {
@@ -90,10 +104,17 @@ function toSendInput(params: unknown, identity: WorkspaceMcpServerIdentity): {
   };
 }
 
+function toRenameInput(args: Record<string, unknown>): string {
+  if (Object.keys(args).length !== 1 || typeof args.name !== "string") {
+    throw new Error("rename_self requires exactly one string name argument.");
+  }
+  return args.name;
+}
+
 function resultResponse(id: unknown, result: unknown): Record<string, unknown> { return { jsonrpc: "2.0", id: id ?? null, result }; }
 function errorResponse(id: unknown, code: number, message: string): Record<string, unknown> { return { jsonrpc: "2.0", id: id ?? null, error: { code, message } }; }
 
-const toolInputSchema = {
+const sendToRoleInputSchema = {
   type: "object",
   required: ["toRoleId", "body"],
   additionalProperties: false,
@@ -102,6 +123,13 @@ const toolInputSchema = {
     handoffKind: { type: "string", enum: ["research.complete", "draft.ready_for_review"] },
     factRef: { type: "object" },
   },
+};
+
+const renameSelfInputSchema = {
+  type: "object",
+  required: ["name"],
+  additionalProperties: false,
+  properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
 };
 
 function readIdentity(argv: readonly string[]): WorkspaceMcpServerIdentity {

@@ -15,6 +15,9 @@ export const roleStatuses = ["active", "hidden", "deleted"] as const;
 
 export type RoleStatus = (typeof roleStatuses)[number];
 
+/** Human-readable bot names stay concise across the API and MCP surfaces. */
+export const MAX_ROLE_NAME_LENGTH = 100;
+
 export interface NewRole {
   roleId: string;
   tenantId?: string;
@@ -177,6 +180,31 @@ export async function updateRoleInstructions(
   });
 }
 
+/** Persist a bot's display name. Unlike instructions, a name cannot be blank. */
+export async function updateRoleName(
+  options: DatabaseOptions,
+  roleId: string,
+  name: string,
+): Promise<Role | null> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+  const normalizedName = requireNonEmpty(name, "name");
+  if (normalizedName.length > MAX_ROLE_NAME_LENGTH) {
+    throw new Error(`name must be at most ${MAX_ROLE_NAME_LENGTH} characters.`);
+  }
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `UPDATE roles
+       SET name = $2,
+           updated_at = now()
+       WHERE role_id = $1
+       RETURNING ${roleColumns}`,
+      [normalizedRoleId, normalizedName],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
+  });
+}
+
 export interface RoleListFilter {
   tenantId: string;
   status?: RoleStatus;
@@ -223,6 +251,7 @@ if (import.meta.vitest) {
       ).rejects.toThrow(/connectionString/);
       await expect(getRole(options, "r1")).rejects.toThrow(/connectionString/);
       await expect(updateRoleInstructions(options, "r1", "persona")).rejects.toThrow(/connectionString/);
+      await expect(updateRoleName(options, "r1", "Renamed")).rejects.toThrow(/connectionString/);
       await expect(listRoles(options, { tenantId: "basileia" })).rejects.toThrow(
         /connectionString/,
       );
@@ -260,7 +289,14 @@ if (import.meta.vitest) {
       const live: DatabaseOptions = { connectionString: "postgres://x" };
       await expect(getRole(live, "   ")).rejects.toThrow(/roleId/);
       await expect(updateRoleInstructions(live, "   ", "persona")).rejects.toThrow(/roleId/);
+      await expect(updateRoleName(live, "   ", "Renamed")).rejects.toThrow(/roleId/);
       await expect(listRoles(live, { tenantId: "   " })).rejects.toThrow(/tenantId/);
+    });
+
+    it("rejects empty and excessively long role names", async () => {
+      const live: DatabaseOptions = { connectionString: "postgres://x" };
+      await expect(updateRoleName(live, "r1", "   ")).rejects.toThrow(/name must not be empty/);
+      await expect(updateRoleName(live, "r1", "x".repeat(MAX_ROLE_NAME_LENGTH + 1))).rejects.toThrow(/at most/);
     });
   });
 }
