@@ -4999,7 +4999,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-169
 **Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** RESOLVED, see `docs/research/opensandbox-exec-api-gap-2026-09-05.md` ("Resolution" section, human-architect-reviewed). The original block was a misreading of OpenSandbox's split architecture, not a missing capability: OpenSandbox ships **two** HTTP APIs — the Lifecycle API (`:8080`, what TASK-169's original investigation enumerated: create/pause/resume/delete/snapshots/pools/endpoint-resolution/proxy) and a separate **execd API** (a Go daemon injected into every sandbox on port `44772`, auth via optional `EXECD_ACCESS_TOKEN`) exposing `POST /command` (SSE-streamed stdout/stderr/exit), `/session` (persistent bash), `/files`, `/directories`, `/pty/{id}/ws`, `/v1/isolated/session`. Our own `infra/sandbox/README.md` §6 verification log already shows every sandbox we've ever created publishing two ports — `…->8080/tcp` (lifecycle) and `…->44772/tcp` (execd) — execd has been running unused this whole time. Upstream evidence and exact route/schema references are in the resolution doc. The original per-turn "create → exec → capture → destroy" shape IS supported, exactly as first assumed — reach it via `GET /v1/sandboxes/{id}/endpoints/44772` then `POST {endpoint}/command`.
@@ -5014,8 +5014,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Unit tests cover request/response shaping (including the SSE parse) against a fake transport, gated live tests skip cleanly without server access (mirror TASK-142's convention)
 - [ ] The API key/credential handling matches TASK-142's existing resolver convention — no new credential-handling pattern invented
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-169-cx9
+**Started_At:** 2026-09-05T19:10:31Z
 **Progress_Notes:**
 - [2026-09-05T19:35:00Z] [CX9] Investigated the real deployed OpenSandbox server's live OpenAPI spec (`http://100.78.70.2:8080/openapi.json`, "OpenSandbox Lifecycle API" v0.1.0, server v0.2.2) directly rather than guessing from the README. Every path/operation/schema searched for exec/command/shell/terminal/process-shaped functionality — none exists on THIS spec. The only real paths on it are lifecycle (sandboxes create/list/get/delete/pause/resume/renew), diagnostics (events/inspect/logs/summary), metadata, endpoints, proxy, snapshots, pools, metrics. Correctly did not write speculative code against a guessed endpoint. Filed `MISSING_DEPENDENCY` — reasonable given the evidence available at the time (only enumerated one of OpenSandbox's two real APIs).
 - [2026-09-05T20:00:00Z] [ORCH] Independently re-confirmed the same live `/openapi.json` finding — genuinely zero exec-shaped endpoint on the Lifecycle API. Left BLOCKED pending a real design decision, updated TASK-170's grounding with the "run your own long-lived process, proxy to it" hypothesis. Separately: CX9 also hit a real tooling bug (`DEVTEAM_UNIT=CX` instead of `CX9` in its dispatched session), logged as pack feedback, not yet root-caused.
@@ -5024,8 +5024,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T19:10:31Z
 
 ### TASK-170
 **Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
