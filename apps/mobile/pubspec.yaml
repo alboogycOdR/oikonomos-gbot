@@ -21,6 +21,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # TASK-152 — apps/mobile/tool/release_remote.dart lives outside the
+  # widget-test tree and is run via `dart test`, which needs the
+  # standalone `test` package (flutter_test wraps it for widget tests
+  # only and isn't resolvable outside a Flutter test runner).
+  test: ^1.25.0
 
 flutter:
   uses-material-design: true
