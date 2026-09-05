@@ -19,3 +19,16 @@ Depends_On: —
 Read the Spec pointers first, then the existing files named in Territory (run the preflight and paste it into the first Progress_Note). Match surrounding conventions exactly — packages/db follows routines.ts; control-api routes follow the chat routes + openapi.ts; mobile follows the TASK-157/168 visual bar. Every acceptance criterion maps to a spec sentence; test the criterion, not the summary. Anything outside Territory is a block, not an edit.
 
 ## Work Log
+
+- [2026-09-05T21:30:00Z] [CX] Preflight completed before implementation:
+  ```text
+  [preflight] TASK-181 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE
+  [preflight] 4 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   apps/mobile/lib/screens/create_bot_screen.dart  -> exists, 184 line(s), 6661 bytes
+    NEW    apps/mobile/lib/charter/charter_template.dart  -> does not exist; parent directory E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE/apps/mobile/lib/charter does NOT exist either
+    FILE   apps/mobile/test/screens/create_bot_screen_test.dart  -> exists, 138 line(s), 4330 bytes
+    NEW    apps/mobile/test/charter/charter_template_test.dart  -> does not exist; parent directory E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE/apps/mobile/test/charter does NOT exist either
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+
+- [2026-09-05T21:37:00Z] [CX] Implemented the reusable six-part template and seeded it through the existing role-instructions PATCH before thread creation. Focused charter/create-screen tests pass and `flutter analyze` is clean. The full `flutter test` suite is blocked by `apps/mobile/test/screens/roster_screen_test.dart`: its existing fake response queue assumes create is POST /roles then POST /threads and lacks the required PATCH /roles/:id response. That file is outside TASK-181 Owned_Paths, so it was not edited.
