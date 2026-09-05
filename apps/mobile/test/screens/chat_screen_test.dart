@@ -575,6 +575,7 @@ void main() {
         'description': 'Front desk',
         'avatarSeed': 'seed-1',
         'title': 'Front Desk Lead',
+        'instructions': null,
       },
     ]);
 
@@ -591,6 +592,187 @@ void main() {
     final field = tester.widget<TextField>(find.byKey(const Key('title-field')));
     expect(field.readOnly, isTrue);
     expect(field.controller?.text, 'Front Desk Lead');
+    expect(
+      field.decoration?.helperText,
+      'Read-only — no update endpoint exists for this yet.',
+    );
     expect(fake.requests.last.url.path, '/roles');
   });
+
+  testWidgets(
+    'settings screen shows "No title set" only when title is genuinely null',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': null,
+          'instructions': null,
+        },
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bot-settings-button')));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(const Key('title-field')));
+      expect(field.controller?.text, isEmpty);
+      expect(field.decoration?.hintText, 'No title set');
+    },
+  );
+
+  testWidgets(
+    'settings instructions field is pre-filled and PATCHes on save',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': 'Be a calm concierge.',
+        },
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bot-settings-button')));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('instructions-field')),
+      );
+      expect(field.controller?.text, 'Be a calm concierge.');
+      expect(field.readOnly, isFalse);
+
+      await tester.enterText(
+        find.byKey(const Key('instructions-field')),
+        'Answer as a front-desk lead.',
+      );
+      fake.queueJson(200, {
+        'id': 'role-1',
+        'name': 'Concierge',
+        'description': 'Front desk',
+        'avatarSeed': 'seed-1',
+        'title': 'Front Desk Lead',
+        'instructions': 'Answer as a front-desk lead.',
+      });
+      await tester.tap(find.byKey(const Key('instructions-save')));
+      await tester.pumpAndSettle();
+
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/roles/role-1');
+      expect(jsonDecode(request.body), {
+        'instructions': 'Answer as a front-desk lead.',
+      });
+      expect(find.byKey(const Key('instructions-error')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a failed instructions save surfaces a visible error',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': null,
+        },
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bot-settings-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('instructions-field')),
+        'persona',
+      );
+      fake.queueJson(400, {'error': 'role not found'});
+      await tester.tap(find.byKey(const Key('instructions-save')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('instructions-error')), findsOneWidget);
+      expect(find.text('role not found'), findsOneWidget);
+      expect(find.byKey(const Key('instructions-field')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'clearing instructions and saving PATCHes an empty string',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': 'Old persona',
+        },
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bot-settings-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('instructions-field')), '');
+      fake.queueJson(200, {
+        'id': 'role-1',
+        'name': 'Concierge',
+        'description': 'Front desk',
+        'avatarSeed': 'seed-1',
+        'title': 'Front Desk Lead',
+        'instructions': '',
+      });
+      await tester.tap(find.byKey(const Key('instructions-save')));
+      await tester.pumpAndSettle();
+
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'PATCH');
+      expect(jsonDecode(request.body), {'instructions': ''});
+    },
+  );
 }

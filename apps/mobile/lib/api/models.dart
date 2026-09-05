@@ -14,6 +14,7 @@ class Role {
     required this.description,
     required this.avatarSeed,
     this.title,
+    this.instructions,
   });
 
   final String id;
@@ -21,13 +22,12 @@ class Role {
   final String description;
   final String avatarSeed;
 
-  /// TASK-157 — `roles.title` is a real column server-side but
-  /// `serializeRole` in `services/control-api/src/app.ts` does not yet
-  /// return it in `GET /roles` (out of this task's `apps/mobile/**`
-  /// territory to add). Parsed defensively as optional so this client is
-  /// ready the moment the server starts sending it, without breaking on
-  /// its current absence.
+  /// Display title from `serializeRole`. Null when the bot has none.
   final String? title;
+
+  /// Custom system-prompt material. Null means none configured; PATCH
+  /// `/roles/:roleId` requires `instructions` and treats `""` as clear.
+  final String? instructions;
 
   factory Role.fromJson(Map<String, dynamic> json) {
     return Role(
@@ -36,6 +36,7 @@ class Role {
       description: json['description'] as String,
       avatarSeed: json['avatarSeed'] as String,
       title: json['title'] as String?,
+      instructions: json['instructions'] as String?,
     );
   }
 }

@@ -129,16 +129,114 @@ void main() {
           'name': 'Concierge',
           'description': 'Front desk',
           'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': 'Be concise.',
         },
       ]);
 
       final roles = await client.listRoles();
       expect(roles, hasLength(1));
       expect(roles.single.name, 'Concierge');
+      expect(roles.single.title, 'Front Desk Lead');
+      expect(roles.single.instructions, 'Be concise.');
 
       final rolesRequest = fake.requests.last;
       expect(rolesRequest.headers['cookie'], 'control_api_session=abc123');
     });
+
+    test('listRoles treats missing title and instructions as null', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': null,
+          'instructions': null,
+        },
+      ]);
+
+      final roles = await client.listRoles();
+      expect(roles.single.title, isNull);
+      expect(roles.single.instructions, isNull);
+    });
+
+    test(
+      'updateRoleInstructions PATCHes the required instructions field',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': 'Answer as a calm research assistant.',
+        });
+
+        final role = await client.updateRoleInstructions(
+          'role-1',
+          'Answer as a calm research assistant.',
+        );
+        expect(role.instructions, 'Answer as a calm research assistant.');
+
+        final request = fake.requests.last;
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/roles/role-1');
+        expect(request, isA<http.Request>());
+        expect(
+          jsonDecode((request as http.Request).body),
+          {'instructions': 'Answer as a calm research assistant.'},
+        );
+      },
+    );
+
+    test(
+      'updateRoleInstructions sends an empty string to clear the persona',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': '',
+        });
+
+        final role = await client.updateRoleInstructions('role 1', '');
+        expect(role.instructions, '');
+
+        final request = fake.requests.last as http.Request;
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/roles/role%201');
+        expect(jsonDecode(request.body), {'instructions': ''});
+      },
+    );
+
+    test(
+      'updateRoleInstructions throws ApiException with the server message',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(400, {'error': 'instructions is required'});
+
+        await expectLater(
+          () => client.updateRoleInstructions('role-1', 'persona'),
+          throwsA(
+            isA<ApiException>().having(
+              (e) => e.message,
+              'message',
+              'instructions is required',
+            ),
+          ),
+        );
+      },
+    );
 
     test(
       'createRole posts name/description and returns the created role',
