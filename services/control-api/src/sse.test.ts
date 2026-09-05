@@ -53,6 +53,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     revokeRoleGrant: async () => {},
     listRoles: async () => [],
     updateRoleInstructions: async () => null,
+    listRoleMessages: async () => [],
     listRoutines: async (): Promise<Routine[]> => [],
     getOrCreateThreadForRole: async () => makeThread(),
     listThreads: async () => [makeThread()],

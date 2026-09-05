@@ -168,6 +168,16 @@ class ApiClient {
         .toList();
   }
 
+  Future<List<RoleHandoff>> listRoleHandoffs(String roleId) async {
+    final json = await _request(
+      'GET',
+      '/roles/${Uri.encodeComponent(roleId)}/messages',
+    ) as List<dynamic>;
+    return json
+        .map((entry) => RoleHandoff.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<ThreadMessage> sendThreadMessage(String threadId, String body) async {
     final json = await _request(
       'POST',
