@@ -5321,7 +5321,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-181
 **Title:** G-09 — Six-part Bot charter seeded on create (mobile), filled in conversationally
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-09 (OIK-129 bar: prose template, not a form); docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §5.3 six-part pattern and example charter; docs/research/grok-bot-technical-report-2026-09-05.pdf §8.4 identity pack, §4.1 three instruction channels; TASK-167 conversational rename (the interaction pattern to extend)
@@ -5333,15 +5333,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The create flow still requires only a name — no new mandatory fields (test)
 - [ ] Template text contains no secrets, URLs, or account names (test)
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-181-cx
+**Started_At:** 2026-09-05T21:26:21Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T21:26:21Z
 
 ### TASK-182
 **Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
