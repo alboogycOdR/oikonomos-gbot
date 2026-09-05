@@ -4589,17 +4589,18 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-155-cx9
 **Started_At:** 2026-09-05T10:25:17Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T10:38:37Z] [SV:CX9] Implemented and committed resume-after-grant wiring (0d08907); targeted typechecks, route tests, real-Postgres worker resume/failure tests, and lint pass. NEXT: Re-run pnpm -r build and pnpm -r test to obtain final aggregate exit summaries, then submit for review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-05T10:25:17Z
+**Updated_At:** 2026-09-05T10:38:37Z
 
 ### TASK-157
 **Title:** Mobile polish bundle — markdown rendering, system-event styling, personalized placeholder, title field
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Live on-device testing, 2026-09-05: chat bubbles render raw markdown syntax unrendered (confirmed by the user's own screenshot). Reference UX from the Grok Bot app screenshots the user shared: rich list/bold rendering in chat bubbles; a small, centered, muted, icon-prefixed message style for state-change events ("Renamed to X"), visually distinct from a normal chat bubble; a composer placeholder personalized to the bot's name ("Ask NewStuffBot001") rather than generic text; a "Title (optional)" field on the bot settings screen, separate from Name. roles.title already exists as a real column in the live schema (confirmed directly against Postgres) — it is simply never surfaced in apps/mobile's settings screen (TASK-148's scope did not include it).
@@ -4607,17 +4608,18 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Four independent, self-contained improvements to the existing chat/settings screens — investigate the current ChatScreen/settings implementation before changing it, this is a build-on-existing-widgets task, not a rewrite. (1) Markdown rendering: add a markdown-rendering package to pubspec.yaml (check what's already a transitive dependency before adding a new one; a well-established, actively-maintained package is expected — do not hand-roll a markdown parser) and render bot message bodies through it instead of a plain Text widget; user messages can stay plain text unless there's a reason to render markdown there too. (2) A distinct system-event message style: introduce a lightweight message-kind distinction (this may need a small addition to how messages are modeled client-side — check whether the server already tags any messages this way before inventing a new convention) and render it as a small, centered, muted, icon-prefixed line rather than a full chat bubble. If no real server-side signal exists yet, scope this narrowly to what's achievable client-side only rather than inventing a new backend concept — note clearly in the dossier which case applies. (3) Composer placeholder: change the generic "Message" placeholder to include the bot's name (e.g. "Ask {name}"). (4) Add the title field (optional, matching roles.title) to the settings screen, wired to a real API call if one already exists for updating a role's title, or read-only display if no update route exists yet — check services/control-api/src/app.ts for what's real before assuming a PATCH route exists.
 **Acceptance_Criteria:**
-- [ ] A bot message containing markdown (bold, numbered/bulleted list) renders formatted, not as raw syntax — tested (widget test asserting rendered structure, not just that the widget builds without error)
-- [ ] A system-event-style message (however scoped per the investigation above) renders visually distinct from a normal chat bubble — tested
-- [ ] Composer placeholder includes the bot's name — tested
-- [ ] Settings screen shows the title field — tested; if wired to a real update, prove the request shape matches whatever real route exists
-- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+- [x] A bot message containing markdown (bold, numbered/bulleted list) renders formatted, not as raw syntax — tested (widget test asserting rendered structure, not just that the widget builds without error)
+- [x] A system-event-style message (however scoped per the investigation above) renders visually distinct from a normal chat bubble — tested
+- [x] Composer placeholder includes the bot's name — tested
+- [x] Settings screen shows the title field — tested; if wired to a real update, prove the request shape matches whatever real route exists
+- [x] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
 **Branch:** task/TASK-157-s5
 **Started_At:** 2026-09-05T10:25:24Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-05T00:00:00Z] [S5] All four items done: markdown rendering (flutter_markdown_plus), system-event line (reuses existing server-side MessageRole.system), personalized composer placeholder, read-only title field (server has no GET/PATCH surface for roles.title yet — client wired defensively). flutter analyze clean, flutter test 63/63 passing. -> needs_review.
+**Artifacts:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/models.dart, apps/mobile/pubspec.yaml, apps/mobile/pubspec.lock, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-157.md
+**Test_Evidence:** flutter analyze: No issues found. flutter test: 00:09 +63: All tests passed! (apps/mobile, 63 tests incl. 4 new for this task).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T10:25:24Z
+**Updated_By:** S5
+**Updated_At:** 2026-09-05T12:00:00Z
