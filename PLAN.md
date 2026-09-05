@@ -4217,7 +4217,7 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 
 ### TASK-143
 **Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (Codex/Grok subprocess path only — narrowed scope, ORCH decision 2026-09-05)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111; services/worker/src/subprocessProviders.ts (CX's own finding — the real production `AgentProvider` construction site, not `executeRun.ts` as originally guessed)
@@ -4234,8 +4234,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [ ] Fail-closed on a budget-check failure (DB unreachable, malformed record) — matches CLAUDE.md non-negotiable 3, tested
 - [ ] The dossier and a code comment at the enforcement site explicitly state the Claude-SDK chat path is NOT covered by this task's enforcement — reviewed directly, not just claimed
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** task/TASK-143-cx
-**Started_At:** 2026-09-04T18:10:06Z
+**Branch:** task/TASK-143-s5
+**Started_At:** 2026-09-05T12:49:56Z
 **Progress_Notes:**
 - [2026-09-04T18:12:36Z] [SV:CX] Blocked before code: worktree is detached at dispatch commit 6752c6b and task/TASK-143-cx is absent, while dispatch explicitly forbids re-branching.
 - [2026-09-04T18:35:00Z] [ORCH] Unblocked: a genuine dispatch-prompt-template ambiguity, not a builder error — the prompt's own intro line ("claimed by the dispatcher before this session started - do not re-claim or re-branch") reads as "never create a branch," while step 2 correctly says "If newly claimed: create branch task/TASK-143-cx." CX correctly refused to guess rather than risk an unauthorized action. Created `task/TASK-143-cx` from master tip myself; worth flagging in the pack feedback doc as a real prompt-clarity gap (the intro sentence means "don't re-CLAIM in PLAN.md," not "don't branch," and should say so explicitly). Redispatching CX.
@@ -4253,8 +4253,8 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T15:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T12:49:56Z
 
 ### TASK-144
 **Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
