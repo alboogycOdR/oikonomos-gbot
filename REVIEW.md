@@ -248,3 +248,10 @@ The 6th finding evolved into a genuine scope question: `createGatedSubprocessPro
 Also fixed a genuine `Owned_Paths` path typo mid-review (`src/executeRun.test.ts` never existed) that had been silently blocking a correct territory-firewall refusal since 2026-09-04.
 
 Merged `--no-ff`. This closes out the last active item from the post-incident backlog; only low/medium-priority tracked follow-ons (TASK-161/162/163/164) remain unassigned.
+
+## TASK-165 — Expose bot title/instructions in the API and mobile settings UI (GB)
+**Verdict:** approved, merged, first-pass · **Date:** 2026-09-05
+
+Real capability-exposure fix: `serializeRole()` never returned `title`/`instructions` over HTTP despite both being real, working DB columns (instructions persisted via TASK-156's route) — this is why the settings screen showed a hardcoded placeholder and had no way to set a bot's persona at all. GB extended the serializer, honestly grew the existing shape assertions rather than loosening them, and added a real editable multi-line Instructions field to mobile with proper Save/Saving/error states and the correct empty-string-clears contract.
+
+Independently re-verified rather than trusted: control-api 151/151, flutter analyze/test clean (82/82), full recursive suite clean modulo the two already-known pre-existing flakes. Read the actual diff directly — matches the dossier exactly. Merged --no-ff.
