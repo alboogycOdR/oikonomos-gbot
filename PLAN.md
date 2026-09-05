@@ -1,5 +1,5 @@
 ---
-plan_version: 11.5
+plan_version: 11.6
 last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave 7 dispatched from the full post-incident backlog (WORKFLOW_BACKLOG_PRIORITIZATION_2026-09-05.md): TASK-154 (CX, MCP-connector/system-CLI leak - investigate whether TASK-153's empty env already closes it, fix at harness-factory layer if not), TASK-155 (CX9, continue-after-approval - confirmed live-blocking tonight, real SDK resume mechanism grounded: resume:sessionId verified in sdk.d.ts, runs.session_ref already persisted, TASK-153's agentSdkOptions passthrough already built), TASK-157 (S5, mobile polish: markdown rendering, system-event styling, personalized placeholder, title field). TASK-156 (role instructions/persona) deliberately deferred to Wave 8 - collides with TASK-155 on chatRunDriver.ts, sequenced not parallelized. TASK-158/159/160 (routine creation UI, routine detail+history, inline handoff chips) also named for Wave 8. Deliberately not scheduled: live-agent/monitor view (OpenSandbox-dependent), conversational rename, voice input, composer visual polish, OIK-110/111 budgets."
@@ -4680,3 +4680,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T11:26:39Z
+
+### TASK-159
+**Title:** Routine run history — real fire-history reconstruction + mobile detail view
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** Reference UX from the Grok Bot screenshots the user shared: a routine detail screen with a "Run history" list (multiple past fires, each with a timestamp and outcome — "Yesterday at 08:23, Succeeded"). Grounded against the real schema, not guessed: there is NO dedicated fire-history table — `recordRoutineFire` (packages/db/src/routines.ts) only overwrites the routine's own `last_fire_at`/`last_fire_status` columns each time it fires, so that alone cannot answer "show me the last N runs." Real history IS reconstructable: every routine fire creates a real task via `createTask` with a genuine `routine_id` column (services/worker/src/jobs/routineJob.ts line ~81, confirmed — not a string-matching convention, a real FK-shaped column on `tasks`), and each task has real `runs` rows (`RunListFilter.taskId` already exists and works — confirmed in packages/db/src/runs.ts). The one real gap: `TaskListFilter` (packages/db/src/tasks.ts) has no `routineId` field, so `GET /tasks` cannot be filtered by routine today.
+**Owned_Paths:** packages/db/src/tasks.ts, packages/db/src/tasks.test.ts, services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/mobile/**
+**Depends_On:** —
+**Description:** Backend first, then mobile — investigate the exact current shape of `listTasks`/`GET /tasks` before changing it (this extends an established pattern, matching how `status`/`tenantId`/`limit`/`cursor` already work as query params). Add `routineId` to `TaskListFilter` and to `LIST_TASKS_QUERY_SCHEMA`/the `GET /tasks` route, filtering on the real `routine_id` column. On mobile, extend TASK-148's routines tab: a routine row now opens a detail screen showing the routine's own info (name, schedule, next fire — data TASK-148 already fetches) plus a run-history list built by calling `GET /tasks?routineId=X` then, for each returned task, `GET /runs?taskId=Y` (both real, both already return real status/timestamp data — no new run-level endpoint needed). Each history row shows a real timestamp and a real outcome (the run's actual `status`, not a fabricated "Succeeded"/"Failed" — if the real status vocabulary doesn't map cleanly to a friendly label, use the real status string rather than inventing a mapping that could misrepresent an actual failure as a success or vice versa). Handle the empty-history case (a routine that has never fired) gracefully, not as an error.
+**Acceptance_Criteria:**
+- [ ] `GET /tasks?routineId=X` returns only tasks created by that routine — tested against real Postgres
+- [ ] A routine detail screen exists, reachable from the routines tab
+- [ ] The detail screen's run history reflects real task/run data via the two real endpoints above — tested against a fake client
+- [ ] A run's real status is shown accurately, never a fabricated or misleading label — reviewed directly
+- [ ] A routine with no fire history shows an empty state, not an error
+- [ ] Existing `GET /tasks` behavior (no `routineId` given) is unchanged — existing tests pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T13:35:00Z
