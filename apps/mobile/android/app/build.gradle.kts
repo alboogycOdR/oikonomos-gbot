@@ -8,7 +8,11 @@ plugins {
 
 android {
     namespace = "com.basileia.oikonomos_mobile"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned to 36 (not flutter.compileSdkVersion's default of 34), 2026-09-05 —
+    // file_picker's transitive dependency flutter_plugin_android_lifecycle
+    // requires compileSdk >= 36. Real Gradle release build failure, not caught
+    // by flutter analyze/test (neither invokes a real Android release build).
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
