@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:oikonomos_mobile/api/api_client.dart';
+import 'package:oikonomos_mobile/charter/charter_template.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
 
 import '../support/fake_http_client.dart';
@@ -36,7 +40,7 @@ void main() {
   });
 
   testWidgets(
-    'creating a bot posts /roles then /threads and pops with success',
+    'creating a bot seeds its charter before creating a thread and pops with success',
     (tester) async {
       final fake = FakeHttpClient();
       final client = await _loggedIn(fake);
@@ -45,6 +49,13 @@ void main() {
         'name': 'Research Assistant',
         'description': 'Helps with research',
         'avatarSeed': 'role-new',
+      });
+      fake.queueJson(200, {
+        'id': 'role-new',
+        'name': 'Research Assistant',
+        'description': 'Helps with research',
+        'avatarSeed': 'role-new',
+        'instructions': botCharterTemplate,
       });
       fake.queueJson(201, {
         'id': 'thread-new',
@@ -88,10 +99,21 @@ void main() {
         (r) => r.url.path == '/roles',
       );
       expect(rolesRequest.method, 'POST');
+      final instructionsRequest = fake.requests.firstWhere(
+        (r) => r.url.path == '/roles/role-new' && r.method == 'PATCH',
+      ) as http.Request;
+      expect(
+        jsonDecode(instructionsRequest.body),
+        {'instructions': botCharterTemplate},
+      );
       final threadsRequest = fake.requests.firstWhere(
         (r) => r.url.path == '/threads',
       );
       expect(threadsRequest.method, 'POST');
+      expect(
+        fake.requests.indexOf(instructionsRequest),
+        lessThan(fake.requests.indexOf(threadsRequest)),
+      );
     },
   );
 

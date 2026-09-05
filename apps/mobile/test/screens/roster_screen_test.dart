@@ -165,12 +165,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(CreateBotScreen), findsOneWidget);
 
-    // CreateBotScreen.submit(): POST /roles then POST /threads.
+    // CreateBotScreen.submit(): POST /roles, PATCH /roles/:id (charter),
+    // then POST /threads.
     fake.queueJson(200, {
       'id': 'role-new',
       'name': 'Helper',
       'description': '',
       'avatarSeed': 'role-new',
+    });
+    fake.queueJson(200, {
+      'id': 'role-new',
+      'name': 'Helper',
+      'description': '',
+      'avatarSeed': 'role-new',
+      'instructions': '# Job (and what I refuse)',
     });
     fake.queueJson(200, {
       'id': 'thread-new',

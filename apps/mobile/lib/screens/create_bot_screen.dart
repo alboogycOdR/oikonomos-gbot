@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
+import '../charter/charter_template.dart';
 import '../widgets/avatar.dart';
 
 /// TASK-147 (Mobile Wave 1b) — create-bot flow: name + description +
@@ -63,6 +64,10 @@ class CreateBotScreenState extends State<CreateBotScreen> {
         name,
         _descriptionController.text.trim(),
       );
+      await widget.apiClient.updateRoleInstructions(
+        role.id,
+        botCharterTemplate,
+      );
       await widget.apiClient.createThread(role.id);
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -91,9 +96,7 @@ class CreateBotScreenState extends State<CreateBotScreen> {
                 key: const Key('avatar-preview'),
                 seed: 'preview',
                 color: avatarPalette[_colorIndex],
-                name: _nameController.text.isEmpty
-                    ? '?'
-                    : _nameController.text,
+                name: _nameController.text.isEmpty ? '?' : _nameController.text,
                 shape: _shape,
                 size: 64,
               ),
