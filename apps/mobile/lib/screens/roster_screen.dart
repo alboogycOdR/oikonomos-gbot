@@ -26,6 +26,7 @@ class RosterScreen extends StatefulWidget {
     super.key,
     required this.apiClient,
     this.pushPort = const NoopPushPort(),
+    this.authPort,
   });
 
   final ApiClient apiClient;
@@ -35,6 +36,29 @@ class RosterScreen extends StatefulWidget {
   /// argument) is unaffected: registration never fires and no additional
   /// HTTP request is ever queued/expected.
   final PushPort pushPort;
+
+  /// TASK-174 — real Google/Firebase sign-out port used by the sign-out
+  /// action below. `RosterScreen` does not hold a reference to the port
+  /// `LoginScreen` used to sign in — `LoginScreen`'s own default port is a
+  /// private (`_DefaultAuthPort`) implementation detail of that file, and
+  /// no shared session/DI surface exists in this task's `Owned_Paths` to
+  /// thread the *same instance* through. A fresh default
+  /// [FirebaseGoogleAuthPort] is constructed lazily here (via
+  /// [_defaultAuthPort]) when none is supplied. This is safe: both
+  /// `signIn` and `signOut` ultimately delegate to the same underlying
+  /// `GoogleSignIn.instance`/`FirebaseAuth.instance` singletons, so a
+  /// second port instance still signs out of the one real session. Tests
+  /// inject a fake here instead, exactly as `LoginScreen` does.
+  final GoogleAuthPort? authPort;
+
+  /// Indirection so a real [FirebaseGoogleAuthPort] (not `const`
+  /// -constructible) is never eagerly built by the widget's constant
+  /// default argument list — only the first time a sign-out is actually
+  /// requested without an injected [authPort].
+  static FirebaseGoogleAuthPort? _sharedDefaultAuthPort;
+
+  GoogleAuthPort _resolvedAuthPort() =>
+      authPort ?? (_sharedDefaultAuthPort ??= FirebaseGoogleAuthPort());
 
   @override
   State<RosterScreen> createState() => _RosterScreenState();
@@ -139,6 +163,22 @@ class _RosterScreenState extends State<RosterScreen> {
     );
   }
 
+  /// TASK-174 — real sign-out entry point. Calls the real
+  /// [LoginScreen.signOut] (clears the in-memory session cookie and the
+  /// real Firebase/Google session), then replaces the entire navigation
+  /// stack with a fresh [LoginScreen] so the back button cannot return to
+  /// a roster whose session has just been cleared.
+  Future<void> _signOut() async {
+    await LoginScreen.signOut(widget.apiClient, widget._resolvedAuthPort());
+    if (!mounted) return;
+    await Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(apiClient: widget.apiClient),
+      ),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -150,6 +190,12 @@ class _RosterScreenState extends State<RosterScreen> {
             icon: const Icon(Icons.add),
             tooltip: 'New bot',
             onPressed: _openCreateBot,
+          ),
+          IconButton(
+            key: const Key('sign-out-button'),
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign out',
+            onPressed: _signOut,
           ),
         ],
       ),
