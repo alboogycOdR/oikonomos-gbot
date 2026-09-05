@@ -104,9 +104,16 @@ class FirebaseGoogleAuthPort implements GoogleAuthPort {
   @override
   Future<void> signOut() async {
     await FirebaseAuth.instance.signOut();
-    if (_initialized) {
-      await GoogleSignIn.instance.signOut();
-    }
+    // TASK-174 REWORK fix: `GoogleSignIn.instance` is a true singleton, so
+    // any `FirebaseGoogleAuthPort` instance can safely ensure it's
+    // initialized before operating on it — gating on *this* instance's own
+    // `_initialized` history (as before) silently skipped the real
+    // GoogleSignIn.instance.signOut() call whenever sign-out ran on a
+    // freshly-constructed port that never itself called signIn() (e.g. the
+    // one RosterScreen constructs), leaving the cached Google account
+    // un-cleared and causing a silent auto-relogin on next sign-in.
+    await _ensureInitialized();
+    await GoogleSignIn.instance.signOut();
   }
 }
 
@@ -203,6 +210,12 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => RosterScreen(
             apiClient: widget.apiClient,
             pushPort: widget.pushPort,
+            // TASK-174 REWORK defense-in-depth: reuse the same, already
+            // `_ensureInitialized()`-warmed auth port instance this screen
+            // just signed in with, instead of relying solely on the
+            // singleton-safety fix in `FirebaseGoogleAuthPort.signOut()`
+            // above to cover a fresh instance.
+            authPort: widget.authPort,
           ),
         ),
       );

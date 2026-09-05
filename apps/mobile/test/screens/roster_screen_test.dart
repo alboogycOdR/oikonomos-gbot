@@ -4,10 +4,29 @@ import 'package:oikonomos_mobile/api/api_client.dart';
 import 'package:oikonomos_mobile/push/push_message.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
+import 'package:oikonomos_mobile/screens/login_screen.dart';
 import 'package:oikonomos_mobile/screens/roster_screen.dart';
 
 import '../support/fake_http_client.dart';
 import '../support/fake_push_port.dart';
+
+/// TASK-174 — fake [GoogleAuthPort] local to this test file (the real
+/// `FakeGoogleAuthPort` in `login_screen_test.dart` lives under TASK-173's
+/// `Owned_Paths`, not this task's) so the sign-out wiring can be exercised
+/// without touching the real `google_sign_in`/`firebase_auth` platform
+/// channels the widget test harness has no access to.
+class _FakeGoogleAuthPort implements GoogleAuthPort {
+  int signOutCallCount = 0;
+
+  @override
+  Future<String> signIn() async =>
+      throw UnimplementedError('not exercised from RosterScreen');
+
+  @override
+  Future<void> signOut() async {
+    signOutCallCount++;
+  }
+}
 
 Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
   fake.queueJson(
@@ -311,5 +330,39 @@ void main() {
 
       expect(port.disposed, isTrue);
     });
+  });
+
+  group('TASK-174 sign-out', () {
+    testWidgets(
+      'tapping sign-out clears the session, signs out, and returns to '
+      'LoginScreen with the navigation stack cleared',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJson(200, <Object?>[]);
+        final authPort = _FakeGoogleAuthPort();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RosterScreen(apiClient: client, authPort: authPort),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(client.isAuthenticated, isTrue);
+
+        await tester.tap(find.byKey(const Key('sign-out-button')));
+        await tester.pumpAndSettle();
+
+        expect(authPort.signOutCallCount, 1);
+        expect(client.isAuthenticated, isFalse);
+        expect(find.byType(LoginScreen), findsOneWidget);
+        expect(find.byType(RosterScreen), findsNothing);
+        // Navigation stack was cleared (pushAndRemoveUntil), so there is
+        // nothing to pop back to the roster from.
+        expect(Navigator.of(tester.element(find.byType(LoginScreen))).canPop(),
+            isFalse);
+      },
+    );
   });
 }
