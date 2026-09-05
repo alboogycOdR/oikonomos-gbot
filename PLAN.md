@@ -1,5 +1,5 @@
 ---
-plan_version: 11.0
+plan_version: 11.1
 last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
 orchestrator_notes: "MOBILE WAVE 1+2 COMPLETE. All of TASK-144/145/147/148/149 merged: Flutter client with a real Dart API+SSE client, bot roster, live chat, create-bot, inline approval cards, read-only routines tab, auto-review settings, and an env-gated FCM push client on top of a real device-token backend. 59 mobile tests, analyze clean. Also merged this shift: TASK-146 (connector fast-follows, closing a frozen thread), TASK-150 (withBudgetTap - the design output that re-scopes frozen TASK-143/OIK-110-111), TASK-151 (killed the recurring registerCapabilities flake that had muddied evidence on four tasks). NOT DONE, deliberately and named: real-device push (needs a Firebase project, config files, APNs), per-user auth (user chose mobile-UI-first), per-user push targeting (broadcast-to-all is the honest model until auth lands), the Usage%% figure (blocked on TASK-143's successor - its absence is enforced by a test), group-chat on mobile, and APK/toolchain infra. TWO PACK DEFECTS FIXED AT ROOT this shift, both cases where prompt wording rather than builder judgement caused the failure: dispatch's 'do not re-branch' contradicted its own branch-creation step (3 blocks), and the prompt never told builders to read Review_Findings so a rework verdict silently evaporated (1 lost round). Both logged as findings #8/#9 in DEVDEPARTMENT_FEEDBACK_2026-09-04.md. Reasoning effort is now pinned explicitly per unit in this file rather than inherited from user-level configs. All three builders idle; next program not yet scoped."
@@ -4485,3 +4485,29 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-04T21:32:49Z
+
+### TASK-152
+**Title:** APK → Gofile → Telegram release delivery script
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** User-provided spec "_APK PUBLISH TO TELEGRAM - SPEC" (2026-09-05): three-call flow — `GET https://api.gofile.io/servers` (pick `data.servers[0].name`, no auth), `POST https://<server>.gofile.io/contents/uploadfile` (multipart, field `file`, no auth, ~10-day expiry, no size cap), `POST https://api.telegram.org/bot<TOKEN>/sendMessage` (plain text, **no `parse_mode`** — the spec's own documented lesson: Telegram legacy Markdown aborts on any unmatched `_`/`*`/backtick in a commit message, and MarkdownV2 requires escaping ~15 characters; plain text is the reliable choice and Telegram auto-links URLs regardless). Reference Node.js implementation in the spec is adapted to Dart for this repo — see Description.
+**Owned_Paths:** apps/mobile/tool/**, apps/mobile/pubspec.yaml, apps/mobile/.gitignore
+**Depends_On:** —
+**Description:** Port the spec's flow to Dart, living entirely inside `apps/mobile/tool/` (NOT root `scripts/`, which is DEVDEPARTMENT's own protected orchestration machinery — this is product/release tooling and belongs with the app it ships). Write `apps/mobile/tool/release_remote.dart`: a CLI script (`dart run tool/release_remote.dart [path-to-file]`, defaulting to `build/app/outputs/flutter-apk/app-release.apk` when no argument is given) that performs the three calls in order — fetch the Gofile server list and take the first entry's `name`; multipart-upload the file to that server (`package:http`'s `MultipartRequest` or `http_parser`, whichever the existing `pubspec.yaml` dependencies most naturally support — check before adding a new package); POST the resulting `downloadPage` link plus a plain-text message to Telegram's `sendMessage`, explicitly WITHOUT a `parse_mode` field. Read `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the process environment only (`Platform.environment`) — never a hardcoded value, never a default, never logged in full (a bot token is a credential exactly like every other secret in this codebase; CLAUDE.md non-negotiable 4 applies). Missing either variable is a clear, immediate error naming which one, not a silent no-op or a crash deep in the HTTP call. A missing target file is also a clear error before any network call. Include the release message shape from the spec (filename, size in MB, an expiry note) but do NOT shell out to `git` for a commit hash/message inside this script — this repo's git history and this app's own version are two different things, and reading the *invoking* shell's git state from inside a release script is exactly the kind of implicit dependency that breaks when this is run from CI or a different working directory later; accept an optional `--note` CLI argument for a caller-supplied message instead, and leave it out of the text if not given. Update `apps/mobile/.gitignore` to cover a `.env` at the mobile app root if one doesn't already exist (do not create the `.env` file itself — that's a local secret file, never committed, and definitely never populated with a real token by you). Test the HTTP-calling logic against a fake/injectable HTTP client exactly like `apps/mobile/lib/api/api_client.dart` already does — no real network call in any test, and no real-looking token in any test fixture (use an assembled-at-runtime sentinel like the connectors package's own convention, never a literal that could be mistaken for real).
+**Acceptance_Criteria:**
+- [ ] The three-call flow is implemented in that order, with the exact request/response shapes from the spec, tested against a fake HTTP client — no real network call anywhere in the test suite
+- [ ] `sendMessage`'s JSON body never includes a `parse_mode` field — tested (a test asserting the sent body's key set explicitly excludes it, not just that the happy path works)
+- [ ] Missing `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CHAT_ID` produces a clear, immediate, named error before any HTTP call — tested for each variable independently
+- [ ] A missing target file produces a clear error before any HTTP call — tested
+- [ ] No literal bot token, chat ID, or other credential-shaped literal appears anywhere in source or test fixtures — reviewed directly
+- [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` (or `dart test` if this lives outside the widget-test tree) exit 0; nothing outside Owned_Paths touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T06:55:00Z
