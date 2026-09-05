@@ -24,6 +24,13 @@ import { resolveEnforcementGate } from "./enforcementGate.js";
 import { RefusalMemory } from "./refusalMemory.js";
 import { guardSecretPath } from "./secretPathGuard.js";
 
+export {
+  resolveBudgetGate,
+  type BudgetGateDecision,
+  type BudgetGateDenyReason,
+  type BudgetGateInput,
+} from "./budgetGate.js";
+
 export const workspaceName = "broker";
 
 export {
