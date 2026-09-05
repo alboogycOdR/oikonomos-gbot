@@ -226,3 +226,12 @@ CX honestly reported it could not run any Flutter checks at all (dart/flutter no
 Root cause identified for the resubmission: `_loadHandoffs()` runs unconditionally in `initState`, adding two new API calls per `ChatScreen` build that the existing widget tests' fake client (apparently call-order-dependent) never anticipated — plausibly explaining otherwise-unrelated-looking failures (wrong HTTP method recorded, wrong field value read back). Findings written into `Review_Findings` for CX: fix at the root (explicit method/URL-matched stubbing, or scope when the new calls fire), not by special-casing the failures away, and prove both the 10 previously-passing tests and the new handoff tests pass together.
 
 Not merged. Branch/worktree left as-is for CX's resumption.
+
+## TASK-160 — Inline cross-bot handoff chips (CX) — RESUBMISSION
+**Verdict:** approved, merged · **Date:** 2026-09-05
+
+Root cause fixed correctly, not patched around: the fake test client's FIFO response queue was consuming the new handoff requests before existing transcript/SSE responses. `FakeHttpClient` now matches by exact method+path via `queueJsonFor`, with a safe default for the handoffs endpoint so unrelated tests never need to know it exists. Confirmed by reading the diff — the fix generalizes (path-based matching, not a special case for the one broken scenario) and the handoff/transcript endpoints are provably distinct paths, so no future collision.
+
+Independently re-verified, not trusted: `flutter analyze` clean, `chat_screen_test.dart` 16/16, full `flutter test` 74/74 (all 10 previously-regressed tests now pass), control-api 148/148, full recursive suite clean except the already-known/logged TASK-161 WSL-bash gap (no new failures), build/lint clean. Two harmless local artifacts (pubspec.lock churn, a CRLF-only diff) discarded before merge — neither part of CX's actual committed work.
+
+Merged `--no-ff`. This closes out Wave 7/8's mobile backlog entirely; only TASK-143 (frozen, awaiting a human decision) and the two low-priority TASK-161/162 backlog items remain open.
