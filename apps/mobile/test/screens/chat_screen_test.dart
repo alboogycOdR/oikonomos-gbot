@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:oikonomos_mobile/api/api_client.dart';
 import 'package:oikonomos_mobile/api/models.dart';
+import 'package:oikonomos_mobile/attach/file_picker_port.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
 
+import '../support/fake_file_picker.dart';
 import '../support/fake_http_client.dart';
 
 const _bot = SingleThread(
@@ -217,6 +219,202 @@ void main() {
     final sendRequest = fake.requests.last;
     expect(sendRequest.method, 'POST');
     expect(sendRequest.url.path, '/threads/thread-1/messages');
+  });
+
+  testWidgets('attach button is present on the composer', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('attach-button')), findsOneWidget);
+  });
+
+  testWidgets(
+    'picking a file uploads it with visible progress then a pending chip',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(
+        201,
+        {
+          'id': 'att-1',
+          'filename': 'notes.txt',
+          'contentType': 'text/plain',
+          'byteSize': 5,
+          'sha256': 'aabbcc',
+        },
+        delay: const Duration(milliseconds: 50),
+      );
+      final picker = FakeFilePicker(
+        picked: const PickedAttachment(
+          filename: 'notes.txt',
+          contentType: 'text/plain',
+          bytes: [104, 101, 108, 108, 111],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(
+            apiClient: client,
+            bot: _bot,
+            filePicker: picker,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('attach-button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 10));
+      expect(find.byKey(const Key('attach-progress')), findsOneWidget);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pending-attachment-att-1')), findsOneWidget);
+      expect(find.text('notes.txt'), findsOneWidget);
+      expect(picker.pickCount, 1);
+
+      final upload = fake.requests.last;
+      expect(upload.method, 'POST');
+      expect(upload.url.path, '/threads/thread-1/attachments');
+    },
+  );
+
+  testWidgets('cancelling the picker does not upload', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    final picker = FakeFilePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          apiClient: client,
+          bot: _bot,
+          filePicker: picker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final requestsBefore = fake.requests.length;
+    await tester.tap(find.byKey(const Key('attach-button')));
+    await tester.pumpAndSettle();
+
+    expect(picker.pickCount, 1);
+    expect(fake.requests.length, requestsBefore);
+    expect(find.byKey(const Key('attach-progress')), findsNothing);
+    expect(find.byKey(const Key('attach-error')), findsNothing);
+  });
+
+  testWidgets('upload error shows the server rejection message', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(400, {
+      'error': 'file exceeds the 10485760-byte limit.',
+    });
+    final picker = FakeFilePicker(
+      picked: const PickedAttachment(
+        filename: 'huge.bin',
+        contentType: 'application/pdf',
+        bytes: [1, 2, 3],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          apiClient: client,
+          bot: _bot,
+          filePicker: picker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('attach-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('attach-error')), findsOneWidget);
+    expect(find.text('file exceeds the 10485760-byte limit.'), findsOneWidget);
+  });
+
+  testWidgets('send with a pending attachment posts attachmentIds',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(201, {
+      'id': 'att-1',
+      'filename': 'notes.txt',
+      'contentType': 'text/plain',
+      'byteSize': 5,
+      'sha256': 'aabbcc',
+    });
+    fake.queueJson(201, {
+      'id': 'msg-9',
+      'threadId': 'thread-1',
+      'role': 'user',
+      'body': 'please read this',
+      'runId': null,
+      'createdAt': '2026-09-05T00:00:00Z',
+      'attachments': [
+        {
+          'id': 'att-1',
+          'filename': 'notes.txt',
+          'contentType': 'text/plain',
+          'byteSize': 5,
+          'sha256': 'aabbcc',
+        },
+      ],
+    });
+    final picker = FakeFilePicker(
+      picked: const PickedAttachment(
+        filename: 'notes.txt',
+        contentType: 'text/plain',
+        bytes: [104, 101, 108, 108, 111],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          apiClient: client,
+          bot: _bot,
+          filePicker: picker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('attach-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('compose-field')),
+      'please read this',
+    );
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('message-attachment-att-1')), findsOneWidget);
+    final send = fake.requests.last as http.Request;
+    expect(send.url.path, '/threads/thread-1/messages');
+    expect(jsonDecode(send.body), {
+      'body': 'please read this',
+      'attachmentIds': ['att-1'],
+    });
   });
 
   testWidgets(

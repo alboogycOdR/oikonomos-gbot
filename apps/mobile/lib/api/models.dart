@@ -202,6 +202,32 @@ class RoutineRun {
   }
 }
 
+class MessageAttachment {
+  const MessageAttachment({
+    required this.id,
+    required this.filename,
+    required this.contentType,
+    required this.byteSize,
+    required this.sha256,
+  });
+
+  final String id;
+  final String filename;
+  final String contentType;
+  final int byteSize;
+  final String sha256;
+
+  factory MessageAttachment.fromJson(Map<String, dynamic> json) {
+    return MessageAttachment(
+      id: json['id'] as String,
+      filename: json['filename'] as String,
+      contentType: json['contentType'] as String,
+      byteSize: json['byteSize'] as int,
+      sha256: json['sha256'] as String,
+    );
+  }
+}
+
 class ThreadMessage {
   const ThreadMessage({
     required this.id,
@@ -213,6 +239,7 @@ class ThreadMessage {
     this.senderRoleId,
     this.senderName,
     this.approval,
+    this.attachments = const [],
   });
 
   final String id;
@@ -224,8 +251,10 @@ class ThreadMessage {
   final String? senderRoleId;
   final String? senderName;
   final ApprovalRef? approval;
+  final List<MessageAttachment> attachments;
 
   factory ThreadMessage.fromJson(Map<String, dynamic> json) {
+    final rawAttachments = json['attachments'];
     return ThreadMessage(
       id: json['id'] as String,
       threadId: json['threadId'] as String,
@@ -238,6 +267,12 @@ class ThreadMessage {
       approval: json['approval'] == null
           ? null
           : ApprovalRef.fromJson(json['approval'] as Map<String, dynamic>),
+      attachments: rawAttachments is List
+          ? rawAttachments
+              .whereType<Map<String, dynamic>>()
+              .map(MessageAttachment.fromJson)
+              .toList()
+          : const [],
     );
   }
 }

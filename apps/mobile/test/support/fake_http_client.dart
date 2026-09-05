@@ -23,10 +23,16 @@ class FakeHttpClient extends http.BaseClient {
     int statusCode,
     Object? body, {
     Map<String, String> headers = const {},
+    Duration? delay,
   }) {
     final encoded = body == null ? '' : jsonEncode(body);
     _responses.add(
-      _QueuedResponse(statusCode: statusCode, body: encoded, headers: headers),
+      _QueuedResponse(
+        statusCode: statusCode,
+        body: encoded,
+        headers: headers,
+        delay: delay,
+      ),
     );
   }
 
@@ -118,7 +124,11 @@ class FakeHttpClient extends http.BaseClient {
     if (_responses.isEmpty) {
       throw StateError('FakeHttpClient: no queued response for ${request.url}');
     }
-    return _toStreamedResponse(_responses.removeAt(0));
+    final queued = _responses.removeAt(0);
+    if (queued.delay != null) {
+      await Future<void>.delayed(queued.delay!);
+    }
+    return _toStreamedResponse(queued);
   }
 
   String _requestKey(String method, String path) =>
@@ -156,12 +166,14 @@ class _QueuedResponse {
     required this.body,
     required this.headers,
     this.stream,
+    this.delay,
   });
 
   final int statusCode;
   final String? body;
   final Map<String, String> headers;
   final Stream<List<int>>? stream;
+  final Duration? delay;
 }
 
 /// Builds a [http.StreamedResponse] whose body stream yields [chunks] one

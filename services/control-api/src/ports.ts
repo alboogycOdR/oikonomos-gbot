@@ -6,6 +6,10 @@
  * (OIK-084 "not the DB" / N9 spirit). `test/no-raw-sql.test.ts` is the
  * liveness check that keeps this true.
  */
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   Database,
   createTask as dbCreateTask,
@@ -245,4 +249,192 @@ async function withDatabase<T>(options: DatabaseOptions, operation: (database: D
   } finally {
     await database.close();
   }
+}
+
+/** 10 MiB decoded. Enforced in the upload route, not only the client. */
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const ATTACHMENT_MAX_COUNT = 10;
+export const ATTACHMENT_INLINE_TEXT_MAX_BYTES = 64 * 1024;
+export const ATTACHMENT_ALLOWED_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "application/pdf",
+] as const;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TEXT_CONTENT_TYPES = new Set(["text/plain", "text/markdown", "text/csv", "application/json"]);
+
+export class AttachmentStoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AttachmentStoreError";
+  }
+}
+
+export interface ThreadAttachment {
+  readonly id: string;
+  readonly threadId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly byteSize: number;
+  readonly sha256: string;
+  readonly absolutePath: string;
+}
+
+export interface AttachmentStore {
+  persist(input: {
+    threadId: string;
+    filename: string;
+    contentType: string;
+    bytes: Buffer;
+  }): Promise<ThreadAttachment>;
+  resolve(threadId: string, ids: readonly string[]): Promise<ThreadAttachment[]>;
+}
+
+export function defaultAttachmentsRoot(): string {
+  const fromEnv = process.env.OIK_ATTACHMENTS_DIR?.trim();
+  return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : join(tmpdir(), "oikonomos-attachments");
+}
+
+export function normalizeAttachmentContentType(value: string): string {
+  const raw = value.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (raw === "image/jpg") return "image/jpeg";
+  return raw;
+}
+
+export function isAllowedAttachmentContentType(value: string): boolean {
+  return (ATTACHMENT_ALLOWED_CONTENT_TYPES as readonly string[]).includes(normalizeAttachmentContentType(value));
+}
+
+export function isInlineableTextContentType(value: string): boolean {
+  return TEXT_CONTENT_TYPES.has(normalizeAttachmentContentType(value));
+}
+
+export function publicAttachmentRef(attachment: ThreadAttachment): {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+} {
+  return {
+    id: attachment.id,
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    sha256: attachment.sha256,
+  };
+}
+
+/**
+ * Build the chat-run prompt so the existing agent Read/Bash tools can
+ * reach the file without a worker change. Small UTF-8 text is inlined;
+ * every attachment also carries its absolute path (TASK-153: host paths
+ * outside the per-run cwd remain reachable).
+ */
+export function buildChatGoal(
+  body: string,
+  attachments: ReadonlyArray<ThreadAttachment & { textContent?: string }>,
+): string {
+  if (attachments.length === 0) return body;
+  const intro =
+    body.trim().length === 0
+      ? "The user sent file attachment(s) with no additional text."
+      : body.trim();
+  const sections = attachments.map((attachment) => {
+    const header = [
+      `### ${attachment.filename} (${attachment.contentType}, ${String(attachment.byteSize)} bytes, sha256 ${attachment.sha256})`,
+      `Absolute path: ${attachment.absolutePath}`,
+    ];
+    if (attachment.textContent !== undefined) {
+      header.push("Inlined text contents:", "```", attachment.textContent, "```");
+    } else {
+      header.push("Binary or large file: use the Read tool on the absolute path above to inspect the bytes.");
+    }
+    return header.join("\n");
+  });
+  return `${intro}\n\n---\nAttached files. Each file is stored on disk at the given absolute path; you can Read that path with your existing tools. Text contents are inlined when small enough.\n\n${sections.join("\n\n")}`;
+}
+
+interface AttachmentMeta {
+  id: string;
+  threadId: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+}
+
+function requireUuidSegment(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!UUID_RE.test(trimmed)) throw new AttachmentStoreError(`${field} must be a UUID.`);
+  return trimmed;
+}
+
+function sanitizeStoredFilename(filename: string): string {
+  const base = filename.replace(/\\/g, "/").split("/").pop()?.trim() ?? "";
+  if (base.length === 0 || base === "." || base === "..") {
+    throw new AttachmentStoreError("filename must be a single path segment.");
+  }
+  if (base.length > 255) throw new AttachmentStoreError("filename must be at most 255 characters.");
+  return base;
+}
+
+export function createFilesystemAttachmentStore(rootDir: string = defaultAttachmentsRoot()): AttachmentStore {
+  return {
+    async persist(input) {
+      const threadId = requireUuidSegment(input.threadId, "threadId");
+      const filename = sanitizeStoredFilename(input.filename);
+      const contentType = normalizeAttachmentContentType(input.contentType);
+      if (input.bytes.length === 0) throw new AttachmentStoreError("file must not be empty.");
+      const id = randomUUID();
+      const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+      const dir = join(rootDir, threadId);
+      await mkdir(dir, { recursive: true });
+      const absolutePath = join(dir, `${id}.bin`);
+      const meta: AttachmentMeta = {
+        id,
+        threadId,
+        filename,
+        contentType,
+        byteSize: input.bytes.length,
+        sha256,
+      };
+      await writeFile(absolutePath, input.bytes);
+      await writeFile(join(dir, `${id}.meta.json`), JSON.stringify(meta), "utf8");
+      return { ...meta, absolutePath };
+    },
+    async resolve(threadId, ids) {
+      const normalizedThreadId = requireUuidSegment(threadId, "threadId");
+      const uniqueIds = [...new Set(ids.map((id) => requireUuidSegment(id, "attachmentId")))];
+      const resolved: ThreadAttachment[] = [];
+      for (const id of uniqueIds) {
+        const dir = join(rootDir, normalizedThreadId);
+        const absolutePath = join(dir, `${id}.bin`);
+        const metaRaw = await readFile(join(dir, `${id}.meta.json`), "utf8").catch(() => {
+          throw new AttachmentStoreError(`attachment not found: ${id}`);
+        });
+        let meta: AttachmentMeta;
+        try {
+          meta = JSON.parse(metaRaw) as AttachmentMeta;
+        } catch {
+          throw new AttachmentStoreError(`attachment metadata is unreadable: ${id}`);
+        }
+        if (meta.threadId !== normalizedThreadId || meta.id !== id) {
+          throw new AttachmentStoreError(`attachment not found: ${id}`);
+        }
+        const bytes = await readFile(absolutePath).catch(() => {
+          throw new AttachmentStoreError(`attachment not found: ${id}`);
+        });
+        resolved.push({ ...meta, byteSize: bytes.length, absolutePath });
+      }
+      return resolved;
+    },
+  };
 }

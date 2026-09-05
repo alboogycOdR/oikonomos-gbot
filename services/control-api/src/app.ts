@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type { Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 
@@ -8,7 +9,20 @@ import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
-import type { ControlApiDeps } from "./ports.js";
+import {
+  ATTACHMENT_ALLOWED_CONTENT_TYPES,
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_MAX_COUNT,
+  ATTACHMENT_INLINE_TEXT_MAX_BYTES,
+  buildChatGoal,
+  createFilesystemAttachmentStore,
+  isAllowedAttachmentContentType,
+  isInlineableTextContentType,
+  publicAttachmentRef,
+  type AttachmentStore,
+  type ControlApiDeps,
+  type ThreadAttachment,
+} from "./ports.js";
 import {
   buildExpiredSessionCookie,
   buildSessionCookie,
@@ -49,6 +63,13 @@ export interface BuildAppOptions {
    * something even smaller/deterministic.
    */
   sseIntervalMs?: number;
+  /**
+   * TASK-166: where uploaded chat files land. Production uses the local
+   * filesystem store (OIK_ATTACHMENTS_DIR or os.tmpdir). Tests inject a
+   * fake or a temp-dir store. Left unset on purpose so index.ts needs no
+   * edit.
+   */
+  attachmentStore?: AttachmentStore;
 }
 
 const NEW_TASK_SCHEMA = {
@@ -160,7 +181,21 @@ const CREATE_MESSAGE_SCHEMA = {
   type: "object",
   required: ["body"],
   additionalProperties: false,
-  properties: { body: { type: "string" } },
+  properties: {
+    body: { type: "string" },
+    attachmentIds: { type: "array", maxItems: ATTACHMENT_MAX_COUNT, items: { type: "string" } },
+  },
+} as const;
+
+const CREATE_ATTACHMENT_SCHEMA = {
+  type: "object",
+  required: ["filename", "contentType", "contentBase64"],
+  additionalProperties: false,
+  properties: {
+    filename: { type: "string", minLength: 1, maxLength: 255 },
+    contentType: { type: "string", minLength: 1 },
+    contentBase64: { type: "string", minLength: 1 },
+  },
 } as const;
 
 const REGISTER_DEVICE_SCHEMA = {
@@ -257,6 +292,13 @@ function shapeMessage(
       message.senderRoleId === null || message.senderRoleId === undefined
         ? null
         : roleNameById.get(message.senderRoleId) ?? message.senderRoleId,
+    attachments: (message.attachments ?? []).map((attachment) => ({
+      id: attachment.id,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      byteSize: attachment.byteSize,
+      sha256: attachment.sha256,
+    })),
     ...(approval === undefined
       ? {}
       : {
@@ -269,6 +311,38 @@ function shapeMessage(
           },
         }),
   };
+}
+
+function shapePostedMessage(message: Message): Record<string, unknown> {
+  return {
+    ...message,
+    attachments: (message.attachments ?? []).map((attachment) => ({
+      id: attachment.id,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      byteSize: attachment.byteSize,
+      sha256: attachment.sha256,
+    })),
+  };
+}
+
+async function inlineTextAttachments(
+  attachments: ThreadAttachment[],
+): Promise<Array<ThreadAttachment & { textContent?: string }>> {
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      if (
+        !isInlineableTextContentType(attachment.contentType) ||
+        attachment.byteSize > ATTACHMENT_INLINE_TEXT_MAX_BYTES
+      ) {
+        return attachment;
+      }
+      const bytes = await readFile(attachment.absolutePath);
+      const text = bytes.toString("utf8");
+      if (!bytes.equals(Buffer.from(text, "utf8"))) return attachment;
+      return { ...attachment, textContent: text };
+    }),
+  );
 }
 
 async function loadMessageShapingContext(
@@ -397,6 +471,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     );
   }
   const authToken = resolvedAuthToken;
+  const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
 
   const app = Fastify({
     logger:
@@ -501,6 +576,16 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         "/threads/{id}/messages": {
           get: { summary: "List a chat transcript", operationId: "listThreadMessages", responses: { "200": { description: "Transcript messages" } } },
           post: { summary: "Post a chat message", operationId: "createThreadMessage", responses: { "201": { description: "User message created" } } },
+        },
+        "/threads/{id}/attachments": {
+          post: {
+            summary: "Upload a chat file or image attachment (TASK-166)",
+            operationId: "createThreadAttachment",
+            responses: {
+              "201": { description: "Attachment stored; bind its id when posting the message" },
+              "400": { description: "Rejected: size, type, or payload" },
+            },
+          },
         },
       },
       components: {
@@ -921,13 +1006,72 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     reply.raw.on("error", cleanup);
   });
 
-  app.post<{ Params: { id: string }; Body: { body: string } }>(
+  app.post<{
+    Params: { id: string };
+    Body: { filename: string; contentType: string; contentBase64: string };
+  }>(
+    "/threads/:id/attachments",
+    { schema: { body: CREATE_ATTACHMENT_SCHEMA }, bodyLimit: ATTACHMENT_MAX_BYTES * 2 },
+    async (request, reply) => {
+      try {
+        const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === request.params.id);
+        if (thread === undefined) {
+          await reply.code(404).send({ error: "thread not found" });
+          return;
+        }
+        const filename = request.body.filename.trim();
+        const contentType = request.body.contentType;
+        if (!isAllowedAttachmentContentType(contentType)) {
+          await reply.code(400).send({
+            error: `contentType is not allowed. Permitted types: ${ATTACHMENT_ALLOWED_CONTENT_TYPES.join(", ")}.`,
+          });
+          return;
+        }
+        let bytes: Buffer;
+        try {
+          bytes = Buffer.from(request.body.contentBase64, "base64");
+        } catch {
+          await reply.code(400).send({ error: "contentBase64 is not valid base64." });
+          return;
+        }
+        // Buffer.from with base64 is permissive; reject empty/garbage payloads.
+        if (bytes.length === 0) {
+          await reply.code(400).send({ error: "file must not be empty." });
+          return;
+        }
+        if (bytes.length > ATTACHMENT_MAX_BYTES) {
+          await reply.code(400).send({
+            error: `file exceeds the ${String(ATTACHMENT_MAX_BYTES)}-byte limit.`,
+          });
+          return;
+        }
+        const stored = await attachmentStore.persist({
+          threadId: thread.id,
+          filename,
+          contentType,
+          bytes,
+        });
+        await reply.code(201).send(publicAttachmentRef(stored));
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { body: string; attachmentIds?: string[] } }>(
     "/threads/:id/messages",
     { schema: { body: CREATE_MESSAGE_SCHEMA } },
     async (request, reply) => {
       try {
         const body = request.body.body.trim();
-        if (body.length === 0) {
+        const attachmentIds = request.body.attachmentIds ?? [];
+        if (attachmentIds.length > ATTACHMENT_MAX_COUNT) {
+          await reply.code(400).send({
+            error: `at most ${String(ATTACHMENT_MAX_COUNT)} attachments are allowed per message.`,
+          });
+          return;
+        }
+        if (body.length === 0 && attachmentIds.length === 0) {
           await reply.code(400).send({ error: "body must not be empty." });
           return;
         }
@@ -936,6 +1080,18 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           await reply.code(404).send({ error: "thread not found" });
           return;
         }
+        let storedAttachments: ThreadAttachment[] = [];
+        if (attachmentIds.length > 0) {
+          storedAttachments = await attachmentStore.resolve(thread.id, attachmentIds);
+          if (storedAttachments.length !== new Set(attachmentIds).size) {
+            await reply.code(400).send({ error: "one or more attachments were not found for this thread." });
+            return;
+          }
+        }
+        const publicAttachments = storedAttachments.map(publicAttachmentRef);
+        const inlined = await inlineTextAttachments(storedAttachments);
+        const goal = buildChatGoal(body, inlined);
+        const titleSource = body.length > 0 ? body : (storedAttachments[0]?.filename ?? "attachment");
         if ("memberRoleIds" in thread) {
           const [dispatchRoleId] = thread.memberRoleIds;
           if (dispatchRoleId === undefined) {
@@ -944,26 +1100,38 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           }
           const task = await deps.createTask({
             roleId: dispatchRoleId,
-            title: `Group chat: ${body.slice(0, 120)}`,
-            goal: body,
+            title: `Group chat: ${titleSource.slice(0, 120)}`,
+            goal,
             requestedBy: `chat:thread:${thread.id}`,
           });
-          const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: thread.memberRoleIds, body });
-          const message = await deps.insertMessage({ threadId: thread.id, role: "user", body, runId, senderRoleId: null });
-          await reply.code(201).send(message);
+          const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: thread.memberRoleIds, body: goal });
+          const message = await deps.insertMessage({
+            threadId: thread.id,
+            role: "user",
+            body,
+            runId,
+            senderRoleId: null,
+            attachments: publicAttachments,
+          });
+          await reply.code(201).send(shapePostedMessage(message));
           return;
         }
-        const message = await deps.insertMessage({ threadId: thread.id, role: "user", body });
+        const message = await deps.insertMessage({
+          threadId: thread.id,
+          role: "user",
+          body,
+          attachments: publicAttachments,
+        });
         const task = await deps.createTask({
           roleId: thread.roleId,
-          title: `Chat: ${body.slice(0, 120)}`,
-          goal: body,
+          title: `Chat: ${titleSource.slice(0, 120)}`,
+          goal,
           requestedBy: `chat:thread:${thread.id}`,
         });
         void deps.runChatTask({ task, threadId: thread.id }).catch((error: unknown) => {
           request.log.error(error, "chat run failed after message acceptance");
         });
-        await reply.code(201).send(message);
+        await reply.code(201).send(shapePostedMessage(message));
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }

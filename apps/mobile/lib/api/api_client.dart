@@ -199,13 +199,41 @@ class ApiClient {
         .toList();
   }
 
-  Future<ThreadMessage> sendThreadMessage(String threadId, String body) async {
+  Future<ThreadMessage> sendThreadMessage(
+    String threadId,
+    String body, {
+    List<String>? attachmentIds,
+  }) async {
     final json = await _request(
       'POST',
       '/threads/${Uri.encodeComponent(threadId)}/messages',
-      body: {'body': body},
+      body: {
+        'body': body,
+        if (attachmentIds != null && attachmentIds.isNotEmpty)
+          'attachmentIds': attachmentIds,
+      },
     );
     return ThreadMessage.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// TASK-166 — `POST /threads/:id/attachments`. Bytes are sent as
+  /// base64 JSON (control-api has no multipart plugin in-territory).
+  Future<MessageAttachment> uploadThreadAttachment(
+    String threadId, {
+    required String filename,
+    required String contentType,
+    required List<int> bytes,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/threads/${Uri.encodeComponent(threadId)}/attachments',
+      body: {
+        'filename': filename,
+        'contentType': contentType,
+        'contentBase64': base64Encode(bytes),
+      },
+    );
+    return MessageAttachment.fromJson(json as Map<String, dynamic>);
   }
 
   /// TASK-147 (Mobile Wave 1b) — `POST /threads`, the second call of the
