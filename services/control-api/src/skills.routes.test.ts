@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import { Database, type DatabaseOptions, type Skill } from "@oikonomos/db";
 
@@ -237,29 +238,29 @@ integration("Skills CRUD — real Postgres (TASK-177)", () => {
   const options: DatabaseOptions = { connectionString: connectionString ?? "" };
 
   // TASK-177 discovered a genuine pre-existing bug OUT OF THIS TASK'S
-  // TERRITORY: packages/db/src/skills.ts's `UUID_RE` is
-  // `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i` — it is
-  // missing one of the standard UUID's five hex groups (8-4-4-4-12, this
-  // has only 8-4-4-12), so `requireUuid()` rejects every real,
-  // well-formed skill id `getSkill`, `updateSkill`, and
-  // `setEnabledForRole` are called with. That breaks GET/PATCH
-  // /skills/:id and PUT /roles/:roleId/skills/:skillId against a real
-  // database. packages/db is outside this task's Owned_Paths (TASK-176's
-  // territory, already merged) — flagged in the dossier/progress note for
-  // ORCH rather than fixed here. Skipped (not deleted) so the fix is
-  // proven by flipping this back to `it(...)` once packages/db's regex
-  // is corrected.
-  it.skip("creates, updates, lists, and enables a skill for a role end to end", async () => {
+  // TERRITORY: packages/db/src/skills.ts's `UUID_RE` was missing one of
+  // the standard UUID's five hex groups (8-4-4-4-12, it only had
+  // 8-4-4-12), so `requireUuid()` rejected every real, well-formed skill
+  // id `getSkill`, `updateSkill`, and `setEnabledForRole` are called
+  // with, breaking GET/PATCH /skills/:id and PUT
+  // /roles/:roleId/skills/:skillId against a real database. Fixed by
+  // ORCH 2026-09-06 (commit 1daec39, packages/db/src/skills.ts) — flipped
+  // back to a real test, proving the fix, per this test's own original
+  // intent.
+  it("creates, updates, lists, and enables a skill for a role end to end", async () => {
     const database = new Database(options);
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
     const roleName = `Skills role ${randomUUID()}`;
     const skillName = `test-skill-${randomUUID().slice(0, 8)}`;
+    let createdRoleId: string | undefined;
+    let createdSkillId: string | undefined;
     try {
       const roleRes = await app.inject({
         method: "POST", url: "/roles", headers: authHeaders(), payload: { name: roleName, description: "TASK-177 fixture" },
       });
       expect(roleRes.statusCode).toBe(201);
       const role = JSON.parse(roleRes.body) as { id: string };
+      createdRoleId = role.id;
 
       const created = await app.inject({
         method: "POST", url: "/skills", headers: authHeaders(),
@@ -267,6 +268,7 @@ integration("Skills CRUD — real Postgres (TASK-177)", () => {
       });
       expect(created.statusCode).toBe(201);
       const skill = JSON.parse(created.body) as { skillId: string };
+      createdSkillId = skill.skillId;
 
       const updated = await app.inject({
         method: "PATCH", url: `/skills/${skill.skillId}`, headers: authHeaders(), payload: { description: "Updated description" },
@@ -294,6 +296,25 @@ integration("Skills CRUD — real Postgres (TASK-177)", () => {
         expect.arrayContaining([expect.objectContaining({ skillId: skill.skillId })]),
       );
     } finally {
+      // Fixture cleanup: role_skills before skills/roles (FK order), same
+      // convention as roles.test.ts/skills.test.ts's cleanup(). Without
+      // this, every run leaves rows in the shared dev Postgres — the exact
+      // class of bug TASK-121/172's reviews caught this session.
+      const pool = new Pool({ connectionString: options.connectionString });
+      try {
+        if (createdRoleId !== undefined && createdSkillId !== undefined) {
+          await pool.query("DELETE FROM role_skills WHERE role_id = $1 AND skill_id = $2", [createdRoleId, createdSkillId]);
+        }
+        if (createdSkillId !== undefined) {
+          await pool.query("DELETE FROM skills WHERE skill_id = $1", [createdSkillId]);
+        }
+        if (createdRoleId !== undefined) {
+          await pool.query("DELETE FROM role_grants WHERE role_id = $1", [createdRoleId]);
+          await pool.query("DELETE FROM roles WHERE role_id = $1", [createdRoleId]);
+        }
+      } finally {
+        await pool.end();
+      }
       await database.close();
       await app.close();
     }
