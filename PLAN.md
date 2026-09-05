@@ -1,8 +1,8 @@
 ---
-plan_version: 11.9
-last_updated: 2026-09-05T14:45:00Z
+plan_version: 12.0
+last_updated: 2026-09-05T15:05:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-159 and TASK-160 both done/merged. TASK-160's first attempt regressed 10 mobile tests (unconditional _loadHandoffs() call broke the fake test client's FIFO response ordering) - sent to rework, CX fixed the actual root cause (method/path-matched fake responses instead of FIFO) not a narrow patch, independently re-verified clean on resubmission (flutter 74/74, control-api 148/148, full recursive suite clean modulo the already-known TASK-161 WSL/bash gap). TASK-161/162 backlog logged, unassigned, low priority. TASK-143 (OIK-110/111 budgets) still frozen - architectural gap (withBudgetSink doesn't cover the primary Claude-SDK chat path), three options presented to the human, awaiting decision. S5, CX, CX9 all idle - Wave 7/8 backlog fully cleared except the frozen budgets task and the two low-priority backlog items."
+orchestrator_notes: "TASK-159 and TASK-160 both done/merged - Wave 7/8 mobile backlog fully cleared. TASK-143 (OIK-110/111 budgets) unfrozen: human chose Option 2 of 3 - ship the narrow Codex/Grok-subprocess-path-only version now, documented as partial (Claude-SDK chat path stays unmetered). Re-scoped Description/AC/Owned_Paths accordingly, dropped chatRunDriver.ts from territory. TASK-163 logged as the SDK-path cost-tracking follow-on (Depends_On TASK-143, extends its spend schema). Dispatching CX on TASK-143 next (already has full investigation context from the freeze). TASK-161/162 backlog logged, unassigned, low priority. S5, CX9 idle."
 ---
 
 # Project Plan
@@ -4216,21 +4216,23 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 **Updated_At:** 2026-09-04T18:40:00Z
 
 ### TASK-143
-**Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (wire the existing budget hook)
-**Status:** blocked
+**Title:** OIK-110/111 — per-routine budgets + platform spend ceiling (Codex/Grok subprocess path only — narrowed scope, ORCH decision 2026-09-05)
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** CLAUDE.md "Budget" (hard ceiling R30,000/month, "Per-routine budgets enforced by the broker from week 5"); packages/agent-providers/src/budget.ts (`withBudgetSink`/`BudgetSink`/`BudgetReport`, built and tested at TASK-072, explicitly documented as "the single interception point the week-5 per-routine budget broker will attach to" — confirmed not composed anywhere: zero references in packages/harness-factory or services/worker); docs/architecture/OIKONOMOS_Master_Work_Breakdown_v1.0.md OIK-110/111; services/worker/src/subprocessProviders.ts (CX's own finding — the real production `AgentProvider` construction site, not `executeRun.ts` as originally guessed)
-**Owned_Paths:** packages/db/src/spend.ts, packages/db/src/spend.test.ts, packages/db/src/index.ts, infra/postgres/migrations/**, packages/broker/src/**, services/worker/src/executeRun.ts, services/worker/src/executeRun.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/subprocessProviders.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Owned_Paths:** packages/db/src/spend.ts, packages/db/src/spend.test.ts, packages/db/src/index.ts, infra/postgres/migrations/**, packages/broker/src/**, services/worker/src/executeRun.ts, services/worker/src/executeRun.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/subprocessProviders.test.ts
 **Depends_On:** —
 **Description:** Investigate before building, same discipline as this session's other "built but never wired" discoveries. `withBudgetSink` (packages/agent-providers) is fully built and tested but nothing composes it at any real call site, and no DB schema exists to persist per-routine or platform spend. CLAUDE.md places enforcement at the broker ("Per-routine budgets enforced by the broker from week 5"), not at the agent-providers layer — so the design is: (1) a new migration + `packages/db` module recording spend (at minimum: routine/run identifier, provider, model, costUsd, tokens, timestamp — derive the exact shape from `BudgetReport`'s existing fields rather than inventing a new one); (2) compose `withBudgetSink(provider, sink)` at the real provider construction site (`packages/harness-factory` or wherever `AgentProvider` instances are actually built for a run — find it, do not guess) with a `BudgetSink` that writes to the new spend table; (3) a broker-level check (packages/broker, matching TASK-140's precedent of a live per-decision DB read, not a cached/stale one) that denies a tool call when a routine's accumulated spend exceeds its configured budget, or when platform-wide spend exceeds the R30,000/month ceiling. Investigate whether a routine's per-routine budget ceiling has anywhere to live today (likely `role_routines.definition jsonb`, check `packages/db/src/routines.ts`) before inventing a new column. If the real scope turns out larger than one task, split OIK-110 (per-routine) and OIK-111 (platform ceiling) into two — say so honestly in the dossier rather than cutting corners to fit one task.
 **Currency/hosting-cost decision (ORCH, resolving CX's SPEC_AMBIGUITY block):** `BudgetReport.costUsd` is USD; CLAUDE.md's ceiling ("R30,000/month") is ZAR — Basileia is a South African entity, "R" is Rand. Use a fixed, configurable conversion: an env var `USD_TO_ZAR_RATE` (numeric, no live FX lookup — that's unnecessary complexity for this task) with a documented sensible default (e.g. 18.5, roughly current at time of writing — do not treat this default as authoritative, just a working placeholder; add a code comment saying so), applied only at the point spend is compared against the ZAR ceiling (store raw `costUsd` in the DB unconverted, convert only for the comparison — never lose the original figure). **Hosting costs are explicitly OUT of this task's scope** — `BudgetReport` only ever carries inference cost, and there is no existing hosting-cost telemetry anywhere in this codebase to wire in; enforcing "inference + hosting" in full would require building hosting-cost metering from scratch, which is a materially different, larger task. This task enforces the inference-cost portion of the ceiling only. Document this narrowing explicitly in the dossier and in a code comment at the ceiling-check site — an honest partial implementation, not a silent scope cut.
+**Scope-narrowing decision (ORCH, resolving the 2026-09-04 architectural freeze, human decision 2026-09-05 — Option 2 of 3 presented):** `withBudgetSink` decorates `AgentProvider.sendPrompt()`, which only covers the Codex/Grok subprocess-routing path (`subprocessProviders.ts`) — it never touches the primary Claude Agent SDK chat path (`chatRunDriver.ts` → direct `query()` call), which carries most of oikonomos's real traffic and has zero cost-tracking of any kind today. Rather than block further on a proper SDK-path interception design, this task now explicitly ships the narrow, correct version: budget enforcement for the Codex/Grok subprocess path ONLY, wired exactly where `withBudgetSink` was actually built to attach. **The Claude-SDK chat path remains completely unmetered and unenforced by this task** — that gap is real, must be documented loudly (dossier, code comment at every enforcement site, and a note in the relevant runbook/ADR if one exists), and is tracked as a separate follow-on (TASK-163, logged now) rather than silently left implicit. Do not present this task's completion as "budget enforcement is live" without that caveat — it enforces one of two real cost-generating paths.
 **Acceptance_Criteria:**
 - [ ] A new DB module records real per-turn spend (provider, model, costUsd, tokens, routine/run identifier), tested against real Postgres
-- [ ] `withBudgetSink` is actually composed at the real provider construction site — a completed real run persists a real spend record, tested
-- [ ] A routine whose accumulated spend exceeds its configured per-routine budget is denied on its next tool call — a real, live per-decision check (not evaluated only at routine-fire time), tested
-- [ ] Platform-wide spend (inference cost only, per the currency/hosting decision above) exceeding the R30,000/month ceiling denies further tool calls across every routine — tested, with the USD→ZAR conversion applied at the comparison point using the configurable rate
+- [ ] `withBudgetSink` is actually composed at the real Codex/Grok provider construction site (`subprocessProviders.ts`) — a completed real subprocess-routed run persists a real spend record, tested
+- [ ] A routine whose accumulated spend (from the Codex/Grok path) exceeds its configured per-routine budget is denied on its next tool call — a real, live per-decision check (not evaluated only at routine-fire time), tested
+- [ ] Platform-wide spend (Codex/Grok inference cost only, per the currency/hosting decision above) exceeding the R30,000/month ceiling denies further tool calls across every routine — tested, with the USD→ZAR conversion applied at the comparison point using the configurable rate
 - [ ] Fail-closed on a budget-check failure (DB unreachable, malformed record) — matches CLAUDE.md non-negotiable 3, tested
+- [ ] The dossier and a code comment at the enforcement site explicitly state the Claude-SDK chat path is NOT covered by this task's enforcement — reviewed directly, not just claimed
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-143-cx
 **Started_At:** 2026-09-04T18:10:06Z
@@ -4245,12 +4247,13 @@ control.mode is **strict**: builders never edit PLAN.md — the dispatcher claim
 - [2026-09-04T19:00:00Z] [ORCH] Resolved (real product decision, not a guess): USD→ZAR via a configurable `USD_TO_ZAR_RATE` env var (documented placeholder default, applied only at the ceiling-comparison point, raw costUsd still stored unconverted). Hosting costs explicitly descoped — no telemetry exists anywhere in this codebase, building it is a materially larger separate task; this task enforces the inference-cost portion of the ceiling only, documented honestly rather than silently narrowed. Description/AC updated. Resuming on task/TASK-143-cx.
 - [2026-09-04T18:28:17Z] [SV:CX] Recorded and committed the live-path investigation (89e801a); no inert budget implementation was added.
 - [2026-09-04T19:05:00Z] [ORCH] FROZEN, not re-unblocked — this is the 5th consecutive block on one task, and this one is architectural rather than a narrow territory gap (CX's prior 4 blocks were each legitimate but individually small; this one is different in kind). Investigated directly: `withBudgetSink` (packages/agent-providers) decorates `AgentProvider.sendPrompt()` — but the primary production chat path (`chatRunDriver.ts` → `executeTaskRun`/`composeHarness` → `AgentSdkQueryFn`) is a direct Claude Agent SDK `query()` call, which never goes through `AgentProvider` at all. `AgentProvider`/`withBudgetSink` only covers the Codex/Grok subprocess-routing path (`subprocessProviders.ts`, ADR-011 multi-provider support) — a real but secondary path, not the main one. Confirmed zero cost-tracking of any kind exists in `packages/harness-factory` for the Claude SDK path: `AgentSdkQueryFn`'s stream is typed `AsyncIterable<unknown>`, no cost/usage shape defined anywhere in `ports.ts`/`compose.ts`. This means OIK-110/111 as scoped (assuming `withBudgetSink` covers "the" provider construction site) rests on a premise that was true for TASK-072's original Codex/Grok-only scope but not for the SDK-driven chat path that carries most of oikonomos's real traffic today. **Real next step, not for this task:** research the Claude Agent SDK's own query-stream message shape (its documented final `result` message typically carries `total_cost_usd`) and design a proper interception point for it — likely a new decorator analogous to `withBudgetSink` but wrapping `AgentSdkQueryFn` directly, or a hook inside `compose.ts`. This is genuine, currently-undiscovered architecture, not a quick fix — parking rather than forcing another live-blocker cycle. Freed CX for other work.
+- [2026-09-05T15:05:00Z] [ORCH] Unfrozen — human decision received: Option 2 of the 3 presented (ship the narrow Codex/Grok-only version now, documented as partial; SDK-path cost tracking is a separate follow-on). Re-scoped Description/Acceptance_Criteria/Owned_Paths accordingly (dropped `chatRunDriver.ts` from territory — that was the SDK-path wiring, now explicitly out of scope). Logged TASK-163 as the SDK-path follow-on design task. Reassigning to CX, which already did all the investigation legwork on this task.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OTHER: Architectural gap larger than this task's scope — withBudgetSink's design (decorating AgentProvider) does not cover the primary Claude Agent SDK chat path, which has zero cost-tracking of any kind today. Needs a dedicated investigation/design task before OIK-110/111 can be properly re-scoped, not another territory widen.
+**Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-04T19:05:00Z
+**Updated_At:** 2026-09-05T15:05:00Z
 
 ### TASK-144
 **Title:** Mobile Wave 1a — Flutter skeleton, Dart API client, token login (apps/mobile)
@@ -4792,3 +4795,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T13:58:00Z
+
+### TASK-163
+**Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Real gap confirmed during TASK-143's investigation (2026-09-04/05): `withBudgetSink` (packages/agent-providers) only decorates `AgentProvider.sendPrompt()`, which covers the Codex/Grok subprocess-routing path (`subprocessProviders.ts`) — TASK-143 (narrowed per human decision, Option 2 of 3) ships budget enforcement for that path ONLY. The primary chat path (`chatRunDriver.ts` → direct Claude Agent SDK `query()` call, which carries most of oikonomos's real traffic) has ZERO cost-tracking of any kind today: `AgentSdkQueryFn`'s stream is typed `AsyncIterable<unknown>` with no cost/usage shape anywhere in `packages/harness-factory/src/ports.ts`/`compose.ts`. This task closes that gap — until it lands, the R30,000/month platform ceiling in CLAUDE.md is only enforced against a fraction of real spend.
+**Owned_Paths:** TBD at decompose time — likely packages/harness-factory/src/**, packages/db/src/spend.ts (extending TASK-143's schema, not replacing it), services/worker/src/chatRunDriver.ts
+**Depends_On:** TASK-143
+**Description:** Research first: the Claude Agent SDK's query-stream message shape — its documented final `result` message typically carries `total_cost_usd` and token counts. Design a proper interception point analogous to `withBudgetSink` but for `AgentSdkQueryFn` directly (a wrapping decorator, or a hook inside `packages/harness-factory/src/compose.ts`), reusing TASK-143's spend-recording DB module and broker-level enforcement pattern rather than duplicating them. This is genuine architecture work, not a quick wire-up — ground it against the real SDK types before writing code, same discipline as every other task this session.
+**Acceptance_Criteria:**
+- [ ] Real cost/usage data is captured from a genuine Claude Agent SDK chat run's result message — tested, not assumed from documentation alone
+- [ ] Spend from this path is recorded in the same spend-tracking schema TASK-143 built (extended, not duplicated)
+- [ ] The broker denies further tool calls when a routine's or the platform's accumulated spend (now covering BOTH paths) exceeds its configured ceiling
+- [ ] TASK-143's existing Codex/Grok enforcement is unaffected — existing tests pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T15:05:00Z
