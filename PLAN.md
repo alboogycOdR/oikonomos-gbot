@@ -1,8 +1,8 @@
 ---
-plan_version: 11.2
+plan_version: 11.3
 last_updated: 2026-09-04T20:30:00Z
 overall_status: in_progress
-orchestrator_notes: "CRITICAL, live-incident-driven: TASK-153 dispatched. Real-device testing (2026-09-05 morning) found chat runs have ZERO workspace isolation — a bot's Bash/Read tools inherit process.cwd() and the full process.env of whatever runs control-api, because nothing in executeRun.ts/chatRunDriver.ts ever sets the Agent SDK's cwd/env options (both exist on the real SDK's Options type, confirmed). A test bot answered as ORCH, naming a real live file and task from this actual repo, because the dev test instance happened to be launched from the oikonomos repo root. ORCH's own interim mitigation (relaunch from a neutral temp dir) is explicitly NOT a fix, only named as a stopgap. TASK-153 scopes the achievable-now mitigation (per-run scoped temp cwd + minimal explicit env, proven via a real adversarial Bash-tool test) and explicitly defers full container isolation (wiring TASK-142's OpenSandbox client into chat execution) as separate, larger, named follow-on work — not attempted here. Also this session: DB fixture cleanup performed on the shared dev Postgres (758 roles/5029 tasks/10322 runs/1 device-token row, all confirmed test/demo fixtures, wiped with explicit user confirmation after inspection) — real bots the user creates from here on are the only data in that database. Firebase Android setup completed and verified with a real flutter build apk (docs/runbooks/firebase-android-setup.md); google-services.json is gitignored per user decision after the repo's secret scanner blocked it (a known-safe-by-design key with no scanner allowlist mechanism). TASK-152 (Gofile/Telegram APK delivery) shipped and used twice successfully tonight for real on-device delivery over Tailscale."
+orchestrator_notes: "Wave 7 dispatched from the full post-incident backlog (WORKFLOW_BACKLOG_PRIORITIZATION_2026-09-05.md): TASK-154 (CX, MCP-connector/system-CLI leak - investigate whether TASK-153's empty env already closes it, fix at harness-factory layer if not), TASK-155 (CX9, continue-after-approval - confirmed live-blocking tonight, real SDK resume mechanism grounded: resume:sessionId verified in sdk.d.ts, runs.session_ref already persisted, TASK-153's agentSdkOptions passthrough already built), TASK-157 (S5, mobile polish: markdown rendering, system-event styling, personalized placeholder, title field). TASK-156 (role instructions/persona) deliberately deferred to Wave 8 - collides with TASK-155 on chatRunDriver.ts, sequenced not parallelized. TASK-158/159/160 (routine creation UI, routine detail+history, inline handoff chips) also named for Wave 8. Deliberately not scheduled: live-agent/monitor view (OpenSandbox-dependent), conversational rename, voice input, composer visual polish, OIK-110/111 budgets."
 ---
 
 # Project Plan
@@ -4543,3 +4543,80 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T10:00:14Z
+
+### TASK-154
+**Title:** Investigate and, if needed, fix the MCP-connector/system-CLI config leak
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** Live incident, 2026-09-05: a freshly-created bot with zero grants described "connected and usable now" Gmail/Google Drive access, "connected but not authorized" Google Calendar/Notion, and a Mobbin design connector — none of which oikonomos granted it. These are ORCH's own personal claude.ai account's configured MCP connectors, strongly suggesting the underlying session resolved the developer's own `~/.claude` config rather than anything oikonomos-governed. `packages/harness-factory/src/index.ts`'s `withSystemClaudeExecutable` (deliberately prefers a real system-installed `claude` CLI binary over the bundled SDK path when one is found on PATH) is the prime suspect — a system CLI invocation may resolve its own MCP server registrations from the OS-default Claude config directory independent of anything oikonomos passes. TASK-153 (merged) already scopes every chat run's `env` to a genuinely empty object `{}`, which may already close this incidentally (no HOME/USERPROFILE means the CLI cannot resolve a default config directory to read at all) — this task must PROVE that empirically, not assume it.
+**Owned_Paths:** packages/harness-factory/src/index.ts, packages/harness-factory/src/index.test.ts
+**Depends_On:** —
+**Description:** Investigate first, with real evidence, before writing any fix. (1) Read `resolveSystemClaudeExecutable`/`withSystemClaudeExecutable` in full and trace exactly what `pathToClaudeCodeExecutable` does to the SDK's internal invocation — does the SDK still drive that binary through its own structured stdio protocol (in which case `cwd`/`env`/`mcpServers` passed by the caller should still govern it), or does pointing at a real CLI binary bypass any of that machinery? (2) With TASK-153's `env: {}` now live, write a real test that constructs a harness the same way `chatRunDriver.ts` does (fresh empty env, scoped cwd) and proves — using the SAME real system-CLI-resolution code path, not a mock — whether it can still discover the developer's own MCP server configuration. If it demonstrably cannot (env genuinely blocks HOME/USERPROFILE resolution), record that proof and close this as verified-already-fixed, no production code change needed beyond the test itself. If it CAN still leak (e.g. the system CLI falls back to a Windows-specific config discovery mechanism that doesn't depend on HOME/USERPROFILE, or `pathToClaudeCodeExecutable` bypasses env scoping entirely), fix it at the narrowest correct point — likely: never prefer the system CLI for governed chat runs at all (make `withSystemClaudeExecutable` a no-op when the caller has explicitly scoped `cwd`/`env`, since "prefer an up-to-date system CLI" and "run inside a governed, isolated bot session" are in direct tension), or explicitly set an isolated `CLAUDE_CONFIG_DIR` pointing at a fresh empty directory alongside the empty env. Do not weaken TASK-153's `env: {}` to fix this — find the fix at the harness-factory layer, not by reintroducing environment inheritance.
+**Acceptance_Criteria:**
+- [ ] Dossier records the empirically-determined answer (with the specific test/evidence that established it): does an empty env + scoped cwd already prevent system-CLI MCP-config discovery, yes or no
+- [ ] If already closed: a real regression test proves it (not just "no fix needed" asserted in prose)
+- [ ] If not closed: `withSystemClaudeExecutable` (or its caller) is changed so a governed chat run's session cannot resolve any config directory outside what oikonomos explicitly provides — proven by a real test, mutation-proof (reverting the fix must redden it)
+- [ ] Existing harness-factory tests pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T12:20:00Z
+
+### TASK-155
+**Title:** Continue-after-approval — resume a chat run's live SDK session once a parked approval is granted
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** critical
+**Spec_References:** Confirmed live-blocking tonight: granting a pending approval via POST /approvals/:nonce/decide does nothing beyond flipping the approval's own status — nothing resumes the chat run that was waiting on it, so the conversation just stops. ORCH verified the real mechanism exists to fix this properly rather than work around it: @anthropic-ai/claude-agent-sdk's Options type supports `resume?: string` — "New session UUID. Resumable via `query({ options: { resume: sessionId } })`" (verified directly in sdk.d.ts). packages/db/src/runs.ts's `session_ref` already persists exactly this session UUID for every run (built for TASK-129's own agentRef wiring). services/worker/src/executeRun.ts's `agentSdkOptions` passthrough (TASK-153) already provides the plumbing to hand an arbitrary SDK options object — including `resume` — straight through to the real query() call. The pieces exist; nothing currently wires them together.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts
+**Depends_On:** —
+**Description:** Investigate the exact current shape before writing code — confirm how decideApproval's success path in services/control-api/src/app.ts is structured today, and how runChatTask/executeTaskRun currently construct agentSdkOptions (TASK-153 added it for cwd/env; this task adds `resume` to the same object on the resume path, so read that code first). Then: when an approval is granted (not rejected) and its associated run is in `waiting_approval`, trigger a real resume — call back into the worker to re-invoke executeTaskRun for that run's task/thread with `agentSdkOptions: { resume: run.sessionRef }` instead of a fresh prompt, so the SDK continues the SAME conversation from where it parked rather than starting a new one. Append the continuation's final output as a new bot message on the same thread, and transition the run out of `waiting_approval` on completion (reusing completeTaskRun/the existing status-transition functions — do not invent a new one). A rejected approval must NOT resume anything (the existing behavior for that case is correct and out of scope). Handle the case where resume itself fails (e.g. the SDK session has expired or the resume ID is stale) by failing the run cleanly with a clear reason, never leaving it silently stuck in waiting_approval forever, and never fabricating a bot response. Real end-to-end proof required: a real chat run that genuinely parks on a real approval, a real grant via the real route, and a real resumed SDK call (fake queryFn capturing options.resume matches the run's actual session_ref) that produces a real new message on the thread — not a unit test of the option-passing alone.
+**Acceptance_Criteria:**
+- [ ] Granting a pending approval for a run in waiting_approval triggers a real resume call with agentSdkOptions.resume equal to that run's real session_ref — tested end to end against real Postgres
+- [ ] The resumed run's output is appended as a new bot message on the correct thread
+- [ ] The run transitions out of waiting_approval on successful completion
+- [ ] Rejecting an approval does NOT trigger a resume — tested, mutation-proof
+- [ ] A resume that itself fails (simulated) fails the run cleanly with a clear reason rather than leaving it stuck or fabricating a response — tested
+- [ ] Existing TASK-133/135/136 durable-resume tests pass unmodified
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T12:20:00Z
+
+### TASK-157
+**Title:** Mobile polish bundle — markdown rendering, system-event styling, personalized placeholder, title field
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** Live on-device testing, 2026-09-05: chat bubbles render raw markdown syntax unrendered (confirmed by the user's own screenshot). Reference UX from the Grok Bot app screenshots the user shared: rich list/bold rendering in chat bubbles; a small, centered, muted, icon-prefixed message style for state-change events ("Renamed to X"), visually distinct from a normal chat bubble; a composer placeholder personalized to the bot's name ("Ask NewStuffBot001") rather than generic text; a "Title (optional)" field on the bot settings screen, separate from Name. roles.title already exists as a real column in the live schema (confirmed directly against Postgres) — it is simply never surfaced in apps/mobile's settings screen (TASK-148's scope did not include it).
+**Owned_Paths:** apps/mobile/**
+**Depends_On:** —
+**Description:** Four independent, self-contained improvements to the existing chat/settings screens — investigate the current ChatScreen/settings implementation before changing it, this is a build-on-existing-widgets task, not a rewrite. (1) Markdown rendering: add a markdown-rendering package to pubspec.yaml (check what's already a transitive dependency before adding a new one; a well-established, actively-maintained package is expected — do not hand-roll a markdown parser) and render bot message bodies through it instead of a plain Text widget; user messages can stay plain text unless there's a reason to render markdown there too. (2) A distinct system-event message style: introduce a lightweight message-kind distinction (this may need a small addition to how messages are modeled client-side — check whether the server already tags any messages this way before inventing a new convention) and render it as a small, centered, muted, icon-prefixed line rather than a full chat bubble. If no real server-side signal exists yet, scope this narrowly to what's achievable client-side only rather than inventing a new backend concept — note clearly in the dossier which case applies. (3) Composer placeholder: change the generic "Message" placeholder to include the bot's name (e.g. "Ask {name}"). (4) Add the title field (optional, matching roles.title) to the settings screen, wired to a real API call if one already exists for updating a role's title, or read-only display if no update route exists yet — check services/control-api/src/app.ts for what's real before assuming a PATCH route exists.
+**Acceptance_Criteria:**
+- [ ] A bot message containing markdown (bold, numbered/bulleted list) renders formatted, not as raw syntax — tested (widget test asserting rendered structure, not just that the widget builds without error)
+- [ ] A system-event-style message (however scoped per the investigation above) renders visually distinct from a normal chat bubble — tested
+- [ ] Composer placeholder includes the bot's name — tested
+- [ ] Settings screen shows the title field — tested; if wired to a real update, prove the request shape matches whatever real route exists
+- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T12:20:00Z
