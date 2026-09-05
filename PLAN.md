@@ -4574,7 +4574,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-155
 **Title:** Continue-after-approval — resume a chat run's live SDK session once a parked approval is granted
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Confirmed live-blocking tonight: granting a pending approval via POST /approvals/:nonce/decide does nothing beyond flipping the approval's own status — nothing resumes the chat run that was waiting on it, so the conversation just stops. ORCH verified the real mechanism exists to fix this properly rather than work around it: @anthropic-ai/claude-agent-sdk's Options type supports `resume?: string` — "New session UUID. Resumable via `query({ options: { resume: sessionId } })`" (verified directly in sdk.d.ts). packages/db/src/runs.ts's `session_ref` already persists exactly this session UUID for every run (built for TASK-129's own agentRef wiring). services/worker/src/executeRun.ts's `agentSdkOptions` passthrough (TASK-153) already provides the plumbing to hand an arbitrary SDK options object — including `resume` — straight through to the real query() call. The pieces exist; nothing currently wires them together.
@@ -4596,9 +4596,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-05T11:04:22Z] [SV:CX9] Implemented and committed approval continuation plus a real route-to-worker Postgres integration test (9515627). Targeted control-api and worker tests, typechecks, and lint pass; aggregate test/build exits could not be conclusively captured by this host. NEXT: Run pnpm -r test and pnpm -r build to completion in a non-truncated execution host, then submit for review if both exit 0.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass, on the architecturally deepest task of this wave — and it closes a gap that was demonstrably blocking real testing tonight, not just a theoretical one. Territory clean (7 files, all Owned_Paths). The design is correct and reuses existing machinery rather than reinventing it: `chatRunDriver.ts`'s new `ChatRunRequest.resume` path calls the pre-existing `resumeInterruptedRun` (TASK-133), validates the persisted `session_ref` is genuinely present before proceeding, and threads `resume: run.sessionRef` into the SAME `agentSdkOptions` object TASK-153 scopes with `cwd`/`env` — meaning a resumed run inherits full isolation too, no bypass. The trigger (`resumeApprovedChatRun` in control-api) only fires on `decision === "granted"`, guards on the run genuinely being `waiting_approval` with a real session, and derives the thread ID from the pre-existing `chat:thread:` prefix in `task.requestedBy` (confirmed real and pre-existing, not invented). A failed resume falls through to the existing outer catch/`failTaskRun` path — already-tested machinery, no new fabricated-response risk. Two real tests prove the exact contract: a fake-deps test asserting `runChatTask` is called with `{task, threadId, resume: {runId, sessionRef}}` on grant and NOT called at all on rejection (mutation-proof), and a genuine end-to-end real-Postgres integration test (real role/thread/task/parked-run rows, real route, real continuation appended to the correct thread). CX9 was honest that its own host couldn't capture a clean aggregate `pnpm -r test`/build rather than submit an unverified claim — ORCH ran both directly: control-api 10/10 files, 142/142 tests (both new TASK-155 tests confirmed passing by name); worker suite hit one transient failure on first run (the long-documented shared-Postgres contention pattern), clean 13/13 on immediate re-run with both new-code-adjacent tests (TASK-153, TASK-139) passing; full `pnpm -r build` and lint clean. Merged --no-ff. **This closes the gap that blocked ORCH's own live testing earlier tonight — granting an approval now genuinely continues the conversation.**
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-05T11:04:22Z
 
 ### TASK-157
