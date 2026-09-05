@@ -4779,7 +4779,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-161
 **Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent full-suite verification (2026-09-05): `services/worker/src/chatRunDriver.test.ts` (TASK-153's fresh-workspace isolation test) fails with `execvpe(/bin/bash) failed: No such file or directory` on this machine when run via the full recursive `pnpm -r test` — bash.exe/WSL is not resolvable from this environment's PATH in that context. Not a code defect: TASK-153's actual isolation logic (cwd/env scoping) is unaffected; this is the test's own reliance on a `bash` binary being present.
@@ -4790,16 +4790,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The test passes on this machine without requiring WSL/bash.exe on PATH
 - [ ] The isolation assertion (cwd/env scoping) is still genuinely exercised, not weakened or skipped
 - [ ] `pnpm -r test` for services/worker exits 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-161-gb
+**Started_At:** 2026-09-05T22:05:54Z
 **Progress_Notes:**
 - [2026-09-05T22:15:00Z] [ORCH] TASK-175 merged — Owned_Paths re-pointed from chatRunDriver.test.ts to services/worker/src/runWorkspace.test.ts, where TASK-153's isolation test now genuinely lives (confirmed by reading the file). Ready to dispatch. TASK-163/164/170's Owned_Paths were checked against the carve too: all three still correctly reference chatRunDriver.ts (the driver itself, which stayed there) and needed no change; TASK-170 already correctly anticipated runWorkspace.ts/runWorkspace.test.ts.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T22:05:54Z
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
