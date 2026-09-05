@@ -5115,7 +5115,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-173
 **Title:** Real per-user auth (mobile) — replace the shared-token login screen with Google Sign-In
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Companion to TASK-172. Today's login screen (apps/mobile/lib/screens/login_screen.dart) accepts the raw shared CONTROL_API_TOKEN typed in by hand — confirmed by reading the file. No google_sign_in/firebase_auth dependency exists yet in apps/mobile/pubspec.yaml (confirmed by grep) — firebase_core/firebase_messaging are already present from TASK-149's push work, so this extends existing Firebase wiring rather than introducing a new integration from scratch. Separately (not this task, a real known gap named by the human independently): the session is currently kept in memory only (ApiClient._sessionCookie, deliberately, per its own code comment) — signing in again every time the app process restarts is expected today regardless of the auth mechanism; note this honestly in the dossier as a real, separate, not-yet-scoped follow-up rather than silently fixing or silently ignoring it.
@@ -5128,13 +5128,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A cancelled sign-in or a backend rejection surfaces a real, visible error — never a silent failure
 - [ ] A real sign-out action exists and actually clears the session (client-side) and signs out of the real Google account (so the next sign-in shows the account picker again, not an auto-relogin)
 - [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-173-s5
+**Started_At:** 2026-09-05T20:37:08Z
 **Progress_Notes:**
 - [2026-09-05T22:10:00Z] [ORCH] The human's updated google-services.json (with the debug-keystore SHA-1 registered) is now in place at apps/mobile/android/app/google-services.json — this task's real blocker is resolved, ready to dispatch once TASK-172 lands. Real value needed for google_sign_in's serverClientId parameter (required to obtain a backend-verifiable ID token, not just a client-side auth object): the Web OAuth client (client_type: 3) from the same file, 461377597606-hl2k4bvqdvpo2qu17v7vvrk532fo1sve.apps.googleusercontent.com. Confirm this is genuinely the correct parameter for the real google_sign_in/firebase_auth package versions in use before hardcoding it — investigate the real current API, don't assume this note is still accurate by the time this task starts.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T22:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T20:37:08Z
