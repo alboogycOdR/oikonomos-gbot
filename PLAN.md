@@ -4656,7 +4656,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-156
 **Title:** Role instructions/persona — real bot identity via SDK systemPrompt
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Confirmed missing at the schema level tonight: `roles` has no `instructions`/system-prompt column at all (verified directly against Postgres). This contributed to tonight's ORCH-persona incident — a bot had nothing of its own to fall back on. The SDK genuinely supports this: `Options.systemPrompt?: string` (verified in sdk.d.ts), and `chatRunDriver.ts` currently passes only `prompt: request.task.goal` with no `systemPrompt` at all. TASK-155 (merged) is the reason this was sequenced rather than run in parallel — both need `chatRunDriver.ts`'s `runChatTask`, so this had to wait.
@@ -4676,7 +4676,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-05T11:26:39Z] [SV:CX] Added nullable role instructions migration, real PATCH persistence route, and role-derived SDK system prompts while preserving cwd/env/resume isolation.
 **Artifacts:** infra/postgres/migrations/011_role_instructions.up.sql, infra/postgres/migrations/011_role_instructions.down.sql, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-156.md
 **Test_Evidence:** Real Postgres migration applied; DB suite 140 passed/2 skipped, control-api 145 passed, worker 70 passed/1 skipped. Required pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
-**Review_Findings:** —
+**Review_Findings:** APPROVE, first-pass. Territory clean (12 files, all Owned_Paths). This is the correctness half of tonight's persona incident: `roles.instructions` is a real nullable column (migration correctly documents NULL as "no custom instructions, use the driver's default"), a real `PATCH /roles/:roleId` route persists it with proper 404 handling, and `buildRoleSystemPrompt` constructs a genuine identity from name/title/description/instructions rather than leaving the SDK to default to whatever ambient persona it finds — directly addressing the root cause of "miniMe answered as ORCH." Two precise tests prove it against real Postgres: one sets all four fields and asserts each genuinely appears in the captured `systemPrompt` (not just that the option is passed), the other clears `instructions` to NULL and asserts the base identity persists while the custom-instructions section is genuinely ABSENT (`not.toContain`), not just empty — proving the degrade-gracefully path is real, not assumed. The empty-string-vs-NULL distinction for "clear instructions" is deliberately documented, not accidental. `systemPrompt` is added to the same `agentSdkOptions` object TASK-153/155 already build, additively — ORCH independently confirmed both isolation and resume behavior are unaffected: worker suite 13/13 (up from 13, all TASK-153/155 tests still present and passing), control-api 10/10 (145 tests, up from 142), db 28/28. Full build and lint clean. Merged --no-ff. **This closes the third and final open item from tonight's incidents — a bot now has a real, persistent identity of its own rather than nothing to fall back on.**
 **Blocked_Reason:** —
-**Updated_By:** SV
+**Updated_By:** ORCH
 **Updated_At:** 2026-09-05T11:26:39Z
