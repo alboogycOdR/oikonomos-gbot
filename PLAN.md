@@ -5143,7 +5143,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-174
 **Title:** Wire a visible sign-out button to LoginScreen.signOut
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Follow-up named honestly in TASK-173's dossier and Review_Findings: `LoginScreen.signOut` (clears the client session + real Firebase/Google sign-out) is real and unit-tested, but no UI anywhere calls it — `roster_screen.dart` and any settings screen were outside TASK-173's Owned_Paths, and `grep -rn "signOut\|sign out\|logout" apps/mobile/lib apps/mobile/test` found no existing entry point before TASK-173. Without this, a real person who signs in with the wrong Google account, or wants to switch accounts, has no way to do so from the app.
@@ -5155,12 +5155,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Tapping it calls the real LoginScreen.signOut, clears the session, and returns to LoginScreen with the navigation stack cleared
 - [ ] Signing in again after sign-out shows the real Google account picker (not an auto-relogin to the same account) — note how this was confirmed given the real SDK can't be exercised in a widget test
 - [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-174-s5
+**Started_At:** 2026-09-05T21:00:31Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T22:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T21:00:31Z
