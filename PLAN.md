@@ -5087,7 +5087,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** User-requested real gap: today every bot is created under one hardcoded literal tenant, "basileia" — confirmed by grep, exactly 8 sites in services/control-api/src/app.ts (lines 358, 663, 683, 728-729, 784, 799, 822). Whoever logs in with the single shared CONTROL_API_TOKEN sees every bot ever created, with no real per-person ownership — the opposite of the reference product (Grok Bot), where signing in with a different Google account shows a different, private bot roster. The data layer is already real and ready: packages/db/src/roles.ts's listRoles/createRole already require a real tenantId, not optional — this is purely an HTTP-layer identity gap, no schema migration needed for the core scoping. The human has enabled Google as a Firebase sign-in provider for the existing Firebase project (basileia-oikonomos-gmail, already wired for push in TASK-149) and will provide an updated google-services.json with the Android app's debug-keystore SHA-1 fingerprint registered.
@@ -5100,15 +5100,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The existing shared-bearer-token path (CONTROL_API_TOKEN) still works exactly as before, with an explicit, documented tenant it operates as
 - [ ] A tampered or expired ID token is rejected with a clear error, never silently treated as valid
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-172-cx
+**Started_At:** 2026-09-05T20:03:48Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T22:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T20:03:48Z
 
 ### TASK-173
 **Title:** Real per-user auth (mobile) — replace the shared-token login screen with Google Sign-In
