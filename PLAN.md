@@ -1,8 +1,8 @@
 ---
-plan_version: 14.9
-last_updated: 2026-09-06T01:00:00Z
+plan_version: 15.0
+last_updated: 2026-09-06T01:30:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-177 (S5, Skills API + /skill prompt injection) approved and merged, including flipping its .skip'd integration test back to real (now that TASK-176's UUID bug is fixed) and adding the fixture cleanup it was missing. Its review surfaced a real, CRITICAL, live security gap: GET/PATCH /skills/:id and the pre-existing GET /runs/:id, /runs/:id/evidence, /threads/:id(/stream) all fetch/mutate by bare ID with no tenant-ownership check — a cross-tenant IDOR that was harmless under the old single-tenant model but is now genuinely exploitable since TASK-172 made tenants real per-user identities. Opened TASK-190 (critical priority) and dispatched immediately to S5 rather than leaving it in backlog. Real on-device mobile testing is also underway with the user directly (localhost->Tailscale-IP baseUrl config issue found and fixed via --dart-define rebuild; a diagnostic error-message improvement shipped to unblock further triage). TASK-169 stays blocked on the human action item (real OpenSandbox API key)."
+orchestrator_notes: "TASK-190's skills/runs half of the cross-tenant IDOR fix is merged (GET/PATCH /skills/:id, GET /runs/:id + /runs/:id/evidence — 404-never-403, write-path pre-checked, 4 real regression tests). The /threads/:id/* half is split into TASK-191 and dispatched: TASK-190's own Owned_Paths field had an authoring mistake (parenthetical rationale prose containing commas, corrupting hooks/lib.js's naive comma-split and mechanically blocking chat.routes.test.ts/sse.test.ts/threads.ts) — S5 correctly investigated and refused to ship an untestable partial fix rather than force through or guess; TASK-191 corrects this with a clean path-only Owned_Paths list. Real on-device mobile Google auth is now confirmed working end-to-end by the user (localhost->Tailscale-IP baseUrl issue found and fixed via --dart-define rebuild). TASK-184 (CX, protected, request_secret) still resuming after its second widen. TASK-169 stays blocked on the human action item (real OpenSandbox API key). Lesson for future task authoring: Owned_Paths must always be a bare comma-separated path list — any rationale, however brief, belongs in Description only."
 ---
 
 # Project Plan
@@ -5567,25 +5567,52 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Updated_At:** 2026-09-06T00:20:00Z
 
 ### TASK-190
-**Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR)
-**Status:** claimed
+**Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR) — skills/runs (DONE)
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
-**Spec_References:** Found during TASK-177 review 2026-09-06: `GET /skills/:id`, `PATCH /skills/:id` (new, TASK-177) and the pre-existing `GET /runs/:id`, `GET /runs/:id/evidence`, `GET /threads/:id`, `GET /threads/:id/stream` all fetch or mutate a record by bare ID with **no check that the record belongs to the caller's tenant**. This is a real, not theoretical, cross-tenant IDOR: any authenticated user can read or overwrite another tenant's skill/run/thread by guessing or observing its UUID. It predates this session — the pattern was already there for `/runs/:id` — but was harmless while every session shared one hardcoded tenant (`basileia`). **TASK-172 made tenants real, distinct, per-Google-account identities, which makes this a genuine, live confidentiality+integrity gap starting now**, not a latent one. CLAUDE.md non-negotiable §7 ("ACL filter before vector similarity, never after") establishes the same principle for a different mechanism; this is its by-id-route analogue.
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/app.test.ts (or per-route test files as they already exist — grep for the existing test file per route before creating a new one), packages/db/src/skills.ts, packages/db/src/runs.ts, packages/db/src/threads.ts (add tenant-checked variants or tenant params only where a real check is missing — READ each file first, some may already filter correctly at a layer this task hasn't seen yet)
+**Spec_References:** Found during TASK-177 review 2026-09-06: `GET/PATCH /skills/:id` (new, TASK-177) and the pre-existing `GET /runs/:id`, `GET /runs/:id/evidence` fetch or mutate a record by bare ID with no check that the record belongs to the caller's tenant. Real, not theoretical: any authenticated user could read or overwrite another tenant's record by guessing/observing its UUID. Harmless before TASK-172's real per-user tenants; live now.
+**Owned_Paths:** services/control-api/src/app.ts
 **Depends_On:** —
-**Description:** Audit first, fix second — do not assume every route in the grep result is actually vulnerable; some may already be scoped at a layer not visible from `app.ts` alone (check `deps.getRun`/`deps.getSkill`/etc.'s actual DB implementation, not just the route handler). For each confirmed gap: either (a) add a `tenantId` parameter to the DB-layer getter/updater that filters in the SQL `WHERE` clause (preferred — fails closed, matches `listSkills`'s existing `tenantId` filter pattern), or (b) if the DB layer can't easily take a tenant filter (e.g. `getRun` doesn't know about tenancy at all), check `request.tenantId === record.tenantId` in the route handler after fetching and return 404 (not 403 — never confirm existence to a non-owner) on mismatch. Pick (a) wherever the record's owning table already has a `tenant_id` column (skills does; check runs/threads). Write a real cross-tenant test for every fixed route: create the record under tenant A, request it authenticated as tenant B, assert 404. Do not weaken this to a 403 (that leaks existence) or skip it for "low value" routes — every by-id route in the audit list needs its own test.
+**Description:** Fixed. `GET/PATCH /skills/:id` and `GET /runs/:id`, `/runs/:id/evidence` now 404 (never 403) on a cross-tenant request; `PATCH` verifies ownership before ever calling `updateSkill`. Regression tests live as `import.meta.vitest` in-source tests in `app.ts` itself (this package's `includeSource` mechanism, same as `packages/db/src/skills.ts`). The `/threads/:id/*` routes have the identical gap and were investigated but deliberately NOT fixed this round — split into TASK-191 after a real, mechanically-confirmed territory-tooling problem: this task's own `Owned_Paths` field originally embedded parenthetical rationale prose containing commas, and `hooks/lib.js`'s `ownedPathsOf()` does a naive `split(/[,\n]/)` with no awareness of parentheses — so `packages/db/src/threads.ts (add tenant-checked variants..., some may already...)` split into two corrupted, unmatchable glob tokens instead of the one clean path it read as in prose. This is an authoring mistake in the task (Owned_Paths must be a bare comma-separated path list, full stop — rationale belongs in Description only), not a bug in the hook's parsing convention itself.
 **Acceptance_Criteria:**
-- [ ] Every route named in Spec_References either has a demonstrated real tenant check (test: tenant A creates, tenant B requests, gets 404) or is proven already safe by an existing check this task found and documented (cite the exact line)
-- [ ] No route changes from 404 to 403 on a cross-tenant request (403 would confirm the record exists to a non-owner)
-- [ ] `PATCH`/mutating by-id routes are covered by the same cross-tenant test as `GET` ones — a write path with no isolation check is the higher-severity half of this bug
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** task/TASK-190-s5
+- [x] `GET/PATCH /skills/:id`, `GET /runs/:id`, `GET /runs/:id/evidence` each have a demonstrated real tenant check (test: tenant A creates, tenant B requests, gets 404)
+- [x] No route changes from 404 to 403 on a cross-tenant request
+- [x] `PATCH /skills/:id` is covered by a test proving a cross-tenant request never reaches `updateSkill` at all
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0 (for the routes actually fixed this round — `/threads/:id/*` moved to TASK-191)
+**Branch:** task/TASK-190-s5 (merged, deleted)
 **Started_At:** 2026-09-05T23:03:01Z
+**Progress_Notes:**
+- [2026-09-06T01:15:00Z] [S5] Fixed `GET/PATCH /skills/:id` and `GET /runs/:id`, `/runs/:id/evidence` — 404-never-403, PATCH pre-fetches ownership before writing. 4 real regression tests added (cross-tenant 404 + same-tenant 200 + write-path-never-reached assertions). Attempted `/threads/:id/*` too (design fully worked out, stub comment left in `app.ts`) but the Edit/commit hooks mechanically blocked `chat.routes.test.ts`, `sse.test.ts`, and `packages/db/src/threads.ts` — root-caused to `hooks/lib.js`'s comma-split choking on this task's own Owned_Paths prose, verified via a hooks/lib.js probe, not assumed. Reverted the threads changes rather than ship code with no path to a real test. Full test evidence: control-api 177/177, pnpm -r build/lint clean, 2 confirmed pre-existing Postgres-contention flakes (isolated, clean).
+- [2026-09-06T01:30:00Z] [ORCH] Confirmed S5's root cause directly — read `hooks/lib.js:110-113`, `ownedPathsOf()` is exactly `raw.split(/[,\n]/)`, no parenthesis-awareness, and my own Owned_Paths field for this task did embed prose-with-commas. This was my authoring mistake, not a hook defect — the hook's naive split is the correct, established convention (Owned_Paths is meant to be a bare path list; every other task in this file follows that). Independently re-verified S5's fix: read the diff, ran the new tests (4/4), full control-api suite (177/177, `chat.routes.test.ts` genuinely unchanged), pnpm -r build/lint (clean) in the worktree and again after merge. Approved and merged the completed skills/runs fix immediately rather than let a critical security fix wait on the incomplete part. Split the `/threads/:id/*` remainder into TASK-191 with a corrected, clean Owned_Paths list (my mistake, fixed) and dispatched it right away.
+**Artifacts:** services/control-api/src/app.ts, dossiers/TASK-190.md
+**Test_Evidence:** Independently re-verified: 4 new IDOR regression tests pass, full control-api suite 177/177 (chat.routes.test.ts unchanged, confirming threads routes were left untouched as claimed), pnpm -r build/lint clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED for the scope actually completed (skills/runs). S5 correctly diagnosed a real tooling problem in my own task authoring, investigated it mechanically rather than assuming, and refused to ship an untestable partial fix for threads rather than force it through. Remainder split to TASK-191.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T01:30:00Z
+
+### TASK-191
+**Title:** Security — enforce tenant ownership on `/threads/:id/*` by-id routes (cross-tenant IDOR, part 2)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** Split from TASK-190 (see its Progress_Notes 2026-09-06T01:30:00Z) — same real, live cross-tenant IDOR class, this time on `GET /threads/:id/messages`, `POST /threads/:id/messages`, `POST /threads/:id/attachments`, and `GET /threads/:id/stream`. The design is already worked out: a `threadBelongsToTenant` stub/comment exists at each affected route in `app.ts` from TASK-190's investigation — derive ownership from `thread.roleId` (1:1) via `deps.listRoles({ tenantId })`, or, for a group thread, require EVERY id in `thread.memberRoleIds` to resolve to a role owned by the caller's tenant.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, packages/db/src/threads.ts, packages/db/src/threads.test.ts
+**Depends_On:** —
+**Description:** Implement the design already left in `app.ts`'s comments from TASK-190. `chat.routes.test.ts`/`sse.test.ts`'s existing fixtures will need their `listRoles`/thread/member-role setup updated to match real ownership (several exercise group threads whose member roles must resolve correctly under the new check) — expect to touch both files' fixtures, not just add new tests. Same non-negotiables as TASK-190: 404 never 403 on a cross-tenant request; a real cross-tenant test for every route (tenant A creates/owns the thread, tenant B requests it, gets 404); the write paths (`POST /threads/:id/messages`, `POST /threads/:id/attachments`) are the higher-severity half — each needs its own test proving a cross-tenant write never reaches `insertMessage`/attachment persistence at all. If `packages/db/src/threads.ts` needs a tenant-aware variant of an existing getter to make this clean, add it there rather than only checking post-fetch in `app.ts`, matching TASK-190's stated preference for a SQL-level filter when the table already carries `tenant_id` (it does, via the owning role's roles table — join or two-step lookup, whichever `threads.ts`'s existing conventions favor).
+**Acceptance_Criteria:**
+- [ ] `GET/POST /threads/:id/messages`, `POST /threads/:id/attachments`, `GET /threads/:id/stream` each 404 (never 403) on a cross-tenant request (real test: tenant A's thread, tenant B's session)
+- [ ] The two write routes (`POST /threads/:id/messages`, `POST /threads/:id/attachments`) are proven to never reach `insertMessage`/attachment persistence for a cross-tenant request (test)
+- [ ] A group thread is correctly denied to a caller whose tenant does not own EVERY member role, not just one (test) — do not accept "any member matches" as sufficient
+- [ ] All of chat.routes.test.ts and sse.test.ts's existing tests still pass (fixtures updated to match, not the check weakened)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T23:03:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T01:30:00Z
