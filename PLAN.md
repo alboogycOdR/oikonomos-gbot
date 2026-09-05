@@ -4683,7 +4683,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-159
 **Title:** Routine run history — real fire-history reconstruction + mobile detail view
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Reference UX from the Grok Bot screenshots the user shared: a routine detail screen with a "Run history" list (multiple past fires, each with a timestamp and outcome — "Yesterday at 08:23, Succeeded"). Grounded against the real schema, not guessed: there is NO dedicated fire-history table — `recordRoutineFire` (packages/db/src/routines.ts) only overwrites the routine's own `last_fire_at`/`last_fire_status` columns each time it fires, so that alone cannot answer "show me the last N runs." Real history IS reconstructable: every routine fire creates a real task via `createTask` with a genuine `routine_id` column (services/worker/src/jobs/routineJob.ts line ~81, confirmed — not a string-matching convention, a real FK-shaped column on `tasks`), and each task has real `runs` rows (`RunListFilter.taskId` already exists and works — confirmed in packages/db/src/runs.ts). The one real gap: `TaskListFilter` (packages/db/src/tasks.ts) has no `routineId` field, so `GET /tasks` cannot be filtered by routine today.
@@ -4698,12 +4698,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A routine with no fire history shows an empty state, not an error
 - [ ] Existing `GET /tasks` behavior (no `routineId` given) is unchanged — existing tests pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-159-cx9
+**Started_At:** 2026-09-05T11:33:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T11:33:30Z
