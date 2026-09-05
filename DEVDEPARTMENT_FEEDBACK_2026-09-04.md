@@ -79,6 +79,16 @@ This is a silent failure with no error: the task looks redispatched, the builder
 
 **Recommendation:** port it. The general lesson is about **authority ordering between a builder's own work log and the supervisor's verdict**. The pack's resume design deliberately makes the dossier the builder's heartbeat and stopping-point record, which is right — but that makes the dossier the freshest-looking source at resume time, and on a rework it is exactly the stale one. Any field the supervisor uses to send work back must be named in the prompt *and* explicitly ranked above the builder's own notes, or rework rounds will occasionally evaporate. Related to finding #8: both are cases where the prompt's wording, not the builder's judgement, produced the wrong outcome.
 
+### 10. `control.py drain` can replay an already-superseded control block and silently overwrite a manual approval — confirmed twice
+
+**What happened:** ORCH reviews and merges a task by editing PLAN.md directly (setting `Status: done`, writing `Review_Findings`) rather than by running `drain` again for that specific task. If the builder's original control-block JSON file is still sitting in `.devteam/control/` (not yet consumed, because ORCH's approval path never touches it), a LATER `drain` call — invoked for an unrelated reason, e.g. checking a different task's completion — sweeps up every unconsumed file it finds, including that stale one, and reapplies its content wholesale. This overwrites the entire task block back to the builder's original pre-review submission: `Status` reverts from `done` to `needs_review`, and `Review_Findings` (ORCH's full approval writeup) is erased outright, not merely the status field.
+
+Hit twice this session on real approved-and-merged tasks (TASK-140, and again on TASK-154 during this same session, both times caught because ORCH re-reads the block rather than trusting a status field in isolation). Both times the underlying code was genuinely already merged and correct — only the coordination record was clobbered, but a reviewer who doesn't independently re-check would see a completed task's approval simply vanish.
+
+**Fix applied ad hoc (not yet in the pack):** after resolving a task directly (not via `drain`), ORCH now also removes/consumes that task's own leftover file from `.devteam/control/` (moving it to `.devteam/control/applied/`, mirroring what `drain` itself does on success) so a later, unrelated `drain` call cannot find and replay it.
+
+**Recommendation:** `drain` should not need this manual cleanup at all. Two independent fixes, either sufficient alone: (a) before replaying a control block, `drain` checks the target task's CURRENT PLAN.md status — if it is already `done` (or otherwise past the state the control block would set), skip and consume the file as a no-op rather than reapplying it; (b) any ORCH action that resolves a task outside `drain` (a direct PLAN.md edit) should itself consume/archive that task's pending control file as part of the same action, so the two paths can never diverge. (a) is more robust since it doesn't rely on every ORCH code path remembering to do the cleanup.
+
 ---
 
 ## Minor — onboarding friction, not a bug
