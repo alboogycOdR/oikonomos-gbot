@@ -4515,7 +4515,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-153
 **Title:** SECURITY — chat runs have zero workspace isolation; every bot inherits the worker process's real cwd, env, and filesystem access
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Live incident, 2026-09-05: on real-device testing, a freshly-created bot ("miniMe") was asked a plain "hello" and responded in-character as **ORCH**, naming a real file (`.devteam/CHECKPOINT.md`) and a real live task (TASK-143) from the actual running oikonomos repo. Root cause traced and confirmed by ORCH: `packages/harness-factory/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`'s `Options` type supports both `cwd?: string` and `env?: Record<string, string>`, but nothing in `services/worker/src/executeRun.ts` or `chatRunDriver.ts` ever sets either — the Agent SDK's `query()` therefore defaults to `process.cwd()` and inherits the full `process.env` of whatever process is running `control-api`. Combined with TASK-116/117's established baseline (a zero-grant role still gets `Bash`+`Read`), **every chat bot, by default, gets a real shell into wherever the server happens to be running, with the server's full environment** — including, in tonight's incident, this actual git repo, its `CLAUDE.md` orchestration instructions, `PLAN.md`, and whatever secrets (`DATABASE_URL`, `CONTROL_API_TOKEN`, etc.) were in the process environment. ORCH's interim mitigation (relaunching the test server from a neutral empty directory) is explicitly NOT a fix — a bot can still `cd` anywhere reachable on the host, read any inherited env var, and reach the network; it only stops the single most damaging case (this specific repo's own control-plane) for tonight's manual test.
@@ -4531,10 +4531,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-153-cx9
 **Started_At:** 2026-09-05T09:16:25Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T09:34:12Z] [SV:CX9] Implemented per-run temporary cwd, explicit empty SDK environment, cleanup, and end-to-end Bash isolation coverage; commits f945972 and 75de15f.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** TOOLING_FAILURE: full pnpm -r test is repeatably blocked by out-of-territory packages/db shared-Postgres role_grants foreign-key failures; repairing it requires ownership beyond TASK-153.
 **Updated_By:** SV
-**Updated_At:** 2026-09-05T09:16:25Z
+**Updated_At:** 2026-09-05T09:34:12Z
