@@ -4875,7 +4875,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
 **Status:** pending
-**Assigned_To:** S5
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** Live gap found during real-device testing, 2026-09-05: `services/control-api/src/app.ts`'s `serializeRole()` (used by every role-returning route) only returns `{id, name, description, avatarSeed}` — `title` and `instructions` are real, tested, working columns on `packages/db/src/roles.ts`'s `Role` type (instructions persisted via the real `PATCH /roles/:roleId` route built in TASK-156) but are never serialized over HTTP. This is why the mobile settings screen (TASK-157) shows a hardcoded "No title set" placeholder instead of real data, and why there is no instructions field on mobile at all despite the backend fully supporting it — a bot's persona/instructions can only be set today via a raw API call, not through the app.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/mobile/**
@@ -4891,10 +4891,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T18:05:00Z] [ORCH] Reassigned CX→S5→GB — CX, CX9, and S5's worktree directories are all currently stuck on the same Windows file-lock class of issue (each partially removed: git metadata gone but the physical directory remains and is busy). GB's worktree is the only clean one available. Worth investigating the root cause of this lock separately (likely a lingering process/handle from repeated dispatch cycles this session), but not worth blocking dispatch on right now.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T18:00:00Z
+**Updated_At:** 2026-09-05T18:05:00Z
