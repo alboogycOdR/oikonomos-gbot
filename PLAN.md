@@ -4715,7 +4715,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-160
 **Title:** Inline cross-bot handoff chips — surface real role-to-role handoffs on mobile
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** Reference UX: Grok Bot's "2 messages with 🩸 TREVOR" compact inline chip in a bot's own timeline (see [[grok-bot-mobile-reference]]). Grounded against the real schema, not guessed: `packages/db/src/roleMessages.ts` already has a complete data layer — `RoleMessage` (fromRoleId, toRoleId, body, handoffKind, factRef, createdAt, readAt), `listRoleMessages(options, {tenantId, toRoleId?, fromRoleId?, unreadOnly?})`, `sendRoleMessage`, `markRoleMessageRead` — built for TASK-084/099/141's real async role-to-role handoffs. Confirmed by grep: zero routes anywhere in `services/control-api/src/app.ts` expose this table. `app.ts` is now free — TASK-159 (the task that was sequenced ahead of this one for the same file) merged clean.
@@ -4728,15 +4728,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Tapping a chip surfaces the real message body, never a fabricated one — tested
 - [ ] A bot with zero handoffs renders no chip and no error
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-160-cx
+**Started_At:** 2026-09-05T12:05:13Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:58:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T12:05:13Z
 
 ### TASK-161
 **Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
