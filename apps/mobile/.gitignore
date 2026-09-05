@@ -13,15 +13,25 @@ build/
 *.iws
 .idea/
 
-# Platform build output (no Android/iOS toolchain on this machine per
-# TASK-144's Description — these are ignored defensively in case a
-# future wave scaffolds them).
-android/
+# Platform build output. android/ is scaffolded and tracked (Firebase
+# push setup, 2026-09-05) — its own android/.gitignore covers real build
+# artifacts (gradle wrapper jar, local.properties, keystores). The rest
+# remain ignored defensively per TASK-144's Description, unscaffolded.
 ios/
 linux/
 macos/
 windows/
 web/
+
+# Firebase config — deliberately gitignored, not because the key inside is
+# secret (Google's own guidance: it's restricted by package name + SHA
+# fingerprint, safe to expose) but because this repo's commit-time secret
+# scanner blocks any file matching a Google API key pattern with no
+# allowlist mechanism for "known-safe by design" keys (decided 2026-09-05
+# rather than adding a scanner exception). Every machine building this app
+# for real device push needs its own copy dropped in manually — see
+# docs/runbooks/firebase-android-setup.md.
+android/app/google-services.json
 
 # Coverage
 coverage/
@@ -30,3 +40,4 @@ coverage/
 # override that might carry one.
 .env
 .env.*
+.kotlin/
