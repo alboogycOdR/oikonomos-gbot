@@ -239,6 +239,8 @@ async function removeChatRunWorkspace(workspace: string): Promise<void> {
 
 const WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID = "workspace.send_to_role";
 const WORKSPACE_SEND_TO_ROLE_TOOL = "mcp__workspace__send_to_role";
+const WORKSPACE_RENAME_SELF_CAPABILITY_ID = "workspace.rename_self";
+const WORKSPACE_RENAME_SELF_TOOL = "mcp__workspace__rename_self";
 
 /** Mount the internal stdio bridge only when its persisted role grant exists. */
 async function resolveGrantedWorkspaceConnector(input: {
@@ -248,7 +250,12 @@ async function resolveGrantedWorkspaceConnector(input: {
   readonly tenantId: string;
 }): Promise<ConnectorContext | undefined> {
   const grants = await input.database.listRoleGrants(input.roleId);
-  if (!grants.some((grant) => grant.capabilityId === WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID)) return undefined;
+  const grantedCapabilities = new Set(grants.map((grant) => grant.capabilityId));
+  const allowedTools = [
+    ...(grantedCapabilities.has(WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID) ? [WORKSPACE_SEND_TO_ROLE_TOOL] : []),
+    ...(grantedCapabilities.has(WORKSPACE_RENAME_SELF_CAPABILITY_ID) ? [WORKSPACE_RENAME_SELF_TOOL] : []),
+  ];
+  if (allowedTools.length === 0) return undefined;
   return {
     manifest: { connector_id: "workspace", mcp_server: { name: "workspace" }, tools: [] },
     mcpServers: {
@@ -258,7 +265,7 @@ async function resolveGrantedWorkspaceConnector(input: {
         args: [fileURLToPath(new URL("./workspaceMcpServer.js", import.meta.url)), input.connectionString, input.tenantId, input.roleId],
       },
     },
-    allowedTools: [WORKSPACE_SEND_TO_ROLE_TOOL],
+    allowedTools,
   };
 }
 
@@ -396,7 +403,8 @@ export function destinationFor(request: PreToolUseRequest): string {
           : request.toolName === "mcp__gmail__send_message" ? input.to
             : request.toolName === "mcp__google-calendar__list_events" ? input.calendarId
               : request.toolName === "mcp__google-drive__search_files" ? input.query
-            : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId : undefined;
+            : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId
+              : request.toolName === WORKSPACE_RENAME_SELF_TOOL ? input.name : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
 }

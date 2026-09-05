@@ -72,6 +72,8 @@ export {
   getRole,
   listRoles,
   updateRoleInstructions,
+  updateRoleName,
+  MAX_ROLE_NAME_LENGTH,
   roleStatuses,
   type NewRole,
   type Role,

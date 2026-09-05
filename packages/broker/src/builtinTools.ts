@@ -19,4 +19,13 @@ export const BUILTIN_TOOLS = Object.freeze([
     mcpServerName: "workspace",
     enabled: true,
   },
+  {
+    toolName: "mcp__workspace__rename_self",
+    capabilityId: "workspace.rename_self",
+    // A bot can alter only its own display name; no third party or external effect.
+    defaultTier: "T1_draft",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
 ] as const satisfies readonly DeclaredTool[]);

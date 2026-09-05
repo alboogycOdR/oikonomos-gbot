@@ -46,7 +46,10 @@ describe("registerCapabilities", () => {
     expect(store.registrations.find((rows) => rows.connectorId === "workspace")).toMatchObject({
       adapter: "mcp:workspace",
       roleGrants: [],
-      capabilities: [expect.objectContaining({ capabilityId: "workspace.send_to_role", defaultTier: "T1_draft" })],
+      capabilities: [
+        expect.objectContaining({ capabilityId: "workspace.send_to_role", defaultTier: "T1_draft" }),
+        expect.objectContaining({ capabilityId: "workspace.rename_self", defaultTier: "T1_draft" }),
+      ],
     });
   });
 
@@ -147,6 +150,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
         expect.objectContaining({ adapter: "mcp:google-drive" }),
         expect.objectContaining({ adapter: "sdk:builtin", capability_id: "runtime.bash" }),
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.send_to_role", default_tier: "T1_draft" }),
+        expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.rename_self", default_tier: "T1_draft" }),
       ]),
     });
   });

@@ -1,4 +1,4 @@
-import { createRole, defaultPoolConfig, type DatabaseOptions } from "@oikonomos/db";
+import { createRole, defaultPoolConfig, getRole, type DatabaseOptions } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -72,5 +72,38 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
         fact_ref: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "research.findings" },
       },
     ]);
+  });
+
+  it("renames only the worker-bound calling role and rejects cross-role input", async () => {
+    const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId };
+    const listed = await handleWorkspaceMcpRequest(JSON.stringify({ jsonrpc: "2.0", id: "tool-list", method: "tools/list" }), identity);
+    expect(listed).toMatchObject({ result: { tools: expect.arrayContaining([
+      expect.objectContaining({ name: "rename_self", inputSchema: expect.objectContaining({ additionalProperties: false }) }),
+    ]) } });
+
+    const renamed = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "rename-self", method: "tools/call",
+      params: { name: "rename_self", arguments: { name: "Renamed by self" } },
+    }), identity);
+    expect(renamed).toMatchObject({ result: { content: [{ type: "text", text: expect.stringContaining("Renamed by self") }] } });
+    expect((await getRole(options, senderRoleId))?.name).toBe("Renamed by self");
+
+    const crossRoleAttempt = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "cross-role", method: "tools/call",
+      params: { name: "rename_self", arguments: { name: "Should not apply", roleId: receiverRoleId } },
+    }), identity);
+    expect(crossRoleAttempt).toMatchObject({ result: { isError: true } });
+    expect((await getRole(options, receiverRoleId))?.name).toBe(receiverRoleId);
+  });
+
+  it("returns clear errors for empty and excessively long self-rename names", async () => {
+    const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId };
+    for (const [name, error] of [["   ", "name must not be empty"], ["x".repeat(101), "name must be at most"]] as const) {
+      const response = await handleWorkspaceMcpRequest(JSON.stringify({
+        jsonrpc: "2.0", id: `invalid-${name.length}`, method: "tools/call",
+        params: { name: "rename_self", arguments: { name } },
+      }), identity);
+      expect(response).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining(error) }] } });
+    }
   });
 });

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions } from "./index.js";
+import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -68,6 +68,16 @@ integration("packages/db roles — read + CRUD + FK/backfill (TASK-084)", () => 
     expect(updated?.instructions).toBe("Always answer in the bot's named persona.");
     expect((await getRole({ connectionString: connectionString! }, created.roleId))?.instructions)
       .toBe("Always answer in the bot's named persona.");
+  });
+
+  it("persists a real role name change", async () => {
+    const created = await createRole(
+      { connectionString: connectionString! },
+      { roleId: "task-167-role-name", tenantId, name: "Before", title: "Role name fixture" },
+    );
+    const updated = await updateRoleName({ connectionString: connectionString! }, created.roleId, "After");
+    expect(updated?.name).toBe("After");
+    expect((await getRole({ connectionString: connectionString! }, created.roleId))?.name).toBe("After");
   });
 
   it("listRoles is tenant-scoped: a role in another tenant never appears", async () => {
