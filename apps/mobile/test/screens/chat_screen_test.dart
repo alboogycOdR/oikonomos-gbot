@@ -344,6 +344,85 @@ void main() {
     },
   );
 
+  testWidgets('a routine opens detail with real run status and timestamp', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(200, [
+      {
+        'routineId': 'routine-1',
+        'name': 'Daily briefing',
+        'schedule': '0 8 * * *',
+        'lastFireAt': '2026-09-04T08:00:00Z',
+        'nextFireAt': '2026-09-05T08:00:00Z',
+      },
+    ]);
+
+    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Routines'));
+    await tester.pumpAndSettle();
+
+    fake.queueJson(200, {
+      'tasks': [
+        {'taskId': 'task-1'},
+      ],
+      'nextCursor': null,
+    });
+    fake.queueJson(200, {
+      'runs': [
+        {
+          'runId': 'run-1',
+          'taskId': 'task-1',
+          'status': 'failed',
+          'startedAt': '2026-09-05T08:23:00Z',
+        },
+      ],
+      'nextCursor': null,
+    });
+    await tester.tap(find.byKey(const Key('routine-routine-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Run history'), findsOneWidget);
+    expect(find.text('2026-09-05T08:23:00Z'), findsOneWidget);
+    expect(find.text('Status: failed'), findsOneWidget);
+    final taskRequest = fake.requests.firstWhere(
+      (request) => request.url.path == '/tasks',
+    );
+    final runRequest = fake.requests.firstWhere(
+      (request) => request.url.path == '/runs',
+    );
+    expect(taskRequest.url.queryParameters['routineId'], 'routine-1');
+    expect(runRequest.url.queryParameters['taskId'], 'task-1');
+  });
+
+  testWidgets('routine detail shows an empty history state', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(200, [
+      {
+        'routineId': 'routine-empty',
+        'name': 'New routine',
+        'schedule': '0 8 * * *',
+        'lastFireAt': null,
+        'nextFireAt': null,
+      },
+    ]);
+
+    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Routines'));
+    await tester.pumpAndSettle();
+    fake.queueJson(200, {'tasks': <Object?>[], 'nextCursor': null});
+    await tester.tap(find.byKey(const Key('routine-routine-empty')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('routine-history-empty')), findsOneWidget);
+  });
+
   testWidgets('shows auto-review settings without a usage figure', (
     tester,
   ) async {

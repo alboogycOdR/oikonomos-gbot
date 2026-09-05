@@ -315,6 +315,38 @@ void main() {
       expect(fake.requests.last.url.path, '/roles/role%201/routines');
     });
 
+    test('reconstructs routine history through the real tasks and runs endpoints', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(200, {
+        'tasks': [
+          {'taskId': 'task-1'},
+        ],
+        'nextCursor': null,
+      });
+      fake.queueJson(200, {
+        'runs': [
+          {
+            'runId': 'run-1',
+            'taskId': 'task-1',
+            'status': 'failed',
+            'startedAt': '2026-09-05T08:23:00Z',
+          },
+        ],
+        'nextCursor': null,
+      });
+
+      final tasks = await client.listRoutineTasks('routine 1');
+      final runs = await client.listRunsForTask(tasks.single.id);
+
+      expect(fake.requests[1].url.path, '/tasks');
+      expect(fake.requests[1].url.queryParameters, {'routineId': 'routine 1'});
+      expect(fake.requests[2].url.path, '/runs');
+      expect(fake.requests[2].url.queryParameters, {'taskId': 'task-1'});
+      expect(runs.single.status, 'failed');
+      expect(runs.single.startedAt, '2026-09-05T08:23:00Z');
+    });
+
     test('createRoutine sends definition.goal only when a goal is given', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);

@@ -180,6 +180,8 @@ export async function getTask(
 export interface TaskListFilter {
   tenantId?: string;
   status?: TaskStatus;
+  /** Return only tasks created by this persisted routine. */
+  routineId?: string;
   limit?: number;
   /** Opaque page token from a previous `listTasks` call's `nextCursor`. */
   cursor?: string;
@@ -270,6 +272,10 @@ export async function listTasks(
   if (filter.status !== undefined) {
     params.push(requireTaskStatus(filter.status, "status"));
     conditions.push(`status = $${params.length}`);
+  }
+  if (filter.routineId !== undefined) {
+    params.push(requireUuid(filter.routineId, "routineId"));
+    conditions.push(`routine_id = $${params.length}`);
   }
   if (filter.cursor !== undefined) {
     const cursor = decodeTaskCursor(filter.cursor);

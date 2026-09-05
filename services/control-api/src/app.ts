@@ -83,6 +83,7 @@ const LIST_TASKS_QUERY_SCHEMA = {
   properties: {
     tenantId: { type: "string" },
     status: { type: "string" },
+    routineId: { type: "string" },
     limit: { type: "integer" },
     cursor: { type: "string" },
   },
@@ -439,6 +440,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             parameters: [
               { name: "tenantId", in: "query", schema: { type: "string" } },
               { name: "status", in: "query", schema: { type: "string" } },
+              { name: "routineId", in: "query", schema: { type: "string", format: "uuid" } },
               { name: "limit", in: "query", schema: { type: "integer" } },
               { name: "cursor", in: "query", schema: { type: "string" } },
             ],
@@ -925,10 +927,10 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   );
 
   app.get<{
-    Querystring: { tenantId?: string; status?: string; limit?: number; cursor?: string };
+    Querystring: { tenantId?: string; status?: string; routineId?: string; limit?: number; cursor?: string };
   }>("/tasks", { schema: { querystring: LIST_TASKS_QUERY_SCHEMA } }, async (request, reply) => {
     try {
-      const { tenantId, status, limit, cursor } = request.query;
+      const { tenantId, status, routineId, limit, cursor } = request.query;
       if (status !== undefined && !isTaskStatus(status)) {
         await reply.code(400).send({ error: `status must be one of ${taskStatuses.join(", ")}.` });
         return;
@@ -936,6 +938,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       const page = await deps.listTasks({
         ...(tenantId !== undefined && { tenantId }),
         ...(status !== undefined && { status }),
+        ...(routineId !== undefined && { routineId }),
         ...(limit !== undefined && { limit }),
         ...(cursor !== undefined && { cursor }),
       });

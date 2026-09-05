@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createTask, defaultPoolConfig, getTask, listTasks } from "./index.js";
+import { createRoutine, createTask, defaultPoolConfig, getTask, listTasks } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -26,6 +26,8 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
 
   async function cleanup(): Promise<void> {
     await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+    await pool.query(`DELETE FROM role_routines WHERE role_id = $1`, [roleId]);
+    await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
   }
 
   beforeAll(async () => {
@@ -162,6 +164,43 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
     for (const task of created) {
       expect(seen.has(task.taskId)).toBe(true);
     }
+  });
+
+  it("lists only the tasks created by the requested routine", async () => {
+    await cleanup();
+    await pool.query(
+      `INSERT INTO roles (role_id, tenant_id, name, title, description)
+       VALUES ($1, $2, 'TASK-159 task filter', 'TASK-159 task filter', '')`,
+      [roleId, tenantId],
+    );
+    const matchingRoutine = await createRoutine(
+      { connectionString: connectionString! },
+      { roleId, tenantId, name: "TASK-159 matching routine", definition: {} },
+    );
+    const otherRoutine = await createRoutine(
+      { connectionString: connectionString! },
+      { roleId, tenantId, name: "TASK-159 other routine", definition: {} },
+    );
+    const matchingTask = await createTask(
+      { connectionString: connectionString! },
+      { tenantId, roleId, title: "matching", goal: "g", routineId: matchingRoutine.routineId, requestedBy: "scheduler" },
+    );
+    await createTask(
+      { connectionString: connectionString! },
+      { tenantId, roleId, title: "other", goal: "g", routineId: otherRoutine.routineId, requestedBy: "scheduler" },
+    );
+
+    const page = await listTasks(
+      { connectionString: connectionString! },
+      { tenantId, routineId: matchingRoutine.routineId },
+    );
+
+    expect(page.nextCursor).toBeNull();
+    expect(page.tasks).toHaveLength(1);
+    expect(page.tasks[0]).toMatchObject({
+      taskId: matchingTask.taskId,
+      routineId: matchingRoutine.routineId,
+    });
   });
 
 });

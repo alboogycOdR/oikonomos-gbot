@@ -174,6 +174,33 @@ class Routine {
   }
 }
 
+/// The subset of a task used to reconstruct a routine's fire history.
+class RoutineTask {
+  const RoutineTask({required this.id});
+
+  final String id;
+
+  factory RoutineTask.fromJson(Map<String, dynamic> json) {
+    return RoutineTask(id: json['taskId'] as String);
+  }
+}
+
+/// A real run returned by `GET /runs?taskId=...`; [status] is deliberately
+/// kept verbatim so the UI never recasts a failure as a successful outcome.
+class RoutineRun {
+  const RoutineRun({required this.status, required this.startedAt});
+
+  final String status;
+  final String startedAt;
+
+  factory RoutineRun.fromJson(Map<String, dynamic> json) {
+    return RoutineRun(
+      status: json['status'] as String,
+      startedAt: json['startedAt'] as String,
+    );
+  }
+}
+
 class ThreadMessage {
   const ThreadMessage({
     required this.id,

@@ -221,6 +221,30 @@ class ApiClient {
         .toList();
   }
 
+  /// TASK-159 — routine fires are tasks with a real `routineId`; there is no
+  /// separate fire-history endpoint/table to query.
+  Future<List<RoutineTask>> listRoutineTasks(String routineId) async {
+    final json = await _request(
+      'GET',
+      '/tasks?routineId=${Uri.encodeQueryComponent(routineId)}',
+    ) as Map<String, dynamic>;
+    return (json['tasks'] as List<dynamic>)
+        .map((entry) => RoutineTask.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Returns the actual run rows for one task. Callers display [RoutineRun.status]
+  /// as supplied by the API rather than applying a potentially misleading label.
+  Future<List<RoutineRun>> listRunsForTask(String taskId) async {
+    final json = await _request(
+      'GET',
+      '/runs?taskId=${Uri.encodeQueryComponent(taskId)}',
+    ) as Map<String, dynamic>;
+    return (json['runs'] as List<dynamic>)
+        .map((entry) => RoutineRun.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
   /// TASK-158 (Mobile Wave 8) — `POST /roles/:roleId/routines`
   /// (services/control-api/src/app.ts), body `{name, schedule, definition?}`.
   /// `name` and `schedule` are required non-empty strings; `schedule` is
