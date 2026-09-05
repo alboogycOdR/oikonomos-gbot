@@ -369,6 +369,96 @@ void main() {
       },
     );
 
+    test('uploadThreadAttachment posts base64 JSON and parses the structured ref',
+        () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(201, {
+        'id': 'att-1',
+        'filename': 'notes.txt',
+        'contentType': 'text/plain',
+        'byteSize': 5,
+        'sha256': 'aabbcc',
+      });
+
+      final attachment = await client.uploadThreadAttachment(
+        'thread-1',
+        filename: 'notes.txt',
+        contentType: 'text/plain',
+        bytes: utf8.encode('hello'),
+      );
+      expect(attachment.id, 'att-1');
+      expect(attachment.filename, 'notes.txt');
+
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/threads/thread-1/attachments');
+      expect(jsonDecode(request.body), {
+        'filename': 'notes.txt',
+        'contentType': 'text/plain',
+        'contentBase64': base64Encode(utf8.encode('hello')),
+      });
+    });
+
+    test('uploadThreadAttachment surfaces the server rejection message', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(400, {
+        'error': 'file exceeds the 10485760-byte limit.',
+      });
+
+      await expectLater(
+        () => client.uploadThreadAttachment(
+          'thread-1',
+          filename: 'huge.txt',
+          contentType: 'text/plain',
+          bytes: utf8.encode('x'),
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'file exceeds the 10485760-byte limit.',
+          ),
+        ),
+      );
+    });
+
+    test('sendThreadMessage includes attachmentIds when provided', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(201, {
+        'id': 'msg-3',
+        'threadId': 'thread-1',
+        'role': 'user',
+        'body': 'see attached',
+        'runId': null,
+        'createdAt': '2026-09-05T00:00:00Z',
+        'attachments': [
+          {
+            'id': 'att-1',
+            'filename': 'notes.txt',
+            'contentType': 'text/plain',
+            'byteSize': 5,
+            'sha256': 'aabbcc',
+          },
+        ],
+      });
+
+      final message = await client.sendThreadMessage(
+        'thread-1',
+        'see attached',
+        attachmentIds: ['att-1'],
+      );
+      expect(message.attachments.single.filename, 'notes.txt');
+
+      final request = fake.requests.last as http.Request;
+      expect(jsonDecode(request.body), {
+        'body': 'see attached',
+        'attachmentIds': ['att-1'],
+      });
+    });
+
     test(
       'decideApproval uses the single-use decide endpoint and handles a no-op',
       () async {

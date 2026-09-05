@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -31,7 +34,13 @@ import {
 import { Pool } from "pg";
 
 import { buildApp } from "./app.js";
-import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
+import {
+  ATTACHMENT_ALLOWED_CONTENT_TYPES,
+  ATTACHMENT_MAX_BYTES,
+  createDatabaseBackedDeps,
+  createFilesystemAttachmentStore,
+  type ControlApiDeps,
+} from "./ports.js";
 
 const TOKEN = "task-106-fixture-token";
 const threadId = "11111111-1111-1111-1111-111111111111";
@@ -199,6 +208,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "GET" as const, url: `/roles/${roleId}/messages` },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
+      { method: "POST" as const, url: `/threads/${threadId}/attachments`, payload: { filename: "a.txt", contentType: "text/plain", contentBase64: "YQ==" } },
       { method: "POST" as const, url: "/devices", payload: { token: "opaque-test-target", platform: "android" } },
     ];
     for (const request of requests) expect((await app.inject(request)).statusCode).toBe(401);
@@ -407,6 +417,151 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     expect(calls).toEqual(["listAllThreadsWithMembers", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
     await app.close();
+  });
+
+  it("uploads a file, binds a structured attachment on the message, and injects contents into the agent goal (TASK-166)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oik-att-"));
+    const unique = `task-166-marker-${randomUUID()}`;
+    const created: Array<{ goal: string; title: string }> = [];
+    const inserted: Array<Parameters<ControlApiDeps["insertMessage"]>[0]> = [];
+    const { deps } = createDeps({
+      createTask: async (input) => {
+        created.push({ goal: input.goal, title: input.title });
+        return makeTask(input);
+      },
+      insertMessage: async (input) => {
+        inserted.push(input);
+        return makeMessage(input);
+      },
+    });
+    const app = buildApp(deps, {
+      authToken: TOKEN,
+      logger: false,
+      attachmentStore: createFilesystemAttachmentStore(root),
+    });
+    try {
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/attachments`,
+        headers: authHeaders(),
+        payload: {
+          filename: "briefing.txt",
+          contentType: "text/plain",
+          contentBase64: Buffer.from(unique, "utf8").toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode).toBe(201);
+      const ref = JSON.parse(uploaded.body) as { id: string; filename: string; sha256: string; byteSize: number };
+      expect(ref.filename).toBe("briefing.txt");
+      expect(ref.byteSize).toBe(Buffer.byteLength(unique));
+      expect(ref).not.toHaveProperty("absolutePath");
+      expect(ref).not.toHaveProperty("storageKey");
+
+      const posted = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "Please summarise the attachment.", attachmentIds: [ref.id] },
+      });
+      expect(posted.statusCode).toBe(201);
+      expect(JSON.parse(posted.body).attachments).toEqual([
+        expect.objectContaining({ id: ref.id, filename: "briefing.txt", contentType: "text/plain" }),
+      ]);
+      expect(inserted[0]?.attachments).toEqual([
+        expect.objectContaining({ id: ref.id, filename: "briefing.txt" }),
+      ]);
+      expect(created[0]?.goal).toContain(unique);
+      expect(created[0]?.goal).toContain("Absolute path:");
+      const pathMatch = created[0]?.goal.match(/Absolute path: (.+)$/m);
+      expect(pathMatch?.[1]).toBeDefined();
+      expect(await readFile(pathMatch![1]!.trim(), "utf8")).toBe(unique);
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects oversized and disallowed attachment types server-side (TASK-166)", async () => {
+    const { deps } = createDeps();
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    try {
+      const disallowed = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/attachments`,
+        headers: authHeaders(),
+        payload: {
+          filename: "payload.exe",
+          contentType: "application/x-msdownload",
+          contentBase64: Buffer.from("MZ").toString("base64"),
+        },
+      });
+      expect(disallowed.statusCode).toBe(400);
+      expect(JSON.parse(disallowed.body).error).toContain("contentType is not allowed");
+      expect(JSON.parse(disallowed.body).error).toContain(ATTACHMENT_ALLOWED_CONTENT_TYPES[0]);
+
+      const oversized = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/attachments`,
+        headers: authHeaders(),
+        payload: {
+          filename: "huge.txt",
+          contentType: "text/plain",
+          contentBase64: Buffer.alloc(ATTACHMENT_MAX_BYTES + 1, 0x61).toString("base64"),
+        },
+      });
+      expect(oversized.statusCode).toBe(400);
+      expect(JSON.parse(oversized.body).error).toContain(`${String(ATTACHMENT_MAX_BYTES)}-byte limit`);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects unknown attachment ids and allows an attachments-only empty body (TASK-166)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oik-att-empty-"));
+    const { deps } = createDeps();
+    const app = buildApp(deps, {
+      authToken: TOKEN,
+      logger: false,
+      attachmentStore: createFilesystemAttachmentStore(root),
+    });
+    try {
+      const missing = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "hi", attachmentIds: ["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"] },
+      });
+      expect(missing.statusCode).toBe(400);
+      expect(JSON.parse(missing.body).error).toMatch(/not found/i);
+
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/attachments`,
+        headers: authHeaders(),
+        payload: {
+          filename: "solo.txt",
+          contentType: "text/plain",
+          contentBase64: Buffer.from("solo-bytes", "utf8").toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode).toBe(201);
+      const ref = JSON.parse(uploaded.body) as { id: string };
+
+      const posted = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "   ", attachmentIds: [ref.id] },
+      });
+      expect(posted.statusCode).toBe(201);
+      expect(JSON.parse(posted.body).body).toBe("");
+      expect(JSON.parse(posted.body).attachments).toEqual([
+        expect.objectContaining({ id: ref.id, filename: "solo.txt" }),
+      ]);
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("grants a parked chat approval by dispatching the persisted run/session back to the worker, but never dispatches on rejection (TASK-155)", async () => {
@@ -1144,6 +1299,113 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       } finally {
         await cleanup();
       }
+    }
+  });
+});
+
+integration("POST /threads/:id/attachments — real Postgres + agent round trip (TASK-166)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("persists a file, records it on the message, and the chat driver actually reads the contents", async () => {
+    const roleId = `task-166-${randomUUID()}`;
+    const unique = `TASK-166-E2E-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+    const storeRoot = await mkdtemp(join(tmpdir(), "oik-att-e2e-"));
+    let app: ReturnType<typeof buildApp> | undefined;
+    let observedPrompt = "";
+    let observedDiskContents = "";
+    try {
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description)
+         VALUES ($1, 'basileia', $1, 'TASK-166 attach fixture', 'TASK-166 attach fixture')`,
+        [roleId],
+      );
+      const threadResult = await pool.query<{ id: string }>(
+        "INSERT INTO threads (role_id) VALUES ($1) RETURNING id",
+        [roleId],
+      );
+      const liveThreadId = threadResult.rows[0]!.id;
+      const queryFn = async function* (input: { prompt: string | AsyncIterable<unknown> }) {
+        observedPrompt = typeof input.prompt === "string" ? input.prompt : "";
+        const pathMatch = observedPrompt.match(/Absolute path: (.+)$/m);
+        if (pathMatch?.[1] !== undefined) {
+          observedDiskContents = await readFile(pathMatch[1].trim(), "utf8");
+        }
+        yield { type: "result" as const, result: `I accessed the attachment and read: ${observedDiskContents}` };
+      };
+      app = buildApp(
+        createDatabaseBackedDeps({ ...options, chatRunDriverOptions: { queryFn } }),
+        {
+          authToken: TOKEN,
+          logger: false,
+          attachmentStore: createFilesystemAttachmentStore(storeRoot),
+        },
+      );
+
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `/threads/${liveThreadId}/attachments`,
+        headers: authHeaders(),
+        payload: {
+          filename: "secret-briefing.txt",
+          contentType: "text/plain",
+          contentBase64: Buffer.from(unique, "utf8").toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode).toBe(201);
+      const ref = JSON.parse(uploaded.body) as { id: string };
+
+      const posted = await app.inject({
+        method: "POST",
+        url: `/threads/${liveThreadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "What does the attached file say?", attachmentIds: [ref.id] },
+      });
+      expect(posted.statusCode).toBe(201);
+      expect(JSON.parse(posted.body).attachments).toEqual([
+        expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt" }),
+      ]);
+
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const transcript = await listMessages(options, liveThreadId);
+        if (transcript.some((message) => message.role === "bot" && message.body.includes(unique))) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      expect(observedPrompt).toContain(unique);
+      expect(observedDiskContents).toBe(unique);
+      const transcript = await listMessages(options, liveThreadId);
+      const userMessage = transcript.find((message) => message.role === "user");
+      const botMessage = transcript.find((message) => message.role === "bot");
+      expect(userMessage?.attachments).toEqual([
+        expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt", contentType: "text/plain" }),
+      ]);
+      expect(userMessage?.body).toBe("What does the attached file say?");
+      expect(botMessage?.body).toContain(unique);
+
+      const listed = JSON.parse(
+        (await app.inject({
+          method: "GET",
+          url: `/threads/${liveThreadId}/messages`,
+          headers: authHeaders(),
+        })).body,
+      ) as Array<{ attachments?: unknown }>;
+      expect(listed.find((message) => message.attachments !== undefined)?.attachments).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt" })]),
+      );
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
+      await rm(storeRoot, { recursive: true, force: true });
     }
   });
 });

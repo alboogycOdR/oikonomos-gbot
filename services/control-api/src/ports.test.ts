@@ -1,11 +1,20 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import type { Approval, DeviceToken, Run, Task } from "@oikonomos/db";
 
 import { CollectingPushTransport, type PushTransportPort } from "./pushTransport.js";
 import { buildApp } from "./app.js";
-import { createDatabaseBackedDeps, notifyAfterChatRun } from "./ports.js";
+import {
+  AttachmentStoreError,
+  buildChatGoal,
+  createDatabaseBackedDeps,
+  createFilesystemAttachmentStore,
+  notifyAfterChatRun,
+} from "./ports.js";
 
 const task: Task = {
   taskId: "11111111-1111-1111-1111-111111111111",
@@ -96,6 +105,36 @@ describe("notifyAfterChatRun (TASK-145)", () => {
     } finally {
       vi.unstubAllEnvs();
       await app.close();
+    }
+  });
+});
+
+describe("filesystem attachment store (TASK-166)", () => {
+  it("persists bytes to disk and resolves them by id for the same thread only", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oik-store-"));
+    const store = createFilesystemAttachmentStore(root);
+    const threadId = randomUUID();
+    const otherThread = randomUUID();
+    try {
+      const stored = await store.persist({
+        threadId,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        bytes: Buffer.from("hello-from-disk", "utf8"),
+      });
+      expect(stored.filename).toBe("notes.txt");
+      expect(await readFile(stored.absolutePath, "utf8")).toBe("hello-from-disk");
+
+      const resolved = await store.resolve(threadId, [stored.id]);
+      expect(resolved).toEqual([expect.objectContaining({ id: stored.id, sha256: stored.sha256 })]);
+
+      await expect(store.resolve(otherThread, [stored.id])).rejects.toBeInstanceOf(AttachmentStoreError);
+
+      const goal = buildChatGoal("Summarise this.", [{ ...stored, textContent: "hello-from-disk" }]);
+      expect(goal).toContain("hello-from-disk");
+      expect(goal).toContain(`Absolute path: ${stored.absolutePath}`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

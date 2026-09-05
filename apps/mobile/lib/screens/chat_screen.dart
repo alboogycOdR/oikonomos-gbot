@@ -4,6 +4,8 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
 import '../api/models.dart';
+import '../attach/channel_file_picker.dart';
+import '../attach/file_picker_port.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
 import 'create_routine_screen.dart';
@@ -18,10 +20,16 @@ import 'routine_detail_screen.dart';
 /// [dispose] tearing the subscription down covers both cases; the
 /// subscription is never left dangling past this widget's lifetime.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.apiClient, required this.bot});
+  const ChatScreen({
+    super.key,
+    required this.apiClient,
+    required this.bot,
+    this.filePicker = const ChannelFilePicker(),
+  });
 
   final ApiClient apiClient;
   final SingleThread bot;
+  final FilePickerPort filePicker;
 
   @override
   State<ChatScreen> createState() => ChatScreenState();
@@ -44,6 +52,9 @@ class ChatScreenState extends State<ChatScreen>
   Map<String, Role> _rolesById = const {};
   final Map<String, String> _approvalStatuses = {};
   final Set<String> _decidingApprovals = {};
+  final List<MessageAttachment> _pendingAttachments = [];
+  bool _uploading = false;
+  String? _uploadError;
 
   /// Exposed for tests: true once the SSE subscription has been opened
   /// (and not yet closed) for this screen instance.
@@ -229,17 +240,68 @@ class ChatScreenState extends State<ChatScreen>
     );
   }
 
+  Future<void> _attach() async {
+    if (_uploading || _sending) return;
+    setState(() {
+      _uploadError = null;
+    });
+    PickedAttachment? picked;
+    try {
+      picked = await widget.filePicker.pick();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _uploadError = 'Could not open the file picker.';
+      });
+      return;
+    }
+    if (picked == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final uploaded = await widget.apiClient.uploadThreadAttachment(
+        widget.bot.id,
+        filename: picked.filename,
+        contentType: picked.contentType,
+        bytes: picked.bytes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingAttachments.add(uploaded);
+        _uploading = false;
+      });
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _uploadError = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _uploadError = 'Failed to upload attachment.';
+      });
+    }
+  }
+
   Future<void> _send() async {
     final body = _composeController.text.trim();
-    if (body.isEmpty || _sending) return;
+    if ((body.isEmpty && _pendingAttachments.isEmpty) || _sending || _uploading) {
+      return;
+    }
     setState(() => _sending = true);
     try {
       final sent = await widget.apiClient.sendThreadMessage(
         widget.bot.id,
         body,
+        attachmentIds: _pendingAttachments.map((item) => item.id).toList(),
       );
       _addMessage(sent);
       _composeController.clear();
+      _pendingAttachments.clear();
+      _uploadError = null;
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -376,22 +438,38 @@ class ChatScreenState extends State<ChatScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                isUser
-                    ? Text(
-                        message.body,
-                        style: const TextStyle(color: Colors.white),
-                      )
-                    : MarkdownBody(
-                        key: Key('message-body-${message.id}'),
-                        data: message.body,
-                        shrinkWrap: true,
-                        selectable: false,
-                        styleSheet: MarkdownStyleSheet.fromTheme(
-                          Theme.of(context),
-                        ).copyWith(
-                          p: Theme.of(context).textTheme.bodyMedium,
+                if (message.body.isNotEmpty)
+                  isUser
+                      ? Text(
+                          message.body,
+                          style: const TextStyle(color: Colors.white),
+                        )
+                      : MarkdownBody(
+                          key: Key('message-body-${message.id}'),
+                          data: message.body,
+                          shrinkWrap: true,
+                          selectable: false,
+                          styleSheet: MarkdownStyleSheet.fromTheme(
+                            Theme.of(context),
+                          ).copyWith(
+                            p: Theme.of(context).textTheme.bodyMedium,
+                          ),
                         ),
-                      ),
+                if (message.attachments.isNotEmpty) ...[
+                  if (message.body.isNotEmpty) const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final attachment in message.attachments)
+                        Chip(
+                          key: Key('message-attachment-${attachment.id}'),
+                          label: Text(attachment.filename),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
                 if (message.approval != null) ...[
                   const SizedBox(height: 8),
                   _ApprovalCard(
@@ -416,22 +494,68 @@ class ChatScreenState extends State<ChatScreen>
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: TextField(
-                key: const Key('compose-field'),
-                controller: _composeController,
-                decoration: InputDecoration(
-                  hintText: 'Ask ${widget.bot.botName}',
-                ),
-                onSubmitted: (_) => _send(),
+            if (_uploading)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: LinearProgressIndicator(key: Key('attach-progress')),
               ),
-            ),
-            IconButton(
-              key: const Key('send-button'),
-              icon: const Icon(Icons.send),
-              onPressed: _sending ? null : _send,
+            if (_uploadError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _uploadError!,
+                  key: const Key('attach-error'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            if (_pendingAttachments.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final attachment in _pendingAttachments)
+                      Chip(
+                        key: Key('pending-attachment-${attachment.id}'),
+                        label: Text(attachment.filename),
+                        onDeleted: _sending || _uploading
+                            ? null
+                            : () => setState(
+                                  () => _pendingAttachments.remove(attachment),
+                                ),
+                      ),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
+                IconButton(
+                  key: const Key('attach-button'),
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Attach file or image',
+                  onPressed: _sending || _uploading ? null : _attach,
+                ),
+                Expanded(
+                  child: TextField(
+                    key: const Key('compose-field'),
+                    controller: _composeController,
+                    decoration: InputDecoration(
+                      hintText: 'Ask ${widget.bot.botName}',
+                    ),
+                    onSubmitted: (_) => _send(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('send-button'),
+                  icon: const Icon(Icons.send),
+                  onPressed: _sending || _uploading ? null : _send,
+                ),
+              ],
             ),
           ],
         ),

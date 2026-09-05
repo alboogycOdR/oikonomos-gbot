@@ -67,4 +67,38 @@ integration("packages/db messages — transcript round trip (TASK-105)", () => {
     const reread = transcript.find((message) => message.id === botMessage.id);
     expect(reread?.senderRoleId).toBe(roleId);
   });
+
+  it("persists and reads back a structured attachments array (TASK-166)", async () => {
+    const attachment = {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      filename: "notes.txt",
+      contentType: "text/plain",
+      byteSize: 12,
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    };
+    const written = await insertMessage(
+      { connectionString: connectionString! },
+      { threadId, role: "user", body: "see attached", attachments: [attachment] },
+    );
+    expect(written.attachments).toEqual([attachment]);
+
+    const emptyBody = await insertMessage(
+      { connectionString: connectionString! },
+      {
+        threadId,
+        role: "user",
+        body: "   ",
+        attachments: [{ ...attachment, id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }],
+      },
+    );
+    expect(emptyBody.body).toBe("");
+    expect(emptyBody.attachments).toEqual([{ ...attachment, id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }]);
+
+    const reread = (await listMessages({ connectionString: connectionString! }, threadId)).find(
+      (message) => message.id === written.id,
+    );
+    expect(reread?.attachments).toEqual([attachment]);
+    expect(reread).not.toHaveProperty("storageKey");
+    expect(reread).not.toHaveProperty("absolutePath");
+  });
 });
