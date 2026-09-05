@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { devicePlatforms, riskTiers, runStatuses, taskStatuses, type Approval, type DevicePlatform, type Message, type RoleMessage, type RunStatus, type TaskStatus } from "@oikonomos/db";
+import { devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, type Approval, type DevicePlatform, type Message, type RoleMessage, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -194,6 +194,62 @@ const CREATE_ROUTINE_SCHEMA = {
     name: { type: "string", minLength: 1 },
     schedule: { type: "string", minLength: 1 },
     definition: { type: "object" },
+  },
+} as const;
+
+/**
+ * TASK-177 (G-01b) — the skill's own name-shape constraint
+ * (`^[a-z0-9][a-z0-9-]{1,63}$`) is enforced again inside
+ * `packages/db/src/skills.ts`; this schema only rejects malformed JSON
+ * shapes before a DB round-trip.
+ */
+const CREATE_SKILL_SCHEMA = {
+  type: "object",
+  required: ["name", "description", "body"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    description: { type: "string", minLength: 1 },
+    whenToUse: { type: "string" },
+    body: { type: "string", minLength: 1 },
+    inputs: { type: "array", items: { type: "object" } },
+    access: { type: "array", items: { type: "string" } },
+    approvals: { type: "array", items: { type: "string" } },
+    failurePolicy: { type: "object" },
+    status: { type: "string", enum: skillStatuses },
+  },
+} as const;
+
+const UPDATE_SKILL_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    description: { type: "string", minLength: 1 },
+    whenToUse: { type: "string", nullable: true },
+    body: { type: "string", minLength: 1 },
+    inputs: { type: "array", items: { type: "object" } },
+    access: { type: "array", items: { type: "string" } },
+    approvals: { type: "array", items: { type: "string" } },
+    failurePolicy: { type: "object" },
+    status: { type: "string", enum: skillStatuses },
+  },
+} as const;
+
+const LIST_SKILLS_QUERY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: skillStatuses },
+  },
+} as const;
+
+const SET_ROLE_SKILL_ENABLED_SCHEMA = {
+  type: "object",
+  required: ["enabled"],
+  additionalProperties: false,
+  properties: {
+    enabled: { type: "boolean" },
   },
 } as const;
 
@@ -858,6 +914,136 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     try {
       const routines = await deps.listRoutines({ tenantId: request.tenantId, roleId: request.params.roleId });
       await reply.code(200).send(routines);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  /**
+   * TASK-177 (G-01b) — Skills CRUD. Auth-gated like every other route
+   * (no `public: true`), covered by `skills.routes.test.ts`. `deps.*Skill*`
+   * is optional on the `ControlApiDeps` type (see ports.ts) purely to keep
+   * pre-existing out-of-territory fixtures type-checking; every real and
+   * skills-focused deps object provides all six, so a 501 here only ever
+   * fires against a deliberately partial test fixture that never exercises
+   * these routes.
+   */
+  app.get<{ Querystring: { status?: string } }>(
+    "/skills",
+    { schema: { querystring: LIST_SKILLS_QUERY_SCHEMA } },
+    async (request, reply) => {
+      if (deps.listSkills === undefined) {
+        await reply.code(501).send({ error: "listSkills not implemented" });
+        return;
+      }
+      try {
+        const { status } = request.query;
+        const skills = await deps.listSkills({
+          tenantId: request.tenantId,
+          ...(status === undefined ? {} : { status: status as (typeof skillStatuses)[number] }),
+        });
+        await reply.code(200).send(skills);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.post<{ Body: Record<string, unknown> }>(
+    "/skills",
+    { schema: { body: CREATE_SKILL_SCHEMA } },
+    async (request, reply) => {
+      if (deps.createSkill === undefined) {
+        await reply.code(501).send({ error: "createSkill not implemented" });
+        return;
+      }
+      try {
+        const body = request.body as {
+          name: string;
+          description: string;
+          whenToUse?: string;
+          body: string;
+          inputs?: Record<string, unknown>[];
+          access?: string[];
+          approvals?: string[];
+          failurePolicy?: Record<string, unknown>;
+          status?: (typeof skillStatuses)[number];
+        };
+        const skill = await deps.createSkill({ tenantId: request.tenantId, ...body });
+        await reply.code(201).send(skill);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string } }>("/skills/:id", async (request, reply) => {
+    if (deps.getSkill === undefined) {
+      await reply.code(501).send({ error: "getSkill not implemented" });
+      return;
+    }
+    try {
+      const skill = await deps.getSkill(request.params.id);
+      if (skill === null) {
+        await reply.code(404).send({ error: "skill not found" });
+        return;
+      }
+      await reply.code(200).send(skill);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>(
+    "/skills/:id",
+    { schema: { body: UPDATE_SKILL_SCHEMA } },
+    async (request, reply) => {
+      if (deps.updateSkill === undefined) {
+        await reply.code(501).send({ error: "updateSkill not implemented" });
+        return;
+      }
+      try {
+        const skill = await deps.updateSkill(request.params.id, request.body);
+        if (skill === null) {
+          await reply.code(404).send({ error: "skill not found" });
+          return;
+        }
+        await reply.code(200).send(skill);
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.put<{ Params: { roleId: string; skillId: string }; Body: { enabled: boolean } }>(
+    "/roles/:roleId/skills/:skillId",
+    { schema: { body: SET_ROLE_SKILL_ENABLED_SCHEMA } },
+    async (request, reply) => {
+      if (deps.setSkillEnabledForRole === undefined) {
+        await reply.code(501).send({ error: "setSkillEnabledForRole not implemented" });
+        return;
+      }
+      try {
+        await deps.setSkillEnabledForRole(request.params.roleId, request.params.skillId, request.body.enabled);
+        await reply.code(200).send({
+          roleId: request.params.roleId,
+          skillId: request.params.skillId,
+          enabled: request.body.enabled,
+        });
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/skills", async (request, reply) => {
+    if (deps.listEnabledSkillsForRole === undefined) {
+      await reply.code(501).send({ error: "listEnabledSkillsForRole not implemented" });
+      return;
+    }
+    try {
+      const skills = await deps.listEnabledSkillsForRole(request.params.roleId);
+      await reply.code(200).send(skills);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
     }
