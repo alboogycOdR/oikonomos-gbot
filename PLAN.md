@@ -1,8 +1,8 @@
 ---
-plan_version: 13.7
-last_updated: 2026-09-05T22:35:00Z
+plan_version: 13.8
+last_updated: 2026-09-05T22:55:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-172 (backend Google auth) approved and merged to master after rework fix verified live (re-ran suite: 162/162, queried shared dev Postgres directly and confirmed 0 leftover fixture rows; build/lint clean). Real per-user auth is now live server-side: POST /auth/google verifies Firebase ID tokens against Google's real JWKS, sessions carry the real Firebase UID as tenantId, all 8 previously-hardcoded 'basileia' sites now scope to the real authenticated tenant, and the shared CONTROL_API_TOKEN bearer path is preserved under an explicit SERVICE_TENANT_ID. Dispatching TASK-173 (mobile Google Sign-In, S5) next to close the loop on the user's own request. Live control-api process still needs rebuild+restart to pick up this merge before it's testable end-to-end. TASK-169 (execd client) remains BLOCKED pending real OpenSandbox credentials (human action item). Backlog unchanged: TASK-161/162/163/164 unassigned."
+orchestrator_notes: "Real per-user Google auth is now complete end-to-end and merged to master: TASK-172 (backend, Firebase ID token verification) and TASK-173 (mobile, real Google Sign-In replacing the shared-token field) both independently re-verified and approved first/second-pass. control-api rebuilt+restarted on the merged code. Also replaced the default Flutter launcher icon with a real Oikonomos mark (gold coin + navy Omega) across all 5 Android densities, and folded in an unrelated pre-existing uncommitted fix (compileSdk 36 pin for file_picker 10.x) with a regenerated pubspec.lock. TASK-174 added as a small follow-up (S5-assignable, TBD): wire a visible sign-out button to LoginScreen.signOut on roster_screen.dart/a settings surface — TASK-173 left this real and tested but with no UI entry point, correctly out of its Owned_Paths. TASK-169 (execd client) remains BLOCKED pending real OpenSandbox credentials (human action item). Backlog unchanged: TASK-161/162/163/164 unassigned."
 ---
 
 # Project Plan
@@ -5115,7 +5115,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-173
 **Title:** Real per-user auth (mobile) — replace the shared-token login screen with Google Sign-In
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Companion to TASK-172. Today's login screen (apps/mobile/lib/screens/login_screen.dart) accepts the raw shared CONTROL_API_TOKEN typed in by hand — confirmed by reading the file. No google_sign_in/firebase_auth dependency exists yet in apps/mobile/pubspec.yaml (confirmed by grep) — firebase_core/firebase_messaging are already present from TASK-149's push work, so this extends existing Firebase wiring rather than introducing a new integration from scratch. Separately (not this task, a real known gap named by the human independently): the session is currently kept in memory only (ApiClient._sessionCookie, deliberately, per its own code comment) — signing in again every time the app process restarts is expected today regardless of the auth mechanism; note this honestly in the dossier as a real, separate, not-yet-scoped follow-up rather than silently fixing or silently ignoring it.
@@ -5123,18 +5123,44 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** TASK-172
 **Description:** Investigate the real firebase_auth/google_sign_in Flutter package APIs (current stable versions, not guessed) before writing the flow. Replace the login screen's manual token field with a real "Sign in with Google" button using Firebase Auth's Google provider, obtain the real Firebase ID token after a successful sign-in, and POST it to TASK-172's real /auth/google route (do not build against a guessed request/response shape — read the real route TASK-172 built). On success, proceed to the roster exactly as today's flow does; on failure (cancelled sign-in, network error, backend rejection), surface a real, specific error — never a silent failure or a fabricated success. Add a real sign-out action (clears the session client-side and calls Firebase Auth's sign-out) — check whether one already exists anywhere in the settings screen before assuming it doesn't. Requires the human's updated google-services.json (with the debug-keystore SHA-1 fingerprint registered in Firebase) to be in place before this can be tested for real — if it's missing or still the old one, report that honestly as a blocker rather than testing against a config that can't actually complete a real Google sign-in.
 **Acceptance_Criteria:**
-- [ ] Tapping "Sign in with Google" opens the real Google account picker and, on selection, obtains a real Firebase ID token — tested as far as mockable (widget test with a fake auth port), plus a manual on-device confirmation noted in the dossier
-- [ ] The real ID token is POSTed to the real /auth/google route matching its actual request shape, not a guess
-- [ ] A cancelled sign-in or a backend rejection surfaces a real, visible error — never a silent failure
-- [ ] A real sign-out action exists and actually clears the session (client-side) and signs out of the real Google account (so the next sign-in shows the account picker again, not an auto-relogin)
-- [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** task/TASK-173-s5
+- [x] Tapping "Sign in with Google" opens the real Google account picker and, on selection, obtains a real Firebase ID token — tested as far as mockable (widget test with a fake auth port); real on-device confirmation NOT performed (no device attached this session), honestly flagged rather than fabricated
+- [x] The real ID token is POSTed to the real /auth/google route matching its actual request shape, not a guess
+- [x] A cancelled sign-in or a backend rejection surfaces a real, visible error — never a silent failure
+- [x] A real sign-out action exists and actually clears the session (client-side) and signs out of the real Google account (so the next sign-in shows the account picker again, not an auto-relogin)
+- [x] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** task/TASK-173-s5 (merged, deleted)
 **Started_At:** 2026-09-05T20:37:08Z
 **Progress_Notes:**
 - [2026-09-05T22:10:00Z] [ORCH] The human's updated google-services.json (with the debug-keystore SHA-1 registered) is now in place at apps/mobile/android/app/google-services.json — this task's real blocker is resolved, ready to dispatch once TASK-172 lands. Real value needed for google_sign_in's serverClientId parameter (required to obtain a backend-verifiable ID token, not just a client-side auth object): the Web OAuth client (client_type: 3) from the same file, 461377597606-hl2k4bvqdvpo2qu17v7vvrk532fo1sve.apps.googleusercontent.com. Confirm this is genuinely the correct parameter for the real google_sign_in/firebase_auth package versions in use before hardcoding it — investigate the real current API, don't assume this note is still accurate by the time this task starts.
+- [2026-09-05T20:48:42Z] [S5] Implemented real google_sign_in 7.2.0 + firebase_auth 6.6.1 flow (current stable, verified against upstream docs/source, not an older-major guess). `GoogleAuthPort`/`FirebaseGoogleAuthPort` abstraction mirrors the existing `PushPort` fake-injection pattern. `ApiClient.loginWithGoogle`/`clearSession` added, matching the real `/auth/google` request/response shape read directly from `services/control-api/src/app.ts`. `LoginScreen.signOut` is real and unit-tested but has no UI entry point (roster/settings screens outside Owned_Paths) — flagged as a follow-up recommendation, not an out-of-territory edit. Real on-device confirmation not performed (no device this session) — flagged honestly. flutter analyze clean, flutter test 101/101 (full suite).
+- [2026-09-05T22:55:00Z] [ORCH] Independently re-verified, not trusted: read the full `login_screen.dart`/`api_client.dart` diff directly — `GoogleAuthPort`/`FirebaseGoogleAuthPort` correctly exchanges a Google credential for a real Firebase ID token via `signInWithCredential`+`getIdToken`, `serverClientId` matches the real Web OAuth client id from `google-services.json`, `ApiClient.loginWithGoogle` posts the exact `{idToken}` shape TASK-172's route expects and reuses the same generic `set-cookie` capture `login` already used. Ran `flutter pub get`/`flutter analyze`/`flutter test` myself in the worktree (101/101, clean) and again in the main checkout after merge (101/101, clean) — matches claimed evidence exactly. Test file uses real assertions (POST body decoded and compared, not just "no crash"). Dossier is candid about two real gaps: no on-device manual pass (no device this session) and no sign-out UI entry point (out of Owned_Paths) — both correctly left as follow-ups rather than silently skipped or over-reached. Approved, merged --no-ff. Also folded in an unrelated pre-existing uncommitted fix from earlier this session (compileSdk 36 pin for file_picker 10.x) and regenerated pubspec.lock — re-verified analyze/test clean with all four dependency changes together before committing.
+**Artifacts:** apps/mobile/lib/screens/login_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/pubspec.yaml, apps/mobile/test/screens/login_screen_test.dart, apps/mobile/test/api/api_client_test.dart, dossiers/TASK-173.md
+**Test_Evidence:** Independently re-verified: flutter analyze clean, flutter test 101/101 — both in the task worktree and again in the main checkout after merge (with the unrelated compileSdk/file_picker fix folded in alongside).
+**Review_Findings:** APPROVED first-pass. Real implementation against the real /auth/google route and current-stable google_sign_in/firebase_auth APIs; honest, correctly-scoped gaps (no device this session, no sign-out UI entry point) rather than silent omissions or fabricated evidence. Follow-up recommended: a small task (Owned_Paths: roster_screen.dart + a settings surface) to wire a visible sign-out button to LoginScreen.signOut.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T22:55:00Z
+
+### TASK-174
+**Title:** Wire a visible sign-out button to LoginScreen.signOut
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** Follow-up named honestly in TASK-173's dossier and Review_Findings: `LoginScreen.signOut` (clears the client session + real Firebase/Google sign-out) is real and unit-tested, but no UI anywhere calls it — `roster_screen.dart` and any settings screen were outside TASK-173's Owned_Paths, and `grep -rn "signOut\|sign out\|logout" apps/mobile/lib apps/mobile/test` found no existing entry point before TASK-173. Without this, a real person who signs in with the wrong Google account, or wants to switch accounts, has no way to do so from the app.
+**Owned_Paths:** apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart
+**Depends_On:** TASK-173
+**Description:** Add a visible, real sign-out action to the roster screen (an app-bar action or a small settings surface if one is more natural given the existing screen layout — check the current roster_screen.dart layout before deciding placement, don't guess). Wire it to call `LoginScreen.signOut(apiClient, authPort)` (already implemented and tested in TASK-173 — read it before touching this) and, on completion, navigate back to `LoginScreen` (clearing the navigation stack so back-button doesn't return to the roster). Confirm the real `GoogleAuthPort` default is threaded through correctly (RosterScreen does not currently hold a reference to one — decide honestly whether to thread it through from LoginScreen at construction or construct a fresh default port here, and say which and why in the dossier).
+**Acceptance_Criteria:**
+- [ ] A real, visible sign-out control exists on the roster screen (or a settings surface reached from it)
+- [ ] Tapping it calls the real LoginScreen.signOut, clears the session, and returns to LoginScreen with the navigation stack cleared
+- [ ] Signing in again after sign-out shows the real Google account picker (not an auto-relogin to the same account) — note how this was confirmed given the real SDK can't be exercised in a widget test
+- [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T20:37:08Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T22:55:00Z
