@@ -1,8 +1,8 @@
 ---
-plan_version: 11.8
-last_updated: 2026-09-05T14:25:00Z
+plan_version: 11.9
+last_updated: 2026-09-05T14:45:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-159 done/merged (see prior note). TASK-160 (handoff chips) sent to REWORK, not merged: backend route is correct and independently verified (control-api 148/148, real DB wiring confirmed), but the mobile diff regresses chat_screen_test.dart from 15/15 (confirmed clean on master via bisect) to 64/74 - CX's unconditional _loadHandoffs() call in initState fires 2 new API calls on every ChatScreen build, breaking 10 existing tests' call-order-dependent fake client. CX never ran flutter checks at all (dart/flutter not on its worktree PATH) - ORCH ran them independently and caught the regression before merge. Findings written for CX to fix at the root cause, not paper over. TASK-161/162 backlog logged, unassigned. TASK-143 (OIK-110/111 budgets) still frozen, awaiting human decision on the three options presented. S5 and CX9 idle; CX is back in_progress on TASK-160 rework."
+orchestrator_notes: "TASK-159 and TASK-160 both done/merged. TASK-160's first attempt regressed 10 mobile tests (unconditional _loadHandoffs() call broke the fake test client's FIFO response ordering) - sent to rework, CX fixed the actual root cause (method/path-matched fake responses instead of FIFO) not a narrow patch, independently re-verified clean on resubmission (flutter 74/74, control-api 148/148, full recursive suite clean modulo the already-known TASK-161 WSL/bash gap). TASK-161/162 backlog logged, unassigned, low priority. TASK-143 (OIK-110/111 budgets) still frozen - architectural gap (withBudgetSink doesn't cover the primary Claude-SDK chat path), three options presented to the human, awaiting decision. S5, CX, CX9 all idle - Wave 7/8 backlog fully cleared except the frozen budgets task and the two low-priority backlog items."
 ---
 
 # Project Plan
@@ -4715,7 +4715,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-160
 **Title:** Inline cross-bot handoff chips — surface real role-to-role handoffs on mobile
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** Reference UX: Grok Bot's "2 messages with 🩸 TREVOR" compact inline chip in a bot's own timeline (see [[grok-bot-mobile-reference]]). Grounded against the real schema, not guessed: `packages/db/src/roleMessages.ts` already has a complete data layer — `RoleMessage` (fromRoleId, toRoleId, body, handoffKind, factRef, createdAt, readAt), `listRoleMessages(options, {tenantId, toRoleId?, fromRoleId?, unreadOnly?})`, `sendRoleMessage`, `markRoleMessageRead` — built for TASK-084/099/141's real async role-to-role handoffs. Confirmed by grep: zero routes anywhere in `services/control-api/src/app.ts` expose this table. `app.ts` is now free — TASK-159 (the task that was sequenced ahead of this one for the same file) merged clean.
@@ -4723,12 +4723,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Investigate the exact current shape of `app.ts`'s role routes before adding to it (follow the same param/response-shape conventions already used by `GET /tasks`/`GET /runs`). Add a real listing route — e.g. `GET /roles/:roleId/messages` — backed by `listRoleMessages` (filter by `toRoleId` and/or `fromRoleId` = the given role, tenant-scoped as the DB layer already requires). Decide and document in the dossier: does the route return one merged list, or does the mobile client call it twice (as sender and as recipient) — pick whichever matches how a bot's own timeline should read (all handoffs touching this bot, sent or received, ordered newest-first). On mobile, render each handoff as the reference chip: compact, inline, showing the other role's name/avatar and a short label ("2 messages with X" or the single-message equivalent), reachable from the bot's own chat/timeline screen (investigate `chat_screen.dart`'s current structure first — this is additive to it, not a new screen unless the existing structure has no sensible insertion point, in which case say so and justify a new screen in the dossier). Tapping a chip should show the handoff's real content (from `RoleMessage.body`), not a fabricated summary. A bot with no handoffs shows nothing extra (no empty-state chip needed — this is inline decoration, not a dedicated list view).
 **Acceptance_Criteria:**
-- [ ] A real route lists a role's handoff messages (sent and/or received, tenant-scoped) backed by `listRoleMessages` — tested against real Postgres
-- [ ] A bot's timeline shows a compact inline chip for each real handoff (or merged group), not a placeholder — tested
-- [ ] Tapping a chip surfaces the real message body, never a fabricated one — tested
-- [ ] A bot with zero handoffs renders no chip and no error
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** task/TASK-160-cx
+- [x] A real route lists a role's handoff messages (sent and/or received, tenant-scoped) backed by `listRoleMessages` — tested against real Postgres
+- [x] A bot's timeline shows a compact inline chip for each real handoff (or merged group), not a placeholder — tested
+- [x] Tapping a chip surfaces the real message body, never a fabricated one — tested
+- [x] A bot with zero handoffs renders no chip and no error
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** task/TASK-160-cx (merged, deleted)
 **Started_At:** 2026-09-05T12:05:13Z
 **Progress_Notes:**
 - [2026-09-05T14:14:00Z] [CX] Added a merged tenant-scoped `GET /roles/:roleId/messages` route (dedupes sent+received by messageId, sorts newest-first) backed by the real `listRoleMessages`, plus mobile handoff chips on the chat timeline that open the real persisted body. Honestly reported: could not run `flutter analyze`/`flutter test` at all — dart/flutter not discoverable on this worktree's PATH (Flutter lives at `C:\tool\flutter`, not global).
@@ -4741,9 +4741,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - The regression: `_loadHandoffs()` is called unconditionally in `initState` (alongside the existing `_load()`), firing two new API calls (`listRoleHandoffs`, `listRoles`) on every single `ChatScreen` construction — including the 10 existing widget tests that never anticipated these calls. Likely mechanism (confirm and fix, don't just guess): the fake/test API client used across these widget tests appears to serve canned responses in call order, so two new unaccounted-for calls per screen build are shifting what data every later mocked call in the same test returns — plausibly explaining unrelated-looking failures like "Expected: 'POST' Actual: 'GET'" and "Expected: 'Front Desk Lead' Actual: ''". Fix at the root: either make the existing widget tests' fake client tolerant of the new calls (stub them explicitly, matched by method/URL rather than call order), or scope `_loadHandoffs()` so it doesn't fire where those tests don't expect it — whichever is the more correct fix, not whichever is fastest. Do not special-case away the failures without understanding why they broke.
 - Every one of the 10 currently-failing tests must pass again, AND the new handoff-specific tests must still pass — prove both together in the resubmission, not just a re-run of the new tests alone.
 - Read this Review_Findings before restarting — it outranks anything in the previous dossier.
+- [2026-09-05T14:35:00Z] [CX] REWORK complete. Root cause confirmed: the fake test client's FIFO response queue was consuming the new handoff requests before the existing transcript/SSE responses. `_loadHandoffs` now only fetches role details after a non-empty handoff response, and `FakeHttpClient` gained a `queueJsonFor(method, path, ...)` map keyed by exact method+path, checked before the old FIFO queue, plus a safe default (`GET /roles/:id/messages` → `200 []`) so existing tests never need to know about the new endpoint at all.
+- [2026-09-05T14:45:00Z] [ORCH] Independently re-verified rather than trusting the resubmission: `flutter analyze` clean, `chat_screen_test.dart` 16/16, full `flutter test` 74/74 (all previously-regressed tests now pass, matching CX's claim exactly this time). control-api 148/148. Full recursive `pnpm --no-bail -r test`: 17/18 packages clean, one failure (`services/worker/chatRunDriver.test.ts`, `execvpe(/bin/bash)` missing) matching the already-known TASK-161 environment gap exactly — nothing new. `pnpm -r build`/`pnpm lint` clean. Read the actual fix diff: `queueJsonFor` matches by exact method+path (not FIFO order) and the handoffs-endpoint fallback path (`/roles/:id/messages`) is provably distinct from the chat-transcript endpoint (`/threads/:id/messages`) it previously collided with — a genuine root-cause fix, not a narrow patch. Discarded two harmless local artifacts before merge (`pubspec.lock` dependency-resolution noise, a CRLF-only diff in `api_client_test.dart` — neither was part of CX's committed work). Approved, merged --no-ff.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T14:25:00Z
+**Updated_At:** 2026-09-05T14:45:00Z
 
 ### TASK-161
 **Title:** Fix `execvpe(/bin/bash)` failure in chatRunDriver's workspace test on Windows dev machines
