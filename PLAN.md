@@ -4875,7 +4875,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Live gap found during real-device testing, 2026-09-05: `services/control-api/src/app.ts`'s `serializeRole()` (used by every role-returning route) only returns `{id, name, description, avatarSeed}` — `title` and `instructions` are real, tested, working columns on `packages/db/src/roles.ts`'s `Role` type (instructions persisted via the real `PATCH /roles/:roleId` route built in TASK-156) but are never serialized over HTTP. This is why the mobile settings screen (TASK-157) shows a hardcoded "No title set" placeholder instead of real data, and why there is no instructions field on mobile at all despite the backend fully supporting it — a bot's persona/instructions can only be set today via a raw API call, not through the app.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/mobile/**
