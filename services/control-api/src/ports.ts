@@ -13,6 +13,7 @@ import {
   createRole as dbCreateRole,
   createGroupThread as dbCreateGroupThread,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
+  getTask as dbGetTask,
   insertMessage as dbInsertMessage,
   getAuditEventsForRun as dbGetAuditEventsForRun,
   getRun as dbGetRun,
@@ -66,6 +67,7 @@ import {
   deliverBotToBotMessage,
   startTaskRun,
   type ChatRunDriver,
+  type CreateChatRunDriverOptions,
 } from "@oikonomos/worker";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
@@ -94,6 +96,7 @@ export interface ControlApiDeps {
   insertMessage(input: NewMessage): Promise<Message>;
   listMessages(threadId: string, options?: MessageListOptions): Promise<Message[]>;
   listTasks(filter?: TaskListFilter): Promise<TaskListPage>;
+  getTask(taskId: string): Promise<Task | null>;
   listRuns(filter?: RunListFilter): Promise<RunListPage>;
   getRun(runId: string): Promise<Run | null>;
   listPendingApprovals(filter?: PendingApprovalFilter): Promise<Approval[]>;
@@ -113,17 +116,19 @@ export interface ControlApiDeps {
   editApproval(nonce: string, editedRequest: IssueApprovalRequest): Promise<EditApprovalResult>;
   getAuditEventsForRun(runId: string): Promise<AuditEvent[]>;
   registerDeviceToken(input: RegisterDeviceTokenInput): Promise<DeviceToken>;
-  runChatTask(input: { task: Task; threadId: string }): Promise<void>;
+  runChatTask(input: { task: Task; threadId: string; resume?: { runId: string; sessionRef: string } }): Promise<void>;
   requestGroupFanout(input: { task: Task; memberRoleIds: readonly string[]; body: string }): Promise<{ runId: string }>;
 }
 
 export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
   /** Tests inject a collecting transport; production resolves the env-gated FCM transport. */
   pushTransport?: PushTransportPort;
+  /** Test-only seams for real database-backed chat lifecycle tests. */
+  chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, keyof DatabaseOptions>;
 }
 
 export interface PushNotificationDeps {
-  runChatTask(input: { task: Task; threadId: string }): Promise<void>;
+  runChatTask(input: { task: Task; threadId: string; resume?: { runId: string; sessionRef: string } }): Promise<void>;
   listRuns(filter: RunListFilter): Promise<RunListPage>;
   listPendingApprovals(): Promise<Approval[]>;
   listDeviceTokens(): Promise<DeviceToken[]>;
@@ -171,7 +176,7 @@ export async function notifyAfterChatRun(
  * touches a `Pool` directly, only the two packages' public functions.
  */
 export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
-  const chatRunDriver: ChatRunDriver = createChatRunDriver(options);
+  const chatRunDriver: ChatRunDriver = createChatRunDriver({ ...options, ...options.chatRunDriverOptions });
   const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
   const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
     runChatTask: (request) => chatRunDriver.run(request),
@@ -198,6 +203,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     insertMessage: (input) => dbInsertMessage(options, input),
     listMessages: (threadId, listOptions) => dbListMessages(options, threadId, listOptions),
     listTasks: (filter) => dbListTasks(options, filter),
+    getTask: (taskId) => dbGetTask(options, taskId),
     listRuns: (filter) => dbListRuns(options, filter),
     getRun: (runId) => dbGetRun(options, runId),
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),

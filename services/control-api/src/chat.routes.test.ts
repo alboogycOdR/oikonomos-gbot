@@ -102,6 +102,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
     insertMessage: async (input) => { calls.push("insertMessage"); return makeMessage(input); },
     listMessages: async () => { calls.push("listMessages"); return [makeMessage()]; },
     listTasks: async () => ({ tasks: [], nextCursor: null }),
+    getTask: async () => null,
     listRuns: async () => ({ runs: [], nextCursor: null }),
     getRun: async () => null,
     listPendingApprovals: async () => [],
@@ -264,6 +265,31 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(calls).toEqual(["listAllThreadsWithMembers", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
+    await app.close();
+  });
+
+  it("grants a parked chat approval by dispatching the persisted run/session back to the worker, but never dispatches on rejection (TASK-155)", async () => {
+    const runId = randomUUID();
+    const sessionRef = randomUUID();
+    const task = makeTask();
+    const approval = makeApproval(runId);
+    const dispatched: Array<Record<string, unknown>> = [];
+    const { deps } = createDeps({
+      decideApproval: async (_nonce, decision) => decision === "granted"
+        ? { decided: true, rowCount: 1, approval: { ...approval, status: "granted" } }
+        : { decided: true, rowCount: 1, approval: { ...approval, status: "rejected" } },
+      getRun: async () => ({ runId, taskId: task.taskId, tenantId: task.tenantId, provider: "claude", sessionRef, status: "waiting_approval", startedAt: new Date(), endedAt: null, failureNote: null }),
+      getTask: async () => task,
+      runChatTask: async (input) => { dispatched.push(input as unknown as Record<string, unknown>); },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const granted = await app.inject({ method: "POST", url: `/approvals/${approval.nonce}/decide`, headers: authHeaders(), payload: { decision: "granted", decidedBy: "human:test" } });
+    expect(granted.statusCode).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(dispatched).toEqual([expect.objectContaining({ task, threadId, resume: { runId, sessionRef } })]);
+    const rejected = await app.inject({ method: "POST", url: `/approvals/${approval.nonce}/decide`, headers: authHeaders(), payload: { decision: "rejected", decidedBy: "human:test" } });
+    expect(rejected.statusCode).toBe(200);
+    expect(dispatched).toHaveLength(1);
     await app.close();
   });
 

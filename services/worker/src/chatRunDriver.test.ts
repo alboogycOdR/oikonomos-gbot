@@ -273,6 +273,60 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     120_000,
   );
 
+  it("continues a real parked run with its persisted SDK session and appends the continuation on the same thread (TASK-155)", async () => {
+    const resumeTask = await createTask(options, {
+      roleId,
+      title: "TASK-155 resume fixture",
+      goal: "Continue after human approval.",
+      requestedBy: `chat:thread:${threadId}`,
+    });
+    const sessionRef = "15555555-5555-4555-8555-555555555555";
+    const parked = await startTaskRun(options, { taskId: resumeTask.taskId, provider: "claude", tenantId: resumeTask.tenantId, sessionRef });
+    await parkTaskRun(options, parked.runId);
+    let observedResume: unknown;
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      observedResume = (input.options as { resume?: unknown }).resume;
+      yield { type: "result", result: "Approval granted; the original SDK session continued." };
+    };
+
+    await createChatRunDriver({ ...options, queryFn }).run({
+      task: resumeTask,
+      threadId,
+      resume: { runId: parked.runId, sessionRef },
+    });
+
+    expect(observedResume).toBe(sessionRef);
+    const run = (await listRuns(options, { taskId: resumeTask.taskId })).runs[0]!;
+    expect(run).toMatchObject({ runId: parked.runId, status: "completed", sessionRef });
+    const messages = await listMessages(options, threadId);
+    expect(messages.find((message) => message.runId === parked.runId)?.body).toBe("Approval granted; the original SDK session continued.");
+  });
+
+  it("fails a parked run cleanly when its SDK continuation fails, without fabricating a bot response (TASK-155)", async () => {
+    const resumeTask = await createTask(options, {
+      roleId,
+      title: "TASK-155 failed resume fixture",
+      goal: "This resumed SDK call deliberately fails.",
+      requestedBy: `chat:thread:${threadId}`,
+    });
+    const sessionRef = "15555555-5555-4555-8555-555555555556";
+    const parked = await startTaskRun(options, { taskId: resumeTask.taskId, provider: "claude", tenantId: resumeTask.tenantId, sessionRef });
+    await parkTaskRun(options, parked.runId);
+    const queryFn: AgentSdkQueryFn = async function* () {
+      throw new Error("SDK session expired");
+    };
+
+    await expect(createChatRunDriver({ ...options, queryFn }).run({
+      task: resumeTask,
+      threadId,
+      resume: { runId: parked.runId, sessionRef },
+    })).rejects.toThrow("SDK session expired");
+
+    const run = (await listRuns(options, { taskId: resumeTask.taskId })).runs[0]!;
+    expect(run).toMatchObject({ runId: parked.runId, status: "failed", failureNote: "SDK session expired" });
+    expect((await listMessages(options, threadId)).some((message) => message.runId === parked.runId)).toBe(false);
+  });
+
   it(
     "runs Bash in a fresh workspace with an empty environment and removes it afterward (TASK-153)",
     async () => {
