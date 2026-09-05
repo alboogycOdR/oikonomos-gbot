@@ -1,8 +1,8 @@
 ---
-plan_version: 12.9
-last_updated: 2026-09-05T19:20:00Z
+plan_version: 13.0
+last_updated: 2026-09-05T20:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Post-restart session. Machine rebooted per user plan after TASK-166 merged (confirmed clean, nothing lost) - reboot also cleared the stuck CX/CX9/S5 worktree locks. Backend control-api restarted fresh, reachable over Tailscale with the same access code as before. User directed next wave from the mobile stock-take: TASK-167 (conversational rename, dispatching to CX) and TASK-168 (composer visual polish, dispatching to S5) are ready now. Live-agent/monitor view is real but gated behind a 2-stage prerequisite chain, properly investigated rather than one vague task: TASK-169 (extend packages/sandbox-client with a real command-execution method - the client only has create/destroySandbox today, confirmed by reading the code) dispatching to CX9; TASK-170 (OIK-043, route real chat execution through OpenSandbox) depends on 169 and is deliberately left ungrounded until 169's real API shape is known; TASK-171 (the actual mobile UI) depends on 170. Voice input logged to backlog per user instruction, not scoped. ECC-derived pack-improvement candidates from the prior session (review workflow, secret-scan hook, doc-routing table) still awaiting direction, not yet tasked."
+orchestrator_notes: "TASK-168 (composer polish) approved+merged, independently verified. TASK-169 (sandbox-client exec capability) legitimately BLOCKED, not a builder failure: CX9 checked the real live OpenSandbox OpenAPI spec and found zero exec/command endpoint exists at all (independently reconfirmed by ORCH against the same live server) - only lifecycle/diagnostics/proxy/endpoints/pools/snapshots. This changes the whole OIK-043 premise: real integration model is likely 'run a persistent process inside the sandbox, reach it via proxy/{port}' not 'remote-exec one-off commands' - updated TASK-170's Description with this finding so it isn't re-investigated from scratch. Also hit a real dispatch tooling bug (CX9's session had DEVTEAM_UNIT=CX instead of CX9, blocking even its dossier commit) - not yet root-caused, logged for follow-up, work content independently verified and preserved regardless. TASK-167 (rename) resumed after a legitimate chatRunDriver.ts territory widen and its done marker just fired - reviewing next."
 ---
 
 # Project Plan
@@ -4966,7 +4966,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-168
 **Title:** Mobile composer visual polish — pill shape, frosted header, date dividers
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** Reference UX from the Grok Bot screenshots (see [[grok-bot-mobile-reference]] items 6-8): a pill-shaped composer with attach/voice affordances, a frosted/floating header over scrolling content, and date/session divider labels between message clusters. Purely cosmetic — no capability gap, no backend change. Current composer is a plain rectangular TextField (apps/mobile/lib/screens/chat_screen.dart around line 544-546); the attach button from TASK-166 already exists and must be preserved/reflowed, not replaced.
@@ -4975,23 +4975,25 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Description:** Investigate the current chat screen's layout structure first (message list, composer row, header) before restyling — this is a visual refactor of existing widgets, not a rewrite. (1) Restyle the composer row into a pill shape (rounded container, not a plain TextField) while preserving the existing attach button (TASK-166) and send button and all their real behavior/keys — do not regress existing widget-test keys used by chat_screen_test.dart. (2) Give the app bar/header a frosted/translucent effect over scrolling content (BackdropFilter plus a semi-transparent color is the standard Flutter approach) rather than a solid opaque bar. (3) Insert date/session divider labels between message clusters that cross a day boundary (compute from real createdAt timestamps already on each message — no fabricated grouping). Respect the theme-aware/accessibility conventions already established elsewhere in this app. This is visual-only: no new API calls, no schema change, no new capability.
 **Acceptance_Criteria:**
 - [ ] Composer renders as a pill shape with the existing attach and send buttons still present and functional — tested (existing attach/send widget tests must still pass unmodified in behavior, only visual wrapper changes)
-- [ ] Header has a frosted/translucent effect over scrolled content — verified visually and via a widget test asserting the relevant widget is present
-- [ ] Date divider labels appear between message clusters that cross a real day boundary, computed from real timestamps — tested with fixture messages spanning two days
-- [ ] No existing chat_screen_test.dart test regresses
-- [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** task/TASK-168-s5
+- [x] Header has a frosted/translucent effect over scrolled content — verified visually and via a widget test asserting the relevant widget is present
+- [x] Date divider labels appear between message clusters that cross a real day boundary, computed from real timestamps — tested with fixture messages spanning two days
+- [x] No existing chat_screen_test.dart test regresses
+- [x] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** task/TASK-168-s5 (merged, deleted)
 **Started_At:** 2026-09-05T17:48:25Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-05T19:50:00Z] [S5] Pill composer (existing attach/send buttons preserved, just re-wrapped), frosted header (BackdropFilter + translucent AppBar), and date dividers computed from real `createdAt` timestamps. Reported flutter analyze clean, 29/29 (scoped) and 96/96 (full) tests passed.
+- [2026-09-05T20:00:00Z] [ORCH] Independently re-verified: flutter analyze clean, scoped test file 30/30 (builder's 29 count was an off-by-one in their own reporting, not a real discrepancy — all pass), full suite 97/97 (same off-by-one, all pass). Confirmed via diff: attach/send buttons functionally untouched (same keys/handlers, just visually rewrapped), date-divider logic genuinely derived from real timestamps (no fabrication), zero API/schema changes, only 2 files touched (both in Owned_Paths). Approved, merged --no-ff.
+**Artifacts:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart
+**Test_Evidence:** Independently re-verified: flutter analyze clean, chat_screen_test.dart 30/30, full suite 97/97.
+**Review_Findings:** APPROVED, first-pass. Purely cosmetic as scoped — no capability change, existing attach (TASK-166) and send behavior preserved exactly.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T17:48:25Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T20:00:00Z
 
 ### TASK-169
 **Title:** OpenSandbox Wave 2 slice — real command-execution capability on packages/sandbox-client (OIK-043 prerequisite)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenSandbox server is real and deployed (OIK-042, infra/sandbox/README.md, live over Tailscale). packages/sandbox-client (TASK-142, done) proved connectivity and basic lifecycle — but its real exported SandboxClient interface (packages/sandbox-client/src/client.ts) has ONLY createSandbox/destroySandbox — confirmed by reading the file directly, no execute/run-command/exec method exists at all. OIK-043 (route real chat/task execution through an OpenSandbox sandbox instead of TASK-153's local scoped temp-dir isolation) is now dependency-eligible (OIK-033/harness-factory landed) but genuinely CANNOT be built yet — there is nothing to route work through inside a sandbox once created. This task is the missing prerequisite slice, matching TASK-142's own thin-slice discipline.
@@ -5006,13 +5008,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-169-cx9
 **Started_At:** 2026-09-05T17:48:39Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-05T19:35:00Z] [CX9] Investigated the real deployed OpenSandbox server's live OpenAPI spec (`http://100.78.70.2:8080/openapi.json`, "OpenSandbox Lifecycle API" v0.1.0, server v0.2.2) directly rather than guessing from the README. Every path/operation/schema searched for exec/command/shell/terminal/process-shaped functionality — none exists. The only real paths are lifecycle (sandboxes create/list/get/delete/pause/resume/renew), diagnostics (events/inspect/logs/summary), metadata, endpoints, proxy, snapshots, pools, metrics. Correctly did not write speculative code against a guessed endpoint. Filed `MISSING_DEPENDENCY`.
+- [2026-09-05T20:00:00Z] [ORCH] Independently re-confirmed by fetching the same live `/openapi.json` myself and grep'ing every path — identical result, zero exec-shaped endpoint. **This is a genuine, correctly-identified gap, not a builder failure — accepting the block as-is.** Real architectural implication, not just "wait for a feature": the presence of `/sandboxes/{id}/proxy/{port}` and `/sandboxes/{id}/endpoints/{port}` suggests OpenSandbox's actual integration model is "run your own long-lived process inside the sandbox and expose its port for the host to reach," NOT "remotely exec one-off commands into an idle container" — a materially different architecture than TASK-169/170 assumed when originally scoped. Updated TASK-170's Description with this finding so a future decompose starts from the real model rather than repeating this same investigation. Separately: CX9 also hit a real tooling bug — its dispatched session had `DEVTEAM_UNIT=CX` instead of `CX9` (confirmed the registry itself resolves `CX9` correctly in isolation; likely an environment-inheritance leak between concurrent same-tick dispatches, not yet root-caused), which blocked even the dossier-only commit via territory-precommit. Logging as pack feedback separately; not chasing further right now since CX9's actual investigation content was independently verified and is not lost. Leaving BLOCKED (not closed) pending a real design decision on the proxy/endpoint-based model — this is genuine follow-on work, not dead.
+**Artifacts:** dossiers/TASK-169.md (staged, uncommitted due to the DEVTEAM_UNIT bug — content independently verified and recorded here)
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-05T17:48:39Z
+**Blocked_Reason:** MISSING_DEPENDENCY: the deployed OpenSandbox server (v0.2.2, Lifecycle API v0.1.0) has no command-execution endpoint of any kind — confirmed independently by ORCH against the live server, not just the builder's claim. A real design decision (likely: run a persistent process inside the sandbox and reach it via proxy/{port}, rather than remote-exec) is needed before this task can be completed as originally scoped.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T20:00:00Z
 
 ### TASK-170
 **Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
@@ -5022,7 +5026,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Spec_References:** docs/decisions/ADR-006-addendum-b-opensandbox-adoption.md; Master_Work_Breakdown E5. Depends on TASK-169's command-execution primitive existing first. This is the real architectural step that would let a live-agent/monitor view mean something — today no chat run touches OpenSandbox at all; TASK-153 gives each run a local scoped temp directory on the same host process instead.
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/test/executeRun.test.ts, packages/harness-factory/src/**
 **Depends_On:** TASK-169
-**Description:** NOT yet ready to ground precisely — the real design depends on what TASK-169 discovers about OpenSandbox's actual command-execution semantics (streaming output, one-shot exec, or a persistent shell session). When grounding this for real: decide whether every chat run moves into a sandbox or only specific tiers/routines (a real product/cost/latency trade-off — creating and destroying a sandbox per chat turn may be far slower than the current local temp-dir approach; investigate real latency before assuming full replacement is right). Must preserve every guarantee TASK-153/154 already built (env isolation, no secret leakage, no MCP-connector leak) — those tests must keep passing. This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154 (different model than author) given it touches the actual execution isolation boundary. TASK-027 (host firewall hardening, currently deliberately deferred) has an explicit trigger condition that fires when this task's real workload starts running — do not silently skip re-evaluating it once this lands.
+**Description:** NOT yet ready to ground precisely, and the premise has changed — see the 2026-09-05 finding below. **TASK-169 discovered (independently confirmed by ORCH against the live server directly) that the deployed OpenSandbox server has NO command-execution/exec API of any kind** — only lifecycle (create/pause/resume/delete), diagnostics, metadata, snapshots, pools, and, notably, `endpoints/{port}`/`proxy/{port}`. This strongly suggests OpenSandbox's real integration model is "run your own long-lived process inside the sandbox and reach it over its exposed/proxied port," not "remotely exec one-off commands into an idle container" — a fundamentally different shape than a `chatRunDriver.ts`-calls-`sandbox.exec(cmd)` design. Before grounding this task for real: (1) investigate whether OpenSandbox supports injecting a startup command/entrypoint at `createSandbox` time (check the real `/sandboxes` POST schema, not just what's missing) — if so, the model may be "create a sandbox running the agent's own harness process, proxy chat traffic to it" rather than exec-per-turn; (2) if no such mechanism exists either, this may mean OpenSandbox is not actually a fit for per-chat-turn execution at all in its current form, and that finding must be reported honestly rather than forced. Decide whether every chat run moves into a sandbox or only specific tiers/routines (real cost/latency trade-off — sandbox lifecycle overhead per turn may be prohibitive; investigate real latency before assuming full replacement is right). Must preserve every guarantee TASK-153/154 already built (env isolation, no secret leakage, no MCP-connector leak) — those tests must keep passing. This is genuine, security-relevant architecture work on a protected-adjacent path — treat with the same adversarial-review discipline as TASK-143/154 (different model than author) given it touches the actual execution isolation boundary. TASK-027 (host firewall hardening, currently deliberately deferred) has an explicit trigger condition that fires when this task's real workload starts running — do not silently skip re-evaluating it once this lands.
 **Acceptance_Criteria:** TBD at proper decompose time once TASK-169 lands — do not write speculative criteria for an ungrounded design.
 **Branch:** —
 **Started_At:** —
