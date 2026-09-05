@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { Message, Routine, Thread } from "@oikonomos/db";
+import type { Message, Role, Routine, Thread } from "@oikonomos/db";
 
 import { buildApp } from "./app.js";
 import type { ControlApiDeps } from "./ports.js";
@@ -21,6 +21,27 @@ function authHeaders(): Record<string, string> {
 
 function makeThread(): Thread {
   return { id: threadId, roleId: "bot", title: null, createdAt: new Date(), updatedAt: new Date() };
+}
+
+/**
+ * TASK-191 — this route now derives thread ownership from `deps.listRoles`,
+ * so the default fixture must own `makeThread()`'s `roleId` ("bot") for the
+ * service-bearer tenant ("basileia", see `auth.ts`'s `SERVICE_TENANT_ID`)
+ * or every existing 2xx test in this file would start 404ing.
+ */
+function makeRole(overrides: Partial<Role> = {}): Role {
+  return {
+    roleId: "bot",
+    tenantId: "basileia",
+    name: "Bot",
+    title: "Bot",
+    description: "SSE fixture bot",
+    instructions: null,
+    status: "active",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
 }
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
@@ -51,7 +72,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
     upsertRoleGrant: async (input) => input,
     listRoleGrants: async () => [],
     revokeRoleGrant: async () => {},
-    listRoles: async () => [],
+    listRoles: async () => [makeRole()],
     updateRoleInstructions: async () => null,
     listRoleMessages: async () => [],
     listRoutines: async (): Promise<Routine[]> => [],

@@ -414,7 +414,10 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const result = await app.inject({ method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "  Plan my day  " } });
     expect(result.statusCode).toBe(201);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(calls).toEqual(["listAllThreadsWithMembers", "insertMessage", "createTask", "runChatTask"]);
+    // TASK-191: the by-id write path now resolves tenant ownership first
+    // (findTenantOwnedThread), adding "listRoles" ahead of the pre-existing
+    // insert/create/run sequence.
+    expect(calls).toEqual(["listAllThreadsWithMembers", "listRoles", "insertMessage", "createTask", "runChatTask"]);
     expect(result.body).toContain("Plan my day");
     await app.close();
   });
@@ -630,6 +633,10 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     const inserted: Array<Parameters<ControlApiDeps["insertMessage"]>[0]> = [];
     const { deps, calls } = createDeps({
       listAllThreadsWithMembers: async () => { calls.push("listAllThreadsWithMembers"); return [groupThread]; },
+      // TASK-191: group-thread ownership requires EVERY member role to
+      // resolve under the caller's tenant — both roleId (default fixture)
+      // and "second-bot" must be present, or findTenantOwnedThread 404s.
+      listRoles: async () => { calls.push("listRoles"); return [makeRole(), makeRole({ roleId: "second-bot", name: "Second bot" })]; },
       requestGroupFanout: async (input) => {
         calls.push("requestGroupFanout");
         fanoutRequests.push(input);
@@ -646,7 +653,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       method: "POST", url: `/threads/${groupThread.id}/messages`, headers: authHeaders(), payload: { body: "  Coordinate this  " },
     });
     expect(result.statusCode).toBe(201);
-    expect(calls).toEqual(["listAllThreadsWithMembers", "createTask", "requestGroupFanout", "insertMessage"]);
+    expect(calls).toEqual(["listAllThreadsWithMembers", "listRoles", "createTask", "requestGroupFanout", "insertMessage"]);
     expect(fanoutRequests).toEqual([expect.objectContaining({ memberRoleIds: groupThread.memberRoleIds, body: "Coordinate this" })]);
     expect(inserted).toEqual([expect.objectContaining({
       threadId: groupThread.id, role: "user", body: "Coordinate this", senderRoleId: null, runId: expect.any(String),
@@ -656,12 +663,17 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
 
   it("attributes group-thread messages to their sender role and name", async () => {
     const senderRoleId = "second-bot";
+    const groupThread = makeGroupThread();
     const { deps } = createDeps({
+      // TASK-191: findTenantOwnedThread needs the group thread itself
+      // (default fixture only returns the 1:1 thread) and every member
+      // role — the calling role plus the sender — owned by the tenant.
+      listAllThreadsWithMembers: async () => [groupThread],
       listMessages: async () => [makeMessage({ role: "bot", senderRoleId })],
-      listRoles: async () => [makeRole({ roleId: senderRoleId, name: "Second bot" })],
+      listRoles: async () => [makeRole(), makeRole({ roleId: senderRoleId, name: "Second bot" })],
     });
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
-    const response = await app.inject({ method: "GET", url: `/threads/${makeGroupThread().id}/messages`, headers: authHeaders() });
+    const response = await app.inject({ method: "GET", url: `/threads/${groupThread.id}/messages`, headers: authHeaders() });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)[0]).toMatchObject({ senderRoleId, senderName: "Second bot" });
     await app.close();

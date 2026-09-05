@@ -442,17 +442,38 @@ async function loadMessageShapingContext(
 }
 
 /**
- * TASK-190 — thread-by-id ownership is NOT yet fixed here (unlike
- * skills/runs below). See the comment on `GET /threads/:id/messages` and
- * `dossiers/TASK-190.md` for why: it requires `chat.routes.test.ts`'s
- * fixtures to move in lockstep, and that file is currently unreachable —
- * blocked by the territory-firewall hook's Owned_Paths comma-parsing bug.
- * This stub function name is reserved so a follow-up session doesn't have
- * to rediscover the design (derive ownership from `thread.roleId` /
- * `thread.memberRoleIds` via `deps.listRoles({ tenantId })`, requiring
- * EVERY member role to match for a group thread) — only its call sites and
- * this file's own fixture support were reverted, not the plan.
+ * TASK-191 — the tenant-ownership check for every `/threads/:id/*` by-id
+ * route. A 1:1 thread is owned by whichever tenant owns `thread.roleId`; a
+ * group thread is owned by a tenant only if EVERY entry in
+ * `thread.memberRoleIds` resolves to a role that tenant owns (a group
+ * thread with even one foreign member role is not this tenant's to read or
+ * write, full stop — "any member matches" is deliberately not sufficient).
+ * `packages/db/src/threads.ts` has no `tenant_id` column of its own
+ * (ownership lives one hop away, via `roles.tenant_id`), so this resolves
+ * ownership through `deps.listRoles({ tenantId, status: "active" })` — the
+ * same source of truth `GET /threads` and `loadMessageShapingContext`
+ * already use — rather than adding a SQL join for a table this module
+ * doesn't otherwise touch. Returns `undefined` for "does not exist" and
+ * "exists but not owned by this tenant" identically, so every call site
+ * gets a 404-never-403 for free by construction.
  */
+async function findTenantOwnedThread(
+  deps: ControlApiDeps,
+  tenantId: string,
+  threadId: string,
+): Promise<Thread | GroupThread | undefined> {
+  const [threads, roles] = await Promise.all([
+    deps.listAllThreadsWithMembers(),
+    deps.listRoles({ tenantId, status: "active" }),
+  ]);
+  const thread = threads.find((candidate) => candidate.id === threadId);
+  if (thread === undefined) return undefined;
+  const ownedRoleIds = new Set(roles.map((role) => role.roleId));
+  if ("memberRoleIds" in thread) {
+    return thread.memberRoleIds.every((roleId) => ownedRoleIds.has(roleId)) ? thread : undefined;
+  }
+  return ownedRoleIds.has(thread.roleId) ? thread : undefined;
+}
 
 function serializeRole(role: {
   roleId: string;
@@ -1164,16 +1185,14 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     { schema: { querystring: LIST_MESSAGES_QUERY_SCHEMA } },
     async (request, reply) => {
       try {
-        // TASK-190: a real tenant-ownership check belongs here too (this
-        // route never even checked the thread exists, let alone who owns
-        // it) — deliberately NOT added this session. See dossiers/TASK-190.md:
-        // the fix requires `chat.routes.test.ts`'s fixtures to be updated in
-        // lockstep (several of its tests exercise group threads whose member
-        // roles aren't resolvable through that file's default `listRoles`
-        // fixture), and that file is blocked by the territory-firewall
-        // hook's Owned_Paths comma-parsing bug — confirmed mechanically,
-        // not assumed. Left exactly as found rather than risk a fix no test
-        // in this session's actual territory can prove.
+        // TASK-191: 404 (never 403) both for a genuinely missing thread and
+        // for one that belongs to a different tenant — same reasoning as
+        // TASK-190's skills/runs fix. See findTenantOwnedThread above.
+        const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+        if (thread === undefined) {
+          await reply.code(404).send({ error: "thread not found" });
+          return;
+        }
         const [messages, context] = await Promise.all([
           deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
           loadMessageShapingContext(deps, request.tenantId),
@@ -1218,9 +1237,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
    */
   app.get<{ Params: { id: string } }>("/threads/:id/stream", async (request, reply) => {
     const threadId = request.params.id;
-    const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === threadId);
-    // TASK-190: same not-yet-fixed gap as GET /threads/:id/messages above —
-    // see the comment there and dossiers/TASK-190.md.
+    // TASK-191: same 404-never-403 tenant-ownership check as GET
+    // /threads/:id/messages above — see findTenantOwnedThread.
+    const thread = await findTenantOwnedThread(deps, request.tenantId, threadId);
     if (thread === undefined) {
       await reply.code(404).send({ error: "thread not found" });
       return;
@@ -1301,8 +1320,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     { schema: { body: CREATE_ATTACHMENT_SCHEMA }, bodyLimit: ATTACHMENT_MAX_BYTES * 2 },
     async (request, reply) => {
       try {
-        const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === request.params.id);
-        // TASK-190: same not-yet-fixed gap — see GET /threads/:id/messages above.
+        // TASK-191: same 404-never-403 tenant-ownership check — see
+        // findTenantOwnedThread. This is the write-path pre-check: a
+        // cross-tenant request returns 404 here and never reaches
+        // attachmentStore.persist.
+        const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
         if (thread === undefined) {
           await reply.code(404).send({ error: "thread not found" });
           return;
@@ -1363,8 +1385,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           await reply.code(400).send({ error: "body must not be empty." });
           return;
         }
-        const thread = (await deps.listAllThreadsWithMembers()).find((candidate) => candidate.id === request.params.id);
-        // TASK-190: same not-yet-fixed gap — see GET /threads/:id/messages above.
+        // TASK-191: same 404-never-403 tenant-ownership check — see
+        // findTenantOwnedThread. This is the write-path pre-check: a
+        // cross-tenant request returns 404 here and never reaches
+        // deps.insertMessage.
+        const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
         if (thread === undefined) {
           await reply.code(404).send({ error: "thread not found" });
           return;
@@ -1841,5 +1866,142 @@ if (import.meta.vitest) {
     // comment above `GET /threads/:id/messages` in the route itself and
     // dossiers/TASK-190.md's blocked-status note. No test claims a fix that
     // doesn't exist.
+  });
+
+  /**
+   * TASK-191 — the `/threads/:id/*` half of the cross-tenant IDOR class,
+   * landed here for the same territory-tooling reason as TASK-190's block
+   * above: `chat.routes.test.ts`/`sse.test.ts`/`threads.ts` are already
+   * exercised by their own dedicated fixture updates elsewhere in this
+   * task, but the *first-line* regression evidence for this exact
+   * ownership function (`findTenantOwnedThread`) belongs next to it, in the
+   * same `includeSource` block TASK-190 established.
+   */
+  describe("TASK-191 — cross-tenant IDOR on /threads/:id/* by-id routes", () => {
+    const roleA = makeRole();
+    const roleB = makeRole({ roleId: "role-b", tenantId: TENANT_B, name: "Tenant B bot" });
+    function makeGroupThread(overrides: Partial<GroupThread> = {}): GroupThread {
+      return {
+        id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        title: "Group",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        memberRoleIds: [roleA.roleId],
+        ...overrides,
+      };
+    }
+    function tenantFilteredDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
+      return makeDeps({
+        listRoles: async (filter) => [roleA, roleB].filter((role) => role.tenantId === filter.tenantId),
+        ...overrides,
+      });
+    }
+
+    it("GET /threads/:id/messages 404s (never 403) for a thread owned by a different tenant", async () => {
+      const deps = tenantFilteredDeps({ listAllThreadsWithMembers: async () => [makeThread({ roleId: roleA.roleId })] });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const own = await app.inject({ method: "GET", url: `/threads/${makeThread().id}/messages`, headers: sessionHeaders(TENANT_A) });
+      expect(own.statusCode).toBe(200);
+
+      const cross = await app.inject({ method: "GET", url: `/threads/${makeThread().id}/messages`, headers: sessionHeaders(TENANT_B) });
+      expect(cross.statusCode).toBe(404);
+      expect(JSON.parse(cross.body)).toEqual({ error: "thread not found" });
+      await app.close();
+    });
+
+    it("POST /threads/:id/messages 404s for a different tenant and never reaches insertMessage", async () => {
+      const insertCalls: string[] = [];
+      const deps = tenantFilteredDeps({
+        listAllThreadsWithMembers: async () => [makeThread({ roleId: roleA.roleId })],
+        insertMessage: async (input) => {
+          insertCalls.push(input.threadId);
+          return { id: "msg", threadId: input.threadId, role: input.role, body: input.body, runId: input.runId ?? null, createdAt: new Date() };
+        },
+        createTask: async (input) => ({ taskId: "task", tenantId: TENANT_A, roleId: input.roleId, title: input.title, goal: input.goal, status: "draft", routineId: null, requestedBy: input.requestedBy, createdAt: new Date(), updatedAt: new Date() }),
+        runChatTask: async () => {},
+      });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const cross = await app.inject({
+        method: "POST", url: `/threads/${makeThread().id}/messages`, headers: sessionHeaders(TENANT_B), payload: { body: "hijack" },
+      });
+      expect(cross.statusCode).toBe(404);
+      expect(insertCalls).toEqual([]);
+
+      const own = await app.inject({
+        method: "POST", url: `/threads/${makeThread().id}/messages`, headers: sessionHeaders(TENANT_A), payload: { body: "legit" },
+      });
+      expect(own.statusCode).toBe(201);
+      expect(insertCalls).toEqual([makeThread().id]);
+      await app.close();
+    });
+
+    it("POST /threads/:id/attachments 404s for a different tenant and never reaches the attachment store", async () => {
+      const persistCalls: string[] = [];
+      const attachmentStore = {
+        persist: async (input: { threadId: string; filename: string; contentType: string; bytes: Buffer }) => {
+          persistCalls.push(input.threadId);
+          return {
+            id: "att", threadId: input.threadId, filename: input.filename, contentType: input.contentType,
+            byteSize: input.bytes.length, sha256: "digest", absolutePath: "/tmp/att", storageKey: "att",
+          };
+        },
+        resolve: async () => [],
+      };
+      const deps = tenantFilteredDeps({ listAllThreadsWithMembers: async () => [makeThread({ roleId: roleA.roleId })] });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false, attachmentStore });
+
+      const cross = await app.inject({
+        method: "POST", url: `/threads/${makeThread().id}/attachments`, headers: sessionHeaders(TENANT_B),
+        payload: { filename: "a.txt", contentType: "text/plain", contentBase64: Buffer.from("hi").toString("base64") },
+      });
+      expect(cross.statusCode).toBe(404);
+      expect(persistCalls).toEqual([]);
+
+      const own = await app.inject({
+        method: "POST", url: `/threads/${makeThread().id}/attachments`, headers: sessionHeaders(TENANT_A),
+        payload: { filename: "a.txt", contentType: "text/plain", contentBase64: Buffer.from("hi").toString("base64") },
+      });
+      expect(own.statusCode).toBe(201);
+      expect(persistCalls).toEqual([makeThread().id]);
+      await app.close();
+    });
+
+    it("GET /threads/:id/stream 404s for a thread owned by a different tenant", async () => {
+      const deps = tenantFilteredDeps({ listAllThreadsWithMembers: async () => [makeThread({ roleId: roleA.roleId })] });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const cross = await app.inject({ method: "GET", url: `/threads/${makeThread().id}/stream`, headers: sessionHeaders(TENANT_B) });
+      expect(cross.statusCode).toBe(404);
+      expect(JSON.parse(cross.body)).toEqual({ error: "thread not found" });
+      await app.close();
+    });
+
+    it("denies a group thread to a caller whose tenant does not own EVERY member role, not just one", async () => {
+      const groupThread = makeGroupThread({ memberRoleIds: [roleA.roleId, roleB.roleId] });
+      const deps = tenantFilteredDeps({ listAllThreadsWithMembers: async () => [groupThread] });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      // Tenant A owns roleA but not roleB — "any member matches" must not
+      // be sufficient for a group thread.
+      const crossA = await app.inject({ method: "GET", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A) });
+      expect(crossA.statusCode).toBe(404);
+
+      // Tenant B owns roleB but not roleA — same denial from the other side.
+      const crossB = await app.inject({ method: "GET", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_B) });
+      expect(crossB.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("allows a group thread only when the caller's tenant owns every member role", async () => {
+      const groupThread = makeGroupThread({ memberRoleIds: [roleA.roleId] });
+      const deps = tenantFilteredDeps({ listAllThreadsWithMembers: async () => [groupThread] });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const own = await app.inject({ method: "GET", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A) });
+      expect(own.statusCode).toBe(200);
+      await app.close();
+    });
   });
 }
