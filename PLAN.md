@@ -5302,7 +5302,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-180
 **Title:** G-04 — Single-owner group routing: exactly one responder when nobody is @-mentioned
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04 (AC anchors: unaddressed message in a 3-Bot room yields run count = 1; classifier billed to Tier-0); report §12.5(f) group_host.route, §6.4 'group chatter cost', §10.6; TASK-122's fan-out approval rule stays intact
@@ -5315,15 +5315,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The scorer call goes through the budgeted agent-providers path and is attributed to the Tier-0 provider, asserted via the budget sink in a test
 - [ ] TASK-122's existing fan-out approval tests pass unchanged
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-180-cx9
+**Started_At:** 2026-09-05T22:05:25Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T22:05:25Z
 
 ### TASK-181
 **Title:** G-09 — Six-part Bot charter seeded on create (mobile), filled in conversationally
