@@ -4656,7 +4656,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-156
 **Title:** Role instructions/persona — real bot identity via SDK systemPrompt
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Confirmed missing at the schema level tonight: `roles` has no `instructions`/system-prompt column at all (verified directly against Postgres). This contributed to tonight's ORCH-persona incident — a bot had nothing of its own to fall back on. The SDK genuinely supports this: `Options.systemPrompt?: string` (verified in sdk.d.ts), and `chatRunDriver.ts` currently passes only `prompt: request.task.goal` with no `systemPrompt` at all. TASK-155 (merged) is the reason this was sequenced rather than run in parallel — both need `chatRunDriver.ts`'s `runChatTask`, so this had to wait.
@@ -4672,10 +4672,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-156-cx
 **Started_At:** 2026-09-05T11:14:16Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-05T11:26:39Z] [SV:CX] Added nullable role instructions migration, real PATCH persistence route, and role-derived SDK system prompts while preserving cwd/env/resume isolation.
+**Artifacts:** infra/postgres/migrations/011_role_instructions.up.sql, infra/postgres/migrations/011_role_instructions.down.sql, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/control-api/src/sse.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-156.md
+**Test_Evidence:** Real Postgres migration applied; DB suite 140 passed/2 skipped, control-api 145 passed, worker 70 passed/1 skipped. Required pnpm -r test, pnpm -r build, and pnpm lint all exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-05T11:14:16Z
+**Updated_At:** 2026-09-05T11:26:39Z
