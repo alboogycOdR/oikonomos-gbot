@@ -4629,7 +4629,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-158
 **Title:** Mobile routine creation UI
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** Reference UX from the Grok Bot screenshots the user shared: a routine detail screen with Active toggle, Schedule ("Weekdays at 8:00 AM" / "Next run"), and an "Instruction" field describing what the routine does. The real backend route already exists and is grounded here, not guessed: `POST /roles/:roleId/routines` (services/control-api/src/app.ts), body `{name: string, schedule: string, definition?: object}`, `name`+`schedule` required (non-empty strings), `schedule` is validated server-side as a real cron expression (rejects invalid cron with a 400). `definition.goal` (services/worker/src/jobs/routineJob.ts) is the field the routine-fire job actually reads as the created task's instruction — this is the real field to expose as "Instruction" in the UI, not an arbitrary key. TASK-148 already built a read-only routines list tab; this task adds the missing creation flow only.
@@ -4642,12 +4642,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] After a successful creation, the routines tab reflects the new routine without a manual screen re-entry — tested
 - [ ] Empty name or empty schedule is prevented client-side before any request fires — tested
 - [ ] `C:\tool\flutter\bin\flutter analyze` and `flutter test` exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-158-s5
+**Started_At:** 2026-09-05T10:51:18Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:51:18Z
