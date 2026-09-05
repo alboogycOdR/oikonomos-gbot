@@ -165,9 +165,127 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/skills": {
+        get: {
+          summary: "List skills (TASK-177, G-01b)",
+          operationId: "listSkills",
+          parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["active", "archived"] } }],
+          responses: {
+            "200": {
+              description: "Skills for the caller's tenant",
+              content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Skill" } } } },
+            },
+          },
+        },
+        post: {
+          summary: "Create a skill",
+          operationId: "createSkill",
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/NewSkill" } } },
+          },
+          responses: {
+            "201": {
+              description: "Skill created",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Skill" } } },
+            },
+            "400": { description: "Invalid skill input" },
+          },
+        },
+      },
+      "/skills/{id}": {
+        get: {
+          summary: "Get one skill",
+          operationId: "getSkill",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": { description: "The skill", content: { "application/json": { schema: { $ref: "#/components/schemas/Skill" } } } },
+            "404": { description: "No skill with that id" },
+          },
+        },
+        patch: {
+          summary: "Update a skill",
+          operationId: "updateSkill",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/UpdateSkill" } } },
+          },
+          responses: {
+            "200": { description: "Skill updated", content: { "application/json": { schema: { $ref: "#/components/schemas/Skill" } } } },
+            "404": { description: "No skill with that id" },
+          },
+        },
+      },
+      "/roles/{roleId}/skills/{skillId}": {
+        put: {
+          summary: "Enable or disable a skill for a chat bot (the per-Bot enable list)",
+          operationId: "setRoleSkillEnabled",
+          parameters: [
+            { name: "roleId", in: "path", required: true, schema: { type: "string" } },
+            { name: "skillId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { type: "object", required: ["enabled"], properties: { enabled: { type: "boolean" } } },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Enable state applied" },
+            "400": { description: "Invalid request" },
+          },
+        },
+      },
+      "/roles/{roleId}/skills": {
+        get: {
+          summary: "List the skills enabled for a chat bot",
+          operationId: "listRoleSkills",
+          parameters: [{ name: "roleId", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "Skills enabled for this bot",
+              content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Skill" } } } },
+            },
+          },
+        },
+      },
     },
     components: {
       schemas: {
+        NewSkill: {
+          type: "object",
+          required: ["name", "description", "body"],
+          properties: {
+            tenantId: { type: "string" },
+            name: { type: "string", description: "The /name slash token, ^[a-z0-9][a-z0-9-]{1,63}$." },
+            description: { type: "string" },
+            whenToUse: { type: "string", nullable: true },
+            body: { type: "string" },
+            inputs: { type: "array", items: { type: "object" } },
+            access: { type: "array", items: { type: "string" } },
+            approvals: { type: "array", items: { type: "string" } },
+            failurePolicy: { type: "object" },
+            status: { type: "string", enum: ["active", "archived"] },
+          },
+        },
+        UpdateSkill: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            whenToUse: { type: "string", nullable: true },
+            body: { type: "string" },
+            inputs: { type: "array", items: { type: "object" } },
+            access: { type: "array", items: { type: "string" } },
+            approvals: { type: "array", items: { type: "string" } },
+            failurePolicy: { type: "object" },
+            status: { type: "string", enum: ["active", "archived"] },
+          },
+        },
+        Skill: { type: "object" },
         NewTask: {
           type: "object",
           required: ["roleId", "title", "goal", "requestedBy"],

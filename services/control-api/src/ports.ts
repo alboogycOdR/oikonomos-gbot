@@ -33,6 +33,12 @@ import {
   listAllThreadsWithMembers as dbListAllThreadsWithMembers,
   listDeviceTokens as dbListDeviceTokens,
   registerDeviceToken as dbRegisterDeviceToken,
+  createSkill as dbCreateSkill,
+  getSkill as dbGetSkill,
+  updateSkill as dbUpdateSkill,
+  listSkills as dbListSkills,
+  setEnabledForRole as dbSetEnabledForRole,
+  listEnabledForRole as dbListEnabledForRole,
   type AuditEvent,
   type Capability,
   type DatabaseOptions,
@@ -60,6 +66,10 @@ import {
   type MessageListOptions,
   type DeviceToken,
   type RegisterDeviceTokenInput,
+  type NewSkill,
+  type Skill,
+  type SkillListFilter,
+  type UpdateSkill,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -127,6 +137,23 @@ export interface ControlApiDeps {
   registerDeviceToken(input: RegisterDeviceTokenInput): Promise<DeviceToken>;
   runChatTask(input: { task: Task; threadId: string; resume?: { runId: string; sessionRef: string } }): Promise<void>;
   requestGroupFanout(input: { task: Task; memberRoleIds: readonly string[]; body: string }): Promise<{ runId: string }>;
+  /**
+   * TASK-177 (G-01b) — Skills CRUD, tenant-scoped like every other list
+   * route. Declared optional (unlike every other port method here) purely
+   * so pre-existing `ControlApiDeps` literals elsewhere in this package
+   * that predate this task (chat.routes.test.ts, sse.test.ts — both
+   * outside this task's Owned_Paths) keep type-checking without an
+   * out-of-territory edit to add six unrelated fields; every real and
+   * skills-focused test fixture provides all six. Route handlers guard
+   * with a 501 when a dep omits them (see app.ts).
+   */
+  createSkill?(input: NewSkill): Promise<Skill>;
+  getSkill?(skillId: string): Promise<Skill | null>;
+  updateSkill?(skillId: string, input: UpdateSkill): Promise<Skill | null>;
+  listSkills?(filter: SkillListFilter): Promise<Skill[]>;
+  /** The per-Bot enable list (`role_skills`). */
+  setSkillEnabledForRole?(roleId: string, skillId: string, enabled: boolean): Promise<void>;
+  listEnabledSkillsForRole?(roleId: string): Promise<Skill[]>;
 }
 
 export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
@@ -239,6 +266,12 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       });
       return { runId: run.runId };
     },
+    createSkill: (input) => dbCreateSkill(options, input),
+    getSkill: (skillId) => dbGetSkill(options, skillId),
+    updateSkill: (skillId, input) => dbUpdateSkill(options, skillId, input),
+    listSkills: (filter) => dbListSkills(options, filter),
+    setSkillEnabledForRole: (roleId, skillId, enabled) => dbSetEnabledForRole(options, roleId, skillId, enabled),
+    listEnabledSkillsForRole: (roleId) => dbListEnabledForRole(options, roleId),
   };
 }
 
