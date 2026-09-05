@@ -5088,7 +5088,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** User-requested real gap: today every bot is created under one hardcoded literal tenant, "basileia" — confirmed by grep, exactly 8 sites in services/control-api/src/app.ts (lines 358, 663, 683, 728-729, 784, 799, 822). Whoever logs in with the single shared CONTROL_API_TOKEN sees every bot ever created, with no real per-person ownership — the opposite of the reference product (Grok Bot), where signing in with a different Google account shows a different, private bot roster. The data layer is already real and ready: packages/db/src/roles.ts's listRoles/createRole already require a real tenantId, not optional — this is purely an HTTP-layer identity gap, no schema migration needed for the core scoping. The human has enabled Google as a Firebase sign-in provider for the existing Firebase project (basileia-oikonomos-gmail, already wired for push in TASK-149) and will provide an updated google-services.json with the Android app's debug-keystore SHA-1 fingerprint registered.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/src/ports.ts, services/control-api/package.json, pnpm-lock.yaml
