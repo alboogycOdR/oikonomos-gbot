@@ -255,3 +255,14 @@ Merged `--no-ff`. This closes out the last active item from the post-incident ba
 Real capability-exposure fix: `serializeRole()` never returned `title`/`instructions` over HTTP despite both being real, working DB columns (instructions persisted via TASK-156's route) — this is why the settings screen showed a hardcoded placeholder and had no way to set a bot's persona at all. GB extended the serializer, honestly grew the existing shape assertions rather than loosening them, and added a real editable multi-line Instructions field to mobile with proper Save/Saving/error states and the correct empty-string-clears contract.
 
 Independently re-verified rather than trusted: control-api 151/151, flutter analyze/test clean (82/82), full recursive suite clean modulo the two already-known pre-existing flakes. Read the actual diff directly — matches the dossier exactly. Merged --no-ff.
+
+## TASK-166 — Chat file/image attachments (GB)
+**Verdict:** approved, merged, first-pass on implementation · **Date:** 2026-09-05
+
+A genuinely new capability, well-investigated: GB correctly resolved the real open design question (whether the agent-visible `WORKSPACE_ROOT` path is real or design-only — confirmed design-only by reading the actual module comments and the real chat driver's cwd construction) rather than guessing, and chose a real, working delivery mechanism instead: persist bytes to a local object store, record a structured reference on the message, inject content/metadata into the prompt at send time.
+
+Commit was briefly blocked by a real bug in the task's own `Owned_Paths` authoring (a "TBD at decompose time" free-text prefix broke `territory-precommit`'s parser) — GB correctly refused `--no-verify` and escalated rather than bypass the hook. Fixed the authoring pattern (and the same latent bug in three other queued tasks) before redispatching to commit.
+
+Independent security-focused verification (new upload surface, worth the scrutiny): confirmed no path-traversal vulnerability — storage paths use server-generated UUIDs only, client filenames never reach path construction, both `threadId` and `attachmentIds` are strict-UUID-validated. Confirmed size limits check decoded bytes (no base64-length bypass) and file-count limits are enforced twice. Confirmed the "agent actually reads the content" test is genuine — it captures the real constructed prompt and independently verifies file content, not a reference-only proxy. One accepted, documented limitation: content-type validation trusts the client header with no magic-byte sniffing — acceptable for this feature's current threat model (no execution path from an uploaded file), flagged for revisit if attachment handling ever gains more privilege.
+
+Merged --no-ff. Unlocks TASK-167 (conversational rename), previously sequenced behind it.
