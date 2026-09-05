@@ -138,6 +138,31 @@ class ApiClient {
     await _request('POST', '/auth/login', body: {'token': token});
   }
 
+  /// TASK-173 — `POST /auth/google` (`services/control-api/src/app.ts`):
+  /// exchanges a real, already-verified-client-side Firebase ID token for a
+  /// UID-scoped session cookie, captured internally exactly like [login].
+  /// The request/response shape (`{idToken}` in, a `set-cookie` header plus
+  /// `{authenticated: true}` on 200) is the real route's, not a guess — read
+  /// from `services/control-api/src/app.ts` and its `GoogleLoginRequest`
+  /// OpenAPI schema before writing this method. Throws [UnauthorizedError]
+  /// on a rejected/expired token (server's 401, e.g. JWKS verification
+  /// failure), [ApiException] on any other failure.
+  Future<void> loginWithGoogle(String idToken) async {
+    await _request('POST', '/auth/google', body: {'idToken': idToken});
+  }
+
+  /// TASK-173 — clears the client-side session cookie captured by [login]
+  /// or [loginWithGoogle]. Sessions are stateless signed tokens
+  /// (`services/control-api/src/auth.ts`'s `createSessionToken`), not rows
+  /// in a server-side store, so there is nothing to revoke server-side:
+  /// dropping the cookie here is the real, complete client-side sign-out.
+  /// Callers pairing this with a Google sign-out (see
+  /// `screens/login_screen.dart`'s `GoogleAuthPort.signOut`) should call
+  /// both so neither the app session nor the cached Google account survive.
+  void clearSession() {
+    _sessionCookie = null;
+  }
+
   Future<List<Role>> listRoles() async {
     final json = await _request('GET', '/roles') as List<dynamic>;
     return json

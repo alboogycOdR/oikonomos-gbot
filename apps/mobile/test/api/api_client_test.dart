@@ -74,6 +74,75 @@ void main() {
     );
   });
 
+  group('ApiClient.loginWithGoogle', () {
+    test('posts idToken to /auth/google and captures the session cookie',
+        () async {
+      final fake = FakeHttpClient();
+      fake.queueJson(
+        200,
+        {'authenticated': true},
+        headers: {
+          'set-cookie':
+              'control_api_session=abc123; Path=/; HttpOnly; SameSite=Strict',
+        },
+      );
+      final client = ApiClient(
+        baseUrl: 'http://localhost:3000',
+        httpClient: fake,
+      );
+
+      expect(client.isAuthenticated, isFalse);
+      await client.loginWithGoogle('real-firebase-id-token');
+      expect(client.isAuthenticated, isTrue);
+      expect(client.cookieHeaders['cookie'], 'control_api_session=abc123');
+
+      final request = fake.requests.single as http.Request;
+      expect(request.url.path, '/auth/google');
+      expect(request.method, 'POST');
+      expect(jsonDecode(request.body), {'idToken': 'real-firebase-id-token'});
+    });
+
+    test(
+      'throws UnauthorizedError on a rejected/expired Firebase ID token',
+      () async {
+        final fake = FakeHttpClient();
+        fake.queueJson(401, {'error': 'invalid or expired Firebase ID token'});
+        final client = ApiClient(
+          baseUrl: 'http://localhost:3000',
+          httpClient: fake,
+        );
+
+        await expectLater(
+          () => client.loginWithGoogle('bad-or-expired-token'),
+          throwsA(isA<UnauthorizedError>()),
+        );
+        expect(client.isAuthenticated, isFalse);
+      },
+    );
+  });
+
+  group('ApiClient.clearSession', () {
+    test('drops the session cookie client-side', () async {
+      final fake = FakeHttpClient();
+      fake.queueJson(
+        200,
+        {'authenticated': true},
+        headers: {'set-cookie': 'control_api_session=abc123; Path=/'},
+      );
+      final client = ApiClient(
+        baseUrl: 'http://localhost:3000',
+        httpClient: fake,
+      );
+      await client.loginWithGoogle('real-firebase-id-token');
+      expect(client.isAuthenticated, isTrue);
+
+      client.clearSession();
+
+      expect(client.isAuthenticated, isFalse);
+      expect(client.cookieHeaders, isEmpty);
+    });
+  });
+
   group('ApiClient authenticated calls', () {
     Future<ApiClient> loggedIn(FakeHttpClient fake) async {
       fake.queueJson(
