@@ -364,16 +364,22 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
           workspace = sdkOptions.cwd;
           expect(workspace).toBeTruthy();
           expect(sdkOptions.env).toEqual({});
-          // This is the driver-to-SDK seam: execute the same real shell a
-          // Bash tool would receive, using the exact cwd/env it was given.
-          const shell = process.platform === "win32" ? "bash.exe" : "bash";
-          const { stdout } = await execFileAsync(shell, ["-lc", `pwd; printf '\\n%s' \"$${secretName}\"`], {
-            cwd: workspace,
-            env: sdkOptions.env,
-          });
+          // Driver-to-SDK seam: a real child process with the exact cwd/env
+          // the driver handed the SDK. Node itself is the process (TASK-161)
+          // so the proof does not depend on bash/bash.exe/WSL being on PATH.
+          const { stdout } = await execFileAsync(
+            process.execPath,
+            [
+              "-e",
+              `process.stdout.write(process.cwd() + "\\n" + String(process.env[${JSON.stringify(secretName)}] ?? ""))`,
+            ],
+            {
+              cwd: workspace,
+              env: sdkOptions.env,
+            },
+          );
           const [reportedCwd, reportedSecret] = stdout.trimEnd().split(/\r?\n/, 2);
-          if (process.platform === "win32") expect(reportedCwd).toContain("oikonomos-chat-");
-          else expect(reportedCwd).toBe(workspace);
+          expect(reportedCwd).toBe(workspace);
           expect(reportedSecret ?? "").not.toBe(secretValue);
           yield { type: "result", result: "workspace isolation verified" };
         };
