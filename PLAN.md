@@ -5404,7 +5404,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05 (AC anchors: value appears in zero rows of messages/audit_events/worker logs; ref resolves only for the requesting role); report C13, §8.2, §12.2 'Secure secret request'; ADR-010 Amendment (secret handling on the enforced line, N4); TASK-088/093 sealed-secret guard; TASK-131 sendToRole as the pattern for a real invokable broker tool. PROTECTED PATH packages/broker/** — author CX (Codex), reviewer ORCH on opus-4-8 satisfies the different-model rule (Directive §3).
@@ -5417,15 +5417,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] After fulfilment through the typed layer, the fragment-assembled fake value appears in zero rows of secret_requests, audit_events, and the run's messages/events, and the model-visible tool result contains only the ref (integration test, DATABASE_URL-gated)
 - [ ] The ref resolves through the existing sealed-secret resolver for the requesting role and is refused for another role (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-184-cx
+**Started_At:** 2026-09-05T22:05:39Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T22:05:39Z
 
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
