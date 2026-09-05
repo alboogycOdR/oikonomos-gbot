@@ -319,3 +319,27 @@ Skills persistence layer (`packages/db`): migration 014 (`skills` + `role_skills
 Six-part bot charter template seeded on bot creation (mobile), extending the TASK-167 conversational-instructions pattern. Real, meaningful tests: all six headings present, explicit negative assertions that the template contains no secrets/URLs/account names.
 
 First pass came back `blocked`, honestly: the new `PATCH /roles/:id` call (seeding the charter) shifted `roster_screen_test.dart`'s fake-response queue out of sequence, breaking one out-of-territory test — CX correctly reported this as `OWNERSHIP_CONFLICT` rather than editing outside its `Owned_Paths` or silently working around it. Independently reproduced the exact failure before acting on the report. Widened `Owned_Paths` to the one affected fixture file and unblocked; the fix applied was exactly the queued response the situation called for. Re-verified independently: `flutter analyze`/`flutter test` clean (104/104) in the worktree and again in the main checkout after merge. Merged --no-ff.
+
+## TASK-180 | CX9 | approved | first-pass: no (one legitimate scope-narrowing round)
+
+Single-owner group routing engine: `route()` (mention/`@everyone`/scored-single-responder with tie-break by most-recent-responder, 6-member cap) and `createTierZeroScorer()` (a real budgeted default scorer via `withBudgetSink`, fails closed on an incomplete provider stream so a partial turn can never evade budget accounting). Wired into `deliverBotToBotMessage` via a strictly optional `routing` field — absent today (the only real caller), so TASK-122's existing approval-gate tests are provably unchanged.
+
+First pass came back blocked on a real, accurately-diagnosed gap: the live production call site has no mention-parsing, classifier, or member-profile/recent-responder context at all. Rather than blindly widen this task into `app.ts`/`ports.ts` under time pressure, re-read the task's own Acceptance_Criteria and confirmed every anchor is genuinely satisfiable within the original four files via injection — the live-wiring gap is real but is separate, undecided architecture (no Tier-0/budgeted-classifier composition seam exists anywhere yet), split off as TASK-189 rather than improvised here.
+
+Independently re-verified: read `groupRouting.ts` and the `groupFanout.ts` diff in full — every AC anchor has a real, meaningful test (including a genuine budget-sink assertion checking the actual provider id and cost, not "no crash"). Ran targeted tests, full build, and lint myself in the worktree and again after merge. Merged --no-ff.
+
+## TASK-161 | GB | approved | first-pass: no (one round, and it caught a real mistake of ORCH's own)
+
+Fixed TASK-153's chat-workspace isolation test, which depended on a `bash.exe`/WSL binary not resolvable on this dev machine. Replaced the shell spawn with a direct `process.execPath -e` child process — same real, external-process proof of cwd/env isolation, no shell dependency. Along the way, *strengthened* the assertion: the old test had a platform-conditional weakening (win32 only checked the reported cwd contained a substring); the fix drops that special case for one unconditional equality check on every platform.
+
+This task also caught a real mistake in my own prior review: after TASK-175's carve, I re-pointed this task's `Owned_Paths` to `runWorkspace.test.ts` based on a doc comment, without checking that file's actual contents — the real failing spawn was still in `chatRunDriver.test.ts`, exactly where TASK-175's carve deliberately left it. GB reported the ownership conflict accurately rather than working around it or guessing. Corrected the re-point once GB's diagnosis was independently confirmed.
+
+Independently re-verified: read the diff directly, ran the target test (16/16) and the full worker suite (87/87) myself in the worktree, plus build/lint, and again in the main checkout after merge. Merged --no-ff.
+
+## Correction — TASK-176 (originally reviewed 2026-09-05, corrected 2026-09-06)
+
+TASK-176's original approval said its two-role enablement isolation test "genuinely exercises the AC anchors, not just 'no crash'" — true of the test's assertions, but the test itself was never actually **run** during that review: migration 014 had not been applied to the real dev DB (I only verified apply/reverse against a disposable scratch clone to avoid mutating shared state), so `skills.test.ts`'s `DATABASE_URL`/migration integration gate silently skipped every DB-backed test, including the one I praised.
+
+Once migration 014 was later applied to the real dev DB (by a subsequent builder session that needed it) and TASK-177 exercised `skills.ts` against real data for the first time, S5 found two real, load-bearing bugs: `UUID_RE` was missing a hex group (rejecting every real UUID — `getSkill`/`updateSkill`/`setEnabledForRole`/`listEnabledForRole` were all completely broken against real data), and `listEnabledForRole`'s join produced an ambiguous-column SQL error. Both confirmed and fixed directly (commit `1daec39`, `packages/db/src/skills.ts` was not owned by any active task) — verified `skills.test.ts` 4/4, full package suite 159/159.
+
+Lesson recorded for future reviews: a `DATABASE_URL`-integration-gated test suite must be checked for **actually running**, not merely present with good assertions — a migration-gate gap is exactly as dangerous as a fixture-cleanup gap, and this session has now hit both classes.
