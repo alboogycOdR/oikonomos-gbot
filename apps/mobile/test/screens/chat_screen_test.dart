@@ -291,6 +291,7 @@ void main() {
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
+    fake.queueJson(200, <Object?>[]); // GET /roles for the title field fetch
 
     await tester.pumpWidget(
       MaterialApp(
@@ -307,5 +308,117 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Usage'), findsNothing);
+  });
+
+  testWidgets('composer placeholder is personalized to the bot name', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('compose-field')),
+    );
+    expect(field.decoration?.hintText, 'Ask Concierge');
+  });
+
+  testWidgets('a bot message with markdown renders formatted, not raw', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, [
+      _messageJson(
+        '1',
+        role: 'bot',
+        body: '**bold claim**\n\n- item one\n- item two',
+      ),
+    ]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Raw markdown syntax must not appear anywhere in a rendered Text node.
+    expect(find.textContaining('**bold claim**'), findsNothing);
+    expect(find.textContaining('- item one'), findsNothing);
+    // The bulleted list items and the bold run are rendered as separate
+    // structured content, not a single plain-text blob.
+    expect(find.textContaining('item one'), findsOneWidget);
+    expect(find.textContaining('item two'), findsOneWidget);
+    expect(find.textContaining('bold claim'), findsOneWidget);
+    expect(
+      find.byKey(const Key('message-body-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a system message renders as a muted line, not a chat bubble', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, [
+      _messageJson('1', role: 'system', body: 'Renamed to Assistant'),
+    ]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Renamed to Assistant'), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    // No chat-bubble Container is built for a system event.
+    expect(find.byKey(const Key('message-body-1')), findsNothing);
+  });
+
+  testWidgets('settings screen shows the title field, read-only', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(200, [
+      {
+        'id': 'role-1',
+        'name': 'Concierge',
+        'description': 'Front desk',
+        'avatarSeed': 'seed-1',
+        'title': 'Front Desk Lead',
+      },
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bot-settings-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Title (optional)'), findsOneWidget);
+    final field = tester.widget<TextField>(find.byKey(const Key('title-field')));
+    expect(field.readOnly, isTrue);
+    expect(field.controller?.text, 'Front Desk Lead');
+    expect(fake.requests.last.url.path, '/roles');
   });
 }

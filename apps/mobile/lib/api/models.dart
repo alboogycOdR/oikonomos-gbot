@@ -13,6 +13,7 @@ class Role {
     required this.name,
     required this.description,
     required this.avatarSeed,
+    this.title,
   });
 
   final String id;
@@ -20,12 +21,21 @@ class Role {
   final String description;
   final String avatarSeed;
 
+  /// TASK-157 — `roles.title` is a real column server-side but
+  /// `serializeRole` in `services/control-api/src/app.ts` does not yet
+  /// return it in `GET /roles` (out of this task's `apps/mobile/**`
+  /// territory to add). Parsed defensively as optional so this client is
+  /// ready the moment the server starts sending it, without breaking on
+  /// its current absence.
+  final String? title;
+
   factory Role.fromJson(Map<String, dynamic> json) {
     return Role(
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String,
       avatarSeed: json['avatarSeed'] as String,
+      title: json['title'] as String?,
     );
   }
 }
