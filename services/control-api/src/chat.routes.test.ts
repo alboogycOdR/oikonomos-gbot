@@ -129,6 +129,28 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
 }
 
 describe("Chat-1b control-api routes (TASK-106)", () => {
+  it("passes routineId through GET /tasks without changing unfiltered listing", async () => {
+    const routineId = randomUUID();
+    let observedFilter: unknown;
+    const { deps } = createDeps({
+      listTasks: async (filter) => {
+        observedFilter = filter;
+        return { tasks: [], nextCursor: null };
+      },
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    try {
+      const filtered = await app.inject({ method: "GET", url: `/tasks?routineId=${routineId}`, headers: authHeaders() });
+      expect(filtered.statusCode).toBe(200);
+      expect(observedFilter).toEqual({ routineId });
+
+      const unfiltered = await app.inject({ method: "GET", url: "/tasks", headers: authHeaders() });
+      expect(unfiltered.statusCode).toBe(200);
+      expect(observedFilter).toEqual({});
+    } finally {
+      await app.close();
+    }
+  });
   it("rejects every new route without a session", async () => {
     const { deps, calls } = createDeps();
     const app = buildApp(deps, { authToken: TOKEN, logger: false });

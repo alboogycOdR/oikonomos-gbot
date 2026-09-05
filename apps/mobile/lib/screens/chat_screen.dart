@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
 import 'create_routine_screen.dart';
+import 'routine_detail_screen.dart';
 
 /// TASK-147 (Mobile Wave 1b) — message history + live updates for one
 /// bot's thread. Mirrors `apps/dashboard/src/pages/ChatPage.tsx`: an
@@ -108,6 +109,17 @@ class ChatScreenState extends State<ChatScreen>
     if (created == true) {
       await _loadRoutines(force: true);
     }
+  }
+
+  Future<void> _openRoutineDetail(Routine routine) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoutineDetailScreen(
+          apiClient: widget.apiClient,
+          routine: routine,
+        ),
+      ),
+    );
   }
 
   Future<void> _decideApproval(ThreadMessage message, String decision) async {
@@ -384,12 +396,14 @@ class ChatScreenState extends State<ChatScreen>
       itemBuilder: (context, index) {
         final routine = _routines![index];
         return ListTile(
+          key: Key('routine-${routine.id}'),
           title: Text(routine.name),
           subtitle: Text(
             'Schedule: ${routine.schedule ?? 'Not scheduled'}\n'
             'Last: ${routine.lastFireAt ?? 'Never'} · Next: ${routine.nextFireAt ?? 'Not scheduled'}',
           ),
           isThreeLine: true,
+          onTap: () => _openRoutineDetail(routine),
         );
       },
     );
