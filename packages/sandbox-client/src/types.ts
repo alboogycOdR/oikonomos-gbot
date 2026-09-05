@@ -59,6 +59,27 @@ export interface SandboxHealth {
   readonly status: string;
 }
 
+/** A lifecycle-resolved URL (and any server-required headers) for a sandbox port. */
+export interface SandboxEndpoint {
+  readonly endpoint: string;
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+/** The foreground subset of execd's documented `POST /command` request. */
+export interface RunCommandRequest {
+  readonly command: string;
+  readonly cwd?: string;
+  readonly envs?: Readonly<Record<string, string>>;
+  readonly timeoutMs?: number;
+}
+
+/** Aggregated output from execd's streamed command events. */
+export interface RunCommandResult {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}
+
 /** Shape of `ErrorResponse` from the server's OpenAPI spec — every non-2xx response. */
 export interface SandboxApiErrorBody {
   readonly code: string;

@@ -17,7 +17,8 @@ import { createSandboxClient } from "../src/client.js";
  */
 const baseUrl = process.env.SANDBOX_INTEGRATION_URL;
 const hasApiKey = process.env.OIK_SECRET_OPENSANDBOX_API_KEY !== undefined;
-const integration = baseUrl !== undefined && hasApiKey ? describe : describe.skip;
+const hasExecdToken = process.env.OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN !== undefined;
+const integration = baseUrl !== undefined && hasApiKey && hasExecdToken ? describe : describe.skip;
 
 integration("createSandboxClient — live clawsrv OpenSandbox server", () => {
   it("health check succeeds against the real server", async () => {
@@ -40,6 +41,23 @@ integration("createSandboxClient — live clawsrv OpenSandbox server", () => {
     expect(created.id).toEqual(expect.any(String));
     expect(["Pending", "Running"]).toContain(created.status.state);
 
-    await client.destroySandbox(created.id);
+    try {
+      const endpoint = await client.getEndpoint(created.id);
+      await expect(client.ping(endpoint)).resolves.toBeUndefined();
+      const unauthenticated = await fetch(`${endpoint.endpoint.replace(/\/$/, "")}/ping`, {
+        headers: {
+          ...endpoint.headers,
+          "OPEN-SANDBOX-API-KEY": process.env.OIK_SECRET_OPENSANDBOX_API_KEY as string,
+        },
+      });
+      expect(unauthenticated.status).toBe(401);
+      await expect(client.runCommand(endpoint, { command: "echo hello" })).resolves.toEqual({
+        stdout: expect.stringContaining("hello"),
+        stderr: "",
+        exitCode: 0,
+      });
+    } finally {
+      await client.destroySandbox(created.id);
+    }
   }, 30_000);
 });

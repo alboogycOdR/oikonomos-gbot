@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { envKeyFromSecretRef, envSecretResolver, OPENSANDBOX_API_KEY_REF } from "../src/secretResolver.js";
+import {
+  envKeyFromSecretRef,
+  envSecretResolver,
+  OPENSANDBOX_API_KEY_REF,
+  OPENSANDBOX_EXECD_ACCESS_TOKEN_REF,
+} from "../src/secretResolver.js";
 import { SandboxClientError } from "../src/errors.js";
 
 /** Distinct sentinel assembled at runtime so this file holds no contiguous secret (N4). */
@@ -9,6 +14,10 @@ const FAKE_API_KEY = ["fake-opensandbox-", "api-key-not-real"].join("");
 describe("envKeyFromSecretRef", () => {
   it("maps the documented OpenSandbox ref to OIK_SECRET_OPENSANDBOX_API_KEY", () => {
     expect(envKeyFromSecretRef(OPENSANDBOX_API_KEY_REF)).toBe("OIK_SECRET_OPENSANDBOX_API_KEY");
+  });
+
+  it("maps the execd token ref through the same secret convention", () => {
+    expect(envKeyFromSecretRef(OPENSANDBOX_EXECD_ACCESS_TOKEN_REF)).toBe("OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN");
   });
 
   it("uppercases and underscore-normalizes arbitrary refs", () => {

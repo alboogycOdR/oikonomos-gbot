@@ -30,6 +30,9 @@ export function envKeyFromSecretRef(ref: string): string {
 /** The documented ref for the OpenSandbox API key (see infra/sandbox/README.md §1 Auth). */
 export const OPENSANDBOX_API_KEY_REF = "secret://opensandbox/api_key";
 
+/** The per-sandbox execd access-token secret reference. */
+export const OPENSANDBOX_EXECD_ACCESS_TOKEN_REF = "secret://opensandbox/execd_access_token";
+
 /**
  * Default SecretResolver: read `process.env[OIK_SECRET_…]` derived from the ref.
  * Unset or empty throws naming the REF, never a value (N4) — the thrown message

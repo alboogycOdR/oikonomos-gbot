@@ -10,6 +10,7 @@ export {
   envKeyFromSecretRef,
   envSecretResolver,
   OPENSANDBOX_API_KEY_REF,
+  OPENSANDBOX_EXECD_ACCESS_TOKEN_REF,
   type SecretResolver,
 } from "./secretResolver.js";
 export type {
@@ -17,10 +18,13 @@ export type {
   CreateSandboxResponse,
   SandboxApiErrorBody,
   SandboxHealth,
+  SandboxEndpoint,
   SandboxImageSpec,
   SandboxResourceLimits,
   SandboxState,
   SandboxStatus,
+  RunCommandRequest,
+  RunCommandResult,
 } from "./types.js";
 
 if (import.meta.vitest) {
