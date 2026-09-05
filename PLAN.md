@@ -1,6 +1,6 @@
 ---
-plan_version: 13.4
-last_updated: 2026-09-05T22:00:00Z
+plan_version: 13.5
+last_updated: 2026-09-05T22:10:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-169 (execd client) code approved+merged, but task left BLOCKED not done: the required live-server proof needs OpenSandbox credentials (SANDBOX_INTEGRATION_URL, OIK_SECRET_OPENSANDBOX_API_KEY, OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN) unavailable to any builder/ORCH session on this dev machine - genuine human-action item, not resolvable by dispatch. TASK-170 should not proceed past design/prep until this closes. Real per-user auth work opened per user request: TASK-172 (backend - verify Firebase/Google ID tokens, replace 8 hardcoded 'basileia' tenant literals in app.ts with real per-user tenantId derived from the verified Firebase UID, keep the existing shared-bearer-token admin path working separately) and TASK-173 (mobile - replace the shared-token login screen with real Google Sign-In, Depends_On TASK-172). User has enabled Google as a Firebase sign-in provider; still needed from them: the debug-keystore SHA-1 fingerprint registered in Firebase (value already given) and a fresh google-services.json download. Backlog unchanged: TASK-161/162/163/164 unassigned."
 ---
@@ -5102,7 +5102,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-172-cx
 **Started_At:** 2026-09-05T20:03:48Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T22:10:00Z] [ORCH] The human's updated `google-services.json` is now in place (`apps/mobile/android/app/google-services.json`, gitignored per existing convention — do not add it to Owned_Paths or commit it). Real values for ID-token verification: Firebase project ID `basileia-oikonomos-gmail` (project number `461377597606`) — verify `aud === "basileia-oikonomos-gmail"` and `iss === "https://securetoken.google.com/basileia-oikonomos-gmail"` on every Firebase ID token, per Firebase's own documented token contract. Confirm this against real documentation/the token's actual decoded shape, not just this note, before hardcoding it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
@@ -5113,7 +5114,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-173
 **Title:** Real per-user auth (mobile) — replace the shared-token login screen with Google Sign-In
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** Companion to TASK-172. Today's login screen (apps/mobile/lib/screens/login_screen.dart) accepts the raw shared CONTROL_API_TOKEN typed in by hand — confirmed by reading the file. No google_sign_in/firebase_auth dependency exists yet in apps/mobile/pubspec.yaml (confirmed by grep) — firebase_core/firebase_messaging are already present from TASK-149's push work, so this extends existing Firebase wiring rather than introducing a new integration from scratch. Separately (not this task, a real known gap named by the human independently): the session is currently kept in memory only (ApiClient._sessionCookie, deliberately, per its own code comment) — signing in again every time the app process restarts is expected today regardless of the auth mechanism; note this honestly in the dossier as a real, separate, not-yet-scoped follow-up rather than silently fixing or silently ignoring it.
 **Owned_Paths:** apps/mobile/lib/screens/login_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/screens/login_screen_test.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/pubspec.yaml, apps/mobile/android/app/google-services.json
@@ -5127,7 +5128,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] flutter analyze/flutter test exit 0; nothing outside apps/mobile/** touched
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-05T22:10:00Z] [ORCH] The human's updated google-services.json (with the debug-keystore SHA-1 registered) is now in place at apps/mobile/android/app/google-services.json — this task's real blocker is resolved, ready to dispatch once TASK-172 lands. Real value needed for google_sign_in's serverClientId parameter (required to obtain a backend-verifiable ID token, not just a client-side auth object): the Web OAuth client (client_type: 3) from the same file, 461377597606-hl2k4bvqdvpo2qu17v7vvrk532fo1sve.apps.googleusercontent.com. Confirm this is genuinely the correct parameter for the real google_sign_in/firebase_auth package versions in use before hardcoding it — investigate the real current API, don't assume this note is still accurate by the time this task starts.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
