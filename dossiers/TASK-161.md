@@ -103,3 +103,52 @@ exercised. No bash/WSL.
 Stopping point: blocked, waiting on Owned_Paths widen. No code written.
 Next step after grant: edit `chatRunDriver.test.ts` as sketched, re-run
 `pnpm --filter @oikonomos/worker test` then `pnpm -r test` for the worker.
+
+### [2026-09-05T22:29:15Z] [GB]
+
+Resume after ORCH grant. `control.mode=strict`: PLAN.md not touched.
+Review_Findings: `—` (not a REWORK). Claim already recorded; continued on
+existing `task/TASK-161-gb`.
+
+Preflight against the **main checkout** PLAN.md (the hook/territory source;
+worktree PLAN.md is still the pre-grant copy):
+
+```text
+[preflight] TASK-161 Owned_Paths inspected in E:/DELL-PROJECTS/GROKBOT-CLONE
+[preflight] 1 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  FILE   services/worker/src/chatRunDriver.test.ts  -> exists, 865 line(s), 47601 bytes
+[preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+```
+
+Applied the sketched fix in-territory: TASK-153 isolation spawn now uses
+`process.execPath -e` with the driver's exact `cwd` and empty `env`. cwd
+is asserted equal to the workspace on every platform (stronger than the
+old win32 `toContain("oikonomos-chat-")` WSL-path fallback). Parent-process
+secret must still be absent in the child. Workspace still must be gone
+after the run. No skip, no weakened assertion.
+
+Standalone empty-env probe on this win32 machine: cwd_match=true,
+secret_absent=true, spawn succeeds without SYSTEMROOT/PATH.
+
+## Test evidence
+
+`pnpm --filter @oikonomos/worker exec vitest run --config ../../packages/shared/vitest.config.ts --root . src/chatRunDriver.test.ts -t "TASK-153"`
+→ 1 passed | 15 skipped (the isolation test itself).
+
+`pnpm --filter @oikonomos/worker test` (isolated, twice after local
+broker/db dist rebuilds that were stale vs source — not committed):
+→ 18 files, 93/93 passed, including
+`runs Bash in a fresh workspace with an empty environment and removes it afterward (TASK-153)`.
+
+`pnpm --no-bail -r test`: `chatRunDriver.test.ts` 16/16 in that run
+(TASK-153 included). Recursive summary 15 passes / 3 fails, all
+unrelated to this change:
+- `services/worker` 1 fail: `workerJobQueue.test.ts` pg-boss poll expected
+  `lastFireStatus: queued`, got `missed` (shared-Postgres contention;
+  same class as TASK-162). That file is 6/6 under the isolated worker run.
+- `packages/db` 2 fails in `src/skills.test.ts` (TASK-176), out of territory.
+- `services/control-api` 8 suites fail collecting `jose` (missing package),
+  out of territory.
+
+AC1/AC2/AC3 met by the isolated worker suite (the AC3 command for this
+package). Ready for review.
