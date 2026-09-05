@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
@@ -201,7 +202,10 @@ class ChatScreenState extends State<ChatScreen>
             tooltip: 'Bot settings',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => _SettingsScreen(botName: widget.bot.botName),
+                builder: (_) => _SettingsScreen(
+                  apiClient: widget.apiClient,
+                  bot: widget.bot,
+                ),
               ),
             ),
           ),
@@ -248,6 +252,9 @@ class ChatScreenState extends State<ChatScreen>
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final message = _messages[index];
+        if (message.role == 'system') {
+          return _SystemEventLine(message: message);
+        }
         final isUser = message.role == 'user';
         return Align(
           alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -267,10 +274,22 @@ class ChatScreenState extends State<ChatScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.body,
-                  style: TextStyle(color: isUser ? Colors.white : null),
-                ),
+                isUser
+                    ? Text(
+                        message.body,
+                        style: const TextStyle(color: Colors.white),
+                      )
+                    : MarkdownBody(
+                        key: Key('message-body-${message.id}'),
+                        data: message.body,
+                        shrinkWrap: true,
+                        selectable: false,
+                        styleSheet: MarkdownStyleSheet.fromTheme(
+                          Theme.of(context),
+                        ).copyWith(
+                          p: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
                 if (message.approval != null) ...[
                   const SizedBox(height: 8),
                   _ApprovalCard(
@@ -299,7 +318,9 @@ class ChatScreenState extends State<ChatScreen>
               child: TextField(
                 key: const Key('compose-field'),
                 controller: _composeController,
-                decoration: const InputDecoration(hintText: 'Message'),
+                decoration: InputDecoration(
+                  hintText: 'Ask ${widget.bot.botName}',
+                ),
                 onSubmitted: (_) => _send(),
               ),
             ),
@@ -399,31 +420,143 @@ class _ApprovalCard extends StatelessWidget {
   }
 }
 
-class _SettingsScreen extends StatelessWidget {
-  const _SettingsScreen({required this.botName});
+/// TASK-157 (4) — small, centered, muted, icon-prefixed line for a
+/// `role: 'system'` message (e.g. "Renamed to X"), visually distinct from a
+/// normal chat bubble. `system` is already a real value of the server's
+/// `MessageRole` enum (`packages/db/src/messages.ts`); no endpoint emits it
+/// yet, but this is surfacing an existing wire convention, not inventing
+/// one, so the client is ready the moment one does.
+class _SystemEventLine extends StatelessWidget {
+  const _SystemEventLine({required this.message});
 
-  final String botName;
+  final ThreadMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final mutedColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Padding(
+      key: Key('message-${message.id}'),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 14, color: mutedColor),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              message.body,
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: mutedColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsScreen extends StatefulWidget {
+  const _SettingsScreen({required this.apiClient, required this.bot});
+
+  final ApiClient apiClient;
+  final SingleThread bot;
+
+  @override
+  State<_SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<_SettingsScreen> {
+  bool _loadingTitle = true;
+  String? _title;
+  String? _titleError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTitle();
+  }
+
+  /// TASK-157 (4) — `roles.title` is a real column (confirmed against the
+  /// live schema) but `GET /roles` doesn't serialize it yet
+  /// (`services/control-api/src/app.ts`'s `serializeRole`, outside this
+  /// task's `apps/mobile/**` territory to fix) and there is no `PATCH
+  /// /roles/:roleId` route to write it either. Per the task's own scoping
+  /// instruction ("read-only display if no update route exists yet"), this
+  /// fetches the role and shows whatever title comes back (`null` today)
+  /// read-only, rather than inventing a write path that doesn't exist.
+  Future<void> _loadTitle() async {
+    try {
+      final roles = await widget.apiClient.listRoles();
+      Role? match;
+      for (final role in roles) {
+        if (role.id == widget.bot.roleId) {
+          match = role;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _title = match?.title;
+        _loadingTitle = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _titleError = 'Could not load title.';
+        _loadingTitle = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('$botName settings')),
+      appBar: AppBar(title: Text('${widget.bot.botName} settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: const [
-          Text(
+        children: [
+          const Text(
             'Auto-review',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 8),
-          Text('Require approval for risky shell, MCP, and computer actions.'),
-          SizedBox(height: 20),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
+            'Require approval for risky shell, MCP, and computer actions.',
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Title (optional)',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (_loadingTitle)
+            const SizedBox(
+              key: Key('title-loading'),
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            TextField(
+              key: const Key('title-field'),
+              readOnly: true,
+              controller: TextEditingController(text: _title ?? ''),
+              decoration: InputDecoration(
+                hintText: 'No title set',
+                helperText: _titleError ??
+                    'Read-only — no update endpoint exists for this yet.',
+              ),
+            ),
+          const SizedBox(height: 20),
+          const Text(
             'App info',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 8),
-          Text('OIKONOMOS mobile'),
+          const SizedBox(height: 8),
+          const Text('OIKONOMOS mobile'),
         ],
       ),
     );
