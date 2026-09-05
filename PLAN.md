@@ -4617,9 +4617,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-05T10:25:24Z
 **Progress_Notes:**
 - [2026-09-05T00:00:00Z] [S5] All four items done: markdown rendering (flutter_markdown_plus), system-event line (reuses existing server-side MessageRole.system), personalized composer placeholder, read-only title field (server has no GET/PATCH surface for roles.title yet — client wired defensively). flutter analyze clean, flutter test 63/63 passing. -> needs_review.
+- [2026-09-05T10:39:55Z] [SV:S5] All four items done: markdown rendering via flutter_markdown_plus (flutter_markdown is discontinued), a small centered muted icon-prefixed line for role:'system' messages (reusing the existing real MessageRole.system enum value rather than inventing a convention), composer placeholder personalized to the bot's name, and a read-only 'Title (optional)' field on settings fetched via listRoles() (server has roles.title in schema but neither GET /roles serializes it nor is there a PATCH route ΓÇö documented in dossier, client wired defensively for when it lands). flutter analyze clean; flutter test 63/63 passing (4 new tests). PLAN.md TASK-157 block updated to needs_review with acceptance criteria checked and test evidence recorded via plan_commit.sh.
 **Artifacts:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/models.dart, apps/mobile/pubspec.yaml, apps/mobile/pubspec.lock, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-157.md
-**Test_Evidence:** flutter analyze: No issues found. flutter test: 00:09 +63: All tests passed! (apps/mobile, 63 tests incl. 4 new for this task).
+**Test_Evidence:** flutter analyze: No issues found! (ran in 46.5s). flutter test: 00:09 +63: All tests passed! (apps/mobile, includes 4 new widget tests for this task's acceptance criteria).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-09-05T12:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:39:55Z
