@@ -1,6 +1,8 @@
 import { issueApproval, type ApprovalWaitSignal } from "@oikonomos/approvals";
 import { Database, getOrCreateThreadForRole, insertMessage, type DatabaseOptions } from "@oikonomos/db";
 
+import { route, type GroupMember, type ShouldRespondScorer } from "./groupRouting.js";
+
 /**
  * TASK-122 (Chat-2c) — the fan-out-approval rule, confirmed against the
  * real Grok Bot reference product 2026-09-03 (PLAN.md orchestrator_notes):
@@ -24,6 +26,15 @@ export interface BotToBotMessageRequest {
   readonly body: string;
   readonly runId: string;
   readonly tenantId?: string;
+  /**
+   * Optional until TASK-189 supplies the live group-thread composition.
+   * When present, recipients are derived before TASK-122's approval gate.
+   */
+  readonly routing?: {
+    readonly members: readonly GroupMember[];
+    readonly mostRecentResponderRoleId: string | null;
+    readonly scorer: ShouldRespondScorer;
+  };
 }
 export type BotToBotMessageResult =
   | { readonly delivered: true }
@@ -37,12 +48,15 @@ export async function deliverBotToBotMessage(
 ): Promise<BotToBotMessageResult> {
   const fromRoleId = request.fromRoleId.trim();
   if (fromRoleId.length === 0) throw new Error("bot-to-bot message requires fromRoleId.");
-  const toRoleIds = [...new Set(request.toRoleIds.map((roleId) => roleId.trim()))].filter(
+  const requestedRoleIds = [...new Set(request.toRoleIds.map((roleId) => roleId.trim()))].filter(
     (roleId) => roleId.length > 0,
   );
-  if (toRoleIds.length === 0) throw new Error("bot-to-bot message requires at least one recipient role.");
   const body = request.body.trim();
   if (body.length === 0) throw new Error("bot-to-bot message body must not be empty.");
+  const toRoleIds = request.routing === undefined
+    ? requestedRoleIds
+    : (await route({ message: body, ...request.routing })).recipients.map((member) => member.roleId);
+  if (toRoleIds.length === 0) throw new Error("bot-to-bot message requires at least one recipient role.");
 
   // Fan-out: 2+ distinct recipients requires a real pending approval
   // before anything is sent — deleting this branch (falling through to
