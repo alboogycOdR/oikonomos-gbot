@@ -1,6 +1,6 @@
 ---
-plan_version: 12.3
-last_updated: 2026-09-05T17:50:00Z
+plan_version: 12.4
+last_updated: 2026-09-05T18:00:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-143 (budgets, Codex/Grok path) APPROVED and merged after 2 rounds of mandatory protected-path adversarial review (Codex CLI, different model than author S5). 5/6 findings fixed and confirmed twice; the 6th (zero production call sites for the entire Codex/Grok routing feature) is a pre-existing gap outside this task's scope - logged as TASK-164, tracked honestly rather than pursued via more rework. Budget logic is correct and will engage live the moment TASK-164 wires a real call site. TASK-159/160 also done/merged - Wave 7/8 backlog fully cleared except TASK-161/162/163/164, all low/medium priority, unassigned. S5, CX, CX9 all idle. CX/CX9 worktrees still stuck on Windows file locks (non-blocking)."
 ---
@@ -4871,3 +4871,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-05T17:50:00Z
+
+### TASK-165
+**Title:** Expose bot title/instructions in the API and mobile settings UI
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** Live gap found during real-device testing, 2026-09-05: `services/control-api/src/app.ts`'s `serializeRole()` (used by every role-returning route) only returns `{id, name, description, avatarSeed}` — `title` and `instructions` are real, tested, working columns on `packages/db/src/roles.ts`'s `Role` type (instructions persisted via the real `PATCH /roles/:roleId` route built in TASK-156) but are never serialized over HTTP. This is why the mobile settings screen (TASK-157) shows a hardcoded "No title set" placeholder instead of real data, and why there is no instructions field on mobile at all despite the backend fully supporting it — a bot's persona/instructions can only be set today via a raw API call, not through the app.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/chat.routes.test.ts, apps/mobile/**
+**Depends_On:** —
+**Description:** Backend first: extend `serializeRole()` to include `title` and `instructions` (both nullable, matching the real `Role` type — do not invent a different shape). Verify this doesn't break any existing test asserting the old narrower shape (update them honestly if the shape assertion needs to grow, don't loosen an assertion to dodge a real check). Then mobile: fix the settings screen's Title display to show the real value (still read-only — no title-update route exists, that's out of scope, keep the existing honest "read-only, no update endpoint" framing exactly where it's still true), and add a real, editable multi-line **Instructions** field that calls the existing `PATCH /roles/:roleId` route (`{instructions: string}`, note: required in the schema, not optional — sending an empty string is the real way to clear it, confirmed in TASK-156's dossier) with a save action, a visible loading/error state on failure, and the field pre-filled from the real fetched value. This is a genuine capability gap closing, not polish — a user has no other way to give their bot a persona today.
+**Acceptance_Criteria:**
+- [ ] `serializeRole()` includes real `title` and `instructions` values (both nullable) — tested against real Postgres
+- [ ] Existing tests asserting the old role shape still pass or are honestly updated, not loosened
+- [ ] The settings screen displays the bot's real title (not a hardcoded placeholder) when one exists, and the existing "no title set"/read-only messaging only when it's genuinely null
+- [ ] A real editable Instructions field exists, pre-filled from the real value, that PATCHes the real endpoint on save — tested against a fake client
+- [ ] A failed save surfaces a visible error, not a silent failure
+- [ ] Clearing instructions to empty and saving genuinely clears them (matches the real API contract) — tested
+- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-05T18:00:00Z
