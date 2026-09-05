@@ -315,6 +315,71 @@ void main() {
       expect(fake.requests.last.url.path, '/roles/role%201/routines');
     });
 
+    test('createRoutine sends definition.goal only when a goal is given', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(201, {
+        'routineId': 'routine-2',
+        'name': 'Daily briefing',
+        'schedule': '0 8 * * *',
+        'lastFireAt': null,
+        'nextFireAt': '2026-09-06T08:00:00Z',
+      });
+
+      final routine = await client.createRoutine(
+        'role 1',
+        'Daily briefing',
+        '0 8 * * *',
+        goal: '  Summarize overnight alerts  ',
+      );
+
+      expect(routine.name, 'Daily briefing');
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/roles/role%201/routines');
+      expect(jsonDecode(request.body), {
+        'name': 'Daily briefing',
+        'schedule': '0 8 * * *',
+        'definition': {'goal': 'Summarize overnight alerts'},
+      });
+    });
+
+    test('createRoutine omits definition entirely when no goal is given', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(201, {
+        'routineId': 'routine-3',
+        'name': 'No-goal routine',
+        'schedule': '0 9 * * *',
+        'lastFireAt': null,
+        'nextFireAt': null,
+      });
+
+      await client.createRoutine('role 1', 'No-goal routine', '0 9 * * *');
+
+      final request = fake.requests.last as http.Request;
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body.containsKey('definition'), isFalse);
+      expect(body, {'name': 'No-goal routine', 'schedule': '0 9 * * *'});
+    });
+
+    test('createRoutine surfaces a server validation error', () async {
+      final fake = FakeHttpClient();
+      final client = await loggedIn(fake);
+      fake.queueJson(400, {'error': 'schedule must be a valid 5-field cron expression.'});
+
+      await expectLater(
+        () => client.createRoutine('role 1', 'Bad cron', 'not-a-cron'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'schedule must be a valid 5-field cron expression.',
+          ),
+        ),
+      );
+    });
+
     test('a 401 on any authenticated call throws UnauthorizedError', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);

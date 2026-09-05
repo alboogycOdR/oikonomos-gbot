@@ -6,6 +6,7 @@ import '../api/exceptions.dart';
 import '../api/models.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
+import 'create_routine_screen.dart';
 
 /// TASK-147 (Mobile Wave 1b) — message history + live updates for one
 /// bot's thread. Mirrors `apps/dashboard/src/pages/ChatPage.tsx`: an
@@ -65,13 +66,19 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-      _loadRoutines();
+    if (!_tabController.indexIsChanging) {
+      setState(() {}); // rebuilds the FAB visibility for the new tab
+      if (_tabController.index == 1) {
+        _loadRoutines();
+      }
     }
   }
 
-  Future<void> _loadRoutines() async {
-    if (_loadingRoutines || _routines != null) return;
+  /// [force] re-fetches even if routines were already loaded — used after
+  /// a successful creation so the tab reflects the new routine without the
+  /// user leaving and re-entering the screen.
+  Future<void> _loadRoutines({bool force = false}) async {
+    if (_loadingRoutines || (_routines != null && !force)) return;
     setState(() {
       _loadingRoutines = true;
       _routinesError = null;
@@ -86,6 +93,20 @@ class ChatScreenState extends State<ChatScreen>
       if (mounted) setState(() => _routinesError = 'Could not load routines.');
     } finally {
       if (mounted) setState(() => _loadingRoutines = false);
+    }
+  }
+
+  Future<void> _openCreateRoutine() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => CreateRoutineScreen(
+          apiClient: widget.apiClient,
+          roleId: widget.bot.roleId,
+        ),
+      ),
+    );
+    if (created == true) {
+      await _loadRoutines(force: true);
     }
   }
 
@@ -230,6 +251,13 @@ class ChatScreenState extends State<ChatScreen>
           _buildRoutines(),
         ],
       ),
+      floatingActionButton: _tabController.index == 1
+          ? FloatingActionButton(
+              key: const Key('create-routine-fab'),
+              onPressed: _openCreateRoutine,
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 

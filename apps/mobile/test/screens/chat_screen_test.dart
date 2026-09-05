@@ -284,6 +284,66 @@ void main() {
     expect(fake.requests.last.url.path, '/roles/role-1/routines');
   });
 
+  testWidgets(
+    'creating a routine refreshes the routines tab without leaving the screen',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, <Object?>[]); // initial (empty) routines load
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(apiClient: client, bot: _bot),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Routines'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routines-empty')), findsOneWidget);
+      expect(find.byKey(const Key('create-routine-fab')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('create-routine-fab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routine-name-field')), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('routine-name-field')),
+        'Morning digest',
+      );
+      await tester.enterText(
+        find.byKey(const Key('routine-schedule-field')),
+        '0 8 * * *',
+      );
+
+      fake.queueJson(201, {
+        'routineId': 'routine-new',
+        'name': 'Morning digest',
+        'schedule': '0 8 * * *',
+        'lastFireAt': null,
+        'nextFireAt': '2026-09-06T08:00:00Z',
+      });
+      fake.queueJson(200, [
+        {
+          'routineId': 'routine-new',
+          'name': 'Morning digest',
+          'schedule': '0 8 * * *',
+          'lastFireAt': null,
+          'nextFireAt': '2026-09-06T08:00:00Z',
+        },
+      ]);
+
+      await tester.tap(find.byKey(const Key('create-routine-submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routine-name-field')), findsNothing);
+      expect(find.text('Morning digest'), findsOneWidget);
+    },
+  );
+
   testWidgets('shows auto-review settings without a usage figure', (
     tester,
   ) async {

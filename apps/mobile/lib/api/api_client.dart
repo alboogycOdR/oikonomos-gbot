@@ -221,6 +221,37 @@ class ApiClient {
         .toList();
   }
 
+  /// TASK-158 (Mobile Wave 8) — `POST /roles/:roleId/routines`
+  /// (services/control-api/src/app.ts), body `{name, schedule, definition?}`.
+  /// `name` and `schedule` are required non-empty strings; `schedule` is
+  /// validated server-side as a real cron expression and rejected with a
+  /// 400 (surfaced here as an [ApiException] with the server's message,
+  /// same as every other write call). `goal` maps to `definition: {goal}`
+  /// — the field `services/worker/src/jobs/routineJob.ts` actually reads
+  /// as the created task's instruction — and is omitted entirely (no
+  /// `definition` key at all) when the caller passes `null`/empty, rather
+  /// than sending `{goal: ""}`.
+  Future<Routine> createRoutine(
+    String roleId,
+    String name,
+    String schedule, {
+    String? goal,
+  }) async {
+    final trimmedGoal = goal?.trim();
+    final body = <String, dynamic>{
+      'name': name,
+      'schedule': schedule,
+      if (trimmedGoal != null && trimmedGoal.isNotEmpty)
+        'definition': {'goal': trimmedGoal},
+    };
+    final json = await _request(
+      'POST',
+      '/roles/${Uri.encodeComponent(roleId)}/routines',
+      body: body,
+    );
+    return Routine.fromJson(json as Map<String, dynamic>);
+  }
+
   /// TASK-149 (Mobile Wave 2b) — `POST /devices`, authenticated with the
   /// session cookie like every other call. `platform` must be one of the
   /// wire values `packages/db/src/deviceTokens.ts`'s `devicePlatforms`
