@@ -973,4 +973,126 @@ void main() {
       expect(jsonDecode(request.body), {'instructions': ''});
     },
   );
+
+  testWidgets(
+    'composer renders as a pill with attach/send still present and working',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, _messageJson('2', role: 'user', body: 'hey'));
+
+      await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      );
+      await tester.pumpAndSettle();
+
+      final pillFinder = find.byKey(const Key('composer-pill'));
+      expect(pillFinder, findsOneWidget);
+      final pill = tester.widget<Container>(pillFinder);
+      final decoration = pill.decoration as BoxDecoration;
+      expect(decoration.borderRadius, isNotNull);
+
+      // Attach and send buttons still present inside the pill, and the send
+      // flow still works exactly as before — only the wrapper changed.
+      expect(
+        find.descendant(
+          of: pillFinder,
+          matching: find.byKey(const Key('attach-button')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: pillFinder,
+          matching: find.byKey(const Key('send-button')),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byKey(const Key('compose-field')), 'hey');
+      await tester.tap(find.byKey(const Key('send-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('hey'), findsOneWidget);
+    },
+  );
+
+  testWidgets('header renders with a frosted/translucent backdrop', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('chat-header-frost')), findsOneWidget);
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(appBar.backgroundColor, isNotNull);
+    expect(appBar.backgroundColor!.a, lessThan(1.0));
+  });
+
+  testWidgets(
+    'shows a date divider between message clusters that cross a day boundary',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          ..._messageJson('1', role: 'user', body: 'day one message'),
+          'createdAt': '2026-09-03T10:00:00Z',
+        },
+        {
+          ..._messageJson('2', role: 'bot', body: 'day two message'),
+          'createdAt': '2026-09-04T09:00:00Z',
+        },
+      ]);
+      fake.queueHangingStream(200);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      );
+      await tester.pumpAndSettle();
+
+      // Both real messages present, and exactly one divider for the one real
+      // day boundary crossed (before message 1 — the first cluster).
+      expect(find.text('day one message'), findsOneWidget);
+      expect(find.text('day two message'), findsOneWidget);
+      expect(find.byKey(const Key('date-divider-1')), findsOneWidget);
+      expect(find.byKey(const Key('date-divider-2')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'no extra date divider when messages fall on the same real day',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          ..._messageJson('1', role: 'user', body: 'first'),
+          'createdAt': '2026-09-04T09:00:00Z',
+        },
+        {
+          ..._messageJson('2', role: 'bot', body: 'second'),
+          'createdAt': '2026-09-04T09:05:00Z',
+        },
+      ]);
+      fake.queueHangingStream(200);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('date-divider-1')), findsOneWidget);
+      expect(find.byKey(const Key('date-divider-2')), findsNothing);
+    },
+  );
 }
