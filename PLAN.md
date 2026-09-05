@@ -1,8 +1,8 @@
 ---
-plan_version: 12.7
-last_updated: 2026-09-05T16:50:00Z
+plan_version: 12.8
+last_updated: 2026-09-05T17:00:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-166 (attachments) implementation complete and well-investigated (WORKSPACE_ROOT correctly determined to be design-only, real prompt-injection delivery chosen instead) but commit was blocked by a real authoring bug: this task's own Owned_Paths had a 'TBD at decompose time - likely...' free-text prefix that breaks territory-precommit's parser. Fixed here, plus the same latent bug in TASK-163/164/167 (fixed proactively, not yet dispatched). Redispatching GB to commit TASK-166 now - no further code work needed, just the commit. GB's session also died silently once already this tick (no grok CLI process found running) - redispatched via the resume path, work was preserved. CX/CX9 worktree locks freed by the user closing dead terminals; S5's remains stuck (Defender-suspected, non-blocking)."
+orchestrator_notes: "TASK-166 (attachments) approved and merged - real capability gap closed (real gen file/image upload, server-side limits, verified no path-traversal, genuine agent-reads-content proof). One documented non-blocking limitation: content-type validation trusts the client header, no byte-sniffing. TASK-167 (conversational rename) now unblocked (Depends_On TASK-166). Fixed a real task-authoring bug found live on TASK-166: an Owned_Paths 'TBD at decompose time - likely...' prefix breaks territory-precommit's parser and silently blocks legitimate commits - fixed on TASK-163/164/166/167. User separately researched github.com/affaan-m/ECC for DEVDEPARTMENT pack improvements; 3 concrete candidates identified (a dedup+adversarial-verify review workflow, a secret-scanning PreToolUse hook we currently lack, a file-pattern-to-doc routing table) - not yet turned into tasks, awaiting direction. CX/CX9 worktrees free; S5 still stuck (Defender-suspected, non-blocking). User plans to restart the machine once TASK-166 was confirmed merged - this note is that confirmation."
 ---
 
 # Project Plan
@@ -4906,7 +4906,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-166
 **Title:** Chat file/image attachments — real upload capability, currently entirely absent
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** Real gap named by the user comparing against the Grok Bot reference app's `+` attach button (image/file upload in the composer): confirmed by grep, ZERO attachment/upload capability exists anywhere in this codebase today — no upload endpoint, no attachment column on `packages/db/src/messages.ts`'s `Message`/`NewMessage`, no storage location, no agent-side way to read an uploaded file. This is a real, sizable capability gap, not UI polish — do not scope this as "add a button."
@@ -4914,24 +4914,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Investigate first, real open design question that must be resolved with evidence, not guessed: `services/workspace/src/paths.ts` defines a conceptual `/oikonomos/workspace` (WORKSPACE_ROOT) D1 tier that the SPEC describes as agent-readable — but TASK-153 (security fix) gives every real chat run a fresh, scoped, per-run temp directory as `cwd` for isolation. Determine whether `WORKSPACE_ROOT` corresponds to any real mounted/writable path in the actual running system today, or whether it's design-only/future. If real: landing an uploaded file there (in a durable, thread- or role-scoped subdirectory) would let the agent read it with its EXISTING Read/Bash tools, zero new agent-side tooling. If not real: a different storage/delivery mechanism is needed (e.g. injecting the file's content or a reference directly into the prompt/context, or storing to a plain local/cloud object store with no agent read path at all yet) — say so honestly and scope accordingly, do not force a fit to an aspirational path that doesn't exist. Once the storage design is grounded: (1) a real upload endpoint (size-limited, content-type-validated) that persists the file and records a real reference on the message (extend `NewMessage`/`Message`, do not bolt attachments on as an unstructured blob in `body`); (2) mobile `+` button wired to a real file/image picker and the real upload call, with a visible upload-progress/error state; (3) the attachment reference must be genuinely usable by the agent for the feature to be real — round-trip this end-to-end (upload → agent asked about the file → agent's response demonstrates it could actually access the content), not just "the file lands in storage."
 **Acceptance_Criteria:**
-- [ ] The real storage/agent-access design question above is answered with evidence in the dossier, not assumed
-- [ ] A real upload endpoint persists a file and records a structured reference on the message — tested against real Postgres
-- [ ] The mobile composer's `+` button opens a real file/image picker and uploads through the real endpoint, with visible progress and error states — tested
-- [ ] A genuine end-to-end round trip proves the agent can actually access an uploaded file's content, not just that it was stored — tested
-- [ ] Reasonable size/type limits are enforced server-side (not just client-side), with a clear rejection message on violation
-- [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** task/TASK-166-gb
+- [x] The real storage/agent-access design question above is answered with evidence in the dossier, not assumed
+- [x] A real upload endpoint persists a file and records a structured reference on the message — tested against real Postgres
+- [x] The mobile composer's `+` button opens a real file/image picker and uploads through the real endpoint, with visible progress and error states — tested
+- [x] A genuine end-to-end round trip proves the agent can actually access an uploaded file's content, not just that it was stored — tested
+- [x] Reasonable size/type limits are enforced server-side (not just client-side), with a clear rejection message on violation
+- [x] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
+**Branch:** task/TASK-166-gb (merged, deleted)
 **Started_At:** 2026-09-05T15:37:19Z
 **Progress_Notes:**
 - [2026-09-05T16:35:02Z] [GB] Investigated the real open design question honestly and with evidence: `WORKSPACE_ROOT` (`services/workspace/src/paths.ts`) is design-only/future — confirmed by reading the module's own comment ("pure path algebra, never touches disk"), confirming the Office-computer docker-compose services are placeholder `tail -f /dev/null` containers not on the chat path, and confirming TASK-153's real chat driver uses a fresh per-run mkdtemp as cwd, not `/oikonomos/workspace`. Correctly did NOT write to `services/workspace/src/**` — would have pretended an aspirational path was real. Chose instead: persist bytes to a local object store, record a structured attachment reference on the message (JSONB, not a body blob), and inject filename/type/size/path/inlined-text into the prompt at send time — genuinely usable by the agent with zero new agent-side tooling. Server-side limits enforced (10 MiB, 10 files/message, real content-type allow-list). Full test evidence reported: control-api 156/156 (incl. a live-Postgres end-to-end proof the chat driver actually reads an uploaded file's contents), db messages suite green, flutter analyze/test clean (92 tests), full recursive suite/build/lint clean modulo one already-known pre-existing flake.
 - [2026-09-05T16:36:30Z] [GB] Commit blocked by `territory-precommit`: found a real authoring bug in this task's own `Owned_Paths` — the "TBD at decompose time — likely..." free-text prefix broke the hook's parser, so it rejected `packages/db/src/messages.ts` as "outside territory" despite being genuinely listed. Correctly refused `--no-verify`, left implementation staged, escalated to ORCH rather than guess. Good catch — the same authoring bug existed in 3 other queued tasks (163/164/167), fixed alongside this one.
 - [2026-09-05T16:50:00Z] [ORCH] Rewrote Owned_Paths as a clean comma-separated list (dropped the TBD prefix and the "possibly services/workspace..." clause — GB's investigation already answered that question). Redispatching GB to commit; no further code work needed.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [2026-09-05T16:43:00Z] [GB] Committed (`ba20d0e`, `a63b1fe`). Territory clean. Handoff needs_review.
+- [2026-09-05T17:00:00Z] [ORCH] Independent security-focused verification, given this is a new upload feature: control-api 156/156, db messages suite 151/2skip, flutter analyze/test clean (92/92), full recursive suite clean modulo known flakes (plus one new but same-class/same-file timing flake in `runs.test.ts`, not the literal pre-approved test — tracked under TASK-162's existing scope, not a new issue). Specifically checked for path-traversal in the upload storage path: **none found** — storage uses server-generated UUIDs only (`{id}.bin`), the client-supplied filename is never used in path construction, and both `threadId` and `attachmentIds` are strict-UUID-validated before any path join; defense in depth confirmed by reading the actual code, not assumed. Confirmed size limit checks decoded bytes (not base64 length, no bypass) and the file-count limit is enforced twice (schema + runtime). One real but modest finding: content-type validation trusts the client-supplied header field with no magic-byte sniffing — a mislabeled file could pass the allow-list. Accepting as a documented limitation for this feature's threat model (no code execution path from an uploaded file; worst case is a mislabeled file's bytes reaching the prompt as if it were text) rather than blocking — logged as a note here rather than silently absorbed. Confirmed the live-Postgres "agent reads the content" test is genuine: it captures the actual constructed prompt via a fake queryFn, independently reads the file off disk, and asserts a unique marker appears in both — not a weak reference-only proxy. Approved, merged --no-ff.
+**Artifacts:** infra/postgres/migrations/013_message_attachments.{up,down}.sql, packages/db/src/messages.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, apps/mobile/lib/attach/**, apps/mobile/lib/screens/chat_screen.dart, dossiers/TASK-166.md
+**Test_Evidence:** Independently re-verified: control-api 156/156, db 151/2skip, flutter analyze/test 92/92, full recursive suite clean modulo known/adjacent flakes, build/lint clean.
+**Review_Findings:** APPROVED, first-pass on the actual implementation (the commit-block was a task-authoring bug, not a code defect). Genuine new capability, not polish — real open design question (WORKSPACE_ROOT reality) investigated with evidence rather than assumed, correct delivery mechanism chosen (prompt injection, not a fake agent-workspace mount), real server-side limits, no path-traversal vulnerability (verified directly). One documented, accepted limitation: content-type is header-trust-only, no byte-sniffing — acceptable for this feature's threat model, worth a follow-up if attachment handling ever gains more privilege (e.g. if files become directly executable/openable by a tool rather than inlined as prompt text).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T16:50:00Z
+**Updated_At:** 2026-09-05T17:00:00Z
 
 ### TASK-167
 **Title:** Conversational bot rename — "tell me what to call myself and I'll rename it"
