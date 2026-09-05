@@ -94,6 +94,20 @@ export {
   type RoutineListFilter,
 } from "./routines.js";
 export {
+  createSkill,
+  getSkill,
+  listEnabledForRole,
+  listSkills,
+  setEnabledForRole,
+  skillStatuses,
+  updateSkill,
+  type NewSkill,
+  type Skill,
+  type SkillListFilter,
+  type SkillStatus,
+  type UpdateSkill,
+} from "./skills.js";
+export {
   getRoleMessage,
   listRoleMessages,
   markRoleMessageRead,
