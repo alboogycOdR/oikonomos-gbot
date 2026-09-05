@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { devicePlatforms, riskTiers, runStatuses, taskStatuses, type Approval, type DevicePlatform, type Message, type RunStatus, type TaskStatus } from "@oikonomos/db";
+import { devicePlatforms, riskTiers, runStatuses, taskStatuses, type Approval, type DevicePlatform, type Message, type RoleMessage, type RunStatus, type TaskStatus } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -294,6 +294,15 @@ function serializeRole(role: { roleId: string; name: string; description: string
   return { id: role.roleId, name: role.name, description: role.description, avatarSeed: role.roleId };
 }
 
+/** A bot's handoff timeline is the union of its inbox and outbox. */
+function mergeRoleMessages(sent: RoleMessage[], received: RoleMessage[]): RoleMessage[] {
+  const byId = new Map<string, RoleMessage>();
+  for (const message of [...sent, ...received]) byId.set(message.messageId, message);
+  return [...byId.values()].sort((left, right) =>
+    right.createdAt.getTime() - left.createdAt.getTime() || right.messageId.localeCompare(left.messageId),
+  );
+}
+
 function isRunStatus(value: string): value is RunStatus {
   return (runStatuses as readonly string[]).includes(value);
 }
@@ -459,6 +468,9 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         "/roles/{roleId}": {
           patch: { summary: "Set chat bot instructions", operationId: "updateRoleInstructions", responses: { "200": { description: "Chat bot updated" } } },
         },
+        "/roles/{roleId}/messages": {
+          get: { summary: "List handoffs sent or received by a chat bot", operationId: "listRoleMessages", responses: { "200": { description: "Role handoffs, newest-first" } } },
+        },
         "/threads": {
           get: { summary: "List chat threads", operationId: "listThreads", responses: { "200": { description: "Chat threads" } } },
           post: { summary: "Create or return a chat thread", operationId: "createThread", responses: { "201": { description: "Chat thread" } } },
@@ -604,6 +616,18 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/messages", async (request, reply) => {
+    try {
+      const [sent, received] = await Promise.all([
+        deps.listRoleMessages({ tenantId: "basileia", fromRoleId: request.params.roleId }),
+        deps.listRoleMessages({ tenantId: "basileia", toRoleId: request.params.roleId }),
+      ]);
+      await reply.code(200).send(mergeRoleMessages(sent, received));
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
 
   /**
    * TASK-118 (Grants-1b) — the "Always Allow" standing grant the inline

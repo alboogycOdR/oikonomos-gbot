@@ -40,6 +40,8 @@ class ChatScreenState extends State<ChatScreen>
   List<Routine>? _routines;
   String? _routinesError;
   bool _loadingRoutines = false;
+  List<RoleHandoff> _handoffs = const [];
+  Map<String, Role> _rolesById = const {};
   final Map<String, String> _approvalStatuses = {};
   final Set<String> _decidingApprovals = {};
 
@@ -53,6 +55,7 @@ class ChatScreenState extends State<ChatScreen>
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(_onTabChanged);
     _load();
+    _loadHandoffs();
   }
 
   @override
@@ -190,6 +193,42 @@ class ChatScreenState extends State<ChatScreen>
     }
   }
 
+  /// Handoffs are optional timeline decoration: a failure must not hide chat.
+  Future<void> _loadHandoffs() async {
+    try {
+      final handoffs =
+          await widget.apiClient.listRoleHandoffs(widget.bot.roleId);
+      if (!mounted) return;
+      // Most timelines have no role-to-role traffic. Avoid a second request
+      // unless there is a chip that needs the other role's display details.
+      if (handoffs.isEmpty) {
+        setState(() => _handoffs = handoffs);
+        return;
+      }
+      final roles = await widget.apiClient.listRoles();
+      if (!mounted) return;
+      setState(() {
+        _handoffs = handoffs;
+        _rolesById = {for (final role in roles) role.id: role};
+      });
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // This inline enhancement intentionally remains absent on failure.
+    }
+  }
+
+  void _showHandoff(RoleHandoff handoff, String otherName) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Handoff with $otherName'),
+        content: SingleChildScrollView(child: Text(handoff.body)),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final body = _composeController.text.trim();
     if (body.isEmpty || _sending) return;
@@ -280,17 +319,40 @@ class ChatScreenState extends State<ChatScreen>
     if (_error != null) {
       return Center(child: Text(_error!, key: const Key('chat-error')));
     }
-    if (_messages.isEmpty) {
+    if (_messages.isEmpty && _handoffs.isEmpty) {
       return const Center(
         key: Key('chat-empty'),
         child: Text('No messages yet — say hello.'),
       );
     }
-    return ListView.builder(
-      key: const Key('message-list'),
-      padding: const EdgeInsets.all(12),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
+    return Column(
+      children: [
+        if (_handoffs.isNotEmpty)
+          SizedBox(
+            height: 56,
+            child: ListView.builder(
+              key: const Key('handoff-chip-list'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              itemCount: _handoffs.length,
+              itemBuilder: (context, index) {
+                final handoff = _handoffs[index];
+                final otherId = handoff.fromRoleId == widget.bot.roleId ? handoff.toRoleId : handoff.fromRoleId;
+                final other = _rolesById[otherId];
+                return _HandoffChip(
+                  handoff: handoff,
+                  otherName: other?.name ?? otherId,
+                  avatarSeed: other?.avatarSeed ?? otherId,
+                  onTap: () => _showHandoff(handoff, other?.name ?? otherId),
+                );
+              },
+            ),
+          ),
+        Expanded(child: ListView.builder(
+          key: const Key('message-list'),
+          padding: const EdgeInsets.all(12),
+          itemCount: _messages.length,
+          itemBuilder: (context, index) {
         final message = _messages[index];
         if (message.role == 'system') {
           return _SystemEventLine(message: message);
@@ -344,7 +406,9 @@ class ChatScreenState extends State<ChatScreen>
             ),
           ),
         );
-      },
+          },
+        )),
+      ],
     );
   }
 
@@ -408,6 +472,26 @@ class ChatScreenState extends State<ChatScreen>
       },
     );
   }
+}
+
+class _HandoffChip extends StatelessWidget {
+  const _HandoffChip({required this.handoff, required this.otherName, required this.avatarSeed, required this.onTap});
+
+  final RoleHandoff handoff;
+  final String otherName;
+  final String avatarSeed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: ActionChip(
+      key: Key('handoff-chip-${handoff.id}'),
+      avatar: BotAvatar(seed: avatarSeed, name: otherName, size: 22),
+      label: Text('1 message with $otherName'),
+      onPressed: onTap,
+    ),
+  );
 }
 
 class _ApprovalCard extends StatelessWidget {

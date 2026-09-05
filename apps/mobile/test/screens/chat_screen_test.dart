@@ -77,6 +77,39 @@ void main() {
     expect(find.text('hi there'), findsOneWidget);
   });
 
+  testWidgets('shows real handoff chips and opens the persisted handoff body', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]); // transcript
+    fake.queueJsonFor('GET', '/roles/role-1/messages', 200, [
+      {
+        'messageId': 'handoff-1',
+        'fromRoleId': 'role-1',
+        'toRoleId': 'role-2',
+        'body': 'Please take over the customer follow-up.',
+        'createdAt': '2026-09-05T12:00:00Z',
+      },
+    ]);
+    fake.queueJsonFor('GET', '/roles', 200, [
+      {
+        'id': 'role-2',
+        'name': 'Trevor',
+        'description': 'Specialist',
+        'avatarSeed': 'seed-2'
+      },
+    ]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('handoff-chip-handoff-1')), findsOneWidget);
+    expect(find.text('1 message with Trevor'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('handoff-chip-handoff-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Please take over the customer follow-up.'), findsOneWidget);
+  });
+
   testWidgets('a streamed event appears without a refresh', (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);

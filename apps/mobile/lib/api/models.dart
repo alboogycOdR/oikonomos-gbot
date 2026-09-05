@@ -240,3 +240,28 @@ class ThreadMessage {
     );
   }
 }
+
+/// A real async role-to-role handoff returned by `GET /roles/:roleId/messages`.
+class RoleHandoff {
+  const RoleHandoff({
+    required this.id,
+    required this.fromRoleId,
+    required this.toRoleId,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String fromRoleId;
+  final String toRoleId;
+  final String body;
+  final String createdAt;
+
+  factory RoleHandoff.fromJson(Map<String, dynamic> json) => RoleHandoff(
+    id: json['messageId'] as String,
+    fromRoleId: json['fromRoleId'] as String,
+    toRoleId: json['toRoleId'] as String,
+    body: json['body'] as String,
+    createdAt: json['createdAt'] as String,
+  );
+}

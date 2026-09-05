@@ -20,6 +20,7 @@ import {
   listPendingApprovals as dbListPendingApprovals,
   listMessages as dbListMessages,
   listRoles as dbListRoles,
+  listRoleMessages as dbListRoleMessages,
   updateRoleInstructions as dbUpdateRoleInstructions,
   listRoutines as dbListRoutines,
   listRuns as dbListRuns,
@@ -46,6 +47,7 @@ import {
   type TaskListFilter,
   type TaskListPage,
   type Role,
+  type RoleMessage,
   type RoleGrant,
   type Routine,
   type Thread,
@@ -90,6 +92,7 @@ export interface ControlApiDeps {
   revokeRoleGrant(roleId: string, capabilityId: string): Promise<void>;
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
   updateRoleInstructions(roleId: string, instructions: string): Promise<Role | null>;
+  listRoleMessages(filter: { tenantId: string; toRoleId?: string; fromRoleId?: string }): Promise<RoleMessage[]>;
   listRoutines(filter: { tenantId: string; roleId?: string }): Promise<Routine[]>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
@@ -198,6 +201,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       withDatabase(options, (database) => database.revokeRoleGrant(roleId, capabilityId)),
     listRoles: (filter) => dbListRoles(options, filter),
     updateRoleInstructions: (roleId, instructions) => dbUpdateRoleInstructions(options, roleId, instructions),
+    listRoleMessages: (filter) => dbListRoleMessages(options, filter),
     listRoutines: (filter) => dbListRoutines(options, filter),
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),

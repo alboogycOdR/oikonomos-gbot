@@ -14,6 +14,7 @@ import {
   startRun,
   listAllThreadsWithMembers,
   listRoutines,
+  sendRoleMessage,
   listThreadMembers,
   type Approval,
   type Capability,
@@ -21,6 +22,7 @@ import {
   type GroupThread,
   type Message,
   type Role,
+  type RoleMessage,
   type RoleGrant,
   type Routine,
   type Task,
@@ -75,6 +77,13 @@ function makeRoutine(overrides: Partial<Routine> = {}): Routine {
   };
 }
 
+function makeRoleMessage(overrides: Partial<RoleMessage> = {}): RoleMessage {
+  return {
+    messageId: randomUUID(), tenantId: "basileia", fromRoleId: roleId, toRoleId: "second-bot", body: "Real handoff body",
+    workspaceRefs: [], handoffKind: null, factRef: null, createdAt: new Date(), readAt: null, ...overrides,
+  };
+}
+
 function makeCapability(overrides: Partial<Capability> = {}): Capability {
   return {
     capabilityId: "fs.read", description: "Read files", defaultTier: "T0_observe", adapter: "sdk:builtin", enabled: true,
@@ -105,6 +114,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
       calls.push("updateRoleInstructions");
       return makeRole({ roleId: updatedRoleId, instructions });
     },
+    listRoleMessages: async () => { calls.push("listRoleMessages"); return []; },
     listRoutines: async () => { calls.push("listRoutines"); return []; },
     getOrCreateThreadForRole: async (input) => { calls.push("getOrCreateThreadForRole"); return makeThread(); },
     listThreads: async () => { calls.push("listThreads"); return [makeThread()]; },
@@ -129,6 +139,26 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
 }
 
 describe("Chat-1b control-api routes (TASK-106)", () => {
+  it("merges a role's sent and received handoffs newest-first without duplicating self-handoffs", async () => {
+    const oldest = makeRoleMessage({ messageId: "oldest", createdAt: new Date("2026-01-01T00:00:00Z") });
+    const newest = makeRoleMessage({ messageId: "newest", createdAt: new Date("2026-01-03T00:00:00Z") });
+    const self = makeRoleMessage({ messageId: "self", fromRoleId: roleId, toRoleId: roleId, createdAt: new Date("2026-01-02T00:00:00Z") });
+    const observed: Array<{ tenantId: string; toRoleId?: string; fromRoleId?: string }> = [];
+    const { deps } = createDeps({ listRoleMessages: async (filter) => {
+      observed.push(filter);
+      return filter.fromRoleId === roleId ? [oldest, self] : [newest, self];
+    } });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    try {
+      const response = await app.inject({ method: "GET", url: `/roles/${roleId}/messages`, headers: authHeaders() });
+      expect(response.statusCode).toBe(200);
+      expect(observed).toEqual([
+        { tenantId: "basileia", fromRoleId: roleId },
+        { tenantId: "basileia", toRoleId: roleId },
+      ]);
+      expect(JSON.parse(response.body).map((message: { messageId: string }) => message.messageId)).toEqual(["newest", "self", "oldest"]);
+    } finally { await app.close(); }
+  });
   it("passes routineId through GET /tasks without changing unfiltered listing", async () => {
     const routineId = randomUUID();
     let observedFilter: unknown;
@@ -166,6 +196,7 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       { method: "DELETE" as const, url: `/roles/${roleId}/grants/email.send` },
       { method: "POST" as const, url: `/roles/${roleId}/routines`, payload: { name: "Daily", schedule: "0 8 * * *" } },
       { method: "GET" as const, url: `/roles/${roleId}/routines` },
+      { method: "GET" as const, url: `/roles/${roleId}/messages` },
       { method: "GET" as const, url: `/threads/${threadId}/messages` },
       { method: "POST" as const, url: `/threads/${threadId}/messages`, payload: { body: "Hi" } },
       { method: "POST" as const, url: "/devices", payload: { token: "opaque-test-target", platform: "android" } },
@@ -719,6 +750,42 @@ integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () 
       }
     },
   );
+});
+
+integration("GET /roles/:roleId/messages — real Postgres (TASK-160)", () => {
+  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+
+  it("lists exactly the persisted sent and received handoffs for one role", async () => {
+    const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+    try {
+      const createRole = async (name: string) => {
+        const response = await app.inject({
+          method: "POST", url: "/roles", headers: authHeaders(), payload: { name, description: "TASK-160 integration fixture" },
+        });
+        expect(response.statusCode).toBe(201);
+        return (JSON.parse(response.body) as { id: string }).id;
+      };
+      const [subject, sender, recipient] = await Promise.all([
+        createRole(`Handoff subject ${randomUUID()}`),
+        createRole(`Handoff sender ${randomUUID()}`),
+        createRole(`Handoff recipient ${randomUUID()}`),
+      ]);
+      const sent = await sendRoleMessage(options, { tenantId: "basileia", fromRoleId: subject, toRoleId: recipient, body: "Persisted sent handoff" });
+      const received = await sendRoleMessage(options, { tenantId: "basileia", fromRoleId: sender, toRoleId: subject, body: "Persisted received handoff" });
+      await sendRoleMessage(options, { tenantId: "basileia", fromRoleId: sender, toRoleId: recipient, body: "Unrelated handoff" });
+
+      const response = await app.inject({ method: "GET", url: `/roles/${subject}/messages`, headers: authHeaders() });
+      expect(response.statusCode).toBe(200);
+      const listed = JSON.parse(response.body) as Array<{ messageId: string; body: string }>;
+      expect(listed).toEqual(expect.arrayContaining([
+        expect.objectContaining({ messageId: sent.messageId, body: "Persisted sent handoff" }),
+        expect.objectContaining({ messageId: received.messageId, body: "Persisted received handoff" }),
+      ]));
+      expect(listed).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 integration("Role routines — cron scheduling, real Postgres (TASK-134)", () => {
