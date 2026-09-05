@@ -5594,7 +5594,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-191
 **Title:** Security — enforce tenant ownership on `/threads/:id/*` by-id routes (cross-tenant IDOR, part 2)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** Split from TASK-190 (see its Progress_Notes 2026-09-06T01:30:00Z) — same real, live cross-tenant IDOR class, this time on `GET /threads/:id/messages`, `POST /threads/:id/messages`, `POST /threads/:id/attachments`, and `GET /threads/:id/stream`. The design is already worked out: a `threadBelongsToTenant` stub/comment exists at each affected route in `app.ts` from TASK-190's investigation — derive ownership from `thread.roleId` (1:1) via `deps.listRoles({ tenantId })`, or, for a group thread, require EVERY id in `thread.memberRoleIds` to resolve to a role owned by the caller's tenant.
@@ -5607,12 +5607,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A group thread is correctly denied to a caller whose tenant does not own EVERY member role, not just one (test) — do not accept "any member matches" as sufficient
 - [ ] All of chat.routes.test.ts and sse.test.ts's existing tests still pass (fixtures updated to match, not the check weakened)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-191-s5
+**Started_At:** 2026-09-05T23:30:19Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T01:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T23:30:19Z
