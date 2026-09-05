@@ -4546,7 +4546,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-154
 **Title:** Investigate and, if needed, fix the MCP-connector/system-CLI config leak
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** Live incident, 2026-09-05: a freshly-created bot with zero grants described "connected and usable now" Gmail/Google Drive access, "connected but not authorized" Google Calendar/Notion, and a Mobbin design connector — none of which oikonomos granted it. These are ORCH's own personal claude.ai account's configured MCP connectors, strongly suggesting the underlying session resolved the developer's own `~/.claude` config rather than anything oikonomos-governed. `packages/harness-factory/src/index.ts`'s `withSystemClaudeExecutable` (deliberately prefers a real system-installed `claude` CLI binary over the bundled SDK path when one is found on PATH) is the prime suspect — a system CLI invocation may resolve its own MCP server registrations from the OS-default Claude config directory independent of anything oikonomos passes. TASK-153 (merged) already scopes every chat run's `env` to a genuinely empty object `{}`, which may already close this incidentally (no HOME/USERPROFILE means the CLI cannot resolve a default config directory to read at all) — this task must PROVE that empirically, not assume it.
@@ -4559,15 +4559,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] If not closed: `withSystemClaudeExecutable` (or its caller) is changed so a governed chat run's session cannot resolve any config directory outside what oikonomos explicitly provides — proven by a real test, mutation-proof (reverting the fix must redden it)
 - [ ] Existing harness-factory tests pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-154-cx
+**Started_At:** 2026-09-05T10:25:10Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T12:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:25:10Z
 
 ### TASK-155
 **Title:** Continue-after-approval — resume a chat run's live SDK session once a parked approval is granted
