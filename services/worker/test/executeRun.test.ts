@@ -95,11 +95,35 @@ describe("executeTaskRun — production caller", () => {
           sandbox: "read-only",
           alwaysApprove: true,
         },
+        // TASK-143: `budget` is required unless explicitly opted out. No
+        // production call site for this factory exists yet (tracked
+        // separately), so this test — which only exercises provider
+        // construction, not a real run — opts out explicitly rather than
+        // fabricating a live DB-backed budget option.
+        unsafeAllowUnbudgeted: true,
       }),
     });
 
     expect(result.runtime.providers.codex).toBeInstanceOf(CodexProvider);
     expect(result.runtime.providers.grok).toBeInstanceOf(GrokProvider);
+  });
+
+  it("requires a budget option or an explicit unsafeAllowUnbudgeted opt-out (TASK-143 liveness assertion)", () => {
+    expect(() =>
+      createGatedSubprocessProviders({
+        codex: {
+          bin: "C:\\oikonomos\\must-not-spawn-codex.exe",
+          defaultModel: "gpt-5.4",
+          sandbox: "read-only",
+        },
+        grok: {
+          bin: "C:\\oikonomos\\must-not-spawn-grok.exe",
+          defaultModel: "grok-4.5",
+          sandbox: "read-only",
+          alwaysApprove: true,
+        },
+      }),
+    ).toThrow(/requires a `budget` option/);
   });
 
   it("rejects a park port that is not callable", async () => {

@@ -144,3 +144,11 @@ export {
   type RequireApprovalRule,
   type RequireApprovalRuleListFilter,
 } from "./requireApprovalRules.js";
+export {
+  getPlatformSpendUsd,
+  getRoutineSpendUsd,
+  recordSpend,
+  startOfCurrentMonthUtc,
+  type NewSpendRecord,
+  type SpendRecord,
+} from "./spend.js";
