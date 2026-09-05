@@ -4571,7 +4571,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-155
 **Title:** Continue-after-approval — resume a chat run's live SDK session once a parked approval is granted
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Confirmed live-blocking tonight: granting a pending approval via POST /approvals/:nonce/decide does nothing beyond flipping the approval's own status — nothing resumes the chat run that was waiting on it, so the conversation just stops. ORCH verified the real mechanism exists to fix this properly rather than work around it: @anthropic-ai/claude-agent-sdk's Options type supports `resume?: string` — "New session UUID. Resumable via `query({ options: { resume: sessionId } })`" (verified directly in sdk.d.ts). packages/db/src/runs.ts's `session_ref` already persists exactly this session UUID for every run (built for TASK-129's own agentRef wiring). services/worker/src/executeRun.ts's `agentSdkOptions` passthrough (TASK-153) already provides the plumbing to hand an arbitrary SDK options object — including `resume` — straight through to the real query() call. The pieces exist; nothing currently wires them together.
@@ -4586,15 +4586,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A resume that itself fails (simulated) fails the run cleanly with a clear reason rather than leaving it stuck or fabricating a response — tested
 - [ ] Existing TASK-133/135/136 durable-resume tests pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-155-cx9
+**Started_At:** 2026-09-05T10:25:17Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T12:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-05T10:25:17Z
 
 ### TASK-157
 **Title:** Mobile polish bundle — markdown rendering, system-event styling, personalized placeholder, title field
