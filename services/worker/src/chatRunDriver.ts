@@ -14,13 +14,26 @@ import {
   type CreateGoogleCalendarConnectorSessionMinterOptions,
   type CreateGoogleDriveConnectorSessionMinterOptions,
 } from "@oikonomos/connectors";
-import { Database, getRole, insertMessage, type DatabaseOptions, type Task } from "@oikonomos/db";
+import {
+  Database,
+  getLatestThreadSummary,
+  getOrInitThreadContext,
+  getRole,
+  insertMessage,
+  insertThreadSummary,
+  listMessages,
+  updateThreadContext,
+  type DatabaseOptions,
+  type Task,
+} from "@oikonomos/db";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
 import type { RunParkPort } from "@oikonomos/harness-factory/compose";
 import { buildRoleSystemPrompt } from "./promptAssembly.js";
+import { maybeCompact } from "./contextCompaction.js";
+import { createTierZeroProvider, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
 import { createChatRunWorkspace, removeChatRunWorkspace } from "./runWorkspace.js";
 import {
   combineConnectorContexts,
@@ -54,6 +67,8 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly manifests?: readonly ConnectorManifest[];
   /** Test-only Agent SDK seam; production uses the SDK's default query function. */
   readonly queryFn?: AgentSdkQueryFn;
+  /** Injectable Tier-0 configuration for live context compaction. */
+  readonly tierZeroProviderOptions?: Omit<CreateTierZeroProviderOptions, "db" | "runId">;
   /**
    * Test seam for connector session acquisition. Production callers leave
    * this unset and use the Gmail OAuth-backed session minter below.
@@ -205,11 +220,55 @@ async function runChatTask(
       await removeChatRunWorkspace(workspace);
     }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
+    await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
   } catch (error) {
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+/** Runs TASK-179's real Postgres compaction ports after every completed chat response. */
+async function compactCompletedChatRun(
+  options: CreateChatRunDriverOptions,
+  request: ChatRunRequest,
+  runId: string,
+): Promise<void> {
+  const role = await getRole(options, request.task.roleId);
+  let tierZero: ReturnType<typeof createTierZeroProvider> | undefined;
+  await maybeCompact({
+    threadId: request.threadId,
+    systemPrompt: buildRoleSystemPrompt(role, request.task.roleId),
+    // Construct only when the measured meter actually crosses its threshold;
+    // ordinary short chat turns must not require Tier-0 environment config.
+    summarize: async (prompt) => {
+      tierZero ??= createTierZeroProvider({ db: options, runId, ...resolveTierZeroProviderOptions(options) });
+      return tierZero(prompt);
+    },
+    ports: {
+      loadState: async (threadId) => getOrInitThreadContext(options, threadId),
+      loadLatestSummary: async (threadId, epoch) => getLatestThreadSummary(options, threadId, epoch),
+      loadMessagesSince: async (threadId, _epoch, afterMessageId) => {
+        const messages = await listMessages(options, threadId, afterMessageId === null ? {} : { after: afterMessageId });
+        return messages.map(({ id, role, body }) => ({ id, role, body }));
+      },
+      saveSummary: (input) => insertThreadSummary(options, input),
+      updateState: async (threadId, patch) => { await updateThreadContext(options, threadId, patch); },
+      insertSystemMessage: async (threadId, body) => { await insertMessage(options, { threadId, role: "system", body }); },
+    },
+  });
+}
+
+function resolveTierZeroProviderOptions(
+  options: CreateChatRunDriverOptions,
+): Omit<CreateTierZeroProviderOptions, "db" | "runId"> {
+  if (options.tierZeroProviderOptions !== undefined) return options.tierZeroProviderOptions;
+  const endpoint = process.env.FREE_LLM_API_ENDPOINT?.trim();
+  const model = process.env.FREE_LLM_API_MODEL?.trim();
+  if (endpoint === undefined || endpoint.length === 0) throw new Error("FREE_LLM_API_ENDPOINT must be set for context compaction.");
+  if (model === undefined || model.length === 0) throw new Error("FREE_LLM_API_MODEL must be set for context compaction.");
+  const apiKey = process.env.FREE_LLM_API_KEY?.trim();
+  return { endpoint, model, ...(apiKey === undefined || apiKey.length === 0 ? {} : { apiKey }) };
 }
 
 /**

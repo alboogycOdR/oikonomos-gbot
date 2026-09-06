@@ -39,6 +39,8 @@ import {
   listSkills as dbListSkills,
   setEnabledForRole as dbSetEnabledForRole,
   listEnabledForRole as dbListEnabledForRole,
+  getOrInitThreadContext as dbGetOrInitThreadContext,
+  startFreshEpoch as dbStartFreshEpoch,
   getRoutine as dbGetRoutine,
   setRoutinePaused as dbSetRoutinePaused,
   RoutineLimitError,
@@ -95,6 +97,7 @@ import {
   type CreateChatRunDriverOptions,
   type GroupRoute,
 } from "@oikonomos/worker";
+import type { ThreadContextPort } from "./app.js";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
 /**
@@ -187,6 +190,32 @@ export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
   chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, keyof DatabaseOptions>;
   /** Injectable Tier-0 configuration; production resolves the same values from env. */
   tierZeroProviderOptions?: Omit<CreateTierZeroProviderOptions, "db" | "runId">;
+}
+
+/**
+ * The production implementation for TASK-179's HTTP context routes.
+ * Kept separate from ControlApiDeps because the routes intentionally receive
+ * the narrow ThreadContextPort rather than widening the general route port.
+ */
+export function createDatabaseBackedThreadContext(options: DatabaseOptions): ThreadContextPort {
+  return {
+    async getContext(threadId) {
+      const context = await dbGetOrInitThreadContext(options, threadId);
+      return {
+        contextTokens: context.contextTokens,
+        contextLimit: context.contextLimit,
+        epoch: context.epoch,
+      };
+    },
+    async startFresh(threadId) {
+      const context = await dbStartFreshEpoch(options, threadId);
+      return {
+        contextTokens: context.contextTokens,
+        contextLimit: context.contextLimit,
+        epoch: context.epoch,
+      };
+    },
+  };
 }
 
 export interface PushNotificationDeps {

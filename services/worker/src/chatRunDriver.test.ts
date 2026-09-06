@@ -5,6 +5,7 @@ import {
   defaultPoolConfig,
   getAuditEventsForRun,
   getOrCreateThreadForRole,
+  insertMessage,
   listMessages,
   listRuns,
   type DatabaseOptions,
@@ -866,6 +867,76 @@ integration("createChatRunDriver — self-rename governed MCP run (TASK-167)", (
     const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
     const events = await getAuditEventsForRun(options, run.runId);
     expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.rename_self")).toMatchObject({ payload: { verdict: "allow", toolName: "mcp__workspace__rename_self" } });
+  });
+});
+
+integration("createChatRunDriver — live context compaction (TASK-193)", () => {
+  const roleId = "task-193-context-compaction";
+  let pool: Pool;
+  let options: DatabaseOptions;
+  let threadId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM thread_summaries WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM thread_context WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM spend_records WHERE run_id IN (SELECT run_id::text FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  }
+
+  beforeAll(async () => {
+    options = { connectionString: connectionString! };
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(options, {
+      roleId,
+      name: "Context Compactor",
+      title: "TASK-193 fixture",
+      description: "Exercises the real post-run compaction call site.",
+    });
+    threadId = (await getOrCreateThreadForRole(options, { roleId })).id;
+    const oversizedTurn = "x".repeat(1_000);
+    for (let index = 0; index < 41; index += 1) {
+      await insertMessage(options, { threadId, role: "user", body: `${index}:${oversizedTurn}` });
+    }
+  });
+
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  it("persists a summary and visible system message after a real completed chat run", async () => {
+    const queryFn: AgentSdkQueryFn = async function* () {
+      yield { type: "result", result: "The final chat response." };
+    };
+    const task = await createTask(options, {
+      roleId,
+      title: "TASK-193 compaction fixture",
+      goal: "Reply briefly.",
+      requestedBy: "task-193-suite",
+    });
+    await createChatRunDriver({
+      ...options,
+      queryFn,
+      tierZeroProviderOptions: {
+        endpoint: "http://task-193.invalid/v1/chat/completions",
+        model: "task-193-fixture-model",
+        fetch: async () => new Response(JSON.stringify({
+          choices: [{ message: { content: "A compacted factual summary." } }],
+          usage: { cost_usd: 0.0001 },
+        }), { status: 200, headers: { "content-type": "application/json" } }),
+      },
+    }).run({ task, threadId });
+
+    expect((await pool.query("SELECT body FROM thread_summaries WHERE thread_id = $1", [threadId])).rows).toEqual([
+      { body: "A compacted factual summary." },
+    ]);
+    expect((await listMessages(options, threadId)).some((message) => message.role === "system" && message.body.startsWith("Context compacted ("))).toBe(true);
+    expect((await pool.query("SELECT count(*) FROM spend_records WHERE run_id IN (SELECT run_id::text FROM runs WHERE task_id = $1)", [task.taskId])).rows[0]?.count).toBe("1");
   });
 });
 

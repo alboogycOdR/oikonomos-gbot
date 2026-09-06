@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
-import type { Message, Role, Thread } from "@oikonomos/db";
+import { createRole, getOrCreateThreadForRole, type DatabaseOptions, type Message, type Role, type Thread } from "@oikonomos/db";
 
 import { buildApp, type ThreadContextPort, type ThreadContextSnapshot } from "./app.js";
-import type { ControlApiDeps } from "./ports.js";
+import { createDatabaseBackedDeps, createDatabaseBackedThreadContext, type ControlApiDeps } from "./ports.js";
 
 /**
  * TASK-179 (G-03a) — HTTP-level coverage for `GET /threads/:id` and
@@ -24,6 +24,8 @@ import type { ControlApiDeps } from "./ports.js";
  */
 
 const TOKEN = "task-179-fixture-token";
+const connectionString = process.env.DATABASE_URL;
+const integration = connectionString === undefined ? describe.skip : describe;
 const roleId = "chat-bot";
 const threadId = "11111111-1111-1111-1111-111111111111";
 const otherTenantRoleId = "other-tenant-bot";
@@ -255,6 +257,48 @@ describe("GET /openapi.json documents the TASK-179 routes", () => {
       expect(document.paths).toHaveProperty("/threads/{id}/fresh");
     } finally {
       await app.close();
+    }
+  });
+});
+
+integration("TASK-193 — live Postgres ThreadContextPort", () => {
+  const liveRoleId = `task-193-context-${randomUUID()}`;
+  const options: DatabaseOptions = { connectionString: connectionString! };
+
+  it("serves the persisted meter and starts a real fresh epoch through production deps", async () => {
+    await createRole(options, {
+      roleId: liveRoleId,
+      name: "TASK-193 context fixture",
+      title: "Context fixture",
+      description: "DATABASE_URL-gated route integration fixture.",
+    });
+    const thread = await getOrCreateThreadForRole(options, { roleId: liveRoleId });
+    const app = buildApp(createDatabaseBackedDeps(options), {
+      authToken: TOKEN,
+      logger: false,
+      threadContext: createDatabaseBackedThreadContext(options),
+    });
+    try {
+      const initial = await app.inject({ method: "GET", url: `/threads/${thread.id}`, headers: authHeaders() });
+      expect(initial.statusCode).toBe(200);
+      expect(JSON.parse(initial.body)).toEqual({ id: thread.id, contextTokens: 0, contextLimit: 8000, epoch: 0 });
+
+      const fresh = await app.inject({ method: "POST", url: `/threads/${thread.id}/fresh`, headers: authHeaders() });
+      expect(fresh.statusCode).toBe(200);
+      expect(JSON.parse(fresh.body)).toEqual({ id: thread.id, contextTokens: 0, contextLimit: 8000, epoch: 1 });
+    } finally {
+      await app.close();
+      // The role/thread IDs are unique per run; leave transcript history untouched
+      // and only remove the context row created by this specific fixture.
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: connectionString! });
+      try {
+        await pool.query("DELETE FROM thread_context WHERE thread_id = $1", [thread.id]);
+        await pool.query("DELETE FROM threads WHERE id = $1", [thread.id]);
+        await pool.query("DELETE FROM roles WHERE role_id = $1", [liveRoleId]);
+      } finally {
+        await pool.end();
+      }
     }
   });
 });
