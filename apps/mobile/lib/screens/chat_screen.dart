@@ -10,8 +10,10 @@ import '../attach/channel_file_picker.dart';
 import '../attach/file_picker_port.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
+import '../widgets/skill_picker.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
+import 'skills_screen.dart';
 
 /// TASK-147 (Mobile Wave 1b) — message history + live updates for one
 /// bot's thread. Mirrors `apps/dashboard/src/pages/ChatPage.tsx`: an
@@ -57,6 +59,7 @@ class ChatScreenState extends State<ChatScreen>
   final List<MessageAttachment> _pendingAttachments = [];
   bool _uploading = false;
   String? _uploadError;
+  bool _skillPickerOpen = false;
 
   /// Exposed for tests: true once the SSE subscription has been opened
   /// (and not yet closed) for this screen instance.
@@ -164,6 +167,27 @@ class ChatScreenState extends State<ChatScreen>
     }
   }
 
+  Future<void> _openSkillPicker() async {
+    if (_skillPickerOpen) return;
+    setState(() => _skillPickerOpen = true);
+    final skill = await showModalBottomSheet<Skill>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SkillPicker(
+        apiClient: widget.apiClient,
+        roleId: widget.bot.roleId,
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _skillPickerOpen = false);
+    if (skill != null) {
+      _composeController.text = '/${skill.name} ';
+      _composeController.selection = TextSelection.collapsed(
+        offset: _composeController.text.length,
+      );
+    }
+  }
+
   void _addMessage(ThreadMessage message) {
     if (!_seenMessageIds.add(message.id)) return;
     if (!mounted) return;
@@ -237,7 +261,11 @@ class ChatScreenState extends State<ChatScreen>
       builder: (context) => AlertDialog(
         title: Text('Handoff with $otherName'),
         content: SingleChildScrollView(child: Text(handoff.body)),
-        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'))
+        ],
       ),
     );
   }
@@ -290,7 +318,9 @@ class ChatScreenState extends State<ChatScreen>
 
   Future<void> _send() async {
     final body = _composeController.text.trim();
-    if ((body.isEmpty && _pendingAttachments.isEmpty) || _sending || _uploading) {
+    if ((body.isEmpty && _pendingAttachments.isEmpty) ||
+        _sending ||
+        _uploading) {
       return;
     }
     setState(() => _sending = true);
@@ -416,7 +446,9 @@ class ChatScreenState extends State<ChatScreen>
               itemCount: _handoffs.length,
               itemBuilder: (context, index) {
                 final handoff = _handoffs[index];
-                final otherId = handoff.fromRoleId == widget.bot.roleId ? handoff.toRoleId : handoff.fromRoleId;
+                final otherId = handoff.fromRoleId == widget.bot.roleId
+                    ? handoff.toRoleId
+                    : handoff.fromRoleId;
                 final other = _rolesById[otherId];
                 return _HandoffChip(
                   handoff: handoff,
@@ -427,26 +459,27 @@ class ChatScreenState extends State<ChatScreen>
               },
             ),
           ),
-        Expanded(child: ListView.builder(
+        Expanded(
+            child: ListView.builder(
           key: const Key('message-list'),
           padding: const EdgeInsets.all(12),
           itemCount: _messages.length,
           itemBuilder: (context, index) {
-        final message = _messages[index];
-        final showDateDivider = index == 0 ||
-            !_isSameDay(_messages[index - 1].createdAt, message.createdAt);
-        final bubble = _buildMessageBubble(context, message);
-        if (!showDateDivider) return bubble;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DateDivider(
-              key: Key('date-divider-${message.id}'),
-              label: _dateDividerLabel(message.createdAt),
-            ),
-            bubble,
-          ],
-        );
+            final message = _messages[index];
+            final showDateDivider = index == 0 ||
+                !_isSameDay(_messages[index - 1].createdAt, message.createdAt);
+            final bubble = _buildMessageBubble(context, message);
+            if (!showDateDivider) return bubble;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _DateDivider(
+                  key: Key('date-divider-${message.id}'),
+                  label: _dateDividerLabel(message.createdAt),
+                ),
+                bubble,
+              ],
+            );
           },
         )),
       ],
@@ -477,81 +510,91 @@ class ChatScreenState extends State<ChatScreen>
     if (diffDays == 0) return 'Today';
     if (diffDays == 1) return 'Yesterday';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[local.month - 1]} ${local.day}, ${local.year}';
   }
 
   Widget _buildMessageBubble(BuildContext context, ThreadMessage message) {
-        if (message.role == 'system') {
-          return _SystemEventLine(message: message);
-        }
-        final isUser = message.role == 'user';
-        return Align(
-          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            key: Key('message-${message.id}'),
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            decoration: BoxDecoration(
-              color: isUser
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.body.isNotEmpty)
-                  isUser
-                      ? Text(
-                          message.body,
-                          style: const TextStyle(color: Colors.white),
-                        )
-                      : MarkdownBody(
-                          key: Key('message-body-${message.id}'),
-                          data: message.body,
-                          shrinkWrap: true,
-                          selectable: false,
-                          styleSheet: MarkdownStyleSheet.fromTheme(
-                            Theme.of(context),
-                          ).copyWith(
-                            p: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
-                if (message.attachments.isNotEmpty) ...[
-                  if (message.body.isNotEmpty) const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final attachment in message.attachments)
-                        Chip(
-                          key: Key('message-attachment-${attachment.id}'),
-                          label: Text(attachment.filename),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                    ],
-                  ),
+    if (message.role == 'system') {
+      return _SystemEventLine(message: message);
+    }
+    final isUser = message.role == 'user';
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        key: Key('message-${message.id}'),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: isUser
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message.body.isNotEmpty)
+              isUser
+                  ? Text(
+                      message.body,
+                      style: const TextStyle(color: Colors.white),
+                    )
+                  : MarkdownBody(
+                      key: Key('message-body-${message.id}'),
+                      data: message.body,
+                      shrinkWrap: true,
+                      selectable: false,
+                      styleSheet: MarkdownStyleSheet.fromTheme(
+                        Theme.of(context),
+                      ).copyWith(
+                        p: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+            if (message.attachments.isNotEmpty) ...[
+              if (message.body.isNotEmpty) const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final attachment in message.attachments)
+                    Chip(
+                      key: Key('message-attachment-${attachment.id}'),
+                      label: Text(attachment.filename),
+                      visualDensity: VisualDensity.compact,
+                    ),
                 ],
-                if (message.approval != null) ...[
-                  const SizedBox(height: 8),
-                  _ApprovalCard(
-                    message: message,
-                    status: _approvalStatuses[message.id] ??
-                        message.approval!.status,
-                    deciding: _decidingApprovals.contains(message.id),
-                    onDecide: (decision) => _decideApproval(message, decision),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
+              ),
+            ],
+            if (message.approval != null) ...[
+              const SizedBox(height: 8),
+              _ApprovalCard(
+                message: message,
+                status:
+                    _approvalStatuses[message.id] ?? message.approval!.status,
+                deciding: _decidingApprovals.contains(message.id),
+                onDecide: (decision) => _decideApproval(message, decision),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildComposeBox() {
@@ -628,6 +671,9 @@ class ChatScreenState extends State<ChatScreen>
                         ),
                       ),
                       onSubmitted: (_) => _send(),
+                      onChanged: (value) {
+                        if (value == '/') _openSkillPicker();
+                      },
                     ),
                   ),
                   IconButton(
@@ -712,7 +758,11 @@ class _DateDivider extends StatelessWidget {
 }
 
 class _HandoffChip extends StatelessWidget {
-  const _HandoffChip({required this.handoff, required this.otherName, required this.avatarSeed, required this.onTap});
+  const _HandoffChip(
+      {required this.handoff,
+      required this.otherName,
+      required this.avatarSeed,
+      required this.onTap});
 
   final RoleHandoff handoff;
   final String otherName;
@@ -721,14 +771,14 @@ class _HandoffChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 8),
-    child: ActionChip(
-      key: Key('handoff-chip-${handoff.id}'),
-      avatar: BotAvatar(seed: avatarSeed, name: otherName, size: 22),
-      label: Text('1 message with $otherName'),
-      onPressed: onTap,
-    ),
-  );
+        padding: const EdgeInsets.only(right: 8),
+        child: ActionChip(
+          key: Key('handoff-chip-${handoff.id}'),
+          avatar: BotAvatar(seed: avatarSeed, name: otherName, size: 22),
+          label: Text('1 message with $otherName'),
+          onPressed: onTap,
+        ),
+      );
 }
 
 class _ApprovalCard extends StatelessWidget {
@@ -838,11 +888,61 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   bool _savingInstructions = false;
   final _titleController = TextEditingController();
   final _instructionsController = TextEditingController();
+  List<Skill>? _skills;
+  Set<String> _enabledSkillIds = {};
+  String? _skillsError;
+  final Set<String> _savingSkillIds = {};
 
   @override
   void initState() {
     super.initState();
     _loadRole();
+    _loadSkills();
+  }
+
+  Future<void> _loadSkills() async {
+    try {
+      final results = await Future.wait([
+        widget.apiClient.listSkills(),
+        widget.apiClient.listRoleSkills(widget.bot.roleId),
+      ]);
+      if (!mounted) return;
+      final enabled = results[1];
+      setState(() {
+        _skills = results[0];
+        _enabledSkillIds = enabled.map((skill) => skill.id).toSet();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _skillsError = 'Could not load skills.');
+    }
+  }
+
+  Future<void> _setSkillEnabled(Skill skill, bool enabled) async {
+    if (_savingSkillIds.contains(skill.id)) return;
+    setState(() => _savingSkillIds.add(skill.id));
+    try {
+      final confirmed = await widget.apiClient.setRoleSkillEnabled(
+        widget.bot.roleId,
+        skill.id,
+        enabled,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (confirmed) {
+          _enabledSkillIds.add(skill.id);
+        } else {
+          _enabledSkillIds.remove(skill.id);
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update skill enablement.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingSkillIds.remove(skill.id));
+    }
   }
 
   @override
@@ -982,9 +1082,50 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             ElevatedButton(
               key: const Key('instructions-save'),
               onPressed: _savingInstructions ? null : _saveInstructions,
-              child: Text(_savingInstructions ? 'Saving…' : 'Save instructions'),
+              child:
+                  Text(_savingInstructions ? 'Saving…' : 'Save instructions'),
             ),
           ],
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Skills',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton(
+                key: const Key('skills-library-button'),
+                onPressed: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SkillsScreen(apiClient: widget.apiClient),
+                  ),
+                ),
+                child: const Text('Library'),
+              ),
+            ],
+          ),
+          if (_skillsError != null)
+            Text(_skillsError!, key: const Key('settings-skills-error'))
+          else if (_skills == null)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(),
+            )
+          else if (_skills!.isEmpty)
+            const Text('No skills in your library yet.')
+          else
+            for (final skill in _skills!)
+              SwitchListTile(
+                key: Key('skill-enable-${skill.id}'),
+                title: Text('/${skill.name}'),
+                subtitle: Text(skill.description),
+                value: _enabledSkillIds.contains(skill.id),
+                onChanged: _savingSkillIds.contains(skill.id)
+                    ? null
+                    : (enabled) => _setSkillEnabled(skill, enabled),
+              ),
           const SizedBox(height: 20),
           const Text(
             'App info',

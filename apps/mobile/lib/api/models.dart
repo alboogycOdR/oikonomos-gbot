@@ -41,6 +41,39 @@ class Role {
   }
 }
 
+/// A reusable, account-scoped procedure returned by the Skills API.
+class Skill {
+  const Skill({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.body,
+    this.whenToUse,
+    this.approvals = const [],
+    this.status = 'active',
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String body;
+  final String? whenToUse;
+  final List<String> approvals;
+  final String status;
+
+  factory Skill.fromJson(Map<String, dynamic> json) => Skill(
+        id: json['skillId'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String,
+        body: json['body'] as String,
+        whenToUse: json['whenToUse'] as String?,
+        approvals: (json['approvals'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        status: json['status'] as String? ?? 'active',
+      );
+}
+
 /// Base type for the discriminated `Thread | GroupThread` union `GET
 /// /threads` returns. Mirrors `isGroupThread` in `api.ts`: a group thread
 /// is identified by the presence of `memberRoleIds` in the raw JSON, never
@@ -294,10 +327,10 @@ class RoleHandoff {
   final String createdAt;
 
   factory RoleHandoff.fromJson(Map<String, dynamic> json) => RoleHandoff(
-    id: json['messageId'] as String,
-    fromRoleId: json['fromRoleId'] as String,
-    toRoleId: json['toRoleId'] as String,
-    body: json['body'] as String,
-    createdAt: json['createdAt'] as String,
-  );
+        id: json['messageId'] as String,
+        fromRoleId: json['fromRoleId'] as String,
+        toRoleId: json['toRoleId'] as String,
+        body: json['body'] as String,
+        createdAt: json['createdAt'] as String,
+      );
 }

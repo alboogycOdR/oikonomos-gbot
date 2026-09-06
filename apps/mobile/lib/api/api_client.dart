@@ -115,6 +115,13 @@ class ApiClient {
           body: body == null ? null : jsonEncode(body),
         );
         break;
+      case 'PUT':
+        response = await _client.put(
+          uri,
+          headers: _headers(),
+          body: body == null ? null : jsonEncode(body),
+        );
+        break;
       default:
         throw ArgumentError('unsupported method $method');
     }
@@ -191,6 +198,79 @@ class ApiClient {
       body: {'instructions': instructions},
     );
     return Role.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<List<Skill>> listSkills() async {
+    final json = await _request('GET', '/skills') as List<dynamic>;
+    return json
+        .map((entry) => Skill.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Skill> createSkill({
+    required String name,
+    required String description,
+    required String body,
+    String? whenToUse,
+    List<String> approvals = const [],
+  }) async {
+    final json = await _request('POST', '/skills', body: {
+      'name': name,
+      'description': description,
+      'body': body,
+      if (whenToUse != null && whenToUse.trim().isNotEmpty)
+        'whenToUse': whenToUse.trim(),
+      if (approvals.isNotEmpty) 'approvals': approvals,
+    });
+    return Skill.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<Skill> updateSkill(
+    String skillId, {
+    required String name,
+    required String description,
+    required String body,
+    String? whenToUse,
+    List<String> approvals = const [],
+  }) async {
+    final json = await _request(
+      'PATCH',
+      '/skills/${Uri.encodeComponent(skillId)}',
+      body: {
+        'name': name,
+        'description': description,
+        'body': body,
+        'whenToUse':
+            whenToUse?.trim().isEmpty ?? true ? null : whenToUse?.trim(),
+        'approvals': approvals,
+      },
+    );
+    return Skill.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<List<Skill>> listRoleSkills(String roleId) async {
+    final json = await _request(
+      'GET',
+      '/roles/${Uri.encodeComponent(roleId)}/skills',
+    ) as List<dynamic>;
+    return json
+        .map((entry) => Skill.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Returns the server-confirmed state. Callers must not treat a tap as
+  /// authoritative: server-side enablement remains the enforcement point.
+  Future<bool> setRoleSkillEnabled(
+    String roleId,
+    String skillId,
+    bool enabled,
+  ) async {
+    final json = await _request(
+      'PUT',
+      '/roles/${Uri.encodeComponent(roleId)}/skills/${Uri.encodeComponent(skillId)}',
+      body: {'enabled': enabled},
+    ) as Map<String, dynamic>;
+    return json['enabled'] as bool;
   }
 
   Future<List<ThreadSummary>> listThreads() async {
