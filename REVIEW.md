@@ -362,3 +362,21 @@ Independently re-verified: read the full diff, ran the complete control-api suit
 
 ## ADR-014 adversarial review — 2026-09-06 (Fable 5.1, research/design session)
 ADR-014 | ORCH/Sonnet-5 author | **ACCEPT-WITH-CHANGES** (6 changes) | Renderer finding verified (describe.ts dead, render.ts live); storage gap verified; add OIK-045a split, resolve key via existing OIK_SECRET_* convention, key_version column, WebCrypto AES-GCM with AAD row-binding, factory-not-import-time key check (**TASK-192 AC5 must change**), two audit event types. Full text appended to docs/decisions/ADR-014-dynamic-secret-vault.md. Side finding: TASK-067 describe-or-deny is configured-but-inert (ADR-005) — needs its own task.
+
+## TASK-178 | CX | approved | first-pass: yes
+
+Mobile skills UI: library screen (list/create/edit), per-bot enable toggle, and a `/` slash picker in the chat composer. Verified the two things most likely to be shortcut: the toggle mutates local state only from `setRoleSkillEnabled`'s returned server value (`confirmed`), never optimistically before the request resolves; and the picker sources its list from the real enabled-only endpoint with no client-side re-filtering, matching the spec's "server decides" instruction. Independently re-verified: read both call sites directly, ran flutter analyze/test myself (108/108) in the worktree and again after merge. Merged --no-ff.
+
+## TASK-192 | CX9 | verified, merge HELD | (pending Fable review of ADR-014)
+
+Dynamic secret vault (ADR-014 §2-§5): AES-256-GCM envelope encryption, GCM tag appended to ciphertext (documented in the file's own header), import-time fail-closed key validation, SQL-level role-filtered resolution so a missing ref and a cross-role ref are genuinely indistinguishable to the caller. Real, meaningful tests for every property that matters cryptographically (byte-for-byte round-trip, real pairwise-distinct-nonce assertion over 6 real values, real ciphertext-not-equal-plaintext assertion against the stored row, real module-reimport test for the fail-closed key check via `vi.resetModules()`).
+
+Independently re-verified: read the implementation and tests in full against ADR-014, applied migration 019 to the shared dev DB myself so the migration-gated integration tests actually executed (not left skipped) — 4/4, full packages/db suite 163/163, build/lint clean. Implementation is correct and complete against the ADR as currently drafted. **Not merged**: the user is running ADR-014 past a live Fable session for the different-model architectural review this project's own discipline calls for, before this lands or TASK-184 resumes. This is a deliberate hold, not a finding against CX9's work.
+
+## TASK-179 | S5 | approved | first-pass: yes
+
+Context hygiene backend (Grok Bot parity gap G-03): per-thread context meter, rolling compaction into `thread_summaries` via a Tier-0 provider (same `withBudgetSink`/fail-closed-on-incomplete-stream pattern as TASK-180's group-routing scorer), redaction through the single canonical `redactPayload` before any summary is persisted, and `POST /threads/:id/fresh` epoch semantics so "start fresh" genuinely hides pre-fresh context from the model while keeping it visible in `GET /threads/:id/messages`.
+
+Same real, correctly-handled ownership-gap shape as TASK-180: `ports.ts`/`packages/db/src/index.ts` are outside this task's territory, so production wiring into the live server was left as injectable ports (`ContextCompactionPorts`, a `ThreadContextPort` on `BuildAppOptions`) rather than reached into unowned files — split into TASK-193.
+
+One subtlety worth naming: the compaction threshold check measures **all** messages since the last compaction, not just the kept verbatim tail — S5's own comment explains why (checking the tail alone would make compaction permanently unable to bring an over-threshold prompt back down, since the tail's size never shrinks). Independently re-verified: read `contextCompaction.ts` in full, ran every targeted suite myself (threadContext.test.ts 4/4 against real Postgres, contextCompaction.test.ts 13/13, promptAssembly.test.ts 16/16, threadContext.routes.test.ts 10/10), the full control-api suite (193/193, no regression), and the db/worker package suites — all clean, in the worktree and again after merge. Merged --no-ff.
