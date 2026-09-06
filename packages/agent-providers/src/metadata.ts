@@ -30,12 +30,16 @@ export interface GeminiProviderExtras {
   sessionRef?: string;
 }
 
+/** FreeLLMAPI has no session or provider-specific metadata. */
+export interface FreeLlmApiProviderExtras {}
+
 /** Maps each `ProviderId` to its own extras shape — the namespace keys. */
 export interface ProviderExtrasMap {
   "claude-code": ClaudeCodeProviderExtras;
   codex: CodexProviderExtras;
   grok: GrokProviderExtras;
   gemini: GeminiProviderExtras;
+  "free-llm-api": FreeLlmApiProviderExtras;
 }
 
 /**

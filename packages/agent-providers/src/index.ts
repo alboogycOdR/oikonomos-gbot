@@ -37,6 +37,7 @@ export {
   buildGrokArgs,
   ClaudeCodeProvider,
   CodexProvider,
+  FreeLlmApiProvider,
   GrokProvider,
   isCodexEvent,
   mapCodexEvent,
@@ -46,6 +47,8 @@ export {
   type ClaudeQueryMessage,
   type ClaudeQueryOptions,
   type CodexProviderOptions,
+  type FreeLlmApiFetch,
+  type FreeLlmApiProviderOptions,
   type GrokProviderOptions,
   type GrokSandboxProfile,
 } from "./providers/index.js";
@@ -70,6 +73,7 @@ export {
   type ClaudeCodeProviderExtras,
   type CodexProviderExtras,
   type GrokProviderExtras,
+  type FreeLlmApiProviderExtras,
   type NamespacedProviderExtras,
   type ProviderExtrasMap,
 } from "./metadata.js";
