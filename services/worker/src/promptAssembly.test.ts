@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Role, Skill } from "@oikonomos/db";
 
-import { assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
+import type { ContextMessage } from "./contextCompaction.js";
+import { assembleChatPrompt, assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
 
 // TASK-175 carve: pure-function coverage for the extracted module. The
 // end-to-end proof that a real persisted role's identity/instructions reach
@@ -157,5 +158,77 @@ describe("assembleSystemPrompt", () => {
     const secondIndex = prompt.indexOf("## Skill: daily-brief");
     expect(firstIndex).toBeGreaterThanOrEqual(0);
     expect(secondIndex).toBeGreaterThan(firstIndex);
+  });
+});
+
+// TASK-179 (G-03a): persona -> skills -> latest summary -> verbatim
+// messages after compacted_through. `history`/`summary` are pre-scoped by
+// the caller (contextCompaction.ts's ports), so this function's own job is
+// just ordering and never leaking a null/empty summary as a visible section.
+describe("assembleChatPrompt", () => {
+  const history: ContextMessage[] = [
+    { id: "m1", role: "user", body: "What is our refund policy?" },
+    { id: "m2", role: "bot", body: "Refunds are processed within 5 business days." },
+  ];
+
+  it("orders persona, skills, summary, then verbatim history", async () => {
+    const prompt = await assembleChatPrompt({
+      role: role(),
+      fallbackRoleId: "chat-bot",
+      message: "Please run /weekly-export for me",
+      resolveEnabledSkill: async (name) => (name === "weekly-export" ? skill() : null),
+      summary: "Earlier the user asked about pricing.",
+      history,
+    });
+    const personaIndex = prompt.indexOf("You are Northstar, serving as Market Analyst.");
+    const skillIndex = prompt.indexOf("## Skill: weekly-export");
+    const summaryIndex = prompt.indexOf("Earlier the user asked about pricing.");
+    const historyIndex = prompt.indexOf("What is our refund policy?");
+    expect(personaIndex).toBeGreaterThanOrEqual(0);
+    expect(skillIndex).toBeGreaterThan(personaIndex);
+    expect(summaryIndex).toBeGreaterThan(skillIndex);
+    expect(historyIndex).toBeGreaterThan(summaryIndex);
+    expect(prompt.indexOf("Refunds are processed within 5 business days.")).toBeGreaterThan(historyIndex);
+  });
+
+  it("omits the summary section entirely when there is no summary yet", async () => {
+    const prompt = await assembleChatPrompt({
+      role: role(),
+      fallbackRoleId: "chat-bot",
+      message: "hello",
+      resolveEnabledSkill: async () => null,
+      summary: null,
+      history: [],
+    });
+    expect(prompt).not.toContain("Earlier in this conversation");
+  });
+
+  it("omits the summary section for a blank (whitespace-only) summary", async () => {
+    const prompt = await assembleChatPrompt({
+      role: role(),
+      fallbackRoleId: "chat-bot",
+      message: "hello",
+      resolveEnabledSkill: async () => null,
+      summary: "   ",
+      history: [],
+    });
+    expect(prompt).not.toContain("Earlier in this conversation");
+  });
+
+  it("renders exactly the history it is given — proves 'start fresh' epoch-filtering is entirely the caller's job", async () => {
+    // assembleChatPrompt has no thread/epoch concept of its own (see its
+    // doc comment): a caller that filters out every pre-fresh message and
+    // summary before calling this function gets a prompt containing none
+    // of it, simply because none of it was ever passed in.
+    const prompt = await assembleChatPrompt({
+      role: role(),
+      fallbackRoleId: "chat-bot",
+      message: "hello",
+      resolveEnabledSkill: async () => null,
+      summary: null,
+      history: [],
+    });
+    expect(prompt).not.toContain("[user]");
+    expect(prompt).not.toContain("[bot]");
   });
 });
