@@ -5406,7 +5406,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-183
 **Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02, G-03 (visible meter in the mobile header); report §13.2 items 3–4 (context hygiene, transparent metering); TASK-158/159 routine screens and TASK-157 system-event styling are the surfaces to extend
@@ -5418,15 +5418,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Context meter renders the real values from a fake thread payload and changes colour at the thresholds (widget test)
 - [ ] 'Start fresh' calls POST /threads/:id/fresh and the chat still shows earlier messages afterwards (widget test)
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-183-cx
+**Started_At:** 2026-09-06T07:43:06Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T07:43:06Z
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
