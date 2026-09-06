@@ -1,5 +1,5 @@
 ---
-plan_version: 28.33
+plan_version: 28.34
 last_updated: 2026-09-06T19:05:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET CORRECTED 2026-09-06 (human-directed): CLAUDE.md's hard ceiling is now R350/month (was R30,000/month, a ~100x reduction), applied to the real enforcement constant `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts` (not just the doc) — a genuine test regression this exposed (a no-routine-budget test recording $1,000 unmasked by an unisolated platform ceiling) was fixed properly, not papered over. TASK-200 filed (low priority) to re-evaluate ADR-011/OIK-164's cost conclusions, both reasoned against the old figure. This makes the upcoming Anthropic API key's usable monthly spend very small — worth keeping in mind for TASK-170's live proof and any future inference-heavy work. TASK-170 (OIK-043) is CODE-COMPLETE and independently re-verified after 9 correctly-diagnosed blocks this session (sandbox lifecycle + env-isolation live proof PASSED with real numbers: create 1,101ms, Running 2,412ms, pause 301ms; DOCKER-USER firewall applied+corrected+persisted+independently verified, full account in TASK-170's own Progress_Notes) — the ONLY remaining gap is a real Anthropic API key for the sandboxed CLI's non-interactive auth (`ANTHROPIC_API_KEY` is the only headless auth path; OAuth/keychain are never read), asked of the user directly, same discipline as the OpenSandbox credentials. TASK-162 (flaky real-Postgres test investigation) is `blocked` at low priority — real root cause found (packages/db's per-call ad-hoc pool pattern), CX's genuine partial fixes merged, the full architectural fix filed as TASK-199 (low priority, not blocking anything). TASK-163/164 both touch chatRunDriver.ts, which TASK-170 still owns — do not dispatch either until TASK-170 lands. TASK-171/185/186/187/188 all remain blocked behind TASK-170's live proof. GB and S5 have no independently-ready work right now. Recurring lessons this session, hit repeatedly, worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree — for a one-off redispatch, read the fresh value from the registry directly into the SAME PowerShell process that launches `dispatch.ps1`, so `Start-Process`'s inheritance carries it through, rather than doing a full session restart every time; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone."
@@ -5913,7 +5913,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-199
 **Title:** packages/db accessors share a pool instead of opening one ad-hoc per call
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** Found while investigating TASK-162 (2026-09-06). `packages/db/src/database.ts`'s `defaultPoolConfig` (max 10 connections, documented as "keep coordinated with the PgBouncer pool size") is spread into a brand-new `new Pool({...defaultPoolConfig, ...options.poolConfig})` inside nearly every individual accessor function (confirmed by direct grep across `roles.ts`, `runs.ts`, `messages.ts`, `threads.ts`, `threadContext.ts`, `deviceTokens.ts`, `secretRequests.ts`, and others) — there is no shared/injected pool reused across calls within one logical `Database`/request-scoped unit of work. Under heavy concurrent real-Postgres integration testing (`services/control-api/src/chat.routes.test.ts`, 1561 lines / 17+ `integration()` blocks, each exercising several route handlers that each call several accessors), this can transiently open far more real connections than `max_connections` allows (`sorry, too many clients already`, observed live: connections fully drain back to baseline afterward — confirmed a transient burst, not a leak).
@@ -5921,19 +5921,19 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Investigate the real current call pattern before designing a fix — confirm exactly which accessors construct their own pool per call vs. which (if any) already accept an injected pool/client. Design a shared-pool-per-`Database`-instance (or per-request-scope) pattern that every accessor can use, matching this codebase's existing dependency-injection conventions (see how `DatabaseOptions`/`Database` are already threaded through `services/control-api`). This is real, low-priority hardening — it does not block any other backlog item today (the burst fully drains and no production incident has been observed), so do not let it grow scope beyond the pool-sharing change itself.
 **Acceptance_Criteria:**
-- [ ] A single `Database` instance (or equivalent request-scoped unit) reuses one pool across all its accessor calls, not one pool per call
-- [ ] `chat.routes.test.ts` run in isolation no longer produces `sorry, too many clients already` (repeated at least 3x)
-- [ ] No accessor's existing query behavior changes — this is pool-lifecycle-only
-- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** task/TASK-199-gb
+- [x] A single `Database` instance (or equivalent request-scoped unit) reuses one pool across all its accessor calls, not one pool per call
+- [x] `chat.routes.test.ts` run in isolation no longer produces `sorry, too many clients already` (repeated at least 3x)
+- [x] No accessor's existing query behavior changes — this is pool-lifecycle-only
+- [x] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** task/TASK-199-gb (merged, deleted)
 **Started_At:** 2026-09-06T20:23:57Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/db/src/database.ts, database.test.ts, and all 18 accessor files (approvals.ts, auditEvents.ts, deviceTokens.ts, intakeNonces.ts, messages.ts/.test.ts, requireApprovalRules.ts, roleMessages.ts, roleSandboxes.ts, roles.ts, routines.ts, runs.ts, secretRequests.ts, secretVault.ts, skills.ts, spend.ts, tasks.ts, threadContext.ts/.test.ts, threads.ts), dossiers/TASK-199.md
+**Test_Evidence:** Independently re-verified by ORCH: full packages/db suite 186/188 (37/37 files). Reran chat.routes.test.ts in isolation 3x on GB's branch — one single, consistent, unrelated failure (a TASK-121 test-timing race, `waiting_approval` vs `started`), never the original connection-exhaustion symptom. Cross-checked against unmodified master under the same live concurrent load: master showed the exhaustion symptom cascading into 7 failures across two files, confirming the fix is real and the one remaining failure is genuinely pre-existing, not masked by luck. pnpm -r build/pnpm lint/banned-mode all clean.
+**Review_Findings:** Approved first-pass. Real liveness assertion (source-scan forbidding `new Pool(` outside database.ts), Database's own dedicated pool correctly left unshared to protect against broker onClose teardown, query SQL untouched throughout. No findings.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T20:23:57Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T01:00:00Z
 
 ### TASK-200
 **Title:** Re-evaluate cost-based decisions against the corrected R350/month budget ceiling
