@@ -7,5 +7,6 @@ CREATE TABLE secret_values (
   role_id text NOT NULL REFERENCES roles(role_id),
   ciphertext bytea NOT NULL,
   nonce bytea NOT NULL,
+  key_version smallint NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now()
 );
