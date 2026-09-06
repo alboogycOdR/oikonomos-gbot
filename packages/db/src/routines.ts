@@ -248,6 +248,13 @@ export async function recordRoutineFire(
   const normalizedOutcome = requireFireOutcome(outcome, "outcome");
 
   return withPool(options, async (pool) => {
+    const exists = await pool.query(
+      `SELECT 1 FROM role_routines WHERE routine_id = $1`,
+      [normalizedRoutineId],
+    );
+    if (exists.rowCount !== 1) {
+      throw new Error(`recordRoutineFire: no role_routines row for routineId ${normalizedRoutineId}.`);
+    }
     await pool.query(`INSERT INTO routine_runs (routine_id, outcome, reason) VALUES ($1, $2, $3)`, [normalizedRoutineId, normalizedOutcome, reason ?? null]);
     await pool.query(`DELETE FROM routine_runs WHERE routine_id = $1 AND routine_run_id IN (
       SELECT routine_run_id FROM routine_runs WHERE routine_id = $1 ORDER BY created_at DESC, routine_run_id DESC OFFSET 20
