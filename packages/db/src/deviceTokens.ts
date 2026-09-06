@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export const devicePlatforms = ["android", "ios", "web"] as const;
 export type DevicePlatform = (typeof devicePlatforms)[number];
@@ -41,16 +41,6 @@ function requirePlatform(platform: DevicePlatform): DevicePlatform {
 
 function toDeviceToken(row: DeviceTokenRow): DeviceToken {
   return { token: row.token, platform: row.platform, createdAt: row.created_at, lastSeenAt: row.last_seen_at };
-}
-
-async function withPool<T>(options: DatabaseOptions, operation: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) throw new Error("Database connectionString must not be empty.");
-  const pool = new Pool({ connectionString: options.connectionString, ...defaultPoolConfig, ...options.poolConfig });
-  try {
-    return await operation(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 /** Register once or refresh a returning device without changing its creation time. */

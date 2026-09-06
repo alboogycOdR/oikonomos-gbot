@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export const secretRequestStatuses = ["pending", "fulfilled", "declined"] as const;
 export type SecretRequestStatus = (typeof secretRequestStatuses)[number];
@@ -64,12 +64,6 @@ function toSecretRequest(row: SecretRequestRow): SecretRequest {
     label: row.label, purpose: row.purpose, status: row.status, secretRef: row.secret_ref,
     createdAt: row.created_at, fulfilledAt: row.fulfilled_at,
   };
-}
-
-async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) throw new Error("Database connectionString must not be empty.");
-  const pool = new Pool({ connectionString: options.connectionString, ...defaultPoolConfig, ...options.poolConfig });
-  try { return await fn(pool); } finally { await pool.end(); }
 }
 
 export async function createSecretRequest(options: DatabaseOptions, input: NewSecretRequest): Promise<SecretRequest> {

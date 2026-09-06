@@ -4,10 +4,76 @@
 // dedicated home for `Database`'s own grant-lifecycle methods (list,
 // upsert, revoke) so the DELETE precision requirement (AC1) has a direct
 // test, not one only reachable through the connector registration path.
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  closeSharedPools,
+  getSharedPool,
+  withPool,
+} from "./database.js";
 import { Database, defaultPoolConfig } from "./index.js";
+
+describe("shared accessor pool (TASK-199)", () => {
+  afterAll(async () => {
+    await closeSharedPools();
+  });
+
+  it("reuses one Pool across withPool calls with equivalent DatabaseOptions", async () => {
+    const options = { connectionString: "postgres://task-199-shared/db" };
+    const seen: Pool[] = [];
+    await withPool(options, async (pool) => {
+      seen.push(pool);
+    });
+    await withPool({ connectionString: "postgres://task-199-shared/db" }, async (pool) => {
+      seen.push(pool);
+    });
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(seen[1]);
+    expect(getSharedPool(options)).toBe(seen[0]);
+    expect(seen[0]?.ended).toBe(false);
+  });
+
+  it("does not share pools that differ in poolConfig.max", () => {
+    const connectionString = "postgres://task-199-shared-max/db";
+    const a = getSharedPool({ connectionString, poolConfig: { max: 1 } });
+    const b = getSharedPool({ connectionString, poolConfig: { max: 2 } });
+    expect(a).not.toBe(b);
+  });
+
+  it("rejects an empty connection string before opening a pool", () => {
+    expect(() => getSharedPool({ connectionString: "   " })).toThrow(/connectionString/);
+  });
+
+  it("closeSharedPools ends cached pools so a later lookup constructs a new one", async () => {
+    const options = { connectionString: "postgres://task-199-shared-end/db" };
+    const first = getSharedPool(options);
+    await closeSharedPools();
+    expect(first.ended).toBe(true);
+    const second = getSharedPool(options);
+    expect(second).not.toBe(first);
+    expect(second.ended).toBe(false);
+  });
+
+  it("accessor modules do not construct their own Pool (liveness)", async () => {
+    const srcDir = path.dirname(fileURLToPath(import.meta.url));
+    const files = (await readdir(srcDir)).filter(
+      (name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && name !== "database.ts",
+    );
+    const offenders: string[] = [];
+    for (const name of files) {
+      const src = await readFile(path.join(srcDir, name), "utf8");
+      if (/new Pool\s*\(/.test(src)) {
+        offenders.push(name);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;

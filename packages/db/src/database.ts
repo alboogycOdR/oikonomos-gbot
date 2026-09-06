@@ -25,6 +25,65 @@ export interface DatabaseOptions {
   poolConfig?: Partial<typeof defaultPoolConfig>;
 }
 
+/**
+ * One Pool per (connectionString, poolConfig) identity. Accessor functions
+ * go through `withPool` so a request-scoped `DatabaseOptions` value — or any
+ * equivalent options with the same connection string and limits — reuses a
+ * single pool instead of opening one per call.
+ *
+ * `allowExitOnIdle` lets test processes exit while a cached pool still
+ * exists. Production keeps the pool for the process lifetime. Call
+ * `closeSharedPools` to end cached pools explicitly (tests / shutdown).
+ */
+const sharedPools = new Map<string, Pool>();
+
+function requireConnectionString(options: DatabaseOptions): void {
+  if (options.connectionString.trim().length === 0) {
+    throw new Error("Database connectionString must not be empty.");
+  }
+}
+
+function sharedPoolKey(options: DatabaseOptions): string {
+  const config = { ...defaultPoolConfig, ...options.poolConfig };
+  return JSON.stringify({
+    connectionString: options.connectionString,
+    max: config.max,
+    idleTimeoutMillis: config.idleTimeoutMillis,
+    connectionTimeoutMillis: config.connectionTimeoutMillis,
+    maxUses: config.maxUses,
+  });
+}
+
+export function getSharedPool(options: DatabaseOptions): Pool {
+  requireConnectionString(options);
+  const key = sharedPoolKey(options);
+  const existing = sharedPools.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const pool = new Pool({
+    connectionString: options.connectionString,
+    ...defaultPoolConfig,
+    ...options.poolConfig,
+    allowExitOnIdle: true,
+  });
+  sharedPools.set(key, pool);
+  return pool;
+}
+
+export async function withPool<T>(
+  options: DatabaseOptions,
+  fn: (pool: Pool) => Promise<T>,
+): Promise<T> {
+  return fn(getSharedPool(options));
+}
+
+export async function closeSharedPools(): Promise<void> {
+  const pools = [...sharedPools.values()];
+  sharedPools.clear();
+  await Promise.all(pools.map((pool) => pool.end()));
+}
+
 interface CapabilityRow extends QueryResultRow {
   capability_id: string;
   description: string;
@@ -63,9 +122,7 @@ export class Database {
   readonly #pool: Pool;
 
   public constructor(options: DatabaseOptions) {
-    if (options.connectionString.trim().length === 0) {
-      throw new Error("Database connectionString must not be empty.");
-    }
+    requireConnectionString(options);
 
     this.#pool = new Pool({
       connectionString: options.connectionString,

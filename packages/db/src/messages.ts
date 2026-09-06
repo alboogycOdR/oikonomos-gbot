@@ -1,6 +1,6 @@
 import { Pool, type QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export const messageRoles = ["user", "bot", "system"] as const;
 export type MessageRole = (typeof messageRoles)[number];
@@ -157,16 +157,6 @@ async function loadAttachmentsByMessageId(
     grouped.set(row.message_id, list);
   }
   return grouped;
-}
-
-async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) throw new Error("Database connectionString must not be empty.");
-  const pool = new Pool({ connectionString: options.connectionString, ...defaultPoolConfig, ...options.poolConfig });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 export async function insertMessage(options: DatabaseOptions, input: NewMessage): Promise<Message> {

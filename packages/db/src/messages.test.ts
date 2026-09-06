@@ -20,6 +20,7 @@ integration("packages/db messages — transcript round trip (TASK-105)", () => {
 
   async function cleanup(): Promise<void> {
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
   }
