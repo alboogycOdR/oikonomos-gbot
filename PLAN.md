@@ -5046,7 +5046,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-170
 **Title:** OIK-043 — route real chat execution through an OpenSandbox sandbox
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution (integration shape decided: execd via endpoints/44772, sandbox per role paused on idle, per-turn /command); ADR-006 B; ADR-010 + Addendum F §2 (durable environment), §5 (tier map); Master_Work_Breakdown E5 OIK-043; infra/sandbox/README.md §7.1 trigger; TASK-153/154 guarantees; ADR-001; ADR-005 liveness. PROTECTED PATH packages/harness-factory/** — author must be CX/CX9 (different model from ORCH reviewer)
@@ -5063,8 +5063,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] All TASK-116/153/154 regression tests pass unchanged; the local temp-dir fallback still passes its own tests
 - [ ] infra/sandbox/README.md §7.1 trigger acknowledged: TASK-185 is dispatched in the same wave (ORCH check at review)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-170-cx9
+**Started_At:** 2026-09-06T12:06:07Z
 **Progress_Notes:**
 - [2026-09-05T22:15:00Z] [ORCH] Added TASK-161 to Depends_On: TASK-175's merge re-pointed TASK-161's Owned_Paths onto services/worker/src/runWorkspace.test.ts, which now genuinely intersects this task's own runWorkspace.test.ts ownership (validate_plan.py caught this as a latent isolation warning). TASK-161 is small/mechanical (a test-only WSL/bash fix) — sequencing it first rather than carving runWorkspace.test.ts further.
 - [2026-09-06T00:30:00Z] [ORCH] Reverted the TASK-161 dependency added above: that re-point was itself a mistake (GB caught it — the real failing test never moved to runWorkspace.test.ts; TASK-175's carve deliberately kept it in chatRunDriver.test.ts). TASK-161 is now correctly pointed at chatRunDriver.test.ts instead, which this task does not touch, so no dependency is needed between them.
@@ -5072,8 +5072,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T12:06:07Z
 
 ### TASK-171
 **Title:** Mobile live-agent/monitor view (the Grok Bot reference UI's header icon)
