@@ -5641,7 +5641,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [x] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test — a real assertion against the DB row, not just "encryption was called")
 - [x] Process import of secretVault.ts throws immediately (not on first call) if OIK_SECRET_VAULT_KEY is unset or the wrong length once decoded (test)
 - [x] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-192-cx9 (verified, HOLD — not yet merged, see note below)
+**Branch:** task/TASK-192-cx9
 **Started_At:** 2026-09-06T05:22:09Z
 **Progress_Notes:**
 - [2026-09-06T05:48:00Z] [CX9] Implemented migration 019, AES-256-GCM vault (tag appended to ciphertext, documented in the file's own top comment), import-time key validation, role-filtered SQL resolution. Verified with a throwaway key: db typecheck/test, full workspace test/build, lint all pass. Migration-gated integration tests correctly `.skip`'d (migration not yet applied to shared DB during this session).
