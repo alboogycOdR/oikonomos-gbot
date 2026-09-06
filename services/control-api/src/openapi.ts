@@ -297,9 +297,81 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/secret-requests": {
+        get: {
+          summary: "List pending secret requests (TASK-187, G-05b)",
+          operationId: "listSecretRequests",
+          parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["pending"] } }],
+          responses: {
+            "200": {
+              description: "Pending secret requests for the caller's tenant",
+              content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/SecretRequest" } } } },
+            },
+            "400": { description: "status was not 'pending'" },
+            "501": { description: "Secret requests are not configured on this deployment" },
+          },
+        },
+      },
+      "/secret-requests/{id}/fulfil": {
+        post: {
+          summary: "Provide the requested secret value (TASK-187, G-05b)",
+          operationId: "fulfilSecretRequest",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/FulfilSecretRequest" } } },
+          },
+          responses: {
+            "200": {
+              description: "Fulfilled; only the opaque vault ref is returned, never the value",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/FulfilSecretRequestResponse" } } },
+            },
+            "400": { description: "Missing/blank value" },
+            "404": { description: "No pending secret request with that id (or owned by a different tenant)" },
+            "501": { description: "Secret requests are not configured on this deployment" },
+          },
+        },
+      },
+      "/secret-requests/{id}/decline": {
+        post: {
+          summary: "Decline a secret request (TASK-187, G-05b)",
+          operationId: "declineSecretRequest",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": { description: "Declined; the parked run is resumed with a model-directed refusal message" },
+            "404": { description: "No pending secret request with that id (or owned by a different tenant)" },
+            "501": { description: "Secret requests are not configured on this deployment" },
+          },
+        },
+      },
     },
     components: {
       schemas: {
+        SecretRequest: {
+          type: "object",
+          required: ["requestId", "runId", "roleId", "label", "purpose", "createdAt"],
+          properties: {
+            requestId: { type: "string", format: "uuid" },
+            runId: { type: "string", format: "uuid" },
+            roleId: { type: "string" },
+            label: { type: "string" },
+            purpose: { type: "string" },
+            createdAt: { type: "string", format: "date-time" },
+          },
+        },
+        FulfilSecretRequest: {
+          type: "object",
+          required: ["value"],
+          properties: { value: { type: "string", minLength: 1 } },
+        },
+        FulfilSecretRequestResponse: {
+          type: "object",
+          required: ["requestId", "ref"],
+          properties: {
+            requestId: { type: "string" },
+            ref: { type: "string", description: "Opaque sealed-vault reference; never the plaintext value." },
+          },
+        },
         NewSkill: {
           type: "object",
           required: ["name", "description", "body"],
