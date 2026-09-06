@@ -16,6 +16,9 @@ export function getOpenApiDocument(): Record<string, unknown> {
         "Tasks, runs, approvals and evidence — the only surface that talks to the DB (OIK-084). Telegram and other clients consume this API, never packages/db directly.",
     },
     paths: {
+      "/routines/{id}/test-run": { post: { summary: "Fire a routine immediately", operationId: "testRunRoutine", responses: { "202": { description: "Test run accepted; test run performs real work" }, "404": { description: "No routine with that id" } } } },
+      "/routines/{id}/pause": { post: { summary: "Pause a routine", operationId: "pauseRoutine", responses: { "200": { description: "Routine paused" }, "404": { description: "No routine with that id" } } } },
+      "/routines/{id}/resume": { post: { summary: "Resume a routine", operationId: "resumeRoutine", responses: { "200": { description: "Routine resumed" }, "404": { description: "No routine with that id" } } } },
       "/tasks": {
         post: {
           summary: "Create a task",

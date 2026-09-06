@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, type Approval, type DevicePlatform, type GroupThread, type Message, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
+import { devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, RoutineLimitError, type Approval, type DevicePlatform, type GroupThread, type Message, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -224,6 +224,7 @@ const CREATE_ROUTINE_SCHEMA = {
     name: { type: "string", minLength: 1 },
     schedule: { type: "string", minLength: 1 },
     definition: { type: "object" },
+    skillId: { type: "string", format: "uuid" },
   },
 } as const;
 
@@ -954,7 +955,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     }
   });
 
-  app.post<{ Params: { roleId: string }; Body: { name: string; schedule: string; definition?: Record<string, unknown> } }>(
+  app.post<{ Params: { roleId: string }; Body: { name: string; schedule: string; definition?: Record<string, unknown>; skillId?: string } }>(
     "/roles/:roleId/routines",
     { schema: { body: CREATE_ROUTINE_SCHEMA } },
     async (request, reply) => {
@@ -965,14 +966,31 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           name: request.body.name.trim(),
           schedule: request.body.schedule.trim(),
           definition: request.body.definition ?? {},
+          skillId: request.body.skillId ?? null,
           nextFireAt: nextFireAtFromCron(request.body.schedule),
         });
         await reply.code(201).send(routine);
       } catch (error) {
-        await reply.code(400).send({ error: (error as Error).message });
+        await reply.code(error instanceof RoutineLimitError ? 409 : 400).send({ error: (error as Error).message });
       }
     },
   );
+
+  app.post<{ Params: { id: string } }>("/routines/:id/pause", async (request, reply) => {
+    if (deps.setRoutinePaused === undefined) return reply.code(501).send({ error: "routine controls are not configured" });
+    const routine = await deps.setRoutinePaused(request.params.id, request.tenantId, true);
+    return routine === null ? reply.code(404).send({ error: "routine not found" }) : reply.code(200).send(routine);
+  });
+  app.post<{ Params: { id: string } }>("/routines/:id/resume", async (request, reply) => {
+    if (deps.setRoutinePaused === undefined) return reply.code(501).send({ error: "routine controls are not configured" });
+    const routine = await deps.setRoutinePaused(request.params.id, request.tenantId, false);
+    return routine === null ? reply.code(404).send({ error: "routine not found" }) : reply.code(200).send(routine);
+  });
+  app.post<{ Params: { id: string } }>("/routines/:id/test-run", async (request, reply) => {
+    if (deps.testRunRoutine === undefined) return reply.code(501).send({ error: "routine controls are not configured" });
+    const routine = await deps.testRunRoutine(request.params.id, request.tenantId);
+    return routine === null ? reply.code(404).send({ error: "routine not found" }) : reply.code(202).send({ routine, warning: "test run performs real work" });
+  });
 
   app.get<{ Params: { roleId: string } }>("/roles/:roleId/routines", async (request, reply) => {
     try {

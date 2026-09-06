@@ -8,6 +8,7 @@ import {
   getRoutine,
   listRoutines,
   recordRoutineFire,
+  setRoutinePaused,
 } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -150,5 +151,14 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
         "queued",
       ),
     ).rejects.toThrow(/no role_routines row/);
+  });
+
+  it("retains exactly the 20 newest fire records and persists pause state", async () => {
+    const routine = await createRoutine({ connectionString: connectionString! }, { roleId, tenantId, name: "retention", definition: {} });
+    for (let i = 0; i < 21; i += 1) await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "stopped", undefined, `reason-${i}`);
+    const history = await pool.query<{ reason: string }>("SELECT reason FROM routine_runs WHERE routine_id = $1 ORDER BY created_at, routine_run_id", [routine.routineId]);
+    expect(history.rows).toHaveLength(20);
+    expect(history.rows.map((row) => row.reason)).not.toContain("reason-0");
+    expect((await setRoutinePaused({ connectionString: connectionString! }, routine.routineId, true))?.paused).toBe(true);
   });
 });

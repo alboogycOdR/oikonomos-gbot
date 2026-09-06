@@ -39,6 +39,9 @@ import {
   listSkills as dbListSkills,
   setEnabledForRole as dbSetEnabledForRole,
   listEnabledForRole as dbListEnabledForRole,
+  getRoutine as dbGetRoutine,
+  setRoutinePaused as dbSetRoutinePaused,
+  RoutineLimitError,
   type AuditEvent,
   type Capability,
   type DatabaseOptions,
@@ -108,6 +111,8 @@ export interface ControlApiDeps {
   updateRoleInstructions(roleId: string, instructions: string): Promise<Role | null>;
   listRoleMessages(filter: { tenantId: string; toRoleId?: string; fromRoleId?: string }): Promise<RoleMessage[]>;
   listRoutines(filter: { tenantId: string; roleId?: string }): Promise<Routine[]>;
+  setRoutinePaused?(routineId: string, tenantId: string, paused: boolean): Promise<Routine | null>;
+  testRunRoutine?(routineId: string, tenantId: string): Promise<Routine | null>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
   createGroupThread(input: NewGroupThread): Promise<GroupThread>;
@@ -223,7 +228,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
   });
   return {
     createTask: (input) => dbCreateTask(options, input),
-    createRoutine: (input) => dbCreateRoutine(options, input),
+    createRoutine: async (input) => dbCreateRoutine(options, input),
     createRole: (input) => dbCreateRole(options, input),
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
     upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),
@@ -234,6 +239,23 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     updateRoleInstructions: (roleId, instructions) => dbUpdateRoleInstructions(options, roleId, instructions),
     listRoleMessages: (filter) => dbListRoleMessages(options, filter),
     listRoutines: (filter) => dbListRoutines(options, filter),
+    setRoutinePaused: async (routineId, tenantId, paused) => {
+      const routine = await dbGetRoutine(options, routineId);
+      if (routine === null || routine.tenantId !== tenantId) return null;
+      return dbSetRoutinePaused(options, routineId, paused);
+    },
+    testRunRoutine: async (routineId, tenantId) => {
+      const routine = await dbGetRoutine(options, routineId);
+      if (routine === null || routine.tenantId !== tenantId) return null;
+      const task = await dbCreateTask(options, {
+        tenantId, roleId: routine.roleId, title: routine.name,
+        goal: typeof routine.definition.goal === "string" && routine.definition.goal.trim().length > 0 ? routine.definition.goal : routine.name,
+        routineId, requestedBy: `routine-test:${routineId}`,
+      });
+      const thread = await dbGetOrCreateThreadForRole(options, { roleId: routine.roleId });
+      await notify({ task, threadId: thread.id });
+      return routine;
+    },
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),
     createGroupThread: (input) => dbCreateGroupThread(options, input),
