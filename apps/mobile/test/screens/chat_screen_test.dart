@@ -61,6 +61,87 @@ Map<String, dynamic> _approvalMessage(String id) => {
     };
 
 void main() {
+  testWidgets('typing slash opens enabled-only picker and inserts its token',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('GET', '/roles/role-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('GET', '/roles/role-1/skills', 200, [
+      {
+        'skillId': 'skill-1',
+        'name': 'summarize',
+        'description': 'Condense text',
+        'body': '# Steps',
+        'approvals': <String>[],
+        'status': 'active',
+      },
+    ]);
+    fake.queueHangingStream(200);
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('compose-field')), '/');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('skill-picker-skill-1')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('compose-field')))
+            .controller
+            ?.text,
+        '/summarize ');
+  });
+
+  testWidgets('skill toggle applies only the server-confirmed answer',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('GET', '/roles/role-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('GET', '/roles', 200, [
+      {
+        'id': 'role-1',
+        'name': 'Concierge',
+        'description': 'Front desk',
+        'avatarSeed': 'seed-1'
+      },
+    ]);
+    fake.queueJsonFor('GET', '/skills', 200, [
+      {
+        'skillId': 'skill-1',
+        'name': 'summarize',
+        'description': 'Condense text',
+        'body': '# Steps',
+        'approvals': <String>[],
+        'status': 'active'
+      },
+    ]);
+    fake.queueJsonFor('GET', '/roles/role-1/skills', 200, <Object?>[]);
+    fake.queueJsonFor('PUT', '/roles/role-1/skills/skill-1', 200,
+        {'roleId': 'role-1', 'skillId': 'skill-1', 'enabled': true});
+    fake.queueHangingStream(200);
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bot-settings-button')));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const Key('skill-enable-skill-1'));
+    await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<SwitchListTile>(
+                find.byKey(const Key('skill-enable-skill-1')))
+            .value,
+        isTrue);
+    final request = fake.requests.last as http.Request;
+    expect(request.method, 'PUT');
+    expect(request.url.path, '/roles/role-1/skills/skill-1');
+  });
+
   testWidgets('loads history and shows it with no live event yet', (
     tester,
   ) async {
@@ -79,7 +160,8 @@ void main() {
     expect(find.text('hi there'), findsOneWidget);
   });
 
-  testWidgets('shows real handoff chips and opens the persisted handoff body', (tester) async {
+  testWidgets('shows real handoff chips and opens the persisted handoff body',
+      (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]); // transcript
@@ -102,14 +184,16 @@ void main() {
     ]);
     fake.queueHangingStream(200);
 
-    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('handoff-chip-handoff-1')), findsOneWidget);
     expect(find.text('1 message with Trevor'), findsOneWidget);
     await tester.tap(find.byKey(const Key('handoff-chip-handoff-1')));
     await tester.pumpAndSettle();
-    expect(find.text('Please take over the customer follow-up.'), findsOneWidget);
+    expect(
+        find.text('Please take over the customer follow-up.'), findsOneWidget);
   });
 
   testWidgets('a streamed event appears without a refresh', (tester) async {
@@ -316,7 +400,8 @@ void main() {
     expect(find.byKey(const Key('attach-error')), findsNothing);
   });
 
-  testWidgets('upload error shows the server rejection message', (tester) async {
+  testWidgets('upload error shows the server rejection message',
+      (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
@@ -575,7 +660,8 @@ void main() {
     },
   );
 
-  testWidgets('a routine opens detail with real run status and timestamp', (tester) async {
+  testWidgets('a routine opens detail with real run status and timestamp',
+      (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
@@ -590,7 +676,8 @@ void main() {
       },
     ]);
 
-    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Routines'));
     await tester.pumpAndSettle();
@@ -643,7 +730,8 @@ void main() {
       },
     ]);
 
-    await tester.pumpWidget(MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Routines'));
     await tester.pumpAndSettle();
@@ -787,14 +875,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Title (optional)'), findsOneWidget);
-    final field = tester.widget<TextField>(find.byKey(const Key('title-field')));
+    final field =
+        tester.widget<TextField>(find.byKey(const Key('title-field')));
     expect(field.readOnly, isTrue);
     expect(field.controller?.text, 'Front Desk Lead');
     expect(
       field.decoration?.helperText,
       'Read-only — no update endpoint exists for this yet.',
     );
-    expect(fake.requests.last.url.path, '/roles');
+    expect(
+      fake.requests.any((request) => request.url.path == '/roles'),
+      isTrue,
+    );
   });
 
   testWidgets(
@@ -824,7 +916,8 @@ void main() {
       await tester.tap(find.byKey(const Key('bot-settings-button')));
       await tester.pumpAndSettle();
 
-      final field = tester.widget<TextField>(find.byKey(const Key('title-field')));
+      final field =
+          tester.widget<TextField>(find.byKey(const Key('title-field')));
       expect(field.controller?.text, isEmpty);
       expect(field.decoration?.hintText, 'No title set');
     },
