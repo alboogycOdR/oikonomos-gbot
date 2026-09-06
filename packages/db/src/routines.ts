@@ -14,8 +14,10 @@ import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
 export const routineLanes = ["user", "agent", "background"] as const;
 export type RoutineLane = (typeof routineLanes)[number];
 
-export const routineFireOutcomes = ["queued", "missed"] as const;
+export const routineFireOutcomes = ["queued", "missed", "stopped", "skipped_paused"] as const;
 export type RoutineFireOutcome = (typeof routineFireOutcomes)[number];
+export const MAX_ROUTINES_PER_ROLE = 50;
+export class RoutineLimitError extends Error { public constructor() { super(`A role may have at most ${MAX_ROUTINES_PER_ROLE} routines.`); } }
 
 export interface NewRoutine {
   roleId: string;
@@ -27,6 +29,9 @@ export interface NewRoutine {
   definition: Record<string, unknown>;
   /** Initial scheduler cursor, computed by the control API at creation time. */
   nextFireAt?: Date | null;
+  skillId?: string | null;
+  onMissingSource?: "report_and_stop";
+  notifyThreshold?: "changes_only";
 }
 
 export interface Routine {
@@ -41,6 +46,10 @@ export interface Routine {
   lastFireAt: Date | null;
   nextFireAt: Date | null;
   lastFireStatus: RoutineFireOutcome | null;
+  skillId?: string | null;
+  onMissingSource?: "report_and_stop";
+  notifyThreshold?: "changes_only";
+  paused?: boolean;
 }
 
 interface RoutineRow extends QueryResultRow {
@@ -55,10 +64,14 @@ interface RoutineRow extends QueryResultRow {
   last_fire_at: Date | null;
   next_fire_at: Date | null;
   last_fire_status: RoutineFireOutcome | null;
+  skill_id: string | null;
+  on_missing_source: "report_and_stop";
+  notify_threshold: "changes_only";
+  paused: boolean;
 }
 
 const routineColumns = `routine_id, role_id, tenant_id, name, schedule, lane, enabled,
-       definition, last_fire_at, next_fire_at, last_fire_status`;
+       definition, last_fire_at, next_fire_at, last_fire_status, skill_id, on_missing_source, notify_threshold, paused`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -106,6 +119,7 @@ function toRoutine(row: RoutineRow): Routine {
     lastFireAt: row.last_fire_at,
     nextFireAt: row.next_fire_at,
     lastFireStatus: row.last_fire_status,
+    skillId: row.skill_id, onMissingSource: row.on_missing_source, notifyThreshold: row.notify_threshold, paused: row.paused,
   };
 }
 
@@ -138,9 +152,11 @@ export async function createRoutine(
   const lane = requireLane(input.lane ?? "background", "lane");
 
   return withPool(options, async (pool) => {
+    const count = await pool.query<{ count: string }>(`SELECT count(*)::text AS count FROM role_routines WHERE role_id = $1`, [roleId]);
+    if (Number(count.rows[0]?.count ?? 0) >= MAX_ROUTINES_PER_ROLE) throw new RoutineLimitError();
     const result = await pool.query<RoutineRow>(
-      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition, next_fire_at)
-       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb, $8)
+      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition, next_fire_at, skill_id, on_missing_source, notify_threshold)
+       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
        RETURNING ${routineColumns}`,
       [
         roleId,
@@ -151,6 +167,7 @@ export async function createRoutine(
         input.enabled ?? true,
         JSON.stringify(input.definition),
         input.nextFireAt ?? null,
+        input.skillId ?? null, input.onMissingSource ?? "report_and_stop", input.notifyThreshold ?? "changes_only",
       ],
     );
 
@@ -225,12 +242,23 @@ export async function recordRoutineFire(
   options: DatabaseOptions,
   routineId: string,
   outcome: RoutineFireOutcome,
-  nextFireAt?: Date | null,
+  nextFireAt?: Date | null, reason?: string | null,
 ): Promise<Routine> {
   const normalizedRoutineId = requireUuid(routineId, "routineId");
   const normalizedOutcome = requireFireOutcome(outcome, "outcome");
 
   return withPool(options, async (pool) => {
+    const exists = await pool.query(
+      `SELECT 1 FROM role_routines WHERE routine_id = $1`,
+      [normalizedRoutineId],
+    );
+    if (exists.rowCount !== 1) {
+      throw new Error(`recordRoutineFire: no role_routines row for routineId ${normalizedRoutineId}.`);
+    }
+    await pool.query(`INSERT INTO routine_runs (routine_id, outcome, reason) VALUES ($1, $2, $3)`, [normalizedRoutineId, normalizedOutcome, reason ?? null]);
+    await pool.query(`DELETE FROM routine_runs WHERE routine_id = $1 AND routine_run_id IN (
+      SELECT routine_run_id FROM routine_runs WHERE routine_id = $1 ORDER BY created_at DESC, routine_run_id DESC OFFSET 20
+    )`, [normalizedRoutineId]);
     const result = await pool.query<RoutineRow>(
       normalizedOutcome === "queued"
         ? `UPDATE role_routines
@@ -250,6 +278,25 @@ export async function recordRoutineFire(
     }
     return toRoutine(row);
   });
+}
+
+export async function setRoutinePaused(options: DatabaseOptions, routineId: string, paused: boolean): Promise<Routine | null> {
+  const normalizedRoutineId = requireUuid(routineId, "routineId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoutineRow>(`UPDATE role_routines SET paused = $2 WHERE routine_id = $1 RETURNING ${routineColumns}`, [normalizedRoutineId, paused]);
+    return result.rows[0] === undefined ? null : toRoutine(result.rows[0]);
+  });
+}
+
+export async function routineInputsAvailable(options: DatabaseOptions, routine: Routine): Promise<string | null> {
+  const values = Array.isArray(routine.definition.inputs) ? routine.definition.inputs : [];
+  const inputs = values.map((value) => typeof value === "string" ? value : typeof value === "object" && value !== null && typeof (value as Record<string, unknown>).connectorId === "string" ? (value as Record<string, string>).connectorId : null);
+  for (const input of inputs) {
+    if (input === null || input.trim().length === 0) return "routine input is invalid";
+    const available = await withPool(options, async (pool) => (await pool.query(`SELECT 1 FROM capabilities c JOIN role_grants g ON g.capability_id = c.capability_id WHERE c.capability_id = $1 AND c.enabled = true AND g.role_id = $2`, [input, routine.roleId])).rowCount === 1);
+    if (!available) return `input connector '${input}' is not granted or available`;
+  }
+  return null;
 }
 
 if (import.meta.vitest) {

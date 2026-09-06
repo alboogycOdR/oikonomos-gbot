@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -8,6 +10,8 @@ import {
   getRoutine,
   listRoutines,
   recordRoutineFire,
+  RoutineLimitError,
+  setRoutinePaused,
 } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -151,4 +155,38 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
       ),
     ).rejects.toThrow(/no role_routines row/);
   });
+
+  it("retains exactly the 20 newest fire records and persists pause state", async () => {
+    const routine = await createRoutine({ connectionString: connectionString! }, { roleId, tenantId, name: "retention", definition: {} });
+    for (let i = 0; i < 21; i += 1) await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "stopped", undefined, `reason-${i}`);
+    const history = await pool.query<{ reason: string }>("SELECT reason FROM routine_runs WHERE routine_id = $1 ORDER BY created_at, routine_run_id", [routine.routineId]);
+    expect(history.rows).toHaveLength(20);
+    expect(history.rows.map((row) => row.reason)).not.toContain("reason-0");
+    expect((await setRoutinePaused({ connectionString: connectionString! }, routine.routineId, true))?.paused).toBe(true);
+  }, 20_000);
+
+  it("rejects the 51st routine for a role", async () => {
+    const cappedRoleId = `task-182-routine-cap-role-${randomUUID()}`;
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: cappedRoleId, tenantId, name: "Routine cap", title: "Routine cap" },
+    );
+    try {
+      for (let index = 0; index < 50; index += 1) {
+        await createRoutine(
+          { connectionString: connectionString! },
+          { roleId: cappedRoleId, tenantId, name: `routine-${index}`, definition: {} },
+        );
+      }
+      await expect(
+        createRoutine(
+          { connectionString: connectionString! },
+          { roleId: cappedRoleId, tenantId, name: "routine-51", definition: {} },
+        ),
+      ).rejects.toBeInstanceOf(RoutineLimitError);
+    } finally {
+      await pool.query(`DELETE FROM role_routines WHERE role_id = $1`, [cappedRoleId]);
+      await pool.query(`DELETE FROM roles WHERE role_id = $1`, [cappedRoleId]);
+    }
+  }, 20_000);
 });

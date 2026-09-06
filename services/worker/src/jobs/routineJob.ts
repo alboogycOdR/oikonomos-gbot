@@ -1,8 +1,10 @@
 import {
   createTask,
   getRole,
+  getSkill,
   listRoutines,
   recordRoutineFire,
+  routineInputsAvailable,
   type DatabaseOptions,
   type Routine,
 } from "@oikonomos/db";
@@ -16,7 +18,7 @@ export interface RoutinePollingOptions extends DatabaseOptions {
 
 export interface RoutinePollResult {
   routineId: string;
-  outcome: "queued" | "missed";
+  outcome: "queued" | "missed" | "stopped" | "skipped_paused";
 }
 
 function requireNonEmpty(value: string, field: string): string {
@@ -25,19 +27,24 @@ function requireNonEmpty(value: string, field: string): string {
   return trimmed;
 }
 
-function routineGoal(routine: Routine): string {
+async function routineGoal(options: DatabaseOptions, routine: Routine): Promise<string> {
   const goal = routine.definition.goal;
-  return typeof goal === "string" && goal.trim().length > 0 ? goal.trim() : routine.name;
+  const base = typeof goal === "string" && goal.trim().length > 0 ? goal.trim() : routine.name;
+  if (routine.skillId === null || routine.skillId === undefined) return base;
+  const skill = await getSkill(options, routine.skillId);
+  if (skill === null || skill.tenantId !== routine.tenantId) throw new Error(`routine skill '${routine.skillId}' is unavailable.`);
+  // TASK-177's prompt assembly scans message text for this exact token.
+  return `/${skill.name} ${base}`;
 }
 
-function toRoutineFire(routine: Routine): RoutineFire {
+async function toRoutineFire(options: DatabaseOptions, routine: Routine): Promise<RoutineFire> {
   return {
     routineId: routine.routineId,
     roleId: routine.roleId,
     lane: routine.lane,
     task: {
       title: routine.name,
-      goal: routineGoal(routine),
+      goal: await routineGoal(options, routine),
       tenantId: routine.tenantId,
     },
   };
@@ -69,7 +76,16 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
 
   return Promise.all(
     dueRoutines.map(async (routine) => {
-      const outcome = await scheduler.fireRoutine(toRoutineFire(routine), {
+      if (routine.paused) {
+        await recordRoutineFire(options, routine.routineId, "skipped_paused", routine.nextFireAt, "routine is paused");
+        return { routineId: routine.routineId, outcome: "skipped_paused" as const };
+      }
+      const unavailableReason = await routineInputsAvailable(options, routine);
+      if (unavailableReason !== null && (routine.onMissingSource ?? "report_and_stop") === "report_and_stop") {
+        await recordRoutineFire(options, routine.routineId, "stopped", routine.nextFireAt, unavailableReason);
+        return { routineId: routine.routineId, outcome: "stopped" as const };
+      }
+      const outcome = await scheduler.fireRoutine(await toRoutineFire(options, routine), {
         environmentIsUp: async (roleId) => (await getRole(options, roleId))?.status === "active",
         createTask: async (input) => {
           await createTask(options, {
