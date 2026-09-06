@@ -9,6 +9,7 @@ import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
+import { registerLiveAgentRoutes, type LiveAgentPort, type LiveAgentExecdEndpoint, type LiveAgentInputDiscardedEvent, type UpstreamConnection } from "./liveAgent.routes.js";
 import {
   ATTACHMENT_ALLOWED_CONTENT_TYPES,
   ATTACHMENT_MAX_BYTES,
@@ -99,6 +100,23 @@ export interface BuildAppOptions {
    * skills methods).
    */
   threadContext?: ThreadContextPort;
+  /**
+   * TASK-171 — the mobile live-agent PTY viewer's backend port: resolves a
+   * role's active/most-recent sandbox and the execd PTY-viewer endpoint
+   * to relay. A plain port defined in `liveAgent.routes.ts` (not a
+   * `ControlApiDeps` method) for the same reason as `threadContext`
+   * above: a real implementation needs `@oikonomos/db`'s `role_sandboxes`
+   * table (`ports.ts`) and `@oikonomos/sandbox-client` (this package's
+   * `package.json`), both outside this task's `Owned_Paths`. Left
+   * `undefined` in production until that follow-up task exists; the
+   * status route answers `501` and the PTY upgrade refuses the handshake
+   * rather than fabricating state when it is absent.
+   */
+  liveAgent?: LiveAgentPort;
+  /** Test-only: injects a fake upstream dial for `GET /roles/:roleId/live-agent/pty` instead of a real socket. */
+  dialLiveAgentUpstream?: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>;
+  /** Test-only: observes the AC1 liveness assertion (fires whenever a viewer connection's input is discarded rather than forwarded). */
+  onLiveAgentInputDiscarded?: (event: LiveAgentInputDiscardedEvent) => void;
 }
 
 /** A thread's context-meter snapshot, per migration 015's `thread_context` row shape. */
@@ -1786,6 +1804,14 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  // TASK-171 — mobile live-agent PTY viewer: status route + raw WS upgrade.
+  registerLiveAgentRoutes(app, {
+    authToken,
+    liveAgent: options.liveAgent,
+    dialUpstream: options.dialLiveAgentUpstream,
+    onInputDiscarded: options.onLiveAgentInputDiscarded,
+  });
 
   return app;
 }

@@ -1,0 +1,460 @@
+import { createHash } from "node:crypto";
+import { createServer, Socket, type Server } from "node:net";
+
+import Fastify, { type FastifyInstance } from "fastify";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  FrameReader,
+  encodeFrame,
+  defaultDialUpstream,
+  relay,
+  registerLiveAgentRoutes,
+  type LiveAgentInputDiscardedEvent,
+  type LiveAgentPort,
+  type LiveAgentSandboxRef,
+  type UpstreamConnection,
+} from "./liveAgent.routes.js";
+
+const TOKEN = "task-171-fixture-token";
+const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const OPCODE_TEXT = 0x1;
+const OPCODE_BINARY = 0x2;
+
+function authHeaders(): Record<string, string> {
+  return { authorization: `Bearer ${TOKEN}` };
+}
+
+// ---------------------------------------------------------------------------
+// Frame codec round-trip
+// ---------------------------------------------------------------------------
+
+describe("encodeFrame / FrameReader", () => {
+  it("round-trips an unmasked (server->client) text frame", () => {
+    const payload = Buffer.from("hello from execd");
+    const encoded = encodeFrame(OPCODE_TEXT, payload, false);
+    const reader = new FrameReader();
+    const frames = reader.push(encoded);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.opcode).toBe(OPCODE_TEXT);
+    expect(frames[0]!.payload.toString()).toBe("hello from execd");
+  });
+
+  it("round-trips a masked (client->server) binary frame", () => {
+    const payload = Buffer.from([1, 2, 3, 4, 250, 251, 252]);
+    const encoded = encodeFrame(OPCODE_BINARY, payload, true);
+    // The mask bit must actually be set — otherwise this "round-trip" would
+    // pass even if masking were silently broken.
+    expect(encoded[1]! & 0x80).toBe(0x80);
+    const reader = new FrameReader();
+    const frames = reader.push(encoded);
+    expect(frames).toHaveLength(1);
+    expect(Buffer.compare(frames[0]!.payload, payload)).toBe(0);
+  });
+
+  it("handles a frame split across multiple chunks", () => {
+    const payload = Buffer.from("x".repeat(500));
+    const encoded = encodeFrame(OPCODE_TEXT, payload, false);
+    const reader = new FrameReader();
+    expect(reader.push(encoded.subarray(0, 3))).toHaveLength(0);
+    expect(reader.push(encoded.subarray(3, 10))).toHaveLength(0);
+    const frames = reader.push(encoded.subarray(10));
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.payload.length).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// relay(): the AC1 security property, tested directly against fake sockets
+// ---------------------------------------------------------------------------
+
+class FakeSocket {
+  readonly written: Buffer[] = [];
+  private readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+  on(event: string, handler: (...args: unknown[]) => void): this {
+    const list = this.listeners.get(event) ?? [];
+    list.push(handler);
+    this.listeners.set(event, list);
+    return this;
+  }
+  write(chunk: Buffer | string): boolean {
+    this.written.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    return true;
+  }
+  end(): void {
+    this.emit("close");
+  }
+  emit(event: string, ...args: unknown[]): void {
+    for (const handler of this.listeners.get(event) ?? []) handler(...args);
+  }
+}
+
+function decodeAll(chunks: Buffer[]): ReturnType<FrameReader["push"]> {
+  const reader = new FrameReader();
+  const frames: ReturnType<FrameReader["push"]> = [];
+  for (const chunk of chunks) frames.push(...reader.push(chunk));
+  return frames;
+}
+
+describe("relay() — viewer-mode input cannot reach the sandbox", () => {
+  it("never forwards a downstream (viewer) data frame upstream, and reports it via onInputDiscarded", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const discarded: LiveAgentInputDiscardedEvent[] = [];
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+
+    relay("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relay>[2], upstream, (event) => discarded.push(event));
+
+    // The viewer attempts to type a command into the "terminal".
+    const injectionAttempt = encodeFrame(OPCODE_TEXT, Buffer.from("rm -rf /"), true);
+    downstream.emit("data", injectionAttempt);
+
+    expect(upstreamSocket.written).toHaveLength(0);
+    expect(discarded).toHaveLength(1);
+    expect(discarded[0]).toMatchObject({ roleId: "bot-1", sandboxId: "sandbox-1", opcode: OPCODE_TEXT, byteLength: 8 });
+  });
+
+  it("still forwards genuine execd output downstream to the viewer", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+
+    relay("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relay>[2], upstream, undefined);
+
+    const execdOutput = encodeFrame(OPCODE_TEXT, Buffer.from("$ ls\nfile.txt\n"), false);
+    upstreamSocket.emit("data", execdOutput);
+
+    const frames = decodeAll(downstream.written);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.payload.toString()).toBe("$ ls\nfile.txt\n");
+  });
+
+  it("closes both sides when the viewer sends a close frame", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+    relay("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relay>[2], upstream, undefined);
+    downstream.emit("data", encodeFrame(0x8, Buffer.alloc(0), true));
+    expect(upstream.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /roles/:roleId/live-agent/status
+// ---------------------------------------------------------------------------
+
+describe("GET /roles/:roleId/live-agent/status", () => {
+  function buildTestApp(liveAgent: LiveAgentPort | undefined): FastifyInstance {
+    const app = Fastify({ logger: false });
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      const auth = request.headers.authorization;
+      if (auth !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    return app;
+  }
+
+  it("returns 501 when no LiveAgentPort is configured", async () => {
+    const app = buildTestApp(undefined);
+    const response = await app.inject({ method: "GET", url: "/roles/bot-1/live-agent/status", headers: authHeaders() });
+    expect(response.statusCode).toBe(501);
+  });
+
+  it("returns available:false for a role with no active/recent sandbox (empty state)", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(null),
+      getPtyViewerEndpoint: vi.fn(),
+    };
+    const app = buildTestApp(liveAgent);
+    const response = await app.inject({ method: "GET", url: "/roles/bot-1/live-agent/status", headers: authHeaders() });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ available: false });
+  });
+
+  it("returns available:true + state for a role with a live sandbox", async () => {
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-1", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(sandbox),
+      getPtyViewerEndpoint: vi.fn(),
+    };
+    const app = buildTestApp(liveAgent);
+    const response = await app.inject({ method: "GET", url: "/roles/bot-1/live-agent/status", headers: authHeaders() });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ available: true, state: "Running" });
+  });
+
+  it("401s an unauthenticated request", async () => {
+    const app = buildTestApp({ getActiveSandbox: vi.fn(), getPtyViewerEndpoint: vi.fn() });
+    const response = await app.inject({ method: "GET", url: "/roles/bot-1/live-agent/status" });
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /roles/:roleId/live-agent/pty — end-to-end over real loopback TCP
+// ---------------------------------------------------------------------------
+
+/** A minimal hand-rolled "execd" fake: accepts one WS upgrade, records every
+ * byte received after the handshake (so the test can assert nothing ever
+ * arrives), and can push frames to the connected client on demand. */
+function startFakeExecd(): Promise<{
+  port: number;
+  receivedAfterHandshake: Buffer[];
+  sendFrame(payload: Buffer): void;
+  close(): void;
+}> {
+  return new Promise((resolve) => {
+    const receivedAfterHandshake: Buffer[] = [];
+    let clientSocket: Socket | undefined;
+    const server: Server = createServer((socket) => {
+      let handshakeBuffer = Buffer.alloc(0);
+      let handshakeDone = false;
+      socket.on("data", (chunk: Buffer) => {
+        if (handshakeDone) {
+          receivedAfterHandshake.push(chunk);
+          return;
+        }
+        handshakeBuffer = Buffer.concat([handshakeBuffer, chunk]);
+        const headerEnd = handshakeBuffer.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        const headerText = handshakeBuffer.subarray(0, headerEnd).toString("latin1");
+        const keyMatch = /Sec-WebSocket-Key:\s*(.+)/i.exec(headerText);
+        const key = keyMatch?.[1]?.trim() ?? "";
+        const acceptKey = createHash("sha1").update(key + WEBSOCKET_GUID).digest("base64");
+        socket.write(
+          "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`,
+        );
+        handshakeDone = true;
+        clientSocket = socket;
+        const rest = handshakeBuffer.subarray(headerEnd + 4);
+        if (rest.length > 0) receivedAfterHandshake.push(rest);
+      });
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      resolve({
+        port,
+        receivedAfterHandshake,
+        sendFrame(payload: Buffer): void {
+          clientSocket?.write(encodeFrame(OPCODE_TEXT, payload, false));
+        },
+        close(): void {
+          try {
+            clientSocket?.destroy();
+          } catch {
+            // Already destroyed.
+          }
+          server.close();
+        },
+      });
+    });
+  });
+}
+
+/** A minimal hand-rolled "mobile viewer" test client: performs the WS
+ * handshake over real loopback TCP against the app's own HTTP server. */
+function connectViewerClient(port: number, path: string, headers: Record<string, string>): Promise<{
+  socket: Socket;
+  statusLine: string;
+  reader: FrameReader;
+  frames: ReturnType<FrameReader["push"]>;
+}> {
+  return new Promise((resolve, reject) => {
+    const socket = new Socket();
+    const reader = new FrameReader();
+    const frames: ReturnType<FrameReader["push"]> = [];
+    let buffer = Buffer.alloc(0);
+    let handshakeDone = false;
+    let statusLine = "";
+    socket.on("data", (chunk: Buffer) => {
+      if (!handshakeDone) {
+        buffer = Buffer.concat([buffer, chunk]);
+        const headerEnd = buffer.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        statusLine = buffer.subarray(0, buffer.indexOf("\r\n")).toString("latin1");
+        handshakeDone = true;
+        const rest = buffer.subarray(headerEnd + 4);
+        if (rest.length > 0) frames.push(...reader.push(rest));
+        resolve({ socket, statusLine, reader, frames });
+        return;
+      }
+      frames.push(...reader.push(chunk));
+    });
+    socket.on("error", reject);
+    socket.connect(port, "127.0.0.1", () => {
+      const fixtureKeyMaterial = `viewer-fixture-${Math.random().toString(16).slice(2)}`;
+      const headerLines = Object.entries({
+        Connection: "Upgrade",
+        Upgrade: "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": Buffer.from(fixtureKeyMaterial).toString("base64").slice(0, 24),
+        ...headers,
+      })
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("\r\n");
+      socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\n${headerLines}\r\n\r\n`);
+    });
+  });
+}
+
+describe("GET /roles/:roleId/live-agent/pty — real upgrade + relay over loopback TCP", () => {
+  let app: FastifyInstance | undefined;
+  let fakeExecd: Awaited<ReturnType<typeof startFakeExecd>> | undefined;
+  let acceptedSockets: Socket[] = [];
+
+  /**
+   * WS-upgraded sockets are handed off by Node's HTTP layer and fall
+   * outside its own connection bookkeeping — `server.closeAllConnections()`
+   * silently does not reach them (verified empirically against Node 22;
+   * `relay()`'s own `.destroy()` calls handle this for a real client
+   * disconnect, but a test needs a deterministic, race-free teardown that
+   * doesn't depend on that propagation timing). Track every accepted
+   * socket directly and destroy it ourselves before closing the server.
+   */
+  function trackAcceptedSockets(target: FastifyInstance): void {
+    target.server.on("connection", (socket: Socket) => acceptedSockets.push(socket));
+  }
+
+  afterEach(async () => {
+    for (const socket of acceptedSockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // Already destroyed.
+      }
+    }
+    acceptedSockets = [];
+    if (app !== undefined) {
+      await app.close();
+    }
+    fakeExecd?.close();
+    app = undefined;
+    fakeExecd = undefined;
+  });
+
+  it("proxies real execd output to the viewer and never forwards viewer input upstream", async () => {
+    fakeExecd = await startFakeExecd();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-1", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(sandbox),
+      getPtyViewerEndpoint: vi.fn().mockResolvedValue({ url: `ws://127.0.0.1:${fakeExecd.port}/pty/sbx-1/ws?mode=viewer&since=0` }),
+    };
+    const discarded: LiveAgentInputDiscardedEvent[] = [];
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, {
+      authToken: TOKEN,
+      liveAgent,
+      dialUpstream: defaultDialUpstream,
+      onInputDiscarded: (event) => discarded.push(event),
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", authHeaders());
+    expect(viewer.statusLine).toContain("101");
+
+    // Real execd output must reach the viewer.
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (viewer.frames.length > 0) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 5);
+      fakeExecd!.sendFrame(Buffer.from("live sandbox output"));
+    });
+    expect(viewer.frames[0]!.payload.toString()).toBe("live sandbox output");
+
+    // AC1: the viewer attempts to inject input — it must never reach execd.
+    viewer.socket.write(encodeFrame(OPCODE_TEXT, Buffer.from("malicious input"), true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fakeExecd.receivedAfterHandshake).toHaveLength(0);
+    expect(discarded).toHaveLength(1);
+    expect(discarded[0]).toMatchObject({ roleId: "bot-1", sandboxId: "sbx-1" });
+
+    viewer.socket.destroy();
+    // Give the relay's teardown (triggered by the server-side socket
+    // observing the viewer's disconnect) a moment to run before this test
+    // returns — WS-upgraded sockets fall outside Node's own HTTP
+    // connection bookkeeping (`server.closeAllConnections()` does not
+    // reach them), so `afterEach`'s `app.close()` only completes once the
+    // relay itself has destroyed the accepted socket.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  it("refuses the upgrade (no 101) for a role with no active sandbox — empty state, not a hang", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(null),
+      getPtyViewerEndpoint: vi.fn(),
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", authHeaders());
+    expect(viewer.statusLine).not.toContain("101");
+    expect(viewer.statusLine).toContain("404");
+  });
+
+  it("refuses the upgrade for an unauthenticated request", async () => {
+    const liveAgent: LiveAgentPort = { getActiveSandbox: vi.fn(), getPtyViewerEndpoint: vi.fn() };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", {});
+    expect(viewer.statusLine).toContain("401");
+  });
+});
