@@ -16,6 +16,18 @@ export function getOpenApiDocument(): Record<string, unknown> {
         "Tasks, runs, approvals and evidence — the only surface that talks to the DB (OIK-084). Telegram and other clients consume this API, never packages/db directly.",
     },
     paths: {
+      "/routines/{id}": {
+        patch: {
+          summary: "Update a routine's skill binding",
+          operationId: "updateRoutineSkill",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/UpdateRoutineSkill" } } } },
+          responses: {
+            "200": { description: "Routine updated", content: { "application/json": { schema: { $ref: "#/components/schemas/Routine" } } } },
+            "404": { description: "No routine with that id, or owned by a different tenant" },
+          },
+        },
+      },
       "/routines/{id}/test-run": { post: { summary: "Fire a routine immediately", operationId: "testRunRoutine", responses: { "202": { description: "Test run accepted; test run performs real work" }, "404": { description: "No routine with that id" } } } },
       "/routines/{id}/pause": { post: { summary: "Pause a routine", operationId: "pauseRoutine", responses: { "200": { description: "Routine paused" }, "404": { description: "No routine with that id" } } } },
       "/routines/{id}/resume": { post: { summary: "Resume a routine", operationId: "resumeRoutine", responses: { "200": { description: "Routine resumed" }, "404": { description: "No routine with that id" } } } },
@@ -319,6 +331,13 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
         Skill: { type: "object" },
+        Routine: { type: "object" },
+        UpdateRoutineSkill: {
+          type: "object",
+          required: ["skillId"],
+          additionalProperties: false,
+          properties: { skillId: { type: "string", format: "uuid", nullable: true } },
+        },
         ThreadContext: {
           type: "object",
           required: ["id", "contextTokens", "contextLimit", "epoch"],

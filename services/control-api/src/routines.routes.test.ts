@@ -10,12 +10,47 @@ const routine = (overrides: Partial<Routine> = {}): Routine => ({ routineId: ran
 
 function deps(overrides: Partial<ControlApiDeps>): ControlApiDeps {
   return {
-    createRoutine: async () => routine(), listRoutines: async () => [], setRoutinePaused: async () => routine(), testRunRoutine: async () => routine(),
+    createRoutine: async () => routine(), listRoutines: async () => [], setRoutinePaused: async () => routine(), updateRoutineSkill: async (_id, _tenantId, skillId) => routine({ skillId }), testRunRoutine: async () => routine(),
     ...overrides,
   } as ControlApiDeps;
 }
 
 describe("Routine parity routes (TASK-182)", () => {
+  it("updates a routine skill binding and clears it with null", async () => {
+    const id = randomUUID();
+    const skillId = randomUUID();
+    const calls: Array<[string, string, string | null]> = [];
+    const app = buildApp(deps({
+      updateRoutineSkill: async (routineId, tenantId, nextSkillId) => {
+        calls.push([routineId, tenantId, nextSkillId]);
+        return routine({ routineId, skillId: nextSkillId });
+      },
+    }), { authToken: token, logger: false });
+
+    const rebound = await app.inject({ method: "PATCH", url: `/routines/${id}`, headers, payload: { skillId } });
+    expect(rebound.statusCode).toBe(200);
+    expect(JSON.parse(rebound.body)).toMatchObject({ routineId: id, skillId });
+    const cleared = await app.inject({ method: "PATCH", url: `/routines/${id}`, headers, payload: { skillId: null } });
+    expect(cleared.statusCode).toBe(200);
+    expect(JSON.parse(cleared.body)).toMatchObject({ routineId: id, skillId: null });
+    expect(calls).toEqual([[id, "basileia", skillId], [id, "basileia", null]]);
+    await app.close();
+  });
+
+  it("returns 404, never 403, and does not update a cross-tenant routine", async () => {
+    const id = randomUUID();
+    const calls: string[] = [];
+    const app = buildApp(deps({
+      updateRoutineSkill: async (routineId) => { calls.push(routineId); return null; },
+    }), { authToken: token, logger: false });
+
+    const response = await app.inject({ method: "PATCH", url: `/routines/${id}`, headers, payload: { skillId: randomUUID() } });
+    expect(response.statusCode).toBe(404);
+    expect(JSON.parse(response.body)).toEqual({ error: "routine not found" });
+    expect(calls).toEqual([id]);
+    await app.close();
+  });
+
   it("pauses, resumes, and dispatches an explicit real-work test run", async () => {
     const calls: Array<[string, boolean?]> = [];
     const app = buildApp(deps({

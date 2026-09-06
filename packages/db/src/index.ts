@@ -87,6 +87,7 @@ export {
   recordRoutineFire,
   routineInputsAvailable,
   setRoutinePaused,
+  updateRoutineSkill,
   MAX_ROUTINES_PER_ROLE,
   RoutineLimitError,
   routineFireOutcomes,
