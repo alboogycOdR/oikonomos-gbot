@@ -151,6 +151,26 @@ Minimum valid create body (the API rejects each omission in turn — image must 
 
 ## 8. Operations
 
+### 8.1 Build the governed office image (TASK-170)
+
+On a machine with this repository checkout, build the harness output first, then
+build the image from the repository root (the Dockerfile copies the compiled
+hook, not its TypeScript source):
+
+```bash
+pnpm --filter @oikonomos/harness-factory build
+docker build -f infra/sandbox/images/office-base/Dockerfile -t oikonomos-office-base:claude-2.1.263 .
+docker run --rm oikonomos-office-base:claude-2.1.263 claude --version
+docker run --rm --entrypoint sh oikonomos-office-base:claude-2.1.263 -c 'test -O /etc/claude-code/managed-settings.json && test ! -e "$HOME/.claude.json" && test ! -e "$HOME/.mcp.json"'
+```
+
+Run those commands on `clawsrv` (where OpenSandbox's Docker backend can see the
+local tag) before enabling sandbox chat runs. Set
+`OIKONOMOS_SANDBOX_IMAGE=oikonomos-office-base:claude-2.1.263` on the worker if
+the local tag differs. The image contains neither account credentials nor broker
+credentials: the worker injects the short-lived broker token and identity only
+into each execd `/command` request.
+
 ```bash
 docker logs -f opensandbox-server          # startup must show "type: docker"
 docker restart opensandbox-server          # after any config change

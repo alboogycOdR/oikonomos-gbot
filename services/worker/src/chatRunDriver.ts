@@ -16,6 +16,7 @@ import {
 } from "@oikonomos/connectors";
 import {
   Database,
+  getRoleSandbox,
   getLatestThreadSummary,
   getOrInitThreadContext,
   getRole,
@@ -23,13 +24,17 @@ import {
   insertThreadSummary,
   listMessages,
   updateThreadContext,
+  updateRoleSandboxState,
+  upsertRoleSandbox,
   type DatabaseOptions,
   type Task,
 } from "@oikonomos/db";
+import { mintBrokerToken } from "@oikonomos/broker";
+import { createSandboxClient, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
-import type { AgentSdkQueryFn } from "@oikonomos/harness-factory";
+import { sandboxHookEnvironment, type AgentSdkQueryFn } from "@oikonomos/harness-factory";
 import type { RunParkPort } from "@oikonomos/harness-factory/compose";
 import { buildRoleSystemPrompt } from "./promptAssembly.js";
 import { maybeCompact } from "./contextCompaction.js";
@@ -80,6 +85,21 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly calendarSessionMinter?: Omit<CreateGoogleCalendarConnectorSessionMinterOptions, "manifest">;
   /** Overrides for the Drive minter's secret/OAuth ports; never logged. */
   readonly driveSessionMinter?: Omit<CreateGoogleDriveConnectorSessionMinterOptions, "manifest">;
+  /** Injectable OpenSandbox seam; production constructs the authenticated client from SANDBOX_INTEGRATION_URL. */
+  readonly sandboxClient?: SandboxClient;
+}
+
+const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
+const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
+const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
+const SANDBOX_READY_TIMEOUT_MS = 30_000;
+
+/**
+ * Local mode is deliberately opt-in. An unset or misspelled value must never
+ * quietly bypass the managed sandbox hook on a production worker.
+ */
+export function chatExecutionMode(environment: NodeJS.ProcessEnv = process.env): "local" | "sandbox" {
+  return environment.OIKONOMOS_CHAT_EXECUTION_MODE === "local" ? "local" : "sandbox";
 }
 
 /** First production chat task-to-run composition; registry resolution is declaration- and DB-backed. */
@@ -191,33 +211,44 @@ async function runChatTask(
     );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
-    const workspace = await createChatRunWorkspace(run.runId);
     let result;
     try {
-      result = await executeTaskRun({
-        prompt: request.task.goal,
-        run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
-        // L2 requires the scoped form; PolicyRegistry receives its bare name.
-        allowedTools: ["Bash(*)", "Read(*)"],
-        // Never inherit the worker process cwd or environment into a bot.
-        // The Agent SDK forwards these values to its Bash/Read tool process.
-        agentSdkOptions: {
-          cwd: workspace,
-          env: {},
-          systemPrompt: buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId),
-          ...(request.resume === undefined ? {} : { resume: run.sessionRef }),
-        },
-        ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
-        ...(connector === undefined ? {} : { connector }),
-        brokerDependencies: createBrokerDependencies(options, database, registry, policy),
-        auditSink: completionAuditSink(options, run),
-        park: createRunParkPort(options, run.runId),
-      });
+      const systemPrompt = buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId);
+      // An injected query function is an established test-only SDK seam. Keep
+      // it local so all existing TASK-116/153/154 tests remain meaningful;
+      // real production runs (no queryFn) default to the sandbox.
+      if (!shouldUseSandbox(options)) {
+        const workspace = await createChatRunWorkspace(run.runId);
+        try {
+          result = await executeTaskRun({
+            prompt: request.task.goal,
+            run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
+            // L2 requires the scoped form; PolicyRegistry receives its bare name.
+            allowedTools: ["Bash(*)", "Read(*)"],
+            // Never inherit the worker process cwd or environment into a bot.
+            // The Agent SDK forwards these values to its Bash/Read tool process.
+            agentSdkOptions: {
+              cwd: workspace,
+              env: {},
+              systemPrompt,
+              ...(request.resume === undefined ? {} : { resume: run.sessionRef }),
+            },
+            ...(options.queryFn === undefined ? {} : { queryFn: options.queryFn }),
+            ...(connector === undefined ? {} : { connector }),
+            brokerDependencies: createBrokerDependencies(options, database, registry, policy),
+            auditSink: completionAuditSink(options, run),
+            park: createRunParkPort(options, run.runId),
+          });
+        } finally {
+          await removeChatRunWorkspace(workspace);
+        }
+      } else {
+        result = await executeSandboxChatRun(options, request, run, systemPrompt);
+      }
     } finally {
       for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
-      await removeChatRunWorkspace(workspace);
     }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
     await compactCompletedChatRun(options, request, run.runId);
@@ -226,6 +257,116 @@ async function runChatTask(
     if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
     throw error;
   } finally { await database.close(); }
+}
+
+function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
+  if (options.sandboxClient !== undefined) return true;
+  if (options.queryFn !== undefined || chatExecutionMode() === "local") return false;
+  // The real database integration suite predates sandbox provisioning and
+  // proves TASK-116/153/154 unchanged. A caller that wants a fake sandbox in
+  // tests supplies sandboxClient explicitly; production is never NODE_ENV=test.
+  return process.env.NODE_ENV !== "test";
+}
+
+/** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
+async function executeSandboxChatRun(
+  options: CreateChatRunDriverOptions,
+  request: ChatRunRequest,
+  run: { readonly runId: string; readonly sessionRef: string | null },
+  systemPrompt: string,
+): Promise<{ readonly events: readonly unknown[] }> {
+  const client = options.sandboxClient ?? productionSandboxClient();
+  const resolvedSandbox = await resolveRoleSandbox(options, client, request.task.roleId);
+  const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
+  const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
+  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef);
+  const response = await client.runCommand(resolvedSandbox.endpoint, {
+    command,
+    cwd: `/workspace/${safePathSegment(request.task.roleId)}`,
+    // This is the whole child environment. Never spread process.env here:
+    // only the per-turn broker identity crosses the worker/sandbox boundary.
+    envs: {
+      [sandboxHookEnvironment.brokerUrl]: requiredSandboxBrokerUrl(),
+      [sandboxHookEnvironment.brokerToken]: token,
+      [sandboxHookEnvironment.runId]: run.runId,
+      [sandboxHookEnvironment.roleId]: request.task.roleId,
+      [sandboxHookEnvironment.tenantId]: request.task.tenantId,
+      [sandboxHookEnvironment.agentProvider]: agentRef.provider,
+      [sandboxHookEnvironment.agentSessionRef]: agentRef.sessionRef,
+    },
+    timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
+  });
+  if (response.exitCode !== 0) throw new Error(`Sandboxed Claude command failed with exit code ${response.exitCode}.`);
+
+  // A completed turn is idle. Persist Paused only after the lifecycle API has
+  // accepted the transition; the next turn resumes, polls Running, then gets a
+  // fresh execd endpoint rather than reusing a stale pre-pause URL.
+  await client.pauseSandbox(resolvedSandbox.sandboxId);
+  await updateRoleSandboxState(options, request.task.roleId, "Paused");
+  return { events: [{ type: "result", result: response.stdout.trim() }] };
+}
+
+function productionSandboxClient(): SandboxClient {
+  const baseUrl = process.env.SANDBOX_INTEGRATION_URL?.trim();
+  if (baseUrl === undefined || baseUrl.length === 0) {
+    throw new Error("SANDBOX_INTEGRATION_URL must be set for sandbox chat execution (set OIKONOMOS_CHAT_EXECUTION_MODE=local only for development).");
+  }
+  return createSandboxClient({ baseUrl });
+}
+
+async function resolveRoleSandbox(options: DatabaseOptions, client: SandboxClient, roleId: string): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint }> {
+  let record = await getRoleSandbox(options, roleId);
+  if (record === null) {
+    const created = await client.createSandbox({
+      image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || SANDBOX_IMAGE },
+      entrypoint: ["tail", "-f", "/dev/null"],
+      resourceLimits: { cpu: "500m", memory: "512Mi" },
+      metadata: { roleId },
+    });
+    record = await upsertRoleSandbox(options, { roleId, sandboxId: created.id, state: created.status.state, execdTokenRef: SANDBOX_EXECD_TOKEN_REF });
+  }
+  if (record.state === "Paused") {
+    await client.resumeSandbox(record.sandboxId);
+    await updateRoleSandboxState(options, roleId, "Resuming");
+  }
+  const running = await waitForSandboxRunning(client, record.sandboxId);
+  await updateRoleSandboxState(options, roleId, running.status.state);
+  return { sandboxId: record.sandboxId, endpoint: await client.getEndpoint(record.sandboxId) };
+}
+
+async function waitForSandboxRunning(client: SandboxClient, sandboxId: string): Promise<Sandbox> {
+  const deadline = Date.now() + SANDBOX_READY_TIMEOUT_MS;
+  do {
+    const sandbox = await client.getSandbox(sandboxId);
+    if (sandbox.status.state === "Running") return sandbox;
+    if (sandbox.status.state === "Failed" || sandbox.status.state === "Terminated") {
+      throw new Error(`Sandbox ${sandboxId} entered ${sandbox.status.state} while preparing a chat turn.`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+  } while (Date.now() < deadline);
+  throw new Error(`Sandbox ${sandboxId} did not reach Running before the readiness timeout.`);
+}
+
+function requiredSandboxBrokerUrl(): string {
+  const value = process.env.OIK_SANDBOX_BROKER_URL?.trim();
+  if (value === undefined || value.length === 0) throw new Error("OIK_SANDBOX_BROKER_URL must be set for sandbox chat execution.");
+  return value;
+}
+
+function safePathSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\\"'\\\"'")}'`;
+}
+
+export function claudePrintCommand(prompt: string, systemPrompt: string, resume?: string): string {
+  return [
+    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", "text",
+    "--allowedTools", shellQuote("Bash Read"), "--system-prompt", shellQuote(systemPrompt),
+    ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
+  ].join(" ");
 }
 
 /** Runs TASK-179's real Postgres compaction ports after every completed chat response. */

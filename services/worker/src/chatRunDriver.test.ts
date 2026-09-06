@@ -22,6 +22,8 @@ import { defaultManifestsDir, loadManifests, type ConnectorManifest } from "@oik
 
 import {
   createChatRunDriver,
+  chatExecutionMode,
+  claudePrintCommand,
   destinationFor,
   finalText,
 } from "./chatRunDriver.js";
@@ -83,6 +85,18 @@ function json(response: ServerResponse, value: unknown): void {
 }
 
 describe("chat run driver governance helpers", () => {
+  it("defaults to the sandbox path and constructs a scoped governed CLI command", () => {
+    expect(chatExecutionMode({})).toBe("sandbox");
+    expect(chatExecutionMode({ OIKONOMOS_CHAT_EXECUTION_MODE: "local" })).toBe("local");
+    expect(chatExecutionMode({ OIKONOMOS_CHAT_EXECUTION_MODE: "typo" })).toBe("sandbox");
+    const command = claudePrintCommand("answer 'safely'", "system prompt", "session-1");
+    expect(command).toContain("claude -p --permission-mode dontAsk --output-format text");
+    expect(command).toContain("--allowedTools 'Bash Read'");
+    expect(command).toContain("--system-prompt 'system prompt'");
+    expect(command).toContain("--resume 'session-1'");
+    expect(command).toContain("safely");
+  });
+
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
     expect(chatRunDriverSource).toContain('allowedTools: ["Bash(*)", "Read(*)"]');
     // TASK-128 has an injected query seam for its protocol-compatible MCP
