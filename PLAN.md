@@ -5567,7 +5567,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-187
 **Title:** G-05b — Secret intake UX: masked inline card on mobile + fulfilment API
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; report C13 ('masked, excluded from the transcript, not shown to the model'); TASK-109/148 ApprovalCard transport (RT-01 push, TASK-129) as the delivery mechanism
@@ -5579,15 +5579,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Card renders from a pushed pending request, masks input, and posts to the fulfil route (widget test)
 - [ ] Declining marks the request declined and the parked run receives a model-directed refusal message (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint, flutter analyze, flutter test all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-187-s5
+**Started_At:** 2026-09-06T20:22:15Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T20:22:15Z
 
 ### TASK-188
 **Title:** G-07 — Human take-over: park on auth friction, user drives the live view, hand back and resume
