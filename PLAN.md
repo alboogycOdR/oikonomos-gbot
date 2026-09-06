@@ -5912,7 +5912,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-199
 **Title:** packages/db accessors share a pool instead of opening one ad-hoc per call
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** Found while investigating TASK-162 (2026-09-06). `packages/db/src/database.ts`'s `defaultPoolConfig` (max 10 connections, documented as "keep coordinated with the PgBouncer pool size") is spread into a brand-new `new Pool({...defaultPoolConfig, ...options.poolConfig})` inside nearly every individual accessor function (confirmed by direct grep across `roles.ts`, `runs.ts`, `messages.ts`, `threads.ts`, `threadContext.ts`, `deviceTokens.ts`, `secretRequests.ts`, and others) — there is no shared/injected pool reused across calls within one logical `Database`/request-scoped unit of work. Under heavy concurrent real-Postgres integration testing (`services/control-api/src/chat.routes.test.ts`, 1561 lines / 17+ `integration()` blocks, each exercising several route handlers that each call several accessors), this can transiently open far more real connections than `max_connections` allows (`sorry, too many clients already`, observed live: connections fully drain back to baseline afterward — confirmed a transient burst, not a leak).
@@ -5924,15 +5924,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `chat.routes.test.ts` run in isolation no longer produces `sorry, too many clients already` (repeated at least 3x)
 - [ ] No accessor's existing query behavior changes — this is pool-lifecycle-only
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-199-gb
+**Started_At:** 2026-09-06T20:23:57Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T15:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T20:23:57Z
 
 ### TASK-200
 **Title:** Re-evaluate cost-based decisions against the corrected R350/month budget ceiling
