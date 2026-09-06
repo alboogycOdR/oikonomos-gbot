@@ -2,6 +2,7 @@ connector_id: gmail
 account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
 mcp_server: { name: gmail, transport: remote, url_ref: secret://mcp/gmail/url }
 oauth_scopes: [gmail.readonly, gmail.compose]     # NO gmail.send in wave 1
+network_hosts: [gmail.googleapis.com]
 tools:
   - tool_name: mcp__gmail__list_messages
     capability_id: email.list

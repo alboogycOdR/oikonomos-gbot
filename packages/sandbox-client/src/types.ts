@@ -15,6 +15,17 @@ export interface SandboxImageSpec {
 /** Runtime resource constraints as key-value pairs, e.g. { cpu: "500m", memory: "512Mi" }. */
 export type SandboxResourceLimits = Readonly<Record<string, string>>;
 
+/** OpenSandbox v0.2.2 per-sandbox egress policy, verified from its OpenAPI schema. */
+export interface NetworkRule {
+  readonly action: "allow" | "deny";
+  readonly target: string;
+}
+
+export interface NetworkPolicy {
+  readonly defaultAction: "allow" | "deny";
+  readonly egress: readonly NetworkRule[];
+}
+
 export interface CreateSandboxRequest {
   /** Container image specification for the sandbox. */
   readonly image: SandboxImageSpec;
@@ -28,6 +39,8 @@ export interface CreateSandboxRequest {
   readonly metadata?: Readonly<Record<string, string>>;
   /** Environment variables to inject into the sandbox runtime. */
   readonly env?: Readonly<Record<string, string | null>>;
+  /** Attaches the OpenSandbox egress sidecar with this initial policy. */
+  readonly networkPolicy?: NetworkPolicy;
 }
 
 export type SandboxState =

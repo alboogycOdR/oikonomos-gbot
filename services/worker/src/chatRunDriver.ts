@@ -30,7 +30,8 @@ import {
   type Task,
 } from "@oikonomos/db";
 import { mintBrokerToken } from "@oikonomos/broker";
-import { createSandboxClient, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
+import { resolveEgressPolicy } from "@oikonomos/policy";
+import { createSandboxClient, toOpenSandboxNetworkPolicy, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
@@ -247,7 +248,7 @@ async function runChatTask(
           await removeChatRunWorkspace(workspace);
         }
       } else {
-        result = await executeSandboxChatRun(options, request, run, systemPrompt);
+        result = await executeSandboxChatRun(options, database, manifests, request, run, systemPrompt);
       }
     } finally {
       for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
@@ -275,16 +276,19 @@ function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
 /** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
 async function executeSandboxChatRun(
   options: CreateChatRunDriverOptions,
+  database: Database,
+  manifests: readonly ConnectorManifest[],
   request: ChatRunRequest,
   run: { readonly runId: string; readonly sessionRef: string | null },
   systemPrompt: string,
 ): Promise<{ readonly events: readonly unknown[] }> {
   const client = options.sandboxClient ?? productionSandboxClient();
-  const resolvedSandbox = await resolveRoleSandbox(options, client, request.task.roleId);
+  const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
   const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
   const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
+  await assertEgressPolicyApplied(client, resolvedSandbox.endpoint);
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
   const response = await client.runCommand(resolvedSandbox.endpoint, {
@@ -329,6 +333,16 @@ async function assertManagedSettingsIntegrity(client: SandboxClient, endpoint: S
   }
 }
 
+/** A root-owned image entrypoint writes this only after its sidecar reports a live policy. */
+async function assertEgressPolicyApplied(client: SandboxClient, endpoint: SandboxEndpoint): Promise<void> {
+  const result = await client.runCommand(endpoint, {
+    command: "test -f /run/oikonomos/egress-policy-applied",
+    envs: {},
+    timeoutMs: 10_000,
+  });
+  if (result.exitCode !== 0) throw new Error("Sandbox egress policy marker is absent; refusing governed command.");
+}
+
 /** Create the role's durable in-sandbox workspace before execd validates cwd. */
 async function ensureSandboxWorkspace(client: SandboxClient, endpoint: SandboxEndpoint, workspace: string): Promise<void> {
   const result = await client.runCommand(endpoint, {
@@ -349,14 +363,36 @@ function productionSandboxClient(): SandboxClient {
   return createSandboxClient({ baseUrl });
 }
 
-async function resolveRoleSandbox(options: DatabaseOptions, client: SandboxClient, roleId: string): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint }> {
+async function resolveRoleSandbox(
+  options: DatabaseOptions,
+  database: Database,
+  client: SandboxClient,
+  roleId: string,
+  manifests: readonly ConnectorManifest[],
+): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint }> {
   let record = await getRoleSandbox(options, roleId);
   if (record === null) {
+    const grants = await database.listRoleGrants(roleId);
+    const egressPolicy = resolveEgressPolicy({ roleId, grants }, manifests);
+    const networkPolicy = toOpenSandboxNetworkPolicy(egressPolicy);
     const created = await client.createSandbox({
       image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || SANDBOX_IMAGE },
-      entrypoint: ["tail", "-f", "/dev/null"],
+      // TASK-185: OpenSandbox's own container entrypoint is ALWAYS its own
+      // `/opt/opensandbox/bootstrap.sh`, injected regardless of what the
+      // image itself declares as ENTRYPOINT (verified live against clawsrv,
+      // 2026-09-06 — `docker inspect` on a real created sandbox showed
+      // `Config.Entrypoint = ["/opt/opensandbox/bootstrap.sh"]`, never the
+      // image's own `["node", "/opt/oikonomos/egress-entrypoint.mjs"]`).
+      // `bootstrap.sh` then runs whatever this API's own `entrypoint` field
+      // says as its CMD (`"$@" &`) — so the marker-writing wrapper MUST be
+      // named here explicitly; the image's `ENTRYPOINT` directive is only
+      // ever reached by a plain `docker run` outside OpenSandbox (kept for
+      // that direct-invocation/sanity-check use, not dead weight, but never
+      // exercised by the real deployment).
+      entrypoint: ["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"],
       resourceLimits: { cpu: "500m", memory: "512Mi" },
       metadata: { roleId },
+      ...(networkPolicy === undefined ? {} : { networkPolicy }),
     });
     record = await upsertRoleSandbox(options, { roleId, sandboxId: created.id, state: created.status.state, execdTokenRef: SANDBOX_EXECD_TOKEN_REF });
   }

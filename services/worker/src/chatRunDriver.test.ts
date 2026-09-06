@@ -286,15 +286,18 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-170-test-signing-key";
     process.env[ANTHROPIC_API_KEY_VAR] = "task-170-test-anthropic-credential";
     let state: Sandbox["status"]["state"] = "Running";
+    let egressPolicyApplied = true;
     let creates = 0;
+    const createRequests: Array<Parameters<SandboxClient["createSandbox"]>[0]> = [];
     let resumes = 0;
     let pauses = 0;
     const endpointCalls: string[] = [];
     const commands: Array<Parameters<SandboxClient["runCommand"]>[1]> = [];
     const fakeSandbox: SandboxClient = {
       health: async () => ({ status: "ok" }),
-      createSandbox: async () => {
+      createSandbox: async (request) => {
         creates += 1;
+        createRequests.push(request);
         return { id: "task-170-office", createdAt: "2026-09-06T00:00:00Z", status: { state } };
       },
       getSandbox: async () => ({ id: "task-170-office", createdAt: "2026-09-06T00:00:00Z", status: { state } }),
@@ -315,6 +318,9 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
             exitCode: 0,
           };
         }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") {
+          return { stdout: "", stderr: "", exitCode: egressPolicyApplied ? 0 : 1 };
+        }
         commands.push(command);
         return { stdout: "Sandbox turn complete", stderr: "", exitCode: 0 };
       },
@@ -326,6 +332,19 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await driver.run({ task, threadId });
 
       expect(creates).toBe(1);
+      expect(createRequests[0]?.networkPolicy).toEqual({ defaultAction: "allow", egress: [] });
+      // TASK-185 regression guard: OpenSandbox's own container entrypoint is
+      // ALWAYS its own bootstrap.sh (verified live against a real created
+      // sandbox — `docker inspect` showed `Config.Entrypoint =
+      // ["/opt/opensandbox/bootstrap.sh"]`, never the image's declared
+      // ENTRYPOINT), which runs this request's `entrypoint` array as its own
+      // CMD. The image's `ENTRYPOINT` directive is therefore NEVER reached by
+      // a real deployment — if this array ever reverts to a bare
+      // `["tail", "-f", "/dev/null"]`, the marker-writing wrapper silently
+      // stops running and `assertEgressPolicyApplied` would refuse every
+      // governed command in production, indistinguishable from a healthy
+      // sandbox missing its sidecar.
+      expect(createRequests[0]?.entrypoint).toEqual(["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"]);
       expect(resumes).toBe(1);
       expect(pauses).toBe(2);
       expect(endpointCalls).toEqual(["http://execd.test/1", "http://execd.test/2"]);
@@ -348,6 +367,11 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       });
       expect(commands[1]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
       expect(commands[1]?.envs).not.toHaveProperty(ANTHROPIC_API_KEY_VAR);
+
+      egressPolicyApplied = false;
+      await expect(driver.run({ task, threadId })).rejects.toThrow("Sandbox egress policy marker is absent");
+      // The refusal happens before workspace setup or the governed Claude command.
+      expect(commands).toHaveLength(4);
     } finally {
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
       else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
