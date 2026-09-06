@@ -5684,7 +5684,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-194
 **Title:** TASK-067 describe-or-deny is configured-but-inert (ADR-005 liveness failure)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** Found during Fable 5.1's adversarial review of ADR-014 (2026-09-06, commit 6637389): `packages/broker/src/describe.ts` (TASK-067's whitelist describe-or-deny mechanism, "undefined ⇒ deny" per Study §Tier 1.2/N3) is imported by nothing — not `packages/broker/src/index.ts`, not any service. Its own doc comment already said so ("index.ts is outside Owned_Paths so this module is not wired into the HTTP handler in this task") but this was never followed up. ADR-005 (control liveness) exists specifically because this class of bug — a control that looks present in the codebase but never actually runs — was found seven times in one day in an earlier session. This is an eighth instance, found by a review that wasn't even looking for it.
@@ -5696,12 +5696,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A liveness assertion exists per ADR-005: a test that fails if the gate is bypassed/removed, keyed on evidence the control emits by doing its job (e.g. the specific deny reason/audit event), not on the describer registry merely being non-empty
 - [ ] Existing approval-issuing tests for already-registered/describable tools (Bash, Edit, etc.) continue to pass unchanged
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-194-gb
+**Started_At:** 2026-09-06T05:58:06Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T08:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T05:58:06Z
