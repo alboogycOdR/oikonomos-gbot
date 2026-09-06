@@ -5937,7 +5937,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-200
 **Title:** Re-evaluate cost-based decisions against the corrected R350/month budget ceiling
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** low
 **Spec_References:** CLAUDE.md's Budget section (corrected 2026-09-06 from R30,000/month to R350/month — a ~100x reduction, human-directed). `docs/decisions/ADR-011-multi-provider-llm-support.md` §"Open questions/risks" and `docs/research/OIK-164-composio-connect-evaluation-2026-09-02.md` §3 both reasoned cost comparisons and adoption verdicts against the OLD, much larger ceiling (e.g. OIK-164's own verdict called ~US$300-1,200/month "small relative to the project-wide R30,000/month ceiling" — that framing does not hold against R350/month, ~US$18.92 at the documented placeholder rate).
@@ -5947,15 +5947,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Acceptance_Criteria:**
 - [ ] Both documents have a dated addendum note (not a rewrite of history) addressing the corrected ceiling
 - [ ] Each addendum states explicitly whether the document's original verdict changes, and why, based on real reasoning against the new figure — not assumed unchanged
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-200-gb
+**Started_At:** 2026-09-06T20:55:23Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T19:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T20:55:23Z
 
 ### TASK-201
 **Title:** Pin the non-sandboxed (host) chat path to a cheap default model, matching the R350/month ceiling (protected path)
