@@ -90,3 +90,42 @@ Ship `request_secret`'s approval by calling the real, live `issueApproval` (pack
 1. Is GCM's auth tag stored appended to `ciphertext` or as a separate column? Either is fine cryptographically; pick one and make `secretVault.ts`'s own doc comment state it plainly so a future reader doesn't have to reverse-engineer the byte layout.
 2. Should `OIK_SECRET_VAULT_KEY`'s absence at process start be a hard crash (fail closed, matching this project's other non-negotiables) rather than a lazy first-use error? Recommend: hard crash at `services/control-api`/`services/worker` startup if `request_secret`'s capability is enabled but the key is unset — do not let a misconfigured deployment silently accept requests it can never fulfil correctly.
 3. Does this need its own audit-event types (`secret_vault.write`, `secret_vault.read`) distinct from `secret_requests.created`/`fulfilled`, so a security review can distinguish "a request was made" from "the ciphertext was actually decrypted for use" (e.g. inside a connector minter)? Leaning yes, but not drafted here.
+
+---
+
+## Adversarial review — 2026-09-06, Fable 5.1 (different model from the Sonnet 5 author)
+
+**Verdict: ACCEPT-WITH-CHANGES.** Apply the six changes below, then mark Accepted. TASK-184 may proceed as scoped once TASK-192 lands with changes 3–5.
+
+### Verified, not taken on trust
+
+- **Renderer finding is correct.** `packages/broker/src/describe.ts` is imported by nothing in `packages/broker/src/index.ts` or any service — dead code, as its own doc comment says. `packages/approvals/src/render.ts` `actionRender` is live (imported by `issue.ts` and `editApproval.ts`) and generic over `{toolName, input, destination}`. No new approvals code is needed for a working card. *Separate finding to log as its own task:* TASK-067's "undescribable ⇒ deny" control is therefore configured-but-inert — an ADR-005 liveness failure, not ADR-014's problem.
+- **The storage gap is real.** `secretResolver.ts` (sandbox-client) and `envSecretResolver.ts` (connectors) only map refs to `OIK_SECRET_*` env; `secretPathGuard.ts` is deny-only; nothing stores anything.
+
+### Q1 Storage level — right level, wrong framing
+Postgres + AES-256-GCM with no new service is the correct Phase-0 answer; a file/age scheme from Node would be a second convention and harder to test. Two framing defects:
+1. **OIK-045a is missing.** ADR-006 Addendum B pulls the OpenSandbox Credential Vault into the foundation ("secrets injected into sandbox outbound requests, never readable from inside the sandbox"). That is the intended *consumer* of these values once TASK-170 lands. The ADR must state: **this vault is the system of record; OIK-045a is the injection path; `resolveSecretValue`'s only callers are host-side connector minters and the 045a injector — never code running inside a sandbox.**
+2. **Drop the `CONTROL_API_TOKEN` analogy** (it barely exists in `src/`). The real precedent is the existing `OIK_SECRET_*` resolver convention. Resolve the vault key as `secret://vault/key` → `OIK_SECRET_VAULT_KEY` through the existing `envSecretResolver`, and cite OIK-120 (age/systemd secrets) as the operator-side store for it.
+
+### Q2 404-never-403 vs GCM timing — sound
+Ownership is filtered in the `WHERE` before any crypto runs, so "wrong role" and "missing" both yield zero rows and never reach decrypt; there is no GCM timing surface on those paths. The third path (real row, auth-tag failure = corruption/tamper) must map to the *same* opaque caller error, with the distinction logged internally. `ref` is a random uuid PK, so existence probing is infeasible. Add `tenant_id = $3` to the `WHERE` — redundant given role_id is globally unique, but it matches the TASK-190/191 pattern.
+
+### Q3 Key rotation — acceptable v1 gap, not gating
+Add `key_version smallint NOT NULL DEFAULT 1` to `secret_values` now; it is free and makes future rotation a data migration instead of schema+data. Open Question 2 (hard fail on unset key): yes — see change 5 for where.
+
+### Q5 Byte layout — decided
+Use **WebCrypto (`globalThis.crypto.subtle`, native in Node 22)**, not `createCipheriv`/`getAuthTag`. `subtle.encrypt` AES-GCM emits `ciphertext‖tag` as one buffer: store that as `ciphertext bytea`, plus a 12-byte random `nonce bytea`. State this in `secretVault.ts`'s header. **Bind the row into the ciphertext:** `additionalData = canonicalJson({ref, tenant_id, role_id, key_version})`. A DB-level move of a blob into another role's row then fails authentication — role binding enforced by the crypto, not only by the `WHERE`. Highest-value change in this review; ~3 lines.
+
+### Q6 Contradictions / missing references
+- **TASK-192 AC5 contradicts this ADR's own Open Question 2.** "Import of `secretVault.ts` throws if the key is unset" makes `packages/db` unimportable in any process without the key (every control-api route, every db test). Change to a factory `createSecretVault({ resolveKey })` that validates key length at construction; `services/control-api` and `services/worker` construct it at startup and crash there. Send to CX9 before it builds import-time throwing.
+- **NN#4 in tests:** the test key must be generated at test time (`crypto.getRandomValues`), never a base64 literal in a fixture.
+- **Open Question 3: yes.** Add `secret_vault.write {ref, role_id}` and `secret_vault.read {ref, role_id, run_id}` audit events; the decrypt is the sensitive event and is otherwise invisible.
+- ADR-004, ADR-010 N13, ADR-006 B: no contradictions found.
+
+### Required changes
+1. §Related/§1 — OIK-045a split statement (system of record vs injection path; no sandbox-side resolver calls).
+2. §3 — key via `secret://vault/key` + existing `envSecretResolver`; cite OIK-120; drop `CONTROL_API_TOKEN`.
+3. §2 — add `key_version smallint NOT NULL DEFAULT 1`.
+4. §3 — WebCrypto AES-GCM, `ciphertext‖tag`, 12-byte nonce, AAD `{ref, tenant_id, role_id, key_version}`; TASK-192 gains a tamper test (swap two rows' ciphertext → both fail to decrypt).
+5. §3 / Open Q2 — factory with construction-time key validation; services crash at startup. **Patch TASK-192 AC5.**
+6. Open Q3 — add the two audit event types; the resolver emits `secret_vault.read`.
