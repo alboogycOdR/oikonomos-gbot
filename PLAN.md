@@ -1,5 +1,5 @@
 ---
-plan_version: 19.0
+plan_version: 20.0
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5572,13 +5572,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-189
 **Title:** G-04b — Wire single-owner group routing into the live production call site
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split off TASK-180 (see its Progress_Notes 2026-09-06T00:20:00Z): TASK-180 builds the routing engine (route() + a real budgeted default Tier-0 scorer, both fully unit-testable in isolation); this task makes it the thing that actually decides who responds to a real group message. specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04.
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.routes.test.ts (group-fanout tests only — coordinate with any other active app.ts task via Depends_On before dispatch, do not co-activate blindly)
-**Depends_On:** TASK-180, TASK-179
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/index.ts
+**Depends_On:** TASK-180, TASK-179, TASK-196
 **Description:** Real, undecided architecture question this task must resolve, not assume: (1) which concrete Tier-0 provider/adapter from `packages/agent-providers` actually backs the "budgeted" classifier call in production — investigate what's real and available (FreeLLMAPI per CLAUDE.md's budget rule) before wiring anything, matching this session's own "investigate first" discipline; (2) how `@name`/`@everyone`/no-mention parsing happens on the inbound message body (likely in `app.ts`'s chat-POST handler, before `requestGroupFanout` is called); (3) how member title/description and the thread's most-recent-responder get threaded from `ports.ts`'s existing DB access into `groupRouting.ts`'s `route()` call, without `ports.ts` doing SQL itself (CLAUDE.md convention — call the typed `packages/db` layer). Ground each of these against the real current code before writing anything; report honestly if any piece needs its own further split.
+
+**[ORCH 2026-09-06T11:15:00Z, reply to blocked report] My own recurring authoring mistake, fixed first: `Owned_Paths` had a parenthetical rationale containing a comma (third occurrence this session, same TASK-190/TASK-194 bug — durable lesson clearly not durable enough; rationale belongs in Description only, never in Owned_Paths). Fixed. On the substance: CX9's finding is real and correctly diagnosed, but only PART of it is a quick widen — `services/worker/src/index.ts` not exporting `route`/`createTierZeroScorer` is a trivial, safe barrel-export gap (unowned by any active task), widened directly. The other half — no governed Tier-0 provider composition exists ANYWHERE in the codebase (confirmed by grep: `createGeminiAdapter` is only ever wired inside `packages/harness-factory/src/compose.ts`'s full L1 agent-run composition, never as a lightweight standalone classifier call; `packages/agent-providers`'s `GeminiProvider` deliberately fails closed without an injected governed query function) — is real, cross-cutting, shared infrastructure work, not something to improvise inside this task. TASK-193 independently needs the identical seam (see its own Description: "investigate the concrete provider/adapter decision... do not assume one exists already"). Per CLAUDE.md's "shared files get their own single-owner integration task" rule, split into new TASK-196 (governed Tier-0 provider composition), which both this task and TASK-193 now depend on rather than each inventing their own. Staying blocked until TASK-196 lands — this is the same "real design gap, not a fourth patch" judgment call as TASK-184's third block. Note for whoever redispatches: `Owned_Paths` now names the real file (`chat.routes.test.ts`, confirmed to hold the group-fanout tests) instead of a glob — coordinate via `Depends_On` before co-activating anything else that touches `app.ts`/`ports.ts`, do not rely on the territory hook alone to catch it.**
 **Acceptance_Criteria:**
 - [ ] An unaddressed message in a real 3-Bot group thread produces exactly one real chat run (integration test, DATABASE_URL-gated) — not a stubbed route() call, the actual production path
 - [ ] `@name` and `@everyone` are parsed from a real message body and route exactly as TASK-180's route() specifies
@@ -5589,12 +5591,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-06T07:57:43Z
 **Progress_Notes:**
 - [2026-09-06T02:10:00Z] [ORCH] Assigned to CX9 (idle capacity) and added TASK-179 to Depends_On: both tasks own services/control-api/src/app.ts and neither depended on the other (validate_plan.py's own latent-isolation warning) — sequenced rather than risk two builders on one file. Dispatch after TASK-179 merges.
-**Artifacts:** —
+**Artifacts:** dossiers/TASK-189.md
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T07:57:43Z
+**Blocked_Reason:** MISSING_DEPENDENCY: no governed Tier-0 provider composition exists yet; split to TASK-196, this task depends on it.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T11:15:00Z
 
 ### TASK-190
 **Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR) — skills/runs (DONE)
@@ -5690,9 +5692,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** Split from TASK-179 (see its Progress_Notes 2026-09-06T07:18:00Z) — same shape of gap TASK-189 has for group routing: the engine (`contextCompaction.ts`'s `maybeCompact`, `packages/db/src/threadContext.ts`) is real, tested, and correct, but nothing in production actually constructs a real Postgres-backed `ContextCompactionPorts`/`ThreadContextPort` or calls `maybeCompact` after a real chat run.
-**Owned_Paths:** services/control-api/src/ports.ts, packages/db/src/index.ts, services/worker/src/chatRunDriver.ts (Depends_On coordination required if TASK-170/184/163/164 are active — check before dispatch, do not co-activate blindly on chatRunDriver.ts)
-**Depends_On:** TASK-179
-**Description:** (1) Export `threadContext.ts`'s public functions from `packages/db/src/index.ts` (the one-line gap TASK-179 itself flagged). (2) Build a real `ThreadContextPort`/`ContextCompactionPorts` implementation backed by `@oikonomos/db` and wire it into `createDatabaseBackedDeps`/`buildApp`'s real construction site in `ports.ts` so `GET /threads/:id` and `POST /threads/:id/fresh` work against real data, not just the injected-port tests. (3) Call `maybeCompact` from `chatRunDriver.ts` after a real chat run completes, using the real Tier-0 provider (investigate the concrete provider/adapter decision the same way TASK-189 must for group routing — do not assume one exists already; if TASK-189 or TASK-164 has already resolved a concrete Tier-0 composition seam by the time this runs, reuse it rather than deciding twice).
+**Owned_Paths:** services/control-api/src/ports.ts, packages/db/src/index.ts, services/worker/src/chatRunDriver.ts
+**Depends_On:** TASK-179, TASK-196
+**Description:** (1) Export `threadContext.ts`'s public functions from `packages/db/src/index.ts` (the one-line gap TASK-179 itself flagged). (2) Build a real `ThreadContextPort`/`ContextCompactionPorts` implementation backed by `@oikonomos/db` and wire it into `createDatabaseBackedDeps`/`buildApp`'s real construction site in `ports.ts` so `GET /threads/:id` and `POST /threads/:id/fresh` work against real data, not just the injected-port tests. (3) Call `maybeCompact` from `chatRunDriver.ts` after a real chat run completes, using TASK-196's governed Tier-0 provider composition (do not invent a second one — TASK-189 needs the identical seam, see its Progress_Notes 2026-09-06T11:15:00Z). **[ORCH 2026-09-06T11:15:00Z] Owned_Paths fixed: a parenthetical rationale note containing a comma was corrupting the territory hook's parse (same bug hit on TASK-190/194/189 this session) — moved here instead. Coordination note (was in the corrupted field): `chatRunDriver.ts` is hot this session — check TASK-170/184/163/164 are not active on it before dispatch, do not co-activate blindly. Depends_On TASK-196 added — do not dispatch until it lands.**
 **Acceptance_Criteria:**
 - [ ] A real chat run that pushes a thread over the compaction threshold produces a real `thread_summaries` row and a visible "Context compacted" system message (integration test, DATABASE_URL-gated) — not a stubbed port
 - [ ] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
@@ -5756,3 +5758,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T10:55:00Z
+
+### TASK-196
+**Title:** Governed Tier-0 provider composition (shared seam for group routing + context compaction)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Split from TASK-189 (see its Progress_Notes 2026-09-06T11:15:00Z) — TASK-189 and TASK-193 independently need the identical missing seam; CLAUDE.md's "shared files/cross-cutting work get their own single-owner integration task" rule applies. Budget rule: CLAUDE.md "Route Tier-0 observation work to cheap models via FreeLLMAPI."
+**Owned_Paths:** packages/harness-factory/src/tierZeroProvider.ts, packages/harness-factory/src/tierZeroProvider.test.ts, packages/harness-factory/src/index.ts
+**Depends_On:** —
+**Description:** Confirmed by grep (ORCH, 2026-09-06): no production code anywhere constructs a governed, standalone Tier-0 classifier call today. `packages/harness-factory/src/providers/gemini.ts`'s `createGeminiAdapter` is only ever wired inside `compose.ts`'s full L1 agent-run composition (a whole chat run), not callable standalone for a cheap classification/summarization call; `packages/agent-providers`'s `GeminiProvider` deliberately has no injected query function and fails closed by design. Build a small, focused `createTierZeroProvider(options): (prompt: string) => Promise<string>` (or equivalent minimal shape — investigate what `groupRouting.ts`'s `ShouldRespondScorer` and `contextCompaction.ts`'s `maybeCompact` actually need before fixing the signature) that composes a real FreeLLMAPI-backed call through the SAME governance line every other model call goes through (L1/broker — do not bypass PreToolUse or budget enforcement just because this is "just a classifier"). This is the one place both TASK-189 (group routing) and TASK-193 (context compaction) should import from — do not let either invent its own.
+**Acceptance_Criteria:**
+- [ ] createTierZeroProvider makes a real, budgeted FreeLLMAPI call (test asserts a real spend/budget record, not just "the code path exists")
+- [ ] The call goes through the same governance line as every other model call — no bypass of broker/PreToolUse (test)
+- [ ] A budget-exhausted or provider-unavailable case fails closed with a clear error, not a silent fallback to an ungoverned call
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T11:15:00Z
