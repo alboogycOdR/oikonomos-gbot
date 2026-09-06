@@ -5508,7 +5508,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-08 (AC anchors: observed refusal from inside allowlist_only; liveness — sandbox with policy absent is refused before any command); report §10.3 four modes, §12.5(a) egress deny; OIK-045b (Addendum B §2, pulled forward); infra/sandbox/README.md §7.1 remedy and trigger (fires with TASK-170); TASK-027 (absorbed — its DOCKER-USER rule is applied here); ADR-005 liveness. PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8.
@@ -5521,16 +5521,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Liveness assertion: a sandbox created with the policy deliberately not applied is refused before any command runs (test that fails if the marker check is removed)
 - [ ] Ports 30000–30999 refuse from an external path after the DOCKER-USER rule; the rule survives a reboot; both recorded as observed evidence in infra/sandbox/README.md §7.1 and TASK-027 is closed by ORCH
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-185-cx
+**Started_At:** 2026-09-06T19:21:14Z
 **Progress_Notes:**
 - [2026-09-06T21:20:00Z] [ORCH] Reassigned from GB to CX, matching this task's own Spec_References line ("PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8") — the earlier GB assignment was a decompose-time default that never matched the task's own stated author requirement. TASK-170 (Depends_On) is now done and merged; this task is ready to dispatch.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T19:21:14Z
 
 ### TASK-186
 **Title:** G-06 — Browser lane v1: Steel Browser inside the role sandbox, bot-private profile, governed `browser.*` capability family (protected paths)
