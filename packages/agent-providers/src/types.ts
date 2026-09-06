@@ -13,9 +13,9 @@
  * know one protocol.
  */
 
-export type ProviderId = "claude-code" | "codex" | "grok" | "gemini";
+export type ProviderId = "claude-code" | "codex" | "grok" | "gemini" | "free-llm-api";
 
-export const PROVIDER_IDS: readonly ProviderId[] = ["claude-code", "codex", "grok", "gemini"];
+export const PROVIDER_IDS: readonly ProviderId[] = ["claude-code", "codex", "grok", "gemini", "free-llm-api"];
 
 export function isProviderId(value: string): value is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(value);

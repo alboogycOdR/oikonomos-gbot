@@ -15,7 +15,8 @@ import { GeminiProvider } from "./gemini.js";
  * harness factory (OIK-033) injects that later; this package only constructs.
  */
 export class ProviderRegistry {
-  private readonly providers: Record<ProviderId, AgentProvider>;
+  /** Tier-0 FreeLLMAPI is worker-constructed, never user-selectable chat. */
+  private readonly providers: Record<Exclude<ProviderId, "free-llm-api">, AgentProvider>;
 
   constructor(config: AppConfig) {
     this.providers = {
@@ -42,7 +43,7 @@ export class ProviderRegistry {
     };
   }
 
-  get(id: ProviderId): AgentProvider {
+  get(id: Exclude<ProviderId, "free-llm-api">): AgentProvider {
     return this.providers[id];
   }
 
@@ -64,3 +65,5 @@ export { GrokProvider, buildGrokArgs } from "./grok.js";
 export type { GrokProviderOptions, GrokSandboxProfile } from "./grok.js";
 export { GeminiProvider } from "./gemini.js";
 export type { GeminiProviderOptions, GeminiQueryFn, GeminiQueryResult, GeminiUsageMetadata } from "./gemini.js";
+export { FreeLlmApiProvider } from "./freeLlmApi.js";
+export type { FreeLlmApiProviderOptions, FreeLlmApiFetch } from "./freeLlmApi.js";
