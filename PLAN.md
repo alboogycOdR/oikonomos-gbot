@@ -5569,7 +5569,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-187
 **Title:** G-05b — Secret intake UX: masked inline card on mobile + fulfilment API
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; report C13 ('masked, excluded from the transcript, not shown to the model'); TASK-109/148 ApprovalCard transport (RT-01 push, TASK-129) as the delivery mechanism
@@ -5577,19 +5577,19 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** TASK-171, TASK-183, TASK-184
 **Description:** The human half of TASK-184. API: `GET /secret-requests?status=pending`, `POST /secret-requests/:id/fulfil {value}` (value goes to the sealed store via TASK-184's typed layer, is redacted from request logs by the existing redact.ts, and the response carries only the ref), `POST /secret-requests/:id/decline`. Pushed to the client over the same SSE/push path approvals use. Mobile: an inline card in the thread — `<bot> is asking for: <label>` with the purpose, a masked text field (obscureText, no autocorrect, no clipboard history where the platform allows), Provide / Decline. On Provide the card collapses to `Provided · secret://…` and the run resumes (TASK-155 continue-after-approval). The value must never be logged client-side or included in analytics.
 **Acceptance_Criteria:**
-- [ ] Fulfil route returns the ref only; the value is absent from the response, from the API's request log line, and from the audit row (test with a fragment-assembled fake)
-- [ ] Card renders from a pushed pending request, masks input, and posts to the fulfil route (widget test)
-- [ ] Declining marks the request declined and the parked run receives a model-directed refusal message (test)
-- [ ] pnpm -r test, pnpm -r build, pnpm lint, flutter analyze, flutter test all exit 0
+- [x] Fulfil route returns the ref only; the value is absent from the response, from the API's request log line, and from the audit row (test with a fragment-assembled fake)
+- [x] Card renders from a pushed pending request, masks input, and posts to the fulfil route (widget test)
+- [x] Declining marks the request declined and the parked run receives a model-directed refusal message (test)
+- [x] pnpm -r test, pnpm -r build, pnpm lint, flutter analyze, flutter test all exit 0
 **Branch:** task/TASK-187-s5
 **Started_At:** 2026-09-06T20:22:15Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/secretRequests.routes.test.ts, apps/mobile/lib/widgets/secret_request_card.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/widgets/secret_request_card_test.dart, dossiers/TASK-187.md
+**Test_Evidence:** Independently re-run by ORCH (subagent), not just accepted from S5's own report: `secretRequests.routes.test.ts` 15/15; full `@oikonomos/control-api` suite 233-234/234 across repeated runs (the one recurring failure is `chat.routes.test.ts`'s group-thread test, `"sorry, too many clients already"` — Postgres pool exhaustion, already tracked, non-deterministic which test it lands on each run); full `pnpm -r --no-bail test` across all 18 packages showed the same pool-exhaustion class surfacing in different unrelated packages/tests each run (packages/db, packages/sandbox-client's live-clawsrv 401, services/control-api) — none in secret-requests code; `pnpm -r build` clean (18/18); `pnpm lint` clean; `pnpm -r typecheck` clean; `flutter analyze` clean; `flutter test` 123/123 including `secret_request_card_test.dart`.
+**Review_Findings:** APPROVED first-pass (ORCH). Territory clean: every changed file is inside Owned_Paths plus the standard own-dossier file. Deferred-port pattern (`SecretRequestsPort` on `BuildAppOptions`, 501 when unconfigured) correctly matches the established TASK-179/171/101 precedent — verified directly against `packages/db/src/secretRequests.ts` and `ports.ts` that the real list-pending/decline queries and a resume-with-message capability genuinely don't exist yet, so deferring production wiring is honest, not a shortcut. AC1 (value never in response/log/audit) is proven with a fragment-assembled fake secret value asserted absent from the response body, the fastify log stream, and the fake audit sink. AC3 (decline resumes with a model-directed refusal) is proven against the fake port's resume log. Mobile widget: masked field disables interactive selection/autocorrect/autofill (real clipboard-history mitigation, not just `obscureText`), controller cleared on submit and dispose, value never touches `chat_screen.dart` state beyond the callback argument. Error handling in `chat_screen.dart` follows the existing `_decideApproval` pattern exactly (mount guards, snackbar on failure, busy-set to prevent double-submit). No dead code, no protocol-violating PLAN.md edits on the branch. Merged --no-ff, branch deleted, worktree removed.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T20:22:15Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T01:10:00Z
 
 ### TASK-188
 **Title:** G-07 — Human take-over: park on auth friction, user drives the live view, hand back and resume
