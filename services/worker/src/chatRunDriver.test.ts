@@ -286,6 +286,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-170-test-signing-key";
     process.env[ANTHROPIC_API_KEY_VAR] = "task-170-test-anthropic-credential";
     let state: Sandbox["status"]["state"] = "Running";
+    let egressPolicyApplied = true;
     let creates = 0;
     const createRequests: Array<Parameters<SandboxClient["createSandbox"]>[0]> = [];
     let resumes = 0;
@@ -318,7 +319,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
           };
         }
         if (command.command === "test -f /run/oikonomos/egress-policy-applied") {
-          return { stdout: "", stderr: "", exitCode: 0 };
+          return { stdout: "", stderr: "", exitCode: egressPolicyApplied ? 0 : 1 };
         }
         commands.push(command);
         return { stdout: "Sandbox turn complete", stderr: "", exitCode: 0 };
@@ -354,6 +355,11 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       });
       expect(commands[1]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
       expect(commands[1]?.envs).not.toHaveProperty(ANTHROPIC_API_KEY_VAR);
+
+      egressPolicyApplied = false;
+      await expect(driver.run({ task, threadId })).rejects.toThrow("Sandbox egress policy marker is absent");
+      // The refusal happens before workspace setup or the governed Claude command.
+      expect(commands).toHaveLength(4);
     } finally {
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
       else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
