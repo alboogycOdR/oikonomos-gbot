@@ -5261,7 +5261,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-178
 **Title:** G-01c — Skills on mobile: library screen, per-bot enable toggle, `/` picker in the composer
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01; docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §8.2 ('Reference a skill with /'); memory: docs/STUDY-grok-bot-018.md UI primitives
@@ -5273,15 +5273,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Per-bot toggle calls PUT /roles/:id/skills/:skillId and reflects the server's answer, not optimistic state
 - [ ] Typing `/` in the composer opens the picker showing only enabled skills; tapping inserts `/name` (widget test)
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-178-cx
+**Started_At:** 2026-09-06T05:13:26Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T05:13:26Z
 
 ### TASK-179
 **Title:** G-03a — Context hygiene backend: per-thread context meter, rolling compaction, 'start fresh'
