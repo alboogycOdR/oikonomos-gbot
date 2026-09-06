@@ -1,8 +1,8 @@
 ---
-plan_version: 15.4
-last_updated: 2026-09-06T02:15:00Z
+plan_version: 15.5
+last_updated: 2026-09-06T05:55:00Z
 overall_status: in_progress
-orchestrator_notes: "Took a first design pass at TASK-184's secret-vault gap per the user's request: docs/decisions/ADR-014-dynamic-secret-vault.md (Proposed, drafted on Sonnet 5 — recommend an opus-5 pass before Accepted). Two findings: (1) a real, new vault is needed (no reuse of D3/SEALED_SECRET_ROOT, which stays reserved for future OpenBao browser-session leasing) — split into TASK-192 (CX9, dispatching now, no deps). (2) The 'missing TASK-067 renderer' CX flagged was a red herring — that mechanism is dead/unwired code; the real, live, ADR-004-Accepted generic renderer already handles any tool with zero new code. TASK-184 re-opened (was paused) with Depends_On TASK-192 added and corrected ACs reflecting both findings — ready to resume once TASK-192 lands. TASK-178 (CX)/TASK-179 (S5) still running from the Wave OFFICE-1 resume. TASK-189 (CX9) stays held behind TASK-179 (shared app.ts). TASK-169 stays blocked on the human action item."
+orchestrator_notes: "TASK-178 (CX, mobile skills UI) approved and merged — server-confirmed toggle and enabled-only picker both independently verified against the actual code, not the summary. ADR-014 (TASK-184's secret-vault design) is out for a real adversarial review — the user is running it past a Fable session directly per this project's own different-model-review discipline; TASK-192 (CX9, building the vault against the current draft) keeps running in parallel since its scope (encryption/schema/resolver mechanics) is unlikely to change even if the review adjusts finer points, but do not merge TASK-192 or resume TASK-184 until that review verdict comes back. TASK-179 (S5, context hygiene) still running. TASK-169 stays blocked on the human action item."
 ---
 
 # Project Plan
@@ -5261,7 +5261,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-178
 **Title:** G-01c — Skills on mobile: library screen, per-bot enable toggle, `/` picker in the composer
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-01; docs/research/grok-bot-technical-report-and-replication-blueprint-2026-09-05.md §8.2 ('Reference a skill with /'); memory: docs/STUDY-grok-bot-018.md UI primitives
@@ -5269,19 +5269,21 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** TASK-177
 **Description:** Flutter surface for TASK-177's API. A Skills library screen (list/create/edit — name, description, when-to-use, body as multiline markdown, approvals list) reached from the roster; a per-bot enable/disable toggle list on the bot settings surface (TASK-165 built title/instructions there — extend, don't fork); and a composer affordance: typing `/` in chat_screen's composer opens a bottom-sheet picker listing ONLY skills enabled for the active bot and inserts `/name` on tap. Match the Grok-Bot-reference visual bar (TASK-168 polish). Do not add any client-side enforcement beyond filtering the picker — the server decides (TASK-177).
 **Acceptance_Criteria:**
-- [ ] Skills screen lists, creates and edits skills through the real API client (widget tests with a fake client)
-- [ ] Per-bot toggle calls PUT /roles/:id/skills/:skillId and reflects the server's answer, not optimistic state
-- [ ] Typing `/` in the composer opens the picker showing only enabled skills; tapping inserts `/name` (widget test)
-- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
-**Branch:** task/TASK-178-cx
+- [x] Skills screen lists, creates and edits skills through the real API client (widget tests with a fake client)
+- [x] Per-bot toggle calls PUT /roles/:id/skills/:skillId and reflects the server's answer, not optimistic state
+- [x] Typing `/` in the composer opens the picker showing only enabled skills; tapping inserts `/name` (widget test)
+- [x] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+**Branch:** task/TASK-178-cx (merged, deleted)
 **Started_At:** 2026-09-06T05:13:26Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T05:48:00Z] [CX] Implemented typed Skills API methods/models, the library create/edit screens, server-confirmed per-bot toggles, and the enabled-only slash picker. flutter test 108/108, flutter analyze clean.
+- [2026-09-06T05:55:00Z] [ORCH] Independently re-verified: read `setRoleSkillEnabled` (returns the server's own `enabled` field, not the caller's requested value) and its call site in `chat_screen.dart` (`_setSkillEnabled` only mutates local state after the await resolves, from `confirmed` — no optimistic update before the response) — genuinely matches the "server's answer, not optimistic state" AC. `SkillPicker` sources its list from the real enabled-only endpoint with no client-side re-filtering. Ran flutter analyze/test myself (108/108, clean) in the worktree and again in the main checkout after merge. Approved, merged --no-ff.
+**Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/skills_screen.dart, apps/mobile/lib/screens/skill_edit_screen.dart, apps/mobile/lib/widgets/skill_picker.dart, apps/mobile/lib/screens/chat_screen.dart, dossiers/TASK-178.md
+**Test_Evidence:** Independently re-verified: flutter analyze clean, flutter test 108/108 — both in the worktree and after merge.
+**Review_Findings:** APPROVED first-pass. Correct server-confirmed (non-optimistic) toggle behavior and correct enabled-only picker filtering, both verified by reading the actual code paths, not the summary.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T05:13:26Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T05:55:00Z
 
 ### TASK-179
 **Title:** G-03a — Context hygiene backend: per-thread context meter, rolling compaction, 'start fresh'
