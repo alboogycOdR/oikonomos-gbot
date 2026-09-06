@@ -1,8 +1,8 @@
 ---
-plan_version: 15.9
-last_updated: 2026-09-06T08:35:00Z
+plan_version: 16.0
+last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-192's rework against the corrected ADR-014 is essentially done — WebCrypto AES-GCM, canonical AAD row-binding, tenant-aware resolution, construction-time (not import-time) key validation via a real factory, key_version, audit-event constants all independently verified correct. Found one small, precisely-isolated bug in the new tamper test itself (a Postgres CASE/parameter-type-inference gotcha needing explicit ::bytea casts) — sent back for that single fix, not a broader rework; applied the key_version schema delta to the shared dev DB myself so the real tests actually ran (163/166, one isolated failure, build/lint clean). TASK-194 (GB, TASK-067 liveness gap) still running. TASK-169 stays blocked on the human action item."
+orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
 ---
 
 # Project Plan
@@ -5629,7 +5629,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-192
 **Title:** Dynamic secret vault + resolver (blocks TASK-184's re-scoped request_secret tool)
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §2-§5 (Accepted 2026-09-06 after Fable 5.1 adversarial review — READ THE WHOLE ADR AGAIN, not just this task block; the Decision sections were substantially rewritten by the review and this task's first pass predates all six changes); split from TASK-184's third block. PROTECTED-ADJACENT: a genuine security/data-model primitive — treat with full rigor regardless of packages/db not being on the formal protected-paths list.
@@ -5637,15 +5637,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** REWORK 2 (small, single mechanical fix — see Progress_Notes 2026-09-06T08:15:00Z; the previous rework's crypto/design changes are approved and complete). `secretVault.test.ts`'s tamper test fails with `column "ciphertext" is of type bytea but expression is of type text` — a Postgres parameter-type-inference gotcha in `UPDATE secret_values SET ciphertext = CASE WHEN ref = $1 THEN $2 WHEN ref = $3 THEN $4 END WHERE ref IN ($1, $3)`: with two branches producing the same parameter position's type ambiguously, Postgres defaults the inferred type to `text` rather than `bytea`. Fix by adding explicit casts: `THEN $2::bytea ... THEN $4::bytea`. This is the only remaining issue — every other test, build, and lint check is independently confirmed clean.
 **Acceptance_Criteria:**
-- [ ] A value stored and immediately resolved by the same (ref, role_id, tenant_id) round-trips byte-for-byte (test)
-- [ ] Two calls to storeSecret never produce the same nonce (test — generate several, assert pairwise distinct)
-- [ ] resolveSecretValue throws an identical error for a genuinely nonexistent ref, a ref belonging to a different role_id, AND a ref belonging to a different tenant_id (test asserts all three are indistinguishable to the caller)
-- [ ] Swapping two rows' ciphertext (simulating a moved/corrupted blob) makes both fail to decrypt, proving the AAD row-binding is real, not decorative (test)
-- [ ] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test)
-- [ ] `createSecretVault(...)` is a factory — importing `secretVault.ts` alone (with no key configured anywhere) does NOT throw; only calling the factory with a key that resolves to nothing or the wrong length throws, at construction (test explicitly imports the module with no key set and asserts no throw, then asserts the factory call does throw)
-- [ ] Test fixtures generate their own test key at test time (`crypto.getRandomValues` or equivalent) — never a literal base64 string committed to the test file
-- [ ] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-192-cx9
+- [x] A value stored and immediately resolved by the same (ref, role_id, tenant_id) round-trips byte-for-byte (test)
+- [x] Two calls to storeSecret never produce the same nonce (test — generate several, assert pairwise distinct)
+- [x] resolveSecretValue throws an identical error for a genuinely nonexistent ref, a ref belonging to a different role_id, AND a ref belonging to a different tenant_id (test asserts all three are indistinguishable to the caller)
+- [x] Swapping two rows' ciphertext (simulating a moved/corrupted blob) makes both fail to decrypt, proving the AAD row-binding is real, not decorative (test)
+- [x] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test)
+- [x] `createSecretVault(...)` is a factory — importing `secretVault.ts` alone (with no key configured anywhere) does NOT throw; only calling the factory with a key that resolves to nothing or the wrong length throws, at construction (test explicitly imports the module with no key set and asserts no throw, then asserts the factory call does throw)
+- [x] Test fixtures generate their own test key at test time (`crypto.getRandomValues` or equivalent) — never a literal base64 string committed to the test file
+- [x] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** task/TASK-192-cx9 (merged, deleted)
 **Started_At:** 2026-09-06T05:22:09Z
 **Progress_Notes:**
 - [2026-09-06T05:48:00Z] [CX9] Implemented migration 019, AES-256-GCM vault (tag appended to ciphertext, documented in the file's own top comment), import-time key validation, role-filtered SQL resolution. Verified with a throwaway key: db typecheck/test, full workspace test/build, lint all pass. Migration-gated integration tests correctly `.skip`'d (migration not yet applied to shared DB during this session).
@@ -5653,12 +5653,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-06T08:10:00Z] [ORCH] Fable's review landed (commit 6637389): ACCEPT-WITH-CHANGES, six required changes, explicitly flagging this task's AC5 (import-time throw) as contradicting the ADR's own reasoning and instructing "send to CX9 before it builds import-time key throwing" — too late, it already had, but nothing was merged, so no harm done. Applied all six changes to ADR-014 directly (now Accepted). **REWORK, not approval**: rewrote this task's Description/ACs to match the corrected design (WebCrypto + AAD row-binding + tenant_id in the WHERE + factory-not-import-time + key_version + audit events + a real tamper test). The first pass's core shape (separate table, 404-never-403 via SQL filter, real crypto-property tests) was good work and mostly reusable — this is a real rework driven by a legitimate architecture review landing after the first pass, not a quality defect in CX9's original implementation.
 - [2026-09-06T08:20:00Z] [CX9] Rebuilt against corrected ADR-014: WebCrypto AES-256-GCM, canonical AAD row-binding, tenant-aware `resolveSecretValue`, factory-based `createSecretVault` with construction-time (not import-time) key validation, `key_version` column, audit-event constants exported for the caller to use, real tamper test added. `pnpm -r build`/lint clean; vault tests migration-gated-skipped since the shared DB still had the pre-review 019 schema.
 - [2026-09-06T08:35:00Z] [ORCH] Independently re-verified: read the full rework diff — matches ADR-014 exactly (WebCrypto, AAD = `{key_version, ref, role_id, tenant_id}` computed identically on encrypt and decrypt, `resolveSecretVaultKey()` correctly derives `OIK_SECRET_VAULT_KEY` from `secret://vault/key` matching the existing resolver convention's naming scheme, factory genuinely has no import-time side effect). Applied the `key_version` column to the shared dev DB myself so the real tests could run (not left skipped) — found ONE real, isolated bug: the new tamper test's `UPDATE ... SET ciphertext = CASE WHEN ... THEN $2 WHEN ... THEN $4 END` hits a genuine Postgres parameter-type-inference gotcha (ambiguous branch types default to `text`, not `bytea`) and fails with a real type error — confirmed reproducible, not a fluke (full db suite otherwise 163/166 clean, build/lint clean, only this one test fails). Sent back for the single, precise, mechanical fix (`::bytea` casts) rather than a broader rework — everything else in this pass is correct and complete.
+- [2026-09-06T08:40:00Z] [CX9] Applied the exact requested fix: `THEN $2::bytea ... THEN $4::bytea`. Focused vault suite 5/5, full db suite 164/166 (2 unrelated skips), build/lint clean.
+- [2026-09-06T08:45:00Z] [ORCH] Independently re-verified: ran the fixed test myself (5/5, tamper case included), full packages/db suite (164/166, clean), pnpm -r build/lint (clean) — both in the worktree and again in the main checkout after merge. This vault is now correct and complete against ADR-014 in full: WebCrypto AES-GCM, real AAD row-binding (verified via the tamper test genuinely failing to decrypt swapped ciphertext, not just asserting the code path exists), tenant+role filtering, construction-time key validation, key_version schema hook. Approved, merged --no-ff. TASK-184 can now resume — its Depends_On TASK-192 is satisfied.
 **Artifacts:** infra/postgres/migrations/019_secret_values.up.sql, infra/postgres/migrations/019_secret_values.down.sql, packages/db/src/secretVault.ts, packages/db/src/secretVault.test.ts, packages/db/src/index.ts, dossiers/TASK-192.md
-**Test_Evidence:** Independently re-verified: full packages/db suite 163/166 (1 real, isolated test-SQL bug, see Description), pnpm -r build/lint clean.
-**Review_Findings:** REWORK 2 — one small, precisely-scoped fix: add `::bytea` casts to the tamper test's `UPDATE` statement's ambiguous `CASE` parameters. Everything else in this pass (crypto design, factory pattern, AAD binding, tenant filtering) is correct and complete against ADR-014.
+**Test_Evidence:** Independently re-verified: full packages/db suite 164/166 (2 unrelated pre-existing skips), pnpm -r build/lint clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED. Full ADR-014-compliant secret vault: WebCrypto AES-GCM, real cryptographic AAD row-binding (proven, not just present), tenant+role SQL filtering, construction-time key validation via a genuine factory. Two rework rounds — one substantial (a legitimate architecture review landing mid-task), one trivial (an isolated SQL type-inference fix) — neither reflecting a quality problem in CX9's engineering.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-06T08:35:00Z
+**Updated_At:** 2026-09-06T08:45:00Z
 
 ### TASK-193
 **Title:** Wire context compaction/meter into the live production call site
@@ -5686,24 +5688,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-194
 **Title:** TASK-067 describe-or-deny is configured-but-inert (ADR-005 liveness failure)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
-**Spec_References:** Found during Fable 5.1's adversarial review of ADR-014 (2026-09-06, commit 6637389): `packages/broker/src/describe.ts` (TASK-067's whitelist describe-or-deny mechanism, "undefined ⇒ deny" per Study §Tier 1.2/N3) is imported by nothing — not `packages/broker/src/index.ts`, not any service. Its own doc comment already said so ("index.ts is outside Owned_Paths so this module is not wired into the HTTP handler in this task") but this was never followed up. ADR-005 (control liveness) exists specifically because this class of bug — a control that looks present in the codebase but never actually runs — was found seven times in one day in an earlier session. This is an eighth instance, found by a review that wasn't even looking for it.
-**Owned_Paths:** packages/broker/src/index.ts, packages/broker/src/index.test.ts, packages/broker/src/describe.ts, packages/broker/src/describe.test.ts (PROTECTED PATH packages/broker/** — different-model adversarial review required before merge, per CLAUDE.md)
+**Spec_References:** Found during Fable 5.1's adversarial review of ADR-014 (2026-09-06, commit 6637389): `packages/broker/src/describe.ts` (TASK-067's whitelist describe-or-deny mechanism, "undefined ⇒ deny" per Study §Tier 1.2/N3) is imported by nothing — not `packages/broker/src/index.ts`, not any service. Its own doc comment already said so ("index.ts is outside Owned_Paths so this module is not wired into the HTTP handler in this task") but this was never followed up. ADR-005 (control liveness) exists specifically because this class of bug — a control that looks present in the codebase but never actually runs — was found seven times in one day in an earlier session. This is an eighth instance, found by a review that wasn't even looking for it. PROTECTED PATH packages/broker/** — different-model adversarial review required before merge, per CLAUDE.md (GB author, ORCH/Sonnet-5 reviewer satisfies this).
+**Owned_Paths:** packages/broker/src/index.ts, packages/broker/src/index.test.ts, packages/broker/src/describe.ts, packages/broker/src/describe.test.ts
 **Depends_On:** —
 **Description:** Investigate first: is `describeOrDeny` still the intended production mechanism for approval-requiring tool calls, or has it been superseded by `packages/approvals/src/render.ts`'s `actionRender` (the mechanism ADR-014's review confirmed IS live and wired via `issue.ts`/`editApproval.ts`)? These are two different concerns that may have been conflated — `actionRender` produces the human-readable approval card text; `describeOrDeny`'s actual job per its own doc comment is a fail-closed **gate** ("a tool call we cannot render... does not run"), upstream of whether an approval is even issued. Read `handlePreToolUse` in `packages/broker/src/index.ts` in full and determine: does an unrenderable/undescribable T3+ tool call get denied today by ANY mechanism, or does it currently sail through to `issueApproval` and get a generic-but-still-valid card? If the latter, that's the real, live gap this task must close — wire `describeOrDeny` (or fold its "can we render this" check into wherever `issueApproval` is actually called) into the real enforcement path, with a liveness assertion per ADR-005 (a test that fails when the gate is inert, not just when it behaves correctly while wired) so this exact bug class cannot silently recur a ninth time.
 **Acceptance_Criteria:**
-- [ ] A tool call whose shape has no registered describer is denied before any approval is issued for it, in the REAL `handlePreToolUse` path (integration test, not a unit test of `describeOrDeny` in isolation — the whole point is proving it's wired)
-- [ ] A liveness assertion exists per ADR-005: a test that fails if the gate is bypassed/removed, keyed on evidence the control emits by doing its job (e.g. the specific deny reason/audit event), not on the describer registry merely being non-empty
-- [ ] Existing approval-issuing tests for already-registered/describable tools (Bash, Edit, etc.) continue to pass unchanged
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** task/TASK-194-gb
+- [x] A tool call whose shape has no registered describer is denied before any approval is issued for it, in the REAL `handlePreToolUse` path (integration test, not a unit test of `describeOrDeny` in isolation — the whole point is proving it's wired)
+- [x] A liveness assertion exists per ADR-005: a test that fails if the gate is bypassed/removed, keyed on evidence the control emits by doing its job (e.g. the specific deny reason/audit event), not on the describer registry merely being non-empty
+- [x] Existing approval-issuing tests for already-registered/describable tools (Bash, Edit, etc.) continue to pass unchanged
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+**Branch:** task/TASK-194-gb (merged, deleted)
 **Started_At:** 2026-09-06T05:58:06Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T06:00:00Z] [GB] Confirmed by reading `handlePreToolUse`: `describeOrDeny` was never called, so an undescribable T3+ tool sailed straight to `issueApproval` and got a generic-but-valid card. Wired both approval-issuing sites (nonce-consume and issue-new) through a new `resolveApprovalRequired` helper that runs `describeOrDeny` first — an unknown tool now denies with `describe.undescribable`/audit type `describe.denied` before either path runs. Callers can inject `describers`; omitting the field defaults to a real `builtinDescribers` whitelist (empty `{}` stays fail-closed, is not the same as omitting). Self-caught and fixed a real bug during its own work: the two `resolveApprovalRequired` call sites weren't using `return await` inside their try/catch, letting a dependency rejection escape the fail-closed catch — fixed both. Also hit the identical Owned_Paths comma-parsing issue TASK-190 hit (this task's own Owned_Paths field had a parenthetical with a comma in it) — worked around by moving the new tests into the already-clean `index.test.ts` rather than the unreachable `describe.test.ts`, no rework cycle needed. Broker 137/137, evals canaries 19/19 (CAN-01/02/04/06/07/08/09 still green — the exact liveness/atomicity canaries this change is adjacent to), full build/lint/banned-mode-grep clean.
+- [2026-09-06T08:25:00Z] [ORCH] Independently re-verified, not trusted: read the full `index.ts`/`describe.ts` diff — both approval-issuing call sites (nonce-consume and issue-new) correctly funnel through the new gate, `return await` is present at both sites (verified directly, not assumed from GB's own claim), `DESCRIBE_DENIED_AUDIT_TYPE`/`described.code` wiring is type-correct. Ran broker (137/137) and evals-harness (19/19, including a second re-run after one contention-flake from CX9's concurrent DB-heavy TASK-192 rework) myself, plus full `pnpm -r build`/lint/banned-mode-grep — all clean, in the worktree and again after merge. Verified GB's claim that a `services/control-api/skills.routes.test.ts` failure was pre-existing/unrelated by running that file alone (11/11, clean). Also fixed my own repeated Owned_Paths authoring mistake (parenthetical-with-comma, second occurrence of the exact TASK-190 bug) for the permanent record. Approved, merged --no-ff. This closes a real, live enforcement gap: an unrenderable T3+ tool call can no longer reach a human approval card at all.
+**Artifacts:** packages/broker/src/index.ts, packages/broker/src/describe.ts, packages/broker/src/index.test.ts, dossiers/TASK-194.md
+**Test_Evidence:** Independently re-verified: broker 137/137, evals-harness 19/19, full pnpm -r build/lint/banned-mode-grep clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED first-pass. Correct, complete fix for a real ADR-005 liveness gap, with GB catching and fixing a genuine bug (missing `return await`) in its own work before submitting. Protected-path different-model review requirement satisfied (GB/Grok author, Sonnet-5 reviewer).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T05:58:06Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T08:25:00Z
