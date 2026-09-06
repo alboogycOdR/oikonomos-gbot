@@ -438,3 +438,11 @@ Wires group routing into the live production call site: unaddressed messages now
 Two claimed "unrelated pre-existing" test failures (a `chat.routes.test.ts` full-file run, `packages/db/src/database.test.ts`) were independently checked, not trusted: both pass clean when run in isolation, and the exact same `chat.routes.test.ts` failures reproduce identically against unmodified master — confirmed pre-existing shared-Postgres connection contention, not caused by this task.
 
 Independently re-verified: the new real-Postgres integration test (asserting real FreeLLMAPI scoring, real spend rows, and exactly one chat run) passes in isolation; full `pnpm -r build`, `pnpm lint`, both banned-mode checks all clean, run directly by ORCH. Merged --no-ff. Unblocks TASK-193 (assigned CX9, ready to dispatch).
+
+## TASK-193 | CX9 | approved | first-pass: no (2 legitimate widen rounds — both real production-wiring gaps CX9 correctly diagnosed rather than working around)
+
+Wires context compaction/meter into the live production call site, closing out the wave TASK-179/180 started. `services/control-api/src/index.ts`'s real `start()` now constructs a real `ThreadContextPort` and passes it into `buildApp` — the two context routes were structurally always `501` in production before this, no matter what got built in `ports.ts` alone. `chatRunDriver.ts`'s `compactCompletedChatRun` runs after every real completed chat run and lazily constructs the Tier-0 provider only when `maybeCompact` actually needs to summarize, so an ordinary short turn requires zero FreeLLMAPI environment config — reuses TASK-196's `createTierZeroProvider` directly rather than building a second one.
+
+Two blocked rounds, both real: (1) the process entrypoint gap above, found by reading `index.ts` directly; (2) the AC's own literal wording ("integration test... not a stubbed port") genuinely requires touching the test files that exercise the real wiring, not just the production code — CX9 correctly declined to claim completion via existing fake-port unit tests alone.
+
+Independently re-verified, not trusted: `threadContext.routes.test.ts` 11/11, `chatRunDriver.test.ts` 17/17 (including a new real chat-run compaction integration test), full `pnpm -r build`, `pnpm lint`, both banned-mode checks clean, run directly by ORCH. Merged --no-ff.
