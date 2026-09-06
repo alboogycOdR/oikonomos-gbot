@@ -1,0 +1,5 @@
+# TASK-196 — Governed Tier-0 provider composition
+
+## Work Log
+
+- [2026-09-06T12:00:00Z] [CX] Preflight completed: `packages/harness-factory/src/tierZeroProvider.ts` and `tierZeroProvider.test.ts` are NEW territory; `packages/harness-factory/src/index.ts` exists (394 lines, 11,720 bytes). Investigated the live composition path before writing code. `packages/agent-providers` contains only claude-code, codex, grok, and Gemini provider IDs; no FreeLLMAPI adapter, endpoint, credentials/configuration, or budget-broker composition exists. The available `createGeminiAdapter` calls L1 only when Gemini asks to execute a function. A standalone text-only Tier-0 classifier/summarizer call therefore never invokes `PreToolUse`, and its response does not expose usage/budget data for a real spend record. Implementing against it or adding a guessed direct FreeLLMAPI HTTP call would fail TASK-196's governance/budget acceptance criteria. Blocked pending an authoritative FreeLLMAPI provider contract and the intended model-call authorization/budget enforcement interface.
