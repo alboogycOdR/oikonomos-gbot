@@ -333,6 +333,18 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
 
       expect(creates).toBe(1);
       expect(createRequests[0]?.networkPolicy).toEqual({ defaultAction: "allow", egress: [] });
+      // TASK-185 regression guard: OpenSandbox's own container entrypoint is
+      // ALWAYS its own bootstrap.sh (verified live against a real created
+      // sandbox — `docker inspect` showed `Config.Entrypoint =
+      // ["/opt/opensandbox/bootstrap.sh"]`, never the image's declared
+      // ENTRYPOINT), which runs this request's `entrypoint` array as its own
+      // CMD. The image's `ENTRYPOINT` directive is therefore NEVER reached by
+      // a real deployment — if this array ever reverts to a bare
+      // `["tail", "-f", "/dev/null"]`, the marker-writing wrapper silently
+      // stops running and `assertEgressPolicyApplied` would refuse every
+      // governed command in production, indistinguishable from a healthy
+      // sandbox missing its sidecar.
+      expect(createRequests[0]?.entrypoint).toEqual(["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"]);
       expect(resumes).toBe(1);
       expect(pauses).toBe(2);
       expect(endpointCalls).toEqual(["http://execd.test/1", "http://execd.test/2"]);

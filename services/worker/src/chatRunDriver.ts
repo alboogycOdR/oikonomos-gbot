@@ -377,7 +377,19 @@ async function resolveRoleSandbox(
     const networkPolicy = toOpenSandboxNetworkPolicy(egressPolicy);
     const created = await client.createSandbox({
       image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || SANDBOX_IMAGE },
-      entrypoint: ["tail", "-f", "/dev/null"],
+      // TASK-185: OpenSandbox's own container entrypoint is ALWAYS its own
+      // `/opt/opensandbox/bootstrap.sh`, injected regardless of what the
+      // image itself declares as ENTRYPOINT (verified live against clawsrv,
+      // 2026-09-06 — `docker inspect` on a real created sandbox showed
+      // `Config.Entrypoint = ["/opt/opensandbox/bootstrap.sh"]`, never the
+      // image's own `["node", "/opt/oikonomos/egress-entrypoint.mjs"]`).
+      // `bootstrap.sh` then runs whatever this API's own `entrypoint` field
+      // says as its CMD (`"$@" &`) — so the marker-writing wrapper MUST be
+      // named here explicitly; the image's `ENTRYPOINT` directive is only
+      // ever reached by a plain `docker run` outside OpenSandbox (kept for
+      // that direct-invocation/sanity-check use, not dead weight, but never
+      // exercised by the real deployment).
+      entrypoint: ["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"],
       resourceLimits: { cpu: "500m", memory: "512Mi" },
       metadata: { roleId },
       ...(networkPolicy === undefined ? {} : { networkPolicy }),
