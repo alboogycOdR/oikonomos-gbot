@@ -66,6 +66,15 @@ export {
 } from "./capabilityRegistry.js";
 export { BUILTIN_TOOLS } from "./builtinTools.js";
 export {
+  mintBrokerToken,
+  verifyBrokerToken,
+  BROKER_TOKEN_SIGNING_KEY_REF,
+  BROKER_TOKEN_SIGNING_KEY_ENV,
+  resolveBrokerTokenSigningKey,
+  type BrokerTokenBinding,
+  type VerifiedBrokerToken,
+} from "./brokerToken.js";
+export {
   describeRequestSecret,
   parseRequestSecretInput,
   REQUEST_SECRET_CAPABILITY_ID,

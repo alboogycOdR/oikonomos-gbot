@@ -47,48 +47,29 @@ function validBinding(binding: BrokerTokenBinding): boolean {
 }
 
 /** Mint a short-lived HMAC token whose authenticated identity is the turn binding. */
-export function mintBrokerToken(
-  binding: BrokerTokenBinding,
-  ttlMs: number,
-  key?: string,
-  now: number = Date.now(),
-): string {
+export function mintBrokerToken(binding: BrokerTokenBinding, ttlMs: number, key?: string, now: number = Date.now()): string {
   if (!validBinding(binding)) throw new Error("broker token binding is invalid");
   if (!Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error("broker token ttlMs must be positive");
   const payload = Buffer.from(JSON.stringify({
-    exp: now + ttlMs,
-    runId: binding.runId,
-    roleId: binding.roleId,
-    tenantId: binding.tenantId,
-    agentRef: binding.agentRef,
+    exp: now + ttlMs, runId: binding.runId, roleId: binding.roleId, tenantId: binding.tenantId, agentRef: binding.agentRef,
   }), "utf8").toString("base64url");
   return `${payload}.${sign(resolveBrokerTokenSigningKey(key), payload)}`;
 }
 
 /** Verify and decode a broker token, failing closed for malformed or expired claims. */
-export function verifyBrokerToken(
-  token: string,
-  key?: string,
-  now: number = Date.now(),
-): VerifiedBrokerToken | undefined {
+export function verifyBrokerToken(token: string, key?: string, now: number = Date.now()): VerifiedBrokerToken | undefined {
   const separator = token.indexOf(".");
   if (separator <= 0 || separator !== token.lastIndexOf(".")) return undefined;
   const payload = token.slice(0, separator);
   const signature = token.slice(separator + 1);
   if (signature.length === 0 || !equal(signature, sign(resolveBrokerTokenSigningKey(key), payload))) return undefined;
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-  } catch {
-    return undefined;
-  }
+  try { parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { return undefined; }
   if (parsed === null || typeof parsed !== "object") return undefined;
   const candidate = parsed as Partial<BrokerTokenBinding> & { exp?: unknown };
   if (typeof candidate.exp !== "number" || candidate.exp <= now) return undefined;
   const binding: BrokerTokenBinding = {
-    runId: candidate.runId as string,
-    roleId: candidate.roleId as string,
-    tenantId: candidate.tenantId as string,
+    runId: candidate.runId as string, roleId: candidate.roleId as string, tenantId: candidate.tenantId as string,
     agentRef: candidate.agentRef as BrokerTokenBinding["agentRef"],
   };
   return validBinding(binding) ? { ...binding, expiresAt: candidate.exp } : undefined;
