@@ -19,3 +19,19 @@ Depends_On: TASK-170
 Read the Spec pointers first, then the existing files named in Territory (run the preflight and paste it into the first Progress_Note). Match surrounding conventions exactly — packages/db follows routines.ts; control-api routes follow the chat routes + openapi.ts; mobile follows the TASK-157/168 visual bar. Every acceptance criterion maps to a spec sentence; test the criterion, not the summary. Anything outside Territory is a block, not an edit.
 
 ## Work Log
+
+- [2026-09-06T19:23:41Z] [CX] Resumed on `task/TASK-185-cx`; task has no `Review_Findings`. Preflight (verbatim):
+  ```text
+  [preflight] TASK-185 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE
+  [preflight] 8 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    packages/policy/src/egress.ts  -> does not exist; parent packages/policy/src/ exists
+    NEW    packages/policy/src/egress.test.ts  -> does not exist; parent packages/policy/src/ exists
+    FILE   packages/policy/src/index.ts  -> exists, 152 line(s), 4442 bytes
+    NEW    packages/sandbox-client/src/egress.ts  -> does not exist; parent packages/sandbox-client/src/ exists
+    NEW    packages/sandbox-client/src/egress.test.ts  -> does not exist; parent packages/sandbox-client/src/ exists
+    FILE   infra/sandbox/README.md  -> exists, 187 line(s), 15901 bytes
+    GLOB   infra/sandbox/egress/**  -> matches nothing yet (new territory)
+    GLOB   infra/sandbox/scripts/**  -> matches nothing yet (new territory)
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+- [2026-09-06T19:23:41Z] [CX] Blocked before implementation: the pinned upstream `server/v0.2.2` natively supports `networkPolicy` plus the egress sidecar, so no proxy fallback is needed. But this repository's actual creation/command path is `services/worker/src/chatRunDriver.ts`: it calls `client.createSandbox()` without `networkPolicy`, then calls `client.runCommand()` without a policy-applied marker assertion. Supporting the upstream field also requires `packages/sandbox-client/src/types.ts` and `packages/sandbox-client/src/client.ts`, neither listed in TASK-185 `Owned_Paths`. Adding only the new egress modules would leave the policy unenforced and the liveness AC false. Required territory expansion: `services/worker/src/chatRunDriver.ts`, `packages/sandbox-client/src/client.ts`, and `packages/sandbox-client/src/types.ts` (plus their relevant tests, if any).
