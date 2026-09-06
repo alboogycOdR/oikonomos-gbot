@@ -1,8 +1,8 @@
 ---
-plan_version: 15.6
-last_updated: 2026-09-06T07:35:00Z
+plan_version: 15.7
+last_updated: 2026-09-06T07:45:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-192 (CX9, secret vault) is fully implemented and independently re-verified — migration 019 applied to the shared dev DB so its integration tests genuinely ran (not skipped): 4/4, full packages/db suite 163/163, build/lint clean. Implementation matches ADR-014 exactly. HOLDING THE MERGE deliberately: the user is running ADR-014 past a live Fable review before this lands or TASK-184 resumes — not a defect, a gate. TASK-178 (CX, mobile skills UI) approved and merged earlier. TASK-179 (S5, context hygiene) needs_review, not yet processed this pass. TASK-169 stays blocked on the human action item."
+orchestrator_notes: "TASK-179 (S5, context hygiene: compaction/meter/start-fresh) approved and merged — full recursive suite clean before and after, every AC anchor independently verified against measured assertions. Same engine-vs-production-wiring split as TASK-180/G-04b: split the live wiring into TASK-193 (TBD), coordinate with TASK-189 on which one resolves the concrete Tier-0 provider composition seam first, don't decide it twice. TASK-192 (CX9, secret vault) remains fully verified and merge-ready but HELD pending the user's live Fable review of ADR-014 — not a defect, a deliberate gate. TASK-178 merged earlier this pass. TASK-169 stays blocked on the human action item. Currently idle: S5, CX, GB. No builders dispatched this instant — awaiting the ADR-014 verdict before resuming the secret-vault chain, and TASK-189/193/182 etc. are all real candidates for idle capacity in the meantime."
 ---
 
 # Project Plan
@@ -5287,7 +5287,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-179
 **Title:** G-03a — Context hygiene backend: per-thread context meter, rolling compaction, 'start fresh'
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-03 (AC anchors incl. measured prompt-size reduction and no sealed secret in a summary); report §10.6 staff-confirmed Grok Bot gap, §12.3 memory.compaction, §13.2 item 3; Addendum F §3.3 ('memory is not the transcript'; nothing is written to memory as a side effect of a run)
@@ -5295,20 +5295,22 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** TASK-177
 **Description:** Grok Bot's staff-confirmed gap: one unbounded thread per Bot, no compaction, no meter. Build: (1) `thread_context(thread_id PK, context_tokens int, context_limit int, compacted_through_message_id uuid null, epoch int NOT NULL DEFAULT 0, updated_at)` plus `thread_summaries(summary_id, thread_id, epoch, covers_through_message_id, body text, created_at)`. Summaries are THREAD state, not memory — Addendum F forbids memory writes as a run side-effect, so compaction never touches packages/memory. (2) contextCompaction.ts: after each run, estimate tokens of (persona + skills + summary + verbatim history); when above `context_limit * 0.8`, summarise all messages older than the last N=40 turns into a new thread_summaries row using the Tier-0 provider (CLAUDE.md budget rule: cheap model via FreeLLMAPI/agent-providers), run the packages/audit redaction middleware over the summary body before persisting, and advance compacted_through_message_id. (3) promptAssembly.ts assembles: persona → skills → latest summary → verbatim messages after compacted_through. (4) 'Start fresh' = `POST /threads/:id/fresh` increments epoch; assembly only includes messages/summaries of the current epoch (older turns stay visible in the UI, invisible to the model). (5) `GET /threads/:id` gains context_tokens/context_limit/epoch. A compaction emits a `system` message `Context compacted (N messages → summary)` so the UI can show it.
 **Acceptance_Criteria:**
-- [ ] Driving a thread past the threshold with a fake provider produces a thread_summaries row and the next assembled prompt's estimated tokens are below the threshold — asserted on the measured number, not inferred (integration test)
-- [ ] A summary generated from a transcript containing a fragment-assembled fake credential contains no such fragment after redaction (test reuses packages/audit's redaction fixtures discipline — no contiguous secret-shaped literal in source)
-- [ ] After POST /threads/:id/fresh the assembled prompt contains zero pre-fresh messages or summaries (test), while GET /threads/:id/messages still returns them
-- [ ] packages/memory is not imported by contextCompaction.ts (grep assertion in test); the compaction model call is routed to the Tier-0 provider
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-179-s5
+- [x] Driving a thread past the threshold with a fake provider produces a thread_summaries row and the next assembled prompt's estimated tokens are below the threshold — asserted on the measured number, not inferred (integration test)
+- [x] A summary generated from a transcript containing a fragment-assembled fake credential contains no such fragment after redaction (test reuses packages/audit's redaction fixtures discipline — no contiguous secret-shaped literal in source)
+- [x] After POST /threads/:id/fresh the assembled prompt contains zero pre-fresh messages or summaries (test), while GET /threads/:id/messages still returns them
+- [x] packages/memory is not imported by contextCompaction.ts (grep assertion in test); the compaction model call is routed to the Tier-0 provider
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** task/TASK-179-s5 (merged, deleted)
 **Started_At:** 2026-09-06T05:13:44Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T07:18:00Z] [S5] Implemented all 5 ACs: migration 015, `packages/db/src/threadContext.ts` (meter/summary/epoch CRUD), `contextCompaction.ts` (`maybeCompact` threshold logic, Tier-0 summarizer via `withBudgetSink` mirroring `groupRouting.ts`'s pattern, `packages/audit` redaction before persisting, zero `packages/memory` import — grep-tested), `promptAssembly.ts`'s new prompt-assembly ordering, and control-api's `GET /threads/:id` + `POST /threads/:id/fresh`. Same ownership-gap shape TASK-180 hit: `ports.ts`/`packages/db/src/index.ts` are outside Owned_Paths, so production wiring of a real Postgres-backed port into the live server isn't possible from this task alone — built everything as real, tested, injectable ports (`ContextCompactionPorts`, `ThreadContextPort` on `BuildAppOptions`) instead, gap documented for a TASK-189-style follow-up. Full recursive suite 1312/1312 (4 skipped, pre-existing/unrelated), build/lint clean.
+- [2026-09-06T07:45:00Z] [ORCH] Independently re-verified, not trusted: read `contextCompaction.ts` in full — the pre-compaction threshold check correctly measures ALL messages since last compaction (not just the verbatim tail, which would make compaction unable to ever bring an over-threshold prompt back down — good catch by S5, explicitly commented), redaction goes through the single canonical `redactPayload` before persisting, the no-memory-import AC is a real source-grep test, and the Tier-0 summarizer fails closed on an incomplete provider stream exactly like TASK-180's scorer. Ran every targeted test suite myself (threadContext.test.ts 4/4 against real Postgres with migration 015 already applied, contextCompaction.test.ts 13/13, promptAssembly.test.ts 16/16, threadContext.routes.test.ts 10/10), the full control-api suite (193/193, confirming no regression), and `pnpm -r build`/`db`/`worker` test suites — all clean, in the worktree and again after merge. Approved, merged --no-ff.
+**Artifacts:** infra/postgres/migrations/015_thread_context.up.sql, infra/postgres/migrations/015_thread_context.down.sql, packages/db/src/threadContext.ts, services/worker/src/contextCompaction.ts, services/worker/src/promptAssembly.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, dossiers/TASK-179.md
+**Test_Evidence:** Independently re-verified: every targeted suite plus the full control-api/db/worker suites clean — both in the worktree and after merge.
+**Review_Findings:** APPROVED first-pass. Careful, correct engine-plus-injectable-port implementation matching every AC anchor with real, measured assertions (not inferred). Production wiring (a real Postgres-backed port reaching the live server, and `chatRunDriver` actually calling `maybeCompact` after each run) is real follow-up work, same shape as TASK-189 for group routing — worth a dedicated task.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T05:13:44Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T07:45:00Z
 
 ### TASK-180
 **Title:** G-04 — Single-owner group routing: exactly one responder when nobody is @-mentioned
@@ -5652,3 +5654,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T07:35:00Z
+
+### TASK-193
+**Title:** Wire context compaction/meter into the live production call site
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** Split from TASK-179 (see its Progress_Notes 2026-09-06T07:18:00Z) — same shape of gap TASK-189 has for group routing: the engine (`contextCompaction.ts`'s `maybeCompact`, `packages/db/src/threadContext.ts`) is real, tested, and correct, but nothing in production actually constructs a real Postgres-backed `ContextCompactionPorts`/`ThreadContextPort` or calls `maybeCompact` after a real chat run.
+**Owned_Paths:** services/control-api/src/ports.ts, packages/db/src/index.ts, services/worker/src/chatRunDriver.ts (Depends_On coordination required if TASK-170/184/163/164 are active — check before dispatch, do not co-activate blindly on chatRunDriver.ts)
+**Depends_On:** TASK-179
+**Description:** (1) Export `threadContext.ts`'s public functions from `packages/db/src/index.ts` (the one-line gap TASK-179 itself flagged). (2) Build a real `ThreadContextPort`/`ContextCompactionPorts` implementation backed by `@oikonomos/db` and wire it into `createDatabaseBackedDeps`/`buildApp`'s real construction site in `ports.ts` so `GET /threads/:id` and `POST /threads/:id/fresh` work against real data, not just the injected-port tests. (3) Call `maybeCompact` from `chatRunDriver.ts` after a real chat run completes, using the real Tier-0 provider (investigate the concrete provider/adapter decision the same way TASK-189 must for group routing — do not assume one exists already; if TASK-189 or TASK-164 has already resolved a concrete Tier-0 composition seam by the time this runs, reuse it rather than deciding twice).
+**Acceptance_Criteria:**
+- [ ] A real chat run that pushes a thread over the compaction threshold produces a real `thread_summaries` row and a visible "Context compacted" system message (integration test, DATABASE_URL-gated) — not a stubbed port
+- [ ] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
+- [ ] `POST /threads/:id/fresh` genuinely starts a new epoch against real data
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T07:45:00Z
