@@ -4807,7 +4807,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
