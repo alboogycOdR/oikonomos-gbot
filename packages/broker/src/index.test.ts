@@ -316,7 +316,7 @@ describe("handlePreToolUse — describe-or-deny gate (TASK-194, study §Tier 1.2
   it("registers a describer for every BUILTIN_TOOLS name, including Bash and Edit", () => {
     for (const tool of BUILTIN_TOOLS) {
       const described = describeToolCall(
-        { toolName: tool.toolName, input: { command: "ls", file_path: "/workspace/a.md" } },
+        { toolName: tool.toolName, input: { label: "API token", purpose: "publish the release" } },
         builtinDescribers,
       );
       expect(described).toBeDefined();
