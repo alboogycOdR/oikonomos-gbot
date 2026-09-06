@@ -1,8 +1,8 @@
 ---
-plan_version: 15.2
-last_updated: 2026-09-06T01:50:00Z
+plan_version: 15.3
+last_updated: 2026-09-06T02:10:00Z
 overall_status: in_progress
-orchestrator_notes: "The cross-tenant IDOR class opened by TASK-177's review is now FULLY CLOSED: TASK-190 (skills/runs) and TASK-191 (threads, including group-thread 'every member' semantics) both approved, merged, and live — control-api rebuilt and restarted with the complete fix. TASK-184 (CX, protected, request_secret) remains PAUSED after a third correctly-diagnosed block: no sealed-secret vault/resolver subsystem exists anywhere in this codebase, only a path-denial guard and a static env-var convention — real, undesigned architecture, needs a proper design pass (ADR-candidate) before further work, not urgent since nothing live is exploitable. Real on-device mobile Google auth confirmed working end-to-end by the user this session. TASK-169 stays blocked on the human action item (real OpenSandbox API key). No builders currently active — S5/CX9/GB idle, CX paused on TASK-184."
+orchestrator_notes: "Resuming Wave OFFICE-1 after the security-fix/mobile-testing detour. Dispatching TASK-178 (CX, mobile skills UI) and TASK-179 (S5, context hygiene: compaction/meter/fresh-session) — both only depended on TASK-177, now done. TASK-189 assigned to CX9 but held back (Depends_On TASK-179 added) since both own app.ts and would otherwise be a territory conflict. TASK-182/183/187/188 remain genuinely blocked on their real deps (179, 178+182, 171+183+184, 186+171+187 respectively) — not neglect, just not ready yet. TASK-184 stays paused pending a secret-vault design pass. TASK-169 stays blocked on the human action item."
 ---
 
 # Project Plan
@@ -5546,11 +5546,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-189
 **Title:** G-04b — Wire single-owner group routing into the live production call site
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split off TASK-180 (see its Progress_Notes 2026-09-06T00:20:00Z): TASK-180 builds the routing engine (route() + a real budgeted default Tier-0 scorer, both fully unit-testable in isolation); this task makes it the thing that actually decides who responds to a real group message. specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/*.routes.test.ts (group-fanout tests only — coordinate with any other active app.ts task via Depends_On before dispatch, do not co-activate blindly)
-**Depends_On:** TASK-180
+**Depends_On:** TASK-180, TASK-179
 **Description:** Real, undecided architecture question this task must resolve, not assume: (1) which concrete Tier-0 provider/adapter from `packages/agent-providers` actually backs the "budgeted" classifier call in production — investigate what's real and available (FreeLLMAPI per CLAUDE.md's budget rule) before wiring anything, matching this session's own "investigate first" discipline; (2) how `@name`/`@everyone`/no-mention parsing happens on the inbound message body (likely in `app.ts`'s chat-POST handler, before `requestGroupFanout` is called); (3) how member title/description and the thread's most-recent-responder get threaded from `ports.ts`'s existing DB access into `groupRouting.ts`'s `route()` call, without `ports.ts` doing SQL itself (CLAUDE.md convention — call the typed `packages/db` layer). Ground each of these against the real current code before writing anything; report honestly if any piece needs its own further split.
 **Acceptance_Criteria:**
 - [ ] An unaddressed message in a real 3-Bot group thread produces exactly one real chat run (integration test, DATABASE_URL-gated) — not a stubbed route() call, the actual production path
@@ -5560,7 +5560,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-06T02:10:00Z] [ORCH] Assigned to CX9 (idle capacity) and added TASK-179 to Depends_On: both tasks own services/control-api/src/app.ts and neither depended on the other (validate_plan.py's own latent-isolation warning) — sequenced rather than risk two builders on one file. Dispatch after TASK-179 merges.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
