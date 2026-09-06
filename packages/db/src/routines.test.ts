@@ -6,12 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRole,
   createRoutine,
+  createSkill,
   defaultPoolConfig,
   getRoutine,
   listRoutines,
   recordRoutineFire,
   RoutineLimitError,
   setRoutinePaused,
+  updateRoutineSkill,
 } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -164,6 +166,21 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
     expect(history.rows.map((row) => row.reason)).not.toContain("reason-0");
     expect((await setRoutinePaused({ connectionString: connectionString! }, routine.routineId, true))?.paused).toBe(true);
   }, 20_000);
+
+  it("updates and clears a routine skill binding", async () => {
+    const routine = await createRoutine({ connectionString: connectionString! }, { roleId, tenantId, name: "skill-binding", definition: {} });
+    const skill = await createSkill(
+      { connectionString: connectionString! },
+      { tenantId, name: `routine-skill-${randomUUID().slice(0, 8)}`, description: "Routine binding test skill", body: "Test body" },
+    );
+
+    const rebound = await updateRoutineSkill({ connectionString: connectionString! }, routine.routineId, skill.skillId);
+    expect(rebound).toMatchObject({ routineId: routine.routineId, skillId: skill.skillId });
+
+    const cleared = await updateRoutineSkill({ connectionString: connectionString! }, routine.routineId, null);
+    expect(cleared).toMatchObject({ routineId: routine.routineId, skillId: null });
+    await pool.query(`DELETE FROM skills WHERE skill_id = $1`, [skill.skillId]);
+  });
 
   it("rejects the 51st routine for a role", async () => {
     const cappedRoleId = `task-182-routine-cap-role-${randomUUID()}`;

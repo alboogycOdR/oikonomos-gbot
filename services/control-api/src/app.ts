@@ -228,6 +228,15 @@ const CREATE_ROUTINE_SCHEMA = {
   },
 } as const;
 
+const UPDATE_ROUTINE_SKILL_SCHEMA = {
+  type: "object",
+  required: ["skillId"],
+  additionalProperties: false,
+  properties: {
+    skillId: { type: ["string", "null"], format: "uuid" },
+  },
+} as const;
+
 /**
  * TASK-177 (G-01b) — the skill's own name-shape constraint
  * (`^[a-z0-9][a-z0-9-]{1,63}$`) is enforced again inside
@@ -991,6 +1000,15 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     const routine = await deps.testRunRoutine(request.params.id, request.tenantId);
     return routine === null ? reply.code(404).send({ error: "routine not found" }) : reply.code(202).send({ routine, warning: "test run performs real work" });
   });
+  app.patch<{ Params: { id: string }; Body: { skillId: string | null } }>(
+    "/routines/:id",
+    { schema: { body: UPDATE_ROUTINE_SKILL_SCHEMA } },
+    async (request, reply) => {
+      if (deps.updateRoutineSkill === undefined) return reply.code(501).send({ error: "routine controls are not configured" });
+      const routine = await deps.updateRoutineSkill(request.params.id, request.tenantId, request.body.skillId);
+      return routine === null ? reply.code(404).send({ error: "routine not found" }) : reply.code(200).send(routine);
+    },
+  );
 
   app.get<{ Params: { roleId: string } }>("/roles/:roleId/routines", async (request, reply) => {
     try {

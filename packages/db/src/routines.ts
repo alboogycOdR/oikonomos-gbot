@@ -288,6 +288,23 @@ export async function setRoutinePaused(options: DatabaseOptions, routineId: stri
   });
 }
 
+/** Update only a routine's optional skill binding; tenancy is enforced by the caller. */
+export async function updateRoutineSkill(
+  options: DatabaseOptions,
+  routineId: string,
+  skillId: string | null,
+): Promise<Routine | null> {
+  const normalizedRoutineId = requireUuid(routineId, "routineId");
+  const normalizedSkillId = skillId === null ? null : requireUuid(skillId, "skillId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoutineRow>(
+      `UPDATE role_routines SET skill_id = $2 WHERE routine_id = $1 RETURNING ${routineColumns}`,
+      [normalizedRoutineId, normalizedSkillId],
+    );
+    return result.rows[0] === undefined ? null : toRoutine(result.rows[0]);
+  });
+}
+
 export async function routineInputsAvailable(options: DatabaseOptions, routine: Routine): Promise<string | null> {
   const values = Array.isArray(routine.definition.inputs) ? routine.definition.inputs : [];
   const inputs = values.map((value) => typeof value === "string" ? value : typeof value === "object" && value !== null && typeof (value as Record<string, unknown>).connectorId === "string" ? (value as Record<string, string>).connectorId : null);
@@ -324,6 +341,8 @@ if (import.meta.vitest) {
       const live: DatabaseOptions = { connectionString: "postgres://x" };
       await expect(getRoutine(live, "not-a-uuid")).rejects.toThrow(/UUID/);
       await expect(recordRoutineFire(live, "not-a-uuid", "queued")).rejects.toThrow(/UUID/);
+      await expect(updateRoutineSkill(live, "not-a-uuid", null)).rejects.toThrow(/UUID/);
+      await expect(updateRoutineSkill(live, "11111111-1111-1111-1111-111111111111", "not-a-uuid")).rejects.toThrow(/UUID/);
     });
 
     it("rejects an invalid lane on createRoutine", async () => {

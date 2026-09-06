@@ -43,6 +43,7 @@ import {
   startFreshEpoch as dbStartFreshEpoch,
   getRoutine as dbGetRoutine,
   setRoutinePaused as dbSetRoutinePaused,
+  updateRoutineSkill as dbUpdateRoutineSkill,
   RoutineLimitError,
   type AuditEvent,
   type Capability,
@@ -121,6 +122,7 @@ export interface ControlApiDeps {
   listRoleMessages(filter: { tenantId: string; toRoleId?: string; fromRoleId?: string }): Promise<RoleMessage[]>;
   listRoutines(filter: { tenantId: string; roleId?: string }): Promise<Routine[]>;
   setRoutinePaused?(routineId: string, tenantId: string, paused: boolean): Promise<Routine | null>;
+  updateRoutineSkill?(routineId: string, tenantId: string, skillId: string | null): Promise<Routine | null>;
   testRunRoutine?(routineId: string, tenantId: string): Promise<Routine | null>;
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
@@ -293,6 +295,11 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       const routine = await dbGetRoutine(options, routineId);
       if (routine === null || routine.tenantId !== tenantId) return null;
       return dbSetRoutinePaused(options, routineId, paused);
+    },
+    updateRoutineSkill: async (routineId, tenantId, skillId) => {
+      const routine = await dbGetRoutine(options, routineId);
+      if (routine === null || routine.tenantId !== tenantId) return null;
+      return dbUpdateRoutineSkill(options, routineId, skillId);
     },
     testRunRoutine: async (routineId, tenantId) => {
       const routine = await dbGetRoutine(options, routineId);
