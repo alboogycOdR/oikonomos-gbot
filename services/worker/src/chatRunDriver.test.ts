@@ -293,6 +293,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       },
       ping: async () => undefined,
       runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return {
+            stdout: "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854  /etc/claude-code/managed-settings.json\n",
+            stderr: "",
+            exitCode: 0,
+          };
+        }
         commands.push(command);
         return { stdout: "Sandbox turn complete", stderr: "", exitCode: 0 };
       },

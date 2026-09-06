@@ -93,6 +93,10 @@ const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
+const SANDBOX_MANAGED_SETTINGS_PATH = "/etc/claude-code/managed-settings.json";
+// SHA-256 of infra/sandbox/images/office-base/managed-settings.json. Keep this
+// paired with the image asset: stale or altered managed settings fail closed.
+const SANDBOX_MANAGED_SETTINGS_SHA256 = "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854";
 
 /**
  * Local mode is deliberately opt-in. An unset or misspelled value must never
@@ -280,6 +284,7 @@ async function executeSandboxChatRun(
   const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
   const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef);
+  await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
   const response = await client.runCommand(resolvedSandbox.endpoint, {
     command,
     cwd: `/workspace/${safePathSegment(request.task.roleId)}`,
@@ -304,6 +309,20 @@ async function executeSandboxChatRun(
   await client.pauseSandbox(resolvedSandbox.sandboxId);
   await updateRoleSandboxState(options, request.task.roleId, "Paused");
   return { events: [{ type: "result", result: response.stdout.trim() }] };
+}
+
+/** Managed settings are an immutable security boundary for a persistent office. */
+async function assertManagedSettingsIntegrity(client: SandboxClient, endpoint: SandboxEndpoint): Promise<void> {
+  const result = await client.runCommand(endpoint, {
+    command: `/usr/bin/sha256sum ${SANDBOX_MANAGED_SETTINGS_PATH}`,
+    // The verification command receives no worker environment either.
+    envs: {},
+    timeoutMs: 10_000,
+  });
+  const observed = result.stdout.trim().split(/\s+/, 1)[0];
+  if (result.exitCode !== 0 || observed !== SANDBOX_MANAGED_SETTINGS_SHA256) {
+    throw new Error("Sandbox managed Claude settings failed the required integrity check.");
+  }
 }
 
 function productionSandboxClient(): SandboxClient {
