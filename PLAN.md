@@ -1,5 +1,5 @@
 ---
-plan_version: 21.0
+plan_version: 22.0
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5572,7 +5572,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-189
 **Title:** G-04b — Wire single-owner group routing into the live production call site
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split off TASK-180 (see its Progress_Notes 2026-09-06T00:20:00Z): TASK-180 builds the routing engine (route() + a real budgeted default Tier-0 scorer, both fully unit-testable in isolation); this task makes it the thing that actually decides who responds to a real group message. specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04.
@@ -5583,22 +5583,24 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **[ORCH 2026-09-06T11:15:00Z, reply to blocked report] My own recurring authoring mistake, fixed first: `Owned_Paths` had a parenthetical rationale containing a comma (third occurrence this session, same TASK-190/TASK-194 bug — durable lesson clearly not durable enough; rationale belongs in Description only, never in Owned_Paths). Fixed. On the substance: CX9's finding is real and correctly diagnosed, but only PART of it is a quick widen — `services/worker/src/index.ts` not exporting `route`/`createTierZeroScorer` is a trivial, safe barrel-export gap (unowned by any active task), widened directly. The other half — no governed Tier-0 provider composition exists ANYWHERE in the codebase (confirmed by grep: `createGeminiAdapter` is only ever wired inside `packages/harness-factory/src/compose.ts`'s full L1 agent-run composition, never as a lightweight standalone classifier call; `packages/agent-providers`'s `GeminiProvider` deliberately fails closed without an injected governed query function) — is real, cross-cutting, shared infrastructure work, not something to improvise inside this task. TASK-193 independently needs the identical seam (see its own Description: "investigate the concrete provider/adapter decision... do not assume one exists already"). Per CLAUDE.md's "shared files get their own single-owner integration task" rule, split into new TASK-196 (governed Tier-0 provider composition), which both this task and TASK-193 now depend on rather than each inventing their own. Staying blocked until TASK-196 lands — this is the same "real design gap, not a fourth patch" judgment call as TASK-184's third block. Note for whoever redispatches: `Owned_Paths` now names the real file (`chat.routes.test.ts`, confirmed to hold the group-fanout tests) instead of a glob — coordinate via `Depends_On` before co-activating anything else that touches `app.ts`/`ports.ts`, do not rely on the territory hook alone to catch it.**
 
 **[ORCH 2026-09-06T12:40:00Z] TASK-196 merged — `services/worker/src/tierZeroProvider.ts`'s `createTierZeroProvider` is the concrete Tier-0 answer to point (1) in this task's Description. Status reset to `pending`, ready to redispatch. `services/worker/src/index.ts` will need to export `createTierZeroProvider`/`TierZeroProvider` alongside the already-widened `route`/`createTierZeroScorer` — this task's own Owned_Paths already includes `services/worker/src/index.ts`.**
+
+**[ORCH 2026-09-06T13:00:00Z] Reviewed and merged (see git log for the merge commit). Territory diff clean. Read `app.ts`/`ports.ts` diffs directly: `routeGroupMessage` first tries `route()` with a scorer that always throws — since `route()`'s own `@everyone`/`@name` branches return before ever calling the scorer (confirmed by reading `groupRouting.ts`), this correctly detects the deterministic-addressed cases with zero wasted inference spend, only falling into the real, budgeted `createTierZeroProvider` path for genuinely unaddressed messages, each tracked through its own real `tasks`/`runs` row (provider `free-llm-api`) for spend attribution and audit lineage. Multi-recipient routes (`@everyone`/multi-`@name`) still go through the existing approval-gated `requestGroupFanout` unchanged (AC4); a single resolved recipient dispatches directly via `createTask`+`runChatTask` (AC1, exactly one real run). Member title/description/most-recent-responder threaded via `@oikonomos/db`'s `listRoles`/`listMessages`, no raw SQL in `ports.ts` (CLAUDE.md convention). The new real-Postgres integration test (`chat.routes.test.ts`) passed cleanly in isolation and asserts real FreeLLMAPI scoring, real spend rows, and exactly one chat run. CX9's two claimed "unrelated pre-existing" failures (a `chat.routes.test.ts` full-file run and `packages/db/src/database.test.ts`) were independently reproduced AND reproduced identically against unmodified master and in isolated single-file runs (each passing clean alone) — confirmed pre-existing shared-Postgres contention, unrelated to this task, not a rework blocker. Independently re-verified: full `pnpm -r build`/`pnpm lint`/both banned-mode checks clean, run directly by ORCH.**
 **Acceptance_Criteria:**
-- [ ] An unaddressed message in a real 3-Bot group thread produces exactly one real chat run (integration test, DATABASE_URL-gated) — not a stubbed route() call, the actual production path
-- [ ] `@name` and `@everyone` are parsed from a real message body and route exactly as TASK-180's route() specifies
-- [ ] The classifier call in production is genuinely budgeted (asserted via the real budget sink/spend row, not just "the code path exists")
-- [ ] TASK-122's existing fan-out approval behavior is unchanged for `@everyone`/multi-`@name` cases
-- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+- [x] An unaddressed message in a real 3-Bot group thread produces exactly one real chat run (integration test, DATABASE_URL-gated) — not a stubbed route() call, the actual production path
+- [x] `@name` and `@everyone` are parsed from a real message body and route exactly as TASK-180's route() specifies
+- [x] The classifier call in production is genuinely budgeted (asserted via the real budget sink/spend row, not just "the code path exists")
+- [x] TASK-122's existing fan-out approval behavior is unchanged for `@everyone`/multi-`@name` cases
+- [x] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-189-cx9
 **Started_At:** 2026-09-06T08:35:05Z
 **Progress_Notes:**
 - [2026-09-06T02:10:00Z] [ORCH] Assigned to CX9 (idle capacity) and added TASK-179 to Depends_On: both tasks own services/control-api/src/app.ts and neither depended on the other (validate_plan.py's own latent-isolation warning) — sequenced rather than risk two builders on one file. Dispatch after TASK-179 merges.
 **Artifacts:** dossiers/TASK-189.md
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** New real-Postgres integration test passes in isolation; full build/lint/banned-mode checks clean (ORCH-run). Two full-file test-run failures confirmed pre-existing shared-DB contention (reproduced on unmodified master).
+**Review_Findings:** None blocking. Approved first-pass.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T08:35:05Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T13:00:00Z
 
 ### TASK-190
 **Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR) — skills/runs (DONE)
@@ -5691,7 +5693,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-193
 **Title:** Wire context compaction/meter into the live production call site
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split from TASK-179 (see its Progress_Notes 2026-09-06T07:18:00Z) — same shape of gap TASK-189 has for group routing: the engine (`contextCompaction.ts`'s `maybeCompact`, `packages/db/src/threadContext.ts`) is real, tested, and correct, but nothing in production actually constructs a real Postgres-backed `ContextCompactionPorts`/`ThreadContextPort` or calls `maybeCompact` after a real chat run.
 **Owned_Paths:** services/control-api/src/ports.ts, packages/db/src/index.ts, services/worker/src/chatRunDriver.ts
@@ -5699,6 +5701,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Description:** (1) Export `threadContext.ts`'s public functions from `packages/db/src/index.ts` (the one-line gap TASK-179 itself flagged). (2) Build a real `ThreadContextPort`/`ContextCompactionPorts` implementation backed by `@oikonomos/db` and wire it into `createDatabaseBackedDeps`/`buildApp`'s real construction site in `ports.ts` so `GET /threads/:id` and `POST /threads/:id/fresh` work against real data, not just the injected-port tests. (3) Call `maybeCompact` from `chatRunDriver.ts` after a real chat run completes, using TASK-196's governed Tier-0 provider composition (do not invent a second one — TASK-189 needs the identical seam, see its Progress_Notes 2026-09-06T11:15:00Z). **[ORCH 2026-09-06T11:15:00Z] Owned_Paths fixed: a parenthetical rationale note containing a comma was corrupting the territory hook's parse (same bug hit on TASK-190/194/189 this session) — moved here instead. Coordination note (was in the corrupted field): `chatRunDriver.ts` is hot this session — check TASK-170/184/163/164 are not active on it before dispatch, do not co-activate blindly. Depends_On TASK-196 added — do not dispatch until it lands.**
 
 **[ORCH 2026-09-06T12:40:00Z] TASK-196 merged — its `createTierZeroProvider` is the provider composition point (3) needs. Dependency satisfied. Still not dispatching yet: this task's `ports.ts` overlaps TASK-189, which is about to redispatch (see its own Progress_Notes 2026-09-06T12:40:00Z) — never co-activate both on `ports.ts`. Dispatch once TASK-189 merges or frees the file.**
+
+**[ORCH 2026-09-06T13:00:00Z] TASK-189 merged — `ports.ts` is free. Assigned to CX9 (just freed up), ready to dispatch. `services/worker/src/index.ts` already exports `createTierZeroProvider`/`TierZeroProvider` from TASK-196 — reuse it directly, do not construct a second Tier-0 provider.**
 **Acceptance_Criteria:**
 - [ ] A real chat run that pushes a thread over the compaction threshold produces a real `thread_summaries` row and a visible "Context compacted" system message (integration test, DATABASE_URL-gated) — not a stubbed port
 - [ ] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
