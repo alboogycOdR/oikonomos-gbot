@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BrokerDependencies, PreToolUseRequest } from "@oikonomos/broker";
+import { mintBrokerToken, type BrokerDependencies, type BrokerTokenBinding, type PreToolUseRequest } from "@oikonomos/broker";
 import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
@@ -7,7 +7,6 @@ import {
   BROKER_PRE_TOOL_USE_PATH,
   buildBrokerHttpApp,
 } from "./brokerHttpRoute.js";
-import { mintBrokerToken, type BrokerTokenBinding } from "./brokerToken.js";
 import type { ControlApiDeps } from "./ports.js";
 
 const SIGNING_KEY = "task-197-broker-key";
