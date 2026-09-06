@@ -637,6 +637,20 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       // resolve under the caller's tenant — both roleId (default fixture)
       // and "second-bot" must be present, or findTenantOwnedThread 404s.
       listRoles: async () => { calls.push("listRoles"); return [makeRole(), makeRole({ roleId: "second-bot", name: "Second bot" })]; },
+      routeGroupMessage: async (input) => {
+        calls.push("routeGroupMessage");
+        expect(input.body).toBe("@everyone Coordinate this");
+        return {
+          route: {
+            reason: "everyone",
+            recipients: [
+              { roleId, name: "Chat bot", title: "Chat bot", description: "Helpful" },
+              { roleId: "second-bot", name: "Second bot", title: "Second bot", description: "Helpful" },
+            ],
+          },
+          routingRunId: null,
+        };
+      },
       requestGroupFanout: async (input) => {
         calls.push("requestGroupFanout");
         fanoutRequests.push(input);
@@ -650,14 +664,39 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
     });
     const app = buildApp(deps, { authToken: TOKEN, logger: false });
     const result = await app.inject({
-      method: "POST", url: `/threads/${groupThread.id}/messages`, headers: authHeaders(), payload: { body: "  Coordinate this  " },
+      method: "POST", url: `/threads/${groupThread.id}/messages`, headers: authHeaders(), payload: { body: "  @everyone Coordinate this  " },
     });
     expect(result.statusCode).toBe(201);
-    expect(calls).toEqual(["listAllThreadsWithMembers", "listRoles", "createTask", "requestGroupFanout", "insertMessage"]);
-    expect(fanoutRequests).toEqual([expect.objectContaining({ memberRoleIds: groupThread.memberRoleIds, body: "Coordinate this" })]);
+    expect(calls).toEqual(["listAllThreadsWithMembers", "listRoles", "routeGroupMessage", "createTask", "requestGroupFanout", "insertMessage"]);
+    expect(fanoutRequests).toEqual([expect.objectContaining({ memberRoleIds: groupThread.memberRoleIds, body: "@everyone Coordinate this" })]);
     expect(inserted).toEqual([expect.objectContaining({
-      threadId: groupThread.id, role: "user", body: "Coordinate this", senderRoleId: null, runId: expect.any(String),
+      threadId: groupThread.id, role: "user", body: "@everyone Coordinate this", senderRoleId: null, runId: expect.any(String),
     })]);
+    await app.close();
+  });
+
+  it("runs exactly the @named recipient directly instead of requesting a multi-bot fan-out", async () => {
+    const groupThread = makeGroupThread();
+    const selectedRoleId = "second-bot";
+    const { deps, calls } = createDeps({
+      listAllThreadsWithMembers: async () => [groupThread],
+      listRoles: async () => [makeRole(), makeRole({ roleId: selectedRoleId, name: "Second bot" })],
+      routeGroupMessage: async () => ({
+        route: {
+          reason: "mentioned",
+          recipients: [{ roleId: selectedRoleId, name: "Second bot", title: "Second", description: "Helpful" }],
+        },
+        routingRunId: null,
+      }),
+    });
+    const app = buildApp(deps, { authToken: TOKEN, logger: false });
+    const result = await app.inject({
+      method: "POST", url: `/threads/${groupThread.id}/messages`, headers: authHeaders(), payload: { body: "@Second bot, please help." },
+    });
+    expect(result.statusCode).toBe(201);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toContain("runChatTask");
+    expect(calls).not.toContain("requestGroupFanout");
     await app.close();
   });
 
@@ -1212,6 +1251,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
         await pool.query("DELETE FROM messages WHERE run_id = ANY($1::uuid[])", [runIds]);
         await pool.query("DELETE FROM audit_events WHERE run_id = ANY($1::uuid[])", [runIds]);
         await pool.query("DELETE FROM approvals WHERE run_id = ANY($1::uuid[])", [runIds]);
+        await pool.query("DELETE FROM spend_records WHERE run_id = ANY($1::text[])", [runIds]);
         await pool.query("DELETE FROM runs WHERE run_id = ANY($1::uuid[])", [runIds]);
       }
       await pool.query("DELETE FROM tasks WHERE task_id = ANY($1::uuid[])", [taskIds]);
@@ -1284,7 +1324,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       ]));
 
       const posted = await app.inject({
-        method: "POST", url: `/threads/${group.id}/messages`, headers: authHeaders(), payload: { body: "Human group dispatch" },
+        method: "POST", url: `/threads/${group.id}/messages`, headers: authHeaders(), payload: { body: "@everyone Human group dispatch" },
       });
       expect(posted.statusCode).toBe(201);
       const humanMessage = JSON.parse(posted.body) as { id: string; runId: string | null; senderRoleId: string | null };
@@ -1311,6 +1351,104 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       } finally {
         await cleanup();
       }
+    }
+  });
+
+  it("routes an unaddressed three-bot message through FreeLLMAPI, records its spend, and starts one real chat run", async () => {
+    const observedPrompts: string[] = [];
+    const app = buildApp(createDatabaseBackedDeps({
+      ...options,
+      tierZeroProviderOptions: {
+        endpoint: "http://free-llm-api.test/v1/chat/completions",
+        model: "tier-zero-test",
+        fetch: async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+          const prompt = request.messages[0]?.content ?? "";
+          observedPrompts.push(prompt);
+          const score = prompt.includes("Researches sources") ? 0.9 : 0.1;
+          return new Response(JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ score }) } }],
+            usage: { cost_usd: 0.002 },
+          }), { status: 200 });
+        },
+      },
+      chatRunDriverOptions: {
+        queryFn: async function* () { yield { type: "result" as const, result: "Selected bot response" }; },
+      },
+    }), { authToken: TOKEN, logger: false });
+    try {
+      const createRole = async (name: string, description: string) => {
+        const response = await app.inject({
+          method: "POST", url: "/roles", headers: authHeaders(), payload: { name, description },
+        });
+        expect(response.statusCode).toBe(201);
+        const role = JSON.parse(response.body) as { id: string };
+        fixtureRoleIds.push(role.id);
+        return { ...role, name };
+      };
+      const [writer, researcher, reviewer] = await Promise.all([
+        createRole(`router-writer-${randomUUID().slice(0, 8)}`, "Writes drafts"),
+        createRole(`router-researcher-${randomUUID().slice(0, 8)}`, "Researches sources"),
+        createRole(`router-reviewer-${randomUUID().slice(0, 8)}`, "Checks accuracy"),
+      ]);
+      const groupResponse = await app.inject({
+        method: "POST", url: "/threads/group", headers: authHeaders(),
+        payload: { roleIds: [writer.id, researcher.id, reviewer.id], title: "Routing fixture" },
+      });
+      expect(groupResponse.statusCode).toBe(201);
+      const group = JSON.parse(groupResponse.body) as { id: string };
+      fixtureThreadIds.push(group.id);
+
+      const posted = await app.inject({
+        method: "POST", url: `/threads/${group.id}/messages`, headers: authHeaders(),
+        payload: { body: "Please prepare a sourced briefing." },
+      });
+      expect(posted.statusCode).toBe(201);
+
+      let runs: Array<{ provider: string; status: string }> = [];
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        runs = (await pool.query<{ provider: string; status: string }>(
+          "SELECT provider, status FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1) ORDER BY started_at ASC",
+          [`chat:thread:${group.id}`],
+        )).rows;
+        if (runs.filter((run) => run.provider === "claude" && run.status === "completed").length === 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(runs.filter((run) => run.provider === "claude")).toEqual([{ provider: "claude", status: "completed" }]);
+      expect(runs.filter((run) => run.provider === "free-llm-api")).toEqual([{ provider: "free-llm-api", status: "completed" }]);
+      expect(observedPrompts).toHaveLength(3);
+      const spend = await pool.query<{ provider: string; cost_usd: string }>(
+        "SELECT provider, cost_usd::text FROM spend_records WHERE run_id = (SELECT run_id::text FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1) AND provider = 'free-llm-api')",
+        [`chat:thread:${group.id}`],
+      );
+      expect(spend.rows).toEqual([
+        { provider: "free-llm-api", cost_usd: "0.002000" },
+        { provider: "free-llm-api", cost_usd: "0.002000" },
+        { provider: "free-llm-api", cost_usd: "0.002000" },
+      ]);
+
+      const named = await app.inject({
+        method: "POST", url: `/threads/${group.id}/messages`, headers: authHeaders(),
+        payload: { body: `@${writer.name} please draft the opening.` },
+      });
+      expect(named.statusCode).toBe(201);
+      let directRunRoleIds: string[] = [];
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        directRunRoleIds = (await pool.query<{ role_id: string }>(
+          `SELECT tasks.role_id FROM runs
+           JOIN tasks ON tasks.task_id = runs.task_id
+           WHERE tasks.requested_by = $1 AND runs.provider = 'claude' AND runs.status = 'completed'
+           ORDER BY runs.started_at ASC`,
+          [`chat:thread:${group.id}`],
+        )).rows.map((row) => row.role_id);
+        if (directRunRoleIds.length === 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(directRunRoleIds).toEqual([researcher.id, writer.id]);
+      expect(observedPrompts).toHaveLength(3);
+    } finally {
+      await app.close();
+      await cleanup();
     }
   });
 });
