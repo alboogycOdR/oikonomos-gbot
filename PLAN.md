@@ -5761,7 +5761,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-196
 **Title:** Governed Tier-0 provider composition (shared seam for group routing + context compaction)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** Split from TASK-189 (see its Progress_Notes 2026-09-06T11:15:00Z) — TASK-189 and TASK-193 independently need the identical missing seam; CLAUDE.md's "shared files/cross-cutting work get their own single-owner integration task" rule applies. Budget rule: CLAUDE.md "Route Tier-0 observation work to cheap models via FreeLLMAPI." PROTECTED PATH packages/harness-factory/** — author CX, reviewer ORCH satisfies the different-model rule (Directive §3).
@@ -5773,12 +5773,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The call goes through the same governance line as every other model call — no bypass of broker/PreToolUse (test)
 - [ ] A budget-exhausted or provider-unavailable case fails closed with a clear error, not a silent fallback to an ungoverned call
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-196-cx
+**Started_At:** 2026-09-06T08:04:54Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T11:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T08:04:54Z
