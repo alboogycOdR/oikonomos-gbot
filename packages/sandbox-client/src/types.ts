@@ -59,6 +59,15 @@ export interface SandboxHealth {
   readonly status: string;
 }
 
+/** Lifecycle record returned by GET /v1/sandboxes/{id}. */
+export interface Sandbox {
+  readonly id: string;
+  readonly status: SandboxStatus;
+  readonly createdAt: string;
+  readonly expiresAt?: string | null;
+  readonly metadata?: Readonly<Record<string, string>> | null;
+}
+
 /** A lifecycle-resolved URL (and any server-required headers) for a sandbox port. */
 export interface SandboxEndpoint {
   readonly endpoint: string;

@@ -8,6 +8,7 @@ import {
 import type {
   CreateSandboxRequest,
   CreateSandboxResponse,
+  Sandbox,
   SandboxApiErrorBody,
   SandboxEndpoint,
   SandboxHealth,
@@ -55,8 +56,14 @@ export interface SandboxClient {
   health(): Promise<SandboxHealth>;
   /** POST /v1/sandboxes — create a sandbox from a container image. */
   createSandbox(request: CreateSandboxRequest): Promise<CreateSandboxResponse>;
+  /** GET /v1/sandboxes/{id} — authoritative lifecycle state for resume polling. */
+  getSandbox(sandboxId: string): Promise<Sandbox>;
   /** DELETE /v1/sandboxes/{id} — destroy a sandbox. Resolves on 204; throws otherwise. */
   destroySandbox(sandboxId: string): Promise<void>;
+  /** POST /v1/sandboxes/{id}/pause. */
+  pauseSandbox(sandboxId: string): Promise<void>;
+  /** POST /v1/sandboxes/{id}/resume; caller polls getSandbox until Running. */
+  resumeSandbox(sandboxId: string): Promise<void>;
   /** Resolve a sandbox port through the lifecycle server. The secure server proxy is used by default. */
   getEndpoint(sandboxId: string, port?: number, useServerProxy?: boolean): Promise<SandboxEndpoint>;
   /** GET an execd endpoint's `/ping`, with execd authentication. */
@@ -302,6 +309,27 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
       }
     },
 
+    async getSandbox(sandboxId: string): Promise<Sandbox> {
+      const response = await request(`/v1/sandboxes/${encodeURIComponent(sandboxId)}`, { method: "GET" }, true);
+      if (!response.ok) {
+        const body = await readErrorBody(response);
+        throw new SandboxClientError("OpenSandbox get-sandbox returned an unexpected status", "UNEXPECTED_STATUS", {
+          status: response.status, apiErrorCode: body?.code,
+        });
+      }
+      const parsed: unknown = await response.json();
+      if (!isSandbox(parsed)) throw new SandboxClientError("OpenSandbox sandbox response was not the expected shape", "INVALID_RESPONSE");
+      return parsed;
+    },
+
+    async pauseSandbox(sandboxId: string): Promise<void> {
+      await lifecycleAction(sandboxId, "pause");
+    },
+
+    async resumeSandbox(sandboxId: string): Promise<void> {
+      await lifecycleAction(sandboxId, "resume");
+    },
+
     async getEndpoint(sandboxId: string, port = EXECD_PORT, useServerProxy = true): Promise<SandboxEndpoint> {
       const response = await request(
         `/v1/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${port}?use_server_proxy=${useServerProxy}`,
@@ -358,4 +386,22 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
       return readCommandStream(response);
     },
   };
+
+  async function lifecycleAction(sandboxId: string, action: "pause" | "resume"): Promise<void> {
+    const response = await request(`/v1/sandboxes/${encodeURIComponent(sandboxId)}/${action}`, { method: "POST" }, true);
+    if (response.status !== 202) {
+      const body = await readErrorBody(response);
+      throw new SandboxClientError(`OpenSandbox ${action}-sandbox returned unexpected status ${response.status}`, "UNEXPECTED_STATUS", {
+        status: response.status, apiErrorCode: body?.code,
+      });
+    }
+  }
+}
+
+function isSandbox(value: unknown): value is Sandbox {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string" && typeof candidate.createdAt === "string"
+    && typeof candidate.status === "object" && candidate.status !== null
+    && typeof (candidate.status as Record<string, unknown>).state === "string";
 }

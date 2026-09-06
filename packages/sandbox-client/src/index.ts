@@ -16,6 +16,7 @@ export {
 export type {
   CreateSandboxRequest,
   CreateSandboxResponse,
+  Sandbox,
   SandboxApiErrorBody,
   SandboxHealth,
   SandboxEndpoint,
