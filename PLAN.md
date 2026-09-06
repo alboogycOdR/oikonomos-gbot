@@ -5371,7 +5371,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-182
 **Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02 (AC anchors: zero provider spend on a stopped routine; 21st record evicts oldest; 51st routine rejected); report §12.3 schemas/routine.yaml, §12.5(b), C6; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.5; Addendum F §3.4 F7 (missed, never queued for catch-up)
@@ -5384,15 +5384,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Creating a 51st routine for a role returns 409 (test); paused routines are skipped by the scheduler with a `skipped_paused` outcome
 - [ ] A routine with skill_id fires with the skill block present in the assembled prompt (test through promptAssembly's public function)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-182-cx9
+**Started_At:** 2026-09-06T06:49:52Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T06:49:52Z
 
 ### TASK-183
 **Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
