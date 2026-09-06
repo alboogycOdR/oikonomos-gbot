@@ -1,8 +1,8 @@
 ---
-plan_version: 15.5
-last_updated: 2026-09-06T05:55:00Z
+plan_version: 15.6
+last_updated: 2026-09-06T07:35:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-178 (CX, mobile skills UI) approved and merged — server-confirmed toggle and enabled-only picker both independently verified against the actual code, not the summary. ADR-014 (TASK-184's secret-vault design) is out for a real adversarial review — the user is running it past a Fable session directly per this project's own different-model-review discipline; TASK-192 (CX9, building the vault against the current draft) keeps running in parallel since its scope (encryption/schema/resolver mechanics) is unlikely to change even if the review adjusts finer points, but do not merge TASK-192 or resume TASK-184 until that review verdict comes back. TASK-179 (S5, context hygiene) still running. TASK-169 stays blocked on the human action item."
+orchestrator_notes: "TASK-192 (CX9, secret vault) is fully implemented and independently re-verified — migration 019 applied to the shared dev DB so its integration tests genuinely ran (not skipped): 4/4, full packages/db suite 163/163, build/lint clean. Implementation matches ADR-014 exactly. HOLDING THE MERGE deliberately: the user is running ADR-014 past a live Fable review before this lands or TASK-184 resumes — not a defect, a gate. TASK-178 (CX, mobile skills UI) approved and merged earlier. TASK-179 (S5, context hygiene) needs_review, not yet processed this pass. TASK-169 stays blocked on the human action item."
 ---
 
 # Project Plan
@@ -5627,7 +5627,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-192
 **Title:** Dynamic secret vault + resolver (blocks TASK-184's re-scoped request_secret tool)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md (this task implements §2-§5 of that decision — read it in full before writing anything); split from TASK-184's third block (see its Progress_Notes 2026-09-06T01:55:00Z/02:15:00Z). PROTECTED-ADJACENT: this is a genuine security/data-model primitive (encrypted secret-at-rest storage) even though packages/db itself is not on CLAUDE.md's protected-paths list — treat with the same rigor (real crypto correctness tests, real cross-role refusal test, no shortcuts) regardless.
@@ -5635,18 +5635,20 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Ground ADR-014 against the real, current `packages/db` conventions before writing anything (read `routines.ts`/`skills.ts` for the established typed-layer shape; read `threads.ts`'s cross-file column-qualification pattern from TASK-190's own review notes). Build: (1) migration 019 — `secret_values(ref uuid PK DEFAULT gen_random_uuid(), tenant_id text NOT NULL, role_id text NOT NULL REFERENCES roles(role_id), ciphertext bytea NOT NULL, nonce bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`, deliberately separate from `secret_requests` (which TASK-184 owns) so no list/detail route can ever accidentally serialize ciphertext. (2) `packages/db/src/secretVault.ts`: `storeSecret(options, {tenantId, roleId, value}): Promise<{ref: string}>` (AES-256-GCM, fresh random 12-byte nonce per call — never reuse a nonce with this key, that's a real cryptographic break not just a style note; key from `process.env.OIK_SECRET_VAULT_KEY`, base64-decoded, hard-crash at import time with a clear error if unset or not exactly 32 bytes decoded — fail closed per this project's non-negotiable #3, do not defer the check to first use) and `resolveSecretValue(options, ref, requestingRoleId): Promise<string>` (throws a single, generic "not found" error whether the ref is genuinely missing or belongs to another role — filter in the SQL WHERE clause itself, do not fetch-then-compare, matching this session's own 404-never-403 discipline from TASK-190/191). Document the exact byte layout you choose for the GCM auth tag (appended to `ciphertext`, or a separate column) in `secretVault.ts`'s own top-of-file comment — ADR-014 deliberately left this as an implementer choice, but it must be written down, not left implicit.
 **Acceptance_Criteria:**
-- [ ] A value stored and immediately resolved by the same (ref, role_id) round-trips byte-for-byte (test)
-- [ ] Two calls to storeSecret never produce the same nonce (test — generate several, assert pairwise distinct; this is a real crypto property, not a formality)
-- [ ] resolveSecretValue throws an identical error for a genuinely nonexistent ref and for a ref that exists but belongs to a different role_id (test asserts both error messages/shapes are indistinguishable to the caller)
-- [ ] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test — a real assertion against the DB row, not just "encryption was called")
-- [ ] Process import of secretVault.ts throws immediately (not on first call) if OIK_SECRET_VAULT_KEY is unset or the wrong length once decoded (test)
-- [ ] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-192-cx9
+- [x] A value stored and immediately resolved by the same (ref, role_id) round-trips byte-for-byte (test)
+- [x] Two calls to storeSecret never produce the same nonce (test — generate several, assert pairwise distinct; this is a real crypto property, not a formality)
+- [x] resolveSecretValue throws an identical error for a genuinely nonexistent ref and for a ref that exists but belongs to a different role_id (test asserts both error messages/shapes are indistinguishable to the caller)
+- [x] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test — a real assertion against the DB row, not just "encryption was called")
+- [x] Process import of secretVault.ts throws immediately (not on first call) if OIK_SECRET_VAULT_KEY is unset or the wrong length once decoded (test)
+- [x] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** task/TASK-192-cx9 (verified, HOLD — not yet merged, see note below)
 **Started_At:** 2026-09-06T05:22:09Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T05:48:00Z] [CX9] Implemented migration 019, AES-256-GCM vault (tag appended to ciphertext, documented in the file's own top comment), import-time key validation, role-filtered SQL resolution. Verified with a throwaway key: db typecheck/test, full workspace test/build, lint all pass. Migration-gated integration tests correctly `.skip`'d (migration not yet applied to shared DB during this session).
+- [2026-09-06T07:35:00Z] [ORCH] Independently re-verified, not trusted: read the full implementation and test file — matches ADR-014 §2-§5 exactly (separate `secret_values` table, GCM tag-appended-to-ciphertext layout documented in the file header, SQL-level role filtering with zero fetch-then-compare, import-time fail-closed key validation using `vi.resetModules()` to genuinely test module-load-time behavior). Applied migration 019 to the shared dev DB myself so the migration-gated integration tests actually ran (not skipped) — 4/4 passed, including the real round-trip, nonce-distinctness, and cross-role-indistinguishability assertions. Full packages/db suite 163/163, pnpm -r build/lint clean. **HOLDING THE MERGE**: the user is running ADR-014 past a live Fable review session before this implementation (which follows the ADR closely) is merged or TASK-184 resumed — this is deliberate, not a defect found in CX9's work. Will merge on a positive verdict, or apply whatever changes the review calls for first.
+**Artifacts:** infra/postgres/migrations/019_secret_values.up.sql, infra/postgres/migrations/019_secret_values.down.sql, packages/db/src/secretVault.ts, packages/db/src/secretVault.test.ts, packages/db/src/index.ts, dossiers/TASK-192.md
+**Test_Evidence:** Independently re-verified with migration 019 actually applied (not left skipped): secretVault.test.ts 4/4, full packages/db suite 163/163, pnpm -r build/lint clean.
+**Review_Findings:** Implementation is correct and complete against ADR-014 as currently drafted. Not yet approved/merged — holding for the user's independent Fable review of ADR-014 itself before this lands, per this project's different-model-review discipline for architectural work.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T05:22:09Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T07:35:00Z
