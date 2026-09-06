@@ -329,15 +329,25 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       expect(resumes).toBe(1);
       expect(pauses).toBe(2);
       expect(endpointCalls).toEqual(["http://execd.test/1", "http://execd.test/2"]);
-      expect(commands).toHaveLength(2);
-      expect(commands[0]?.envs).toMatchObject({
+      expect(commands).toHaveLength(4);
+      expect(commands[0]).toMatchObject({
+        command: `mkdir -p -- '/workspace/${roleId}'`,
+        cwd: "/workspace",
+        envs: {},
+      });
+      expect(commands[2]).toMatchObject({
+        command: `mkdir -p -- '/workspace/${roleId}'`,
+        cwd: "/workspace",
+        envs: {},
+      });
+      expect(commands[1]?.envs).toMatchObject({
         OIK_SANDBOX_BROKER_URL: "http://broker.test:3001",
         OIK_SANDBOX_ROLE_ID: roleId,
         OIK_SANDBOX_TENANT_ID: task.tenantId,
         [["ANTHROPIC", "API_KEY"].join("_")]: "task-170-test-anthropic-credential",
       });
-      expect(commands[0]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
-      expect(commands[0]?.envs).not.toHaveProperty(ANTHROPIC_API_KEY_VAR);
+      expect(commands[1]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
+      expect(commands[1]?.envs).not.toHaveProperty(ANTHROPIC_API_KEY_VAR);
     } finally {
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
       else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;

@@ -285,9 +285,11 @@ async function executeSandboxChatRun(
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
   const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
+  const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
+  await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
   const response = await client.runCommand(resolvedSandbox.endpoint, {
     command,
-    cwd: `/workspace/${safePathSegment(request.task.roleId)}`,
+    cwd: workspace,
     // This is the whole child environment. Never spread process.env here:
     // only the per-turn broker identity and model credential cross the
     // worker/sandbox boundary — the image itself carries neither (TASK-154).
@@ -325,6 +327,18 @@ async function assertManagedSettingsIntegrity(client: SandboxClient, endpoint: S
   if (result.exitCode !== 0 || observed !== SANDBOX_MANAGED_SETTINGS_SHA256) {
     throw new Error("Sandbox managed Claude settings failed the required integrity check.");
   }
+}
+
+/** Create the role's durable in-sandbox workspace before execd validates cwd. */
+async function ensureSandboxWorkspace(client: SandboxClient, endpoint: SandboxEndpoint, workspace: string): Promise<void> {
+  const result = await client.runCommand(endpoint, {
+    command: `mkdir -p -- ${shellQuote(workspace)}`,
+    cwd: "/workspace",
+    // Workspace setup intentionally receives no worker environment or secrets.
+    envs: {},
+    timeoutMs: 10_000,
+  });
+  if (result.exitCode !== 0) throw new Error("Sandbox role workspace could not be prepared.");
 }
 
 function productionSandboxClient(): SandboxClient {
