@@ -5752,7 +5752,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-195
 **Title:** Add `PATCH /routines/:id` for edit-time skill rebinding
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Split from TASK-183 (see its Progress_Notes 2026-09-06T10:55:00Z) — TASK-183's description called for a skill selector "on create/edit", but no routine update route exists; `POST /roles/:roleId/routines` already accepts `skillId` at creation (TASK-182), so only the edit-time path is missing.
@@ -5763,15 +5763,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] PATCH /routines/:id updates skill_id (including clearing it via null) and returns the updated routine (test)
 - [ ] A request for another tenant's routine returns 404, not 403 (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-195-cx
+**Started_At:** 2026-09-06T09:21:49Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T10:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T09:21:49Z
 
 ### TASK-196
 **Title:** Governed Tier-0 provider composition (shared seam for group routing + context compaction)
