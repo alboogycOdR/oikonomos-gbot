@@ -1,5 +1,5 @@
 ---
-plan_version: 17.0
+plan_version: 17.1
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5371,7 +5371,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-182
 **Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02 (AC anchors: zero provider spend on a stopped routine; 21st record evicts oldest; 51st routine rejected); report §12.3 schemas/routine.yaml, §12.5(b), C6; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.5; Addendum F §3.4 F7 (missed, never queued for catch-up)
@@ -5384,6 +5384,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **[ORCH 2026-09-06T10:10:00Z, reply to 2nd blocked report] Real gap, correctly identified — but I cannot widen into `packages/db/src/index.ts` right now: that barrel file is currently owned by ACTIVE TASK-184 (CX, mid-work adding its own secretRequests exports). CLAUDE.md's non-negotiable "never let two builders near one file, ever" forbids a second concurrent claim on it. Sequencing instead: `packages/db/src/index.ts` is added to this task's Owned_Paths and `Depends_On` now includes TASK-184 — this task is genuinely blocked (not a false alarm) until TASK-184 merges and frees the file. Status set to `blocked` rather than re-dispatching CX9 into a wait; ORCH will widen/re-check readiness and redispatch the moment TASK-184 lands, matching the existing pending-dependency convention for TASK-183/187/188 rather than a busy-loop redispatch.**
 
 **[ORCH 2026-09-06T10:25:00Z] TASK-184 merged (bb4581c) — `packages/db/src/index.ts` is free. Status reset to `pending` for redispatch; Depends_On (TASK-176, TASK-179, TASK-184) all satisfied.**
+
+**[ORCH 2026-09-06T10:32:00Z, 3rd blocked report] Real, same category as TASK-184's own migration-application gaps: CX9's code is complete and committed (29b354e) — route tests 2/2, typecheck clean across db/worker/control-api — blocked purely on migration 016 not being applied to the shared dev DB (skill_id/routine_runs absent there). Applied migration 016 to the shared dev DB directly (matching the standing review discipline of applying migrations myself so integration tests genuinely run rather than skip). Redispatching CX9 to complete DB-backed verification and the remaining worker stopped/paused/skill test coverage.**
 **Acceptance_Criteria:**
 - [ ] A routine whose declared input connector is not granted produces a `stopped` fire record with a reason and zero provider spend (assert via the budget/spend records, not by absence of logs)
 - [ ] Inserting the 21st fire record leaves exactly 20 for that routine, the oldest gone (test)
