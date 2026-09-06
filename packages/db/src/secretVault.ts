@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
  * TASK-192 / ADR-014 §3 — dynamic secret vault storage.
@@ -43,26 +43,6 @@ function requireNonEmpty(value: string, field: string): string {
 
 function notFound(): Error {
   return new Error(SECRET_NOT_FOUND_MESSAGE);
-}
-
-async function withPool<T>(
-  options: DatabaseOptions,
-  fn: (pool: Pool) => Promise<T>,
-): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 export interface NewSecretValue {

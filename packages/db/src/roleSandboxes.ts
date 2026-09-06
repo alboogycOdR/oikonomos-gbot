@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export const roleSandboxStates = ["Pending", "Running", "Pausing", "Paused", "Resuming", "Stopping", "Terminated", "Failed"] as const;
 export type RoleSandboxState = (typeof roleSandboxStates)[number];
@@ -49,12 +49,6 @@ function toRoleSandbox(row: RoleSandboxRow): RoleSandbox {
     roleId: row.role_id, sandboxId: row.sandbox_id, state: row.state,
     execdTokenRef: row.execd_token_ref, createdAt: row.created_at, lastUsedAt: row.last_used_at,
   };
-}
-
-async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) throw new Error("Database connectionString must not be empty.");
-  const pool = new Pool({ connectionString: options.connectionString, ...defaultPoolConfig, ...options.poolConfig });
-  try { return await fn(pool); } finally { await pool.end(); }
 }
 
 export async function getRoleSandbox(options: DatabaseOptions, roleId: string): Promise<RoleSandbox | null> {

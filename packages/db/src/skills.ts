@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
  * TASK-176 / Addendum F §3.2 (N12) — skill bodies and their supporting
@@ -124,23 +124,6 @@ function toSkill(row: SkillRow): Skill {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 export async function createSkill(options: DatabaseOptions, input: NewSkill): Promise<Skill> {

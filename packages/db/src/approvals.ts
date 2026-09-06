@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export const approvalStatuses = [
   "pending",
@@ -140,26 +140,6 @@ function toApproval(row: ApprovalRow): Approval {
     userContextEpoch:
       row.user_context_epoch === null ? null : BigInt(row.user_context_epoch),
   };
-}
-
-async function withPool<T>(
-  options: DatabaseOptions,
-  fn: (pool: Pool) => Promise<T>,
-): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 /**

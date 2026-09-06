@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
  * TASK-084 / Addendum F §3.4 (F7) — `role_routines` are D0 rows; firing
@@ -121,26 +121,6 @@ function toRoutine(row: RoutineRow): Routine {
     lastFireStatus: row.last_fire_status,
     skillId: row.skill_id, onMissingSource: row.on_missing_source, notifyThreshold: row.notify_threshold, paused: row.paused,
   };
-}
-
-async function withPool<T>(
-  options: DatabaseOptions,
-  fn: (pool: Pool) => Promise<T>,
-): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 export async function createRoutine(

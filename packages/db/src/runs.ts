@@ -1,6 +1,6 @@
 import { Pool, type QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
  * WBS OIK-038 / Synthesis §5.1 — run lifecycle state machine.
@@ -154,26 +154,6 @@ function toRun(row: RunRow): Run {
     endedAt: row.ended_at,
     failureNote: row.failure_note,
   };
-}
-
-async function withPool<T>(
-  options: DatabaseOptions,
-  fn: (pool: Pool) => Promise<T>,
-): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 /**
