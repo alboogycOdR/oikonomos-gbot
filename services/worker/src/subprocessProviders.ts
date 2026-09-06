@@ -14,14 +14,14 @@ export type GatedCodexOptions = Omit<CodexProviderOptions, "gateSpawn">;
 export type GatedGrokOptions = Omit<GrokProviderOptions, "gateSpawn">;
 
 /**
- * CLAUDE.md "Budget": "R30,000/month" is a South African Rand figure;
+ * CLAUDE.md "Budget": "R350/month" is a South African Rand figure;
  * `BudgetReport.costUsd` is USD. This default is a documented placeholder
  * (roughly current at time of writing, TASK-143's currency decision) — NOT
  * authoritative. Override via `USD_TO_ZAR_RATE`.
  */
 export const DEFAULT_USD_TO_ZAR_RATE = 18.5;
-/** CLAUDE.md "Budget": "Hard ceiling R30,000/month (inference + hosting)". */
-export const DEFAULT_PLATFORM_CEILING_ZAR = 30_000;
+/** CLAUDE.md "Budget": "Hard ceiling R350/month (inference + hosting)" — reset 2026-09-06 from the earlier R30,000/month figure. */
+export const DEFAULT_PLATFORM_CEILING_ZAR = 350;
 
 /**
  * TASK-143 scope-narrowing decision: this enforces the Codex/Grok

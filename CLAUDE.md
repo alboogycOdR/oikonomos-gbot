@@ -38,7 +38,7 @@ ADRs > Build Handover Package v1.0 > Gap Closure Plan v0.2 > Synthesis Spec v0.1
 
 ## Budget
 
-Hard ceiling R30,000/month (inference + hosting). Per-routine budgets enforced by the broker from week 5. Route Tier-0 observation work to cheap models via FreeLLMAPI.
+Hard ceiling R350/month (inference + hosting) — reset 2026-09-06 from the earlier R30,000/month figure. Per-routine budgets enforced by the broker from week 5. Route Tier-0 observation work to cheap models via FreeLLMAPI.
 
 ## DEVDEPARTMENT amendments (OIKONOMOS)
 
