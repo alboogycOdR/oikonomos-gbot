@@ -83,11 +83,17 @@ import {
   type IssueApprovalRequest,
 } from "@oikonomos/approvals";
 import {
+  completeTaskRun,
   createChatRunDriver,
+  createTierZeroProvider,
   deliverBotToBotMessage,
+  failTaskRun,
+  route,
   startTaskRun,
   type ChatRunDriver,
+  type CreateTierZeroProviderOptions,
   type CreateChatRunDriverOptions,
+  type GroupRoute,
 } from "@oikonomos/worker";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
@@ -143,6 +149,19 @@ export interface ControlApiDeps {
   runChatTask(input: { task: Task; threadId: string; resume?: { runId: string; sessionRef: string } }): Promise<void>;
   requestGroupFanout(input: { task: Task; memberRoleIds: readonly string[]; body: string }): Promise<{ runId: string }>;
   /**
+   * TASK-189: resolves group recipients against live membership and thread
+   * history. Optional only to preserve older injected fixtures; production
+   * always provides this through createDatabaseBackedDeps.
+   */
+  routeGroupMessage?(input: {
+    tenantId: string;
+    threadId: string;
+    memberRoleIds: readonly string[];
+    body: string;
+    title: string;
+    goal: string;
+  }): Promise<{ route: GroupRoute; routingRunId: string | null }>;
+  /**
    * TASK-177 (G-01b) — Skills CRUD, tenant-scoped like every other list
    * route. Declared optional (unlike every other port method here) purely
    * so pre-existing `ControlApiDeps` literals elsewhere in this package
@@ -166,6 +185,8 @@ export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
   pushTransport?: PushTransportPort;
   /** Test-only seams for real database-backed chat lifecycle tests. */
   chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, keyof DatabaseOptions>;
+  /** Injectable Tier-0 configuration; production resolves the same values from env. */
+  tierZeroProviderOptions?: Omit<CreateTierZeroProviderOptions, "db" | "runId">;
 }
 
 export interface PushNotificationDeps {
@@ -288,6 +309,67 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       });
       return { runId: run.runId };
     },
+    routeGroupMessage: async ({ tenantId, threadId, memberRoleIds, body, title, goal }) => {
+      const [roles, messages] = await Promise.all([
+        dbListRoles(options, { tenantId, status: "active" }),
+        dbListMessages(options, threadId),
+      ]);
+      const rolesById = new Map(roles.map((role) => [role.roleId, role]));
+      const members = memberRoleIds.map((roleId) => {
+        const role = rolesById.get(roleId);
+        if (role === undefined) throw new Error(`group routing member ${roleId} is unavailable to this tenant.`);
+        return { roleId: role.roleId, name: role.name, title: role.title, description: role.description };
+      });
+      const mostRecentResponderRoleId = [...messages].reverse().find(
+        (message) => message.role === "bot" && message.senderRoleId !== null && message.senderRoleId !== undefined,
+      )?.senderRoleId ?? null;
+
+      const scoreRequired = new Error("group routing requires Tier-0 scoring");
+      try {
+        const resolved = await route({
+          message: body,
+          members,
+          mostRecentResponderRoleId,
+          scorer: async () => { throw scoreRequired; },
+        });
+        return { route: resolved, routingRunId: null };
+      } catch (error) {
+        if (error !== scoreRequired) throw error;
+      }
+
+      const routingRoleId = members[0]?.roleId;
+      if (routingRoleId === undefined) throw new Error("group routing requires at least one member.");
+      const routingTask = await dbCreateTask(options, {
+        tenantId,
+        roleId: routingRoleId,
+        title: `Group routing: ${title.slice(0, 120)}`,
+        goal,
+        requestedBy: `chat:thread:${threadId}`,
+      });
+      const routingRun = await startTaskRun(options, {
+        taskId: routingTask.taskId,
+        tenantId,
+        provider: "free-llm-api",
+      });
+      try {
+        const tierZero = createTierZeroProvider({
+          db: options,
+          runId: routingRun.runId,
+          ...resolveTierZeroProviderOptions(options),
+        });
+        const resolved = await route({
+          message: body,
+          members,
+          mostRecentResponderRoleId,
+          scorer: async ({ member, message }) => parseTierZeroScore(await tierZero(groupRoutingPrompt(member, message))),
+        });
+        await completeTaskRun(options, routingRun.runId);
+        return { route: resolved, routingRunId: routingRun.runId };
+      } catch (error) {
+        await failTaskRun(options, routingRun.runId, "Group routing classifier failed.").catch(() => undefined);
+        throw error;
+      }
+    },
     createSkill: (input) => dbCreateSkill(options, input),
     getSkill: (skillId) => dbGetSkill(options, skillId),
     updateSkill: (skillId, input) => dbUpdateSkill(options, skillId, input),
@@ -295,6 +377,44 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     setSkillEnabledForRole: (roleId, skillId, enabled) => dbSetEnabledForRole(options, roleId, skillId, enabled),
     listEnabledSkillsForRole: (roleId) => dbListEnabledForRole(options, roleId),
   };
+}
+
+function resolveTierZeroProviderOptions(
+  options: CreateDatabaseBackedDepsOptions,
+): Omit<CreateTierZeroProviderOptions, "db" | "runId"> {
+  if (options.tierZeroProviderOptions !== undefined) return options.tierZeroProviderOptions;
+  const endpoint = process.env.FREE_LLM_API_ENDPOINT?.trim();
+  const model = process.env.FREE_LLM_API_MODEL?.trim();
+  if (endpoint === undefined || endpoint.length === 0) throw new Error("FREE_LLM_API_ENDPOINT must be set for unaddressed group routing.");
+  if (model === undefined || model.length === 0) throw new Error("FREE_LLM_API_MODEL must be set for unaddressed group routing.");
+  const apiKey = process.env.FREE_LLM_API_KEY?.trim();
+  return { endpoint, model, ...(apiKey === undefined || apiKey.length === 0 ? {} : { apiKey }) };
+}
+
+function groupRoutingPrompt(
+  member: { title: string; description: string },
+  message: string,
+): string {
+  return [
+    "Return only a JSON object with a numeric score from 0 through 1.",
+    "Score how appropriate it is for this group member to respond to the message.",
+    `Member title: ${member.title}`,
+    `Member description: ${member.description}`,
+    `Message: ${message}`,
+  ].join("\n");
+}
+
+function parseTierZeroScore(response: string): number {
+  try {
+    const parsed: unknown = JSON.parse(response);
+    if (typeof parsed === "object" && parsed !== null && "score" in parsed) {
+      const score = (parsed as { score: unknown }).score;
+      if (typeof score === "number" && score >= 0 && score <= 1) return score;
+    }
+  } catch {
+    // Reject non-JSON model prose; selection must remain deterministic.
+  }
+  throw new Error("Tier-0 scorer must return JSON {\"score\": number between 0 and 1}.");
 }
 
 async function withDatabase<T>(options: DatabaseOptions, operation: (database: Database) => Promise<T>): Promise<T> {

@@ -43,6 +43,24 @@ export {
 } from "./subprocessProviders.js";
 
 export {
+  createTierZeroProvider,
+  type CreateTierZeroProviderOptions,
+  type TierZeroProvider,
+} from "./tierZeroProvider.js";
+
+export {
+  GROUP_MEMBER_CAP,
+  createTierZeroScorer,
+  route,
+  type CreateTierZeroScorerOptions,
+  type GroupMember,
+  type GroupRoute,
+  type RouteGroupMessageRequest,
+  type ScoreCandidate,
+  type ShouldRespondScorer,
+} from "./groupRouting.js";
+
+export {
   createWorkerJobQueue,
   WorkerJobQueue,
   WORKER_HEARTBEAT_JOB,

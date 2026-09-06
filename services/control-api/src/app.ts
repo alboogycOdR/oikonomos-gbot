@@ -1515,25 +1515,57 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         const goal = buildChatGoal(body, inlined);
         const titleSource = body.length > 0 ? body : (storedAttachments[0]?.filename ?? "attachment");
         if ("memberRoleIds" in thread) {
-          const [dispatchRoleId] = thread.memberRoleIds;
-          if (dispatchRoleId === undefined) {
-            await reply.code(400).send({ error: "group thread has no members" });
+          if (deps.routeGroupMessage === undefined) {
+            await reply.code(501).send({ error: "group routing is unavailable" });
             return;
           }
-          const task = await deps.createTask({
-            roleId: dispatchRoleId,
-            title: `Group chat: ${titleSource.slice(0, 120)}`,
+          const routing = await deps.routeGroupMessage({
+            tenantId: request.tenantId,
+            threadId: thread.id,
+            memberRoleIds: thread.memberRoleIds,
+            body,
+            title: titleSource,
             goal,
-            requestedBy: `chat:thread:${thread.id}`,
           });
-          const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: thread.memberRoleIds, body: goal });
+          const recipients = routing.route.recipients;
+          if (recipients.length === 0) throw new Error("group routing selected no recipients.");
+          if (recipients.length > 1) {
+            const dispatchRoleId = recipients[0]!.roleId;
+            const task = await deps.createTask({
+              roleId: dispatchRoleId,
+              title: `Group chat: ${titleSource.slice(0, 120)}`,
+              goal,
+              requestedBy: `chat:thread:${thread.id}`,
+            });
+            const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: recipients.map((member) => member.roleId), body: goal });
+            const message = await deps.insertMessage({
+              threadId: thread.id,
+              role: "user",
+              body,
+              runId,
+              senderRoleId: null,
+              attachments: publicAttachments,
+            });
+            await reply.code(201).send(shapePostedMessage(message));
+            return;
+          }
+          const selected = recipients[0]!;
           const message = await deps.insertMessage({
             threadId: thread.id,
             role: "user",
             body,
-            runId,
+            ...(routing.routingRunId === null ? {} : { runId: routing.routingRunId }),
             senderRoleId: null,
             attachments: publicAttachments,
+          });
+          const task = await deps.createTask({
+            roleId: selected.roleId,
+            title: `Group chat: ${titleSource.slice(0, 120)}`,
+            goal,
+            requestedBy: `chat:thread:${thread.id}`,
+          });
+          void deps.runChatTask({ task, threadId: thread.id }).catch((error: unknown) => {
+            request.log.error(error, "group chat run failed after message acceptance");
           });
           await reply.code(201).send(shapePostedMessage(message));
           return;
