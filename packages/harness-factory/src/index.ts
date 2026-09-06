@@ -345,7 +345,7 @@ async function* lazySdkQuery(input: AgentSdkQueryInput): AsyncGenerator<unknown>
       "SDK_QUERY_MISSING",
     );
   }
-  yield* mod.query(withSystemClaudeExecutable(input));
+  yield* mod.query(withDefaultModel(withSystemClaudeExecutable(input)));
 }
 
 /**
@@ -393,6 +393,41 @@ function resolveSystemClaudeExecutable(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Cheapest available model by default — CLAUDE.md Budget (R350/month
+ * platform ceiling, reset 2026-09-06) leaves very little headroom for
+ * host (non-sandboxed) Agent SDK turns. Override via OIKONOMOS_HOST_MODEL
+ * for a specific role/routine that genuinely needs a stronger model;
+ * never assume Sonnet/Opus pricing fits this budget by default.
+ */
+const DEFAULT_HOST_MODEL = "claude-haiku-4-5-20251001";
+
+/**
+ * Merge a cheap default `model` into Agent SDK `query()` options unless the
+ * caller already set one. Installed `@anthropic-ai/claude-agent-sdk` Options
+ * (sdk.d.ts) accept this exact key: `model?: string`. This is a DEFAULT, not
+ * a forced pin — an explicit `options.model` (e.g. a future ADR-011
+ * provider-swap caller) is never overwritten.
+ */
+function withDefaultModel(input: AgentSdkQueryInput): AgentSdkQueryInput {
+  if (input.options?.model !== undefined) {
+    return input;
+  }
+
+  return {
+    ...input,
+    options: {
+      ...input.options,
+      model: resolveHostModel(),
+    },
+  };
+}
+
+function resolveHostModel(): string {
+  const override = process.env.OIKONOMOS_HOST_MODEL?.trim();
+  return override && override.length > 0 ? override : DEFAULT_HOST_MODEL;
 }
 
 if (import.meta.vitest) {
