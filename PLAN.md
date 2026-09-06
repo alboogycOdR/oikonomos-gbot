@@ -1,5 +1,5 @@
 ---
-plan_version: 18.1
+plan_version: 19.0
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5406,7 +5406,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-183
 **Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02, G-03 (visible meter in the mobile header); report §13.2 items 3–4 (context hygiene, transparent metering); TASK-158/159 routine screens and TASK-157 system-event styling are the surfaces to extend
@@ -5417,21 +5417,23 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **[ORCH 2026-09-06T10:55:00Z, reply to blocked report] Both real, resolving without new backend scope. (1) Test-run warning: `POST /routines/:id/test-run`'s warning string is a stable server-side literal (`"test run performs real work"`, `services/control-api/src/app.ts`, confirmed unchanged since TASK-182) — show it as a client-side literal in the pre-fire confirm dialog (matching what a prior, interrupted draft of this exact file already did — see the note below), then also surface the real server response afterward (e.g. a snackbar) so nothing is silently assumed post-fire. This satisfies the AC's intent (the exact known string, verbatim) without requiring a side-effect-free preview endpoint. (2) Edit-time skill rebinding: confirmed no `PATCH /routines/:id` exists anywhere — a real, separate gap, but it is new control-api surface, not mobile territory, and not worth blocking this task on. AC narrowed: skill selection is CREATE-time only (already fully supported — `POST /roles/:roleId/routines` already accepts `skillId`, confirmed in TASK-182's merged `app.ts`); split "routine skill rebinding after creation" into TASK-195 (TBD, low priority, small — a single `PATCH /routines/:id` route). Proceed on this basis.**
 
 **[ORCH 2026-09-06T10:55:00Z] Note on the "unexpected concurrent changes" CX correctly preserved without touching: these are ORCH's fault, not a mystery process. An earlier CX dispatch was launched against a stale, already-merged worktree branch (a dispatch.ps1 bug, see feedback filed separately) and had begun drafting real, seemingly-correct implementation (pause/resume toggle, a test-run confirm dialog already using the literal warning string, `context_meter.dart` scaffolding) before ORCH killed the process and reset the branch. `git checkout -B` does not clean the working tree, so those uncommitted edits survived onto the new `task/TASK-183-cx` branch. CX was right to not silently claim or discard unrecognised changes — but they are legitimate, on-task, unattributed prior work by this same unit; review and build on them (they already match the ORCH resolution above), don't discard them.**
+
+**[ORCH 2026-09-06T11:00:00Z] Reviewed and merged (see git log). Territory diff clean, all within Owned_Paths. Read every diff directly: `context_meter.dart` uses the correct 60/80% thresholds; `chat_screen.dart`'s "Start fresh" confirm sheet correctly states the transcript stays visible, then calls the real `POST /threads/:id/fresh` and only refreshes the meter, never the message list; create-time skill selector correctly sources from `listRoleSkills` (enabled-only) and is optional; `api_client.dart`/`models.dart`'s `ThreadContext`/`RoutineTestRun` shapes match `services/control-api/src/app.ts`'s real (if currently 501-until-TASK-193) response shape exactly. Noted for the record: `GET /threads/:id` and `POST /threads/:id/fresh` currently return `501` on the live server until TASK-193 wires a real `ThreadContextPort` into `buildApp`'s production construction site — TASK-183 was never Depends_On TASK-193, and the client already degrades gracefully (a failed context fetch just hides the meter, per `_loadThreadContext`'s catch block) rather than crashing, so this is an expected, correctly-handled interim state, not a defect. Independently re-verified, not trusted: `flutter analyze` (no issues) and `flutter test` (112/112) run directly by ORCH in the worktree.
 **Acceptance_Criteria:**
-- [ ] Test-run confirm dialog displays the known literal warning string verbatim before firing, and only fires after confirmation (widget test)
-- [ ] Skill selector (enabled skills only) is offered at routine CREATE time only; a `PATCH /routines/:id` for edit-time rebinding is out of scope, split to TASK-195
-- [ ] Context meter renders the real values from a fake thread payload and changes colour at the thresholds (widget test)
-- [ ] 'Start fresh' calls POST /threads/:id/fresh and the chat still shows earlier messages afterwards (widget test)
-- [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
+- [x] Test-run confirm dialog displays the known literal warning string verbatim before firing, and only fires after confirmation (widget test)
+- [x] Skill selector (enabled skills only) is offered at routine CREATE time only; a `PATCH /routines/:id` for edit-time rebinding is out of scope, split to TASK-195
+- [x] Context meter renders the real values from a fake thread payload and changes colour at the thresholds (widget test)
+- [x] 'Start fresh' calls POST /threads/:id/fresh and the chat still shows earlier messages afterwards (widget test)
+- [x] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
 **Branch:** task/TASK-183-cx
 **Started_At:** 2026-09-06T07:43:06Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** dossiers/TASK-183.md
+**Test_Evidence:** flutter analyze — no issues; flutter test — 112/112 (both independently re-run by ORCH).
+**Review_Findings:** None blocking. Approved after 1 SPEC_AMBIGUITY round (resolved by ORCH) plus recovery from ORCH's own stale-worktree dispatch bug.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-06T10:55:00Z
+**Updated_At:** 2026-09-06T11:00:00Z
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
