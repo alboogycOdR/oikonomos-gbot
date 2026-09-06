@@ -5107,7 +5107,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-171
 **Title:** Mobile live-agent/monitor view (the Grok Bot reference UI's header icon)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** Reference UX: Grok Bot's top-right chat-header icon opens a live view of the agent's current session/actions (see [[grok-bot-mobile-reference]] item 2). Has a real substrate now — see `docs/research/opensandbox-exec-api-gap-2026-09-05.md`'s Resolution section: execd (the daemon TASK-169 wires) exposes `/pty/{id}/ws?mode=viewer&since=0`, a read-only PTY stream with replay (the `since` param) that gives exactly this feature without granting write access to whoever's viewing. Still depends on TASK-170 existing (a real sandboxed chat run to view) — no sandbox execution, nothing to show.
@@ -5120,15 +5120,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Traffic to the sandbox routes through the Tailscale-bound lifecycle proxy, never the sandbox's own directly-published port
 - [ ] A bot with no active/recent sandboxed session shows a genuine empty state, not an error or an infinite spinner
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-171-s5
+**Started_At:** 2026-09-06T19:21:36Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T19:21:36Z
 
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
