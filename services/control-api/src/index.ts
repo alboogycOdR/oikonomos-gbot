@@ -11,15 +11,6 @@ export {
   type BrokerHttpResponse,
   type BuildBrokerHttpAppOptions,
 } from "./brokerHttpRoute.js";
-export {
-  mintBrokerToken,
-  verifyBrokerToken,
-  BROKER_TOKEN_SIGNING_KEY_REF,
-  resolveBrokerTokenSigningKey,
-  BROKER_TOKEN_SIGNING_KEY_ENV,
-  type BrokerTokenBinding,
-  type VerifiedBrokerToken,
-} from "./brokerToken.js";
 
 import { buildApp } from "./app.js";
 import { buildDatabaseBrokerHttpApp } from "./brokerHttpRoute.js";

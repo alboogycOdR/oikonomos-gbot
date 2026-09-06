@@ -10,6 +10,15 @@ export {
 } from "./seedInboxTriage.js";
 export { riskTiers, type Capability, type RiskTier, type RoleGrant } from "./types.js";
 export {
+  getRoleSandbox,
+  roleSandboxStates,
+  updateRoleSandboxState,
+  upsertRoleSandbox,
+  type RoleSandbox,
+  type RoleSandboxState,
+  type UpsertRoleSandbox,
+} from "./roleSandboxes.js";
+export {
   createConnectorRegistrationStore,
   type ConnectorCapabilityRow,
   type ConnectorRegistrationRows,

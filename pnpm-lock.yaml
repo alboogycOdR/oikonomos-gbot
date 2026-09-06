@@ -431,6 +431,9 @@ importers:
       '@oikonomos/harness-factory':
         specifier: workspace:*
         version: link:../../packages/harness-factory
+      '@oikonomos/sandbox-client':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-client
       '@oikonomos/workspace':
         specifier: workspace:*
         version: link:../workspace

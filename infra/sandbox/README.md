@@ -138,18 +138,40 @@ Minimum valid create body (the API rejects each omission in turn — image must 
 
    **The trigger — this is the part that matters.** Revisit **before the first real workload runs in a sandbox**, i.e. as part of OIK-043, not after a vague "once we've tested live". The moment `harness-factory` creates sandboxes per run, agent-controlled processes occupy this port band and the exposure stops being theoretical. Two further conditions each independently force it earlier: (a) any change to the Hetzner cloud firewall, since that is currently the *only* thing closing these ports and it lives outside this host; (b) any move of this deployment to a host without that upstream filtering.
 
-   **The remedy, ready to apply — filter in `DOCKER-USER`, the one chain Docker traffic does traverse:**
+   **CORRECTED 2026-09-06 (ORCH), after the remedy below was actually applied and empirically failed.** The version originally written here matched `--dport 30000:30999` in `DOCKER-USER` — this can never work, on any host, for a Docker-published port range. `DOCKER-USER` lives in the `filter` table's `FORWARD` chain, which netfilter evaluates *after* `nat`'s `PREROUTING` chain has already DNAT'd the packet's destination to the container's real internal port (e.g. `44772`, not `30746`). By the time `DOCKER-USER` sees the packet, `--dport 30000:30999` can never match — the published port number the rule was written against no longer exists on the packet. This was never caught earlier because the port band was only ever observed closed by the separate, upstream Hetzner cloud firewall (§ above); the local rule itself was inert from day one, on any host. The fix is `-m conntrack --ctorigdstport`, which matches the connection's *original* (pre-NAT) destination port — the value conntrack recorded before PREROUTING rewrote it — rather than the packet's current, post-NAT one:
    ```bash
    PUBIF=$(ip route show default | awk '{print $5; exit}')
-   sudo iptables  -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
-   sudo ip6tables -I DOCKER-USER 1 -i "$PUBIF" -p tcp --dport 30000:30999 -j DROP
+   sudo iptables  -I DOCKER-USER 1 -i "$PUBIF" -p tcp -m conntrack --ctorigdstport 30000:30999 -j DROP
+   sudo ip6tables -I DOCKER-USER 1 -i "$PUBIF" -p tcp -m conntrack --ctorigdstport 30000:30999 -j DROP
    ```
-   Two properties to carry into that work: **it does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit), and **ufw will not manage it and will not show it** — `ufw status` will keep reporting a tidy default-deny while this rule is the thing actually doing the work. Verify by observed refusal from an external path, never by re-reading `ufw status`.
+   Two properties to carry into that work: **it does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit), and **ufw will not manage it and will not show it** — `ufw status` will keep reporting a tidy default-deny while this rule is the thing actually doing the work. Verify by observed refusal from a genuinely independent external path (an online port-checker, or a device on an unrelated network — not a probe launched from infrastructure that might share network peering with the host), never by re-reading `ufw status`, and never by trusting the rule's own packet counter alone until a live external probe has actually incremented it.
 2. **`Secure runtime is not configured`** appears at startup — no gVisor/Kata/Firecracker. Sandboxes use the default runc isolation. That is acceptable for OIK-042 but is exactly what OIK-045c (isolation strength per capability tier) exists to fix; Tier-3/4 execution must not rely on this deployment as-is.
 3. **No liveness assertion yet.** Per CLAUDE.md every mechanical control ships a check that fails when the control is *inert*. There is currently nothing that fails if this server stops, loses its Tailscale-only binding, or silently reverts to `network_mode = "host"`. The third is the dangerous one — it would still serve traffic and pass any naive health check while isolation was gone. Uptime-kuma is already on this host and is the obvious place to start, but a health check alone does not satisfy the rule.
 4. **The API key is single, static and host-local.** No rotation procedure exists. Rotation = regenerate per §3 step 4, then `docker restart opensandbox-server`; every client must be updated in the same window.
 
 ## 8. Operations
+
+### 8.1 Build the governed office image (TASK-170)
+
+On a machine with this repository checkout, build the harness output first, then
+build the image from the repository root (the Dockerfile copies the compiled
+hook, not its TypeScript source):
+
+```bash
+pnpm --filter @oikonomos/harness-factory build
+docker build -f infra/sandbox/images/office-base/Dockerfile -t oikonomos-office-base:claude-2.1.263 .
+docker run --rm oikonomos-office-base:claude-2.1.263 claude --version
+docker run --rm --entrypoint sh oikonomos-office-base:claude-2.1.263 -c '[ "$(stat -c %U:%a /etc/claude-code/managed-settings.json)" = "root:444" ] && test ! -e "$HOME/.claude.json" && test ! -e "$HOME/.mcp.json"'
+```
+
+(The container runs as the unprivileged `sandbox` user per the image's own `USER` directive, so `test -O` — true only when the file is owned by the *effective* user running the check — always evaluates false here by design; it does not test what it looks like it tests. Check the real invariant instead: root ownership and mode 0444, unwritable by `sandbox` regardless of who runs the check.)
+
+Run those commands on `clawsrv` (where OpenSandbox's Docker backend can see the
+local tag) before enabling sandbox chat runs. Set
+`OIKONOMOS_SANDBOX_IMAGE=oikonomos-office-base:claude-2.1.263` on the worker if
+the local tag differs. The image contains neither account credentials nor broker
+credentials: the worker injects the short-lived broker token and identity only
+into each execd `/command` request.
 
 ```bash
 docker logs -f opensandbox-server          # startup must show "type: docker"

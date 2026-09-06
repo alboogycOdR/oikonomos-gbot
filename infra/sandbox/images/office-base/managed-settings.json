@@ -1,0 +1,16 @@
+{
+  "disableAllHooks": false,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /opt/oikonomos/sandboxHook.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

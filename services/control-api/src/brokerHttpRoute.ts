@@ -11,11 +11,13 @@ import {
   type BrokerDependencies,
   type PreToolUseRequest,
   type PreToolUseResponse,
+  resolveBrokerTokenSigningKey,
+  verifyBrokerToken,
+  type BrokerTokenBinding,
 } from "@oikonomos/broker";
 import { Database, type DatabaseOptions } from "@oikonomos/db";
 import { destinationFor } from "@oikonomos/worker";
 
-import { resolveBrokerTokenSigningKey, verifyBrokerToken, type BrokerTokenBinding } from "./brokerToken.js";
 
 export const BROKER_PRE_TOOL_USE_PATH = "/v1/broker/pretooluse";
 export const BROKER_BODY_LIMIT_BYTES = 16 * 1024;
