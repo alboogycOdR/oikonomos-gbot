@@ -5508,7 +5508,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-08 (AC anchors: observed refusal from inside allowlist_only; liveness — sandbox with policy absent is refused before any command); report §10.3 four modes, §12.5(a) egress deny; OIK-045b (Addendum B §2, pulled forward); infra/sandbox/README.md §7.1 remedy and trigger (fires with TASK-170); TASK-027 (absorbed — its DOCKER-USER rule is applied here); ADR-005 liveness. PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8.
@@ -5522,8 +5522,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Liveness assertion: a sandbox created with the policy deliberately not applied is refused before any command runs (test that fails if the marker check is removed) — this proves POLICY APPLICATION, not per-denial audit attribution (see above)
 - [ ] Ports 30000–30999 refuse from an external path after the DOCKER-USER rule; the rule survives a reboot; both recorded as observed evidence in infra/sandbox/README.md §7.1 and TASK-027 is closed by ORCH
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** task/TASK-185-cx9 (renamed from task/TASK-185-cx — see Progress_Notes)
-**Started_At:** 2026-09-06T19:21:14Z
+**Branch:** task/TASK-185-cx9
+**Started_At:** 2026-09-06T19:59:48Z
 **Progress_Notes:**
 - [2026-09-06T21:20:00Z] [ORCH] Reassigned from GB to CX, matching this task's own Spec_References line ("PROTECTED PATH packages/policy/** — author CX, reviewer ORCH opus-4-8") — the earlier GB assignment was a decompose-time default that never matched the task's own stated author requirement. TASK-170 (Depends_On) is now done and merged; this task is ready to dispatch.
 - [2026-09-06T21:40:00Z] [ORCH, reply to blocked report] Real, correctly diagnosed — verified directly against the live server's own `/openapi.json` before widening, not assumed: `CreateSandboxRequest.networkPolicy` genuinely exists (`{defaultAction: "allow"|"deny", egress: [{action, target}]}`, matching `NetworkPolicy`/`NetworkRule` schemas exactly — "Shape matches the egress sidecar /policy endpoint. Empty/omitted means allow-all until updated." per the live spec's own description). CX correctly identified that applying this policy requires touching `chatRunDriver.ts`'s `createSandbox` call and `sandbox-client`'s typed request shape, neither in this task's original Owned_Paths. Widened to `packages/sandbox-client/src/client.ts`, `types.ts`, both its test files, and `services/worker/src/chatRunDriver.ts`/`.test.ts` — confirmed unowned by any currently active task (TASK-163/164 also reference `chatRunDriver.ts` but are both still `pending`, not active). Implementation shape: (1) `sandbox-client`'s `CreateSandboxRequest` type gains an optional `networkPolicy` field matching the verified schema; (2) `resolveEgressPolicy`'s output (from this task's own `packages/policy/src/egress.ts`) translates directly into that shape and is passed at `createSandbox` time in `chatRunDriver.ts`; (3) the liveness AC (a sandbox created with the policy deliberately not applied is refused before any command runs) needs a policy-applied marker — since the OpenSandbox server itself doesn't expose one, write it as the FIRST command in the sandbox's own bootstrap (e.g. a marker file written by the entrypoint only after confirming the sidecar's own `/policy` endpoint reflects the intended policy) and have `chatRunDriver.ts` check for it before dispatching the governed command, denying if absent — document whichever exact mechanism is implemented in the dossier, don't leave it implicit.
@@ -5534,8 +5534,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T23:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T19:59:48Z
 
 ### TASK-186
 **Title:** G-06 — Browser lane v1: Steel Browser inside the role sandbox, bot-private profile, governed `browser.*` capability family (protected paths)
