@@ -5692,7 +5692,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-193
 **Title:** Wire context compaction/meter into the live production call site
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split from TASK-179 (see its Progress_Notes 2026-09-06T07:18:00Z) — same shape of gap TASK-189 has for group routing: the engine (`contextCompaction.ts`'s `maybeCompact`, `packages/db/src/threadContext.ts`) is real, tested, and correct, but nothing in production actually constructs a real Postgres-backed `ContextCompactionPorts`/`ThreadContextPort` or calls `maybeCompact` after a real chat run.
@@ -5708,15 +5708,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
 - [ ] `POST /threads/:id/fresh` genuinely starts a new epoch against real data
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-193-cx9
+**Started_At:** 2026-09-06T08:56:24Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T07:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T08:56:24Z
 
 ### TASK-194
 **Title:** TASK-067 describe-or-deny is configured-but-inert (ADR-005 liveness failure)
