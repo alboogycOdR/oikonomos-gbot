@@ -178,3 +178,14 @@ export {
   type NewSecretValue,
   type SecretVault,
 } from "./secretVault.js";
+export {
+  createSecretRequest,
+  fulfillSecretRequest,
+  getSecretRequest,
+  secretRequestStatuses,
+  SECRET_REQUEST_LABEL_MAX_CHARS,
+  SECRET_REQUEST_PURPOSE_MAX_CHARS,
+  type NewSecretRequest,
+  type SecretRequest,
+  type SecretRequestStatus,
+} from "./secretRequests.js";

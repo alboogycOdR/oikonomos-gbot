@@ -49,6 +49,7 @@ describe("registerCapabilities", () => {
       capabilities: [
         expect.objectContaining({ capabilityId: "workspace.send_to_role", defaultTier: "T1_draft" }),
         expect.objectContaining({ capabilityId: "workspace.rename_self", defaultTier: "T1_draft" }),
+        expect.objectContaining({ capabilityId: "workspace.request_secret", defaultTier: "T3_external" }),
       ],
     });
   });
@@ -151,6 +152,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
         expect.objectContaining({ adapter: "sdk:builtin", capability_id: "runtime.bash" }),
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.send_to_role", default_tier: "T1_draft" }),
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.rename_self", default_tier: "T1_draft" }),
+        expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.request_secret", default_tier: "T3_external" }),
       ]),
     });
   });
