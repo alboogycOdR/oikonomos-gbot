@@ -1,5 +1,5 @@
 ---
-plan_version: 28.28
+plan_version: 28.29
 last_updated: 2026-09-06T19:05:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET CORRECTED 2026-09-06 (human-directed): CLAUDE.md's hard ceiling is now R350/month (was R30,000/month, a ~100x reduction), applied to the real enforcement constant `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts` (not just the doc) — a genuine test regression this exposed (a no-routine-budget test recording $1,000 unmasked by an unisolated platform ceiling) was fixed properly, not papered over. TASK-200 filed (low priority) to re-evaluate ADR-011/OIK-164's cost conclusions, both reasoned against the old figure. This makes the upcoming Anthropic API key's usable monthly spend very small — worth keeping in mind for TASK-170's live proof and any future inference-heavy work. TASK-170 (OIK-043) is CODE-COMPLETE and independently re-verified after 9 correctly-diagnosed blocks this session (sandbox lifecycle + env-isolation live proof PASSED with real numbers: create 1,101ms, Running 2,412ms, pause 301ms; DOCKER-USER firewall applied+corrected+persisted+independently verified, full account in TASK-170's own Progress_Notes) — the ONLY remaining gap is a real Anthropic API key for the sandboxed CLI's non-interactive auth (`ANTHROPIC_API_KEY` is the only headless auth path; OAuth/keychain are never read), asked of the user directly, same discipline as the OpenSandbox credentials. TASK-162 (flaky real-Postgres test investigation) is `blocked` at low priority — real root cause found (packages/db's per-call ad-hoc pool pattern), CX's genuine partial fixes merged, the full architectural fix filed as TASK-199 (low priority, not blocking anything). TASK-163/164 both touch chatRunDriver.ts, which TASK-170 still owns — do not dispatch either until TASK-170 lands. TASK-171/185/186/187/188 all remain blocked behind TASK-170's live proof. GB and S5 have no independently-ready work right now. Recurring lessons this session, hit repeatedly, worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree — for a one-off redispatch, read the fresh value from the registry directly into the SAME PowerShell process that launches `dispatch.ps1`, so `Start-Process`'s inheritance carries it through, rather than doing a full session restart every time; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone."
@@ -5107,11 +5107,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-171
 **Title:** Mobile live-agent/monitor view (the Grok Bot reference UI's header icon)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** Reference UX: Grok Bot's top-right chat-header icon opens a live view of the agent's current session/actions (see [[grok-bot-mobile-reference]] item 2). Has a real substrate now — see `docs/research/opensandbox-exec-api-gap-2026-09-05.md`'s Resolution section: execd (the daemon TASK-169 wires) exposes `/pty/{id}/ws?mode=viewer&since=0`, a read-only PTY stream with replay (the `since` param) that gives exactly this feature without granting write access to whoever's viewing. Still depends on TASK-170 existing (a real sandboxed chat run to view) — no sandbox execution, nothing to show.
-**Owned_Paths:** apps/mobile/lib/screens/live_agent_screen.dart, apps/mobile/lib/widgets/live_agent_button.dart, apps/mobile/lib/api/live_agent_client.dart, apps/mobile/test/screens/live_agent_screen_test.dart, services/control-api/src/liveAgent.routes.ts, services/control-api/src/liveAgent.routes.test.ts, services/control-api/src/app.ts
+**Owned_Paths:** apps/mobile/lib/screens/live_agent_screen.dart, apps/mobile/lib/widgets/live_agent_button.dart, apps/mobile/lib/api/live_agent_client.dart, apps/mobile/test/screens/live_agent_screen_test.dart, services/control-api/src/liveAgent.routes.ts, services/control-api/src/liveAgent.routes.test.ts, services/control-api/src/app.ts, apps/mobile/lib/screens/chat_screen.dart
 **Depends_On:** TASK-170, TASK-183
 **Description:** Investigate the real execd PTY viewer contract first (`docs/components/execd.md` upstream, or the live server directly) — confirm the exact WebSocket message shape, the `since` replay semantics, and whether `mode=viewer` genuinely cannot send input (verify this claim, don't take it on faith given it's a real security property: a "view-only" mode that can secretly accept input would be a real hole). Backend: a route in `services/control-api/src/app.ts` that resolves a role's active sandbox (from TASK-170's per-role sandbox tracking) and either proxies the PTY WebSocket or hands the mobile client enough to connect directly (through the Tailscale-bound lifecycle server's proxy, never the sandbox's own directly-published port — same `use_server_proxy=true` principle as TASK-169). Mobile: a real live-updating view (terminal-output rendering, not a generic spinner) reachable from the chat header icon, showing genuine sandbox activity for that role's current or most recent run. A bot with no active/recent sandboxed run shows a clear empty state, not an error. **[ORCH 2026-09-05T21:20:00Z] Substrate decided, see docs/research/opensandbox-exec-api-gap-2026-09-05.md §Resolution:** the live view is execd's PTY viewer mode (`/pty/{id}/ws?mode=viewer&since=0` — replay then live, never acquires the write holder) proxied through control-api with the user's session auth; for browser work (TASK-186) it embeds the Steel session's live URL. Narrowed Owned_Paths so it is disjoint from TASK-174/178/181/183; depends on TASK-183 only for chat_screen.dart's header slot (the button widget is its own file).
 **Acceptance_Criteria:**
@@ -5122,13 +5122,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0; `flutter analyze`/`flutter test` exit 0
 **Branch:** task/TASK-171-s5
 **Started_At:** 2026-09-06T19:21:36Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Progress_Notes:**
+- [2026-09-06T23:45:00Z] [ORCH, review] Genuinely strong first submission — territory clean (every changed file maps to an Owned_Path), AC1's security property (viewer input never reaches execd) is mechanically enforced in `relay()` regardless of what execd's own `mode=viewer` does server-side, with a real loopback-TCP integration test proving it end-to-end, not just a fake-socket unit test. Independently re-verified: `liveAgent.routes.test.ts` 13/13 (its own file's only failure elsewhere, `chat.routes.test.ts`, is the same already-tracked TASK-199 connection-exhaustion issue, unrelated); mobile `live_agent_screen_test.dart` 4/4; full mobile `flutter analyze` clean, `flutter test` 116/116; full `pnpm -r build`/`pnpm lint`/banned-mode all clean. One real, narrow gap found, not a design defect: S5 correctly declined to touch `chat_screen.dart` (outside Owned_Paths) even though this task's own Description already said it "depends on TASK-183 only for chat_screen.dart's header slot" — confirming S5's own finding that TASK-183 never actually added that slot, a genuine decompose-time assumption that didn't hold. `LiveAgentButton` itself is fully built, tested, and self-contained (owns its own navigation) — the only remaining step is a one-line drop into `chat_screen.dart`'s existing `actions: [...]` array (see `bot-settings-button`'s sibling `IconButton` at the same call site for the pattern). Widened Owned_Paths to `apps/mobile/lib/screens/chat_screen.dart` — confirmed unowned by any currently active task (TASK-187 also references it but is still `pending`, not active; sequencing is fine since TASK-187 depends on this task anyway). REWORK for this one integration step only; everything else approved as-is and will not need to change. Separately, the deferred real `LiveAgentPort` production wiring (role_sandboxes + sandbox-client, needing `ports.ts`/`index.ts` outside this task's territory) is legitimate follow-up work, not a rework condition — filed as TASK-203, matching TASK-193's own `ThreadContextPort` precedent.
+**Artifacts:** services/control-api/src/liveAgent.routes.ts, services/control-api/src/liveAgent.routes.test.ts, services/control-api/src/app.ts, apps/mobile/lib/api/live_agent_client.dart, apps/mobile/lib/widgets/live_agent_button.dart, apps/mobile/lib/screens/live_agent_screen.dart, apps/mobile/test/screens/live_agent_screen_test.dart, dossiers/TASK-171.md
+**Test_Evidence:** Independently re-verified by ORCH: control-api liveAgent.routes.test.ts 13/13; mobile live_agent_screen_test.dart 4/4, flutter analyze clean, flutter test 116/116 (full package); pnpm -r build/pnpm lint/banned-mode all clean.
+**Review_Findings:** REWORK — one real, narrow gap: `LiveAgentButton` needs to actually be dropped into `chat_screen.dart`'s `AppBar.actions` (now in Owned_Paths). Core implementation (AC1's mechanical input-discard, real loopback-TCP proof, clean empty-state handling, Tailscale-proxy-only routing) is correct and will not need to change.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T19:21:36Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T23:45:00Z
 
 ### TASK-172
 **Title:** Real per-user auth (backend) — verify Firebase/Google ID tokens, replace the hardcoded single-tenant login
@@ -5999,3 +6000,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T22:10:00Z
+
+### TASK-203
+**Title:** Wire real production LiveAgentPort (role_sandboxes + sandbox-client) for the mobile live-agent viewer
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** TASK-171's own `LiveAgentPort` interface (`services/control-api/src/liveAgent.routes.ts`) and its route logic are real and fully tested against fake ports; production wiring (resolving a role's actual sandbox via `@oikonomos/db`'s `role_sandboxes` and the execd PTY-viewer endpoint via `@oikonomos/sandbox-client`) was deliberately deferred since it needs `services/control-api/src/ports.ts`/`src/index.ts`, outside TASK-171's Owned_Paths — same shape as TASK-193's own `ThreadContextPort` follow-up.
+**Owned_Paths:** services/control-api/src/ports.ts, services/control-api/src/index.ts, services/control-api/src/liveAgent.routes.test.ts
+**Depends_On:** TASK-171
+**Description:** Implement a real `LiveAgentPort` backed by `@oikonomos/db`'s `getRoleSandbox` (a role's current/most-recent sandbox) and `@oikonomos/sandbox-client`'s `getEndpoint` (resolving the PTY-viewer WebSocket URL, `use_server_proxy=true`, never the sandbox's directly-published port — matching TASK-169's own established principle). Wire it into `services/control-api/src/index.ts`'s app construction the same way `ThreadContextPort` is wired for TASK-193. Test against a real role_sandboxes row and a real (or realistically faked) execd endpoint — this is what turns TASK-171's already-correct route logic into an actually-working feature end to end.
+**Acceptance_Criteria:**
+- [ ] A real chat run's active sandbox is resolvable through the production `LiveAgentPort`, proven against real Postgres
+- [ ] The resolved PTY-viewer endpoint routes through the Tailscale-bound lifecycle proxy, never the sandbox's directly-published port (same principle as TASK-169)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T23:45:00Z
