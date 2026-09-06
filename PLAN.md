@@ -1,8 +1,8 @@
 ---
-plan_version: 23.0
+plan_version: 23.1
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
-orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
+orchestrator_notes: "Wave complete: TASK-184/182/183/196/189/193 all approved and merged this session (see REVIEW.md for full detail on each). Group routing and context compaction are now genuinely wired into the live production call site, not just unit-tested engines. TASK-195 (small routine PATCH) dispatched next. CORRECTION to an earlier status claim this session: TASK-187/188 are NOT actually unblocked — both depend (transitively via TASK-171) on TASK-170, which remains blocked on the external OpenSandbox API key human action item, same as TASK-169/171/185. Do not dispatch TASK-187/188 until that external dependency clears. Recurring lessons this session, both now fixed multiple times and worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it) — hit on TASK-190/194/189/193, rationale belongs in Description only; (2) dispatch.ps1 has a real bug reusing a stale, already-merged branch for a fresh task claim — hit twice (TASK-183, TASK-189 claims), feedback filed, fix by manually resetting the worktree branch before dispatch when a unit's prior task just merged."
 ---
 
 # Project Plan
@@ -5753,7 +5753,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-195
 **Title:** Add `PATCH /routines/:id` for edit-time skill rebinding
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Split from TASK-183 (see its Progress_Notes 2026-09-06T10:55:00Z) — TASK-183's description called for a skill selector "on create/edit", but no routine update route exists; `POST /roles/:roleId/routines` already accepts `skillId` at creation (TASK-182), so only the edit-time path is missing.
 **Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
