@@ -454,3 +454,11 @@ Small, self-contained `PATCH /routines/:id` for edit-time skill rebinding, closi
 One blocked round, correctly diagnosed and ORCH's own fault: the DB-layer accessor this task's own description called for lives in `packages/db/src/routines.ts`, omitted from Owned_Paths when the task was split off TASK-183.
 
 Independently re-verified: `routines.routes.test.ts` 4/4, `packages/db/src/routines.test.ts` 10/10, full `pnpm -r build`, `pnpm lint`, both banned-mode checks clean, run directly by ORCH. Merged --no-ff. `validate_plan.py` now reports zero warnings across the entire plan — the Owned_Paths comma bug and every latent isolation warning from this session's wave are fully resolved.
+
+## TASK-169 | CX9 (code) + ORCH (live-proof fix) | approved | closed after a genuine human-credential unblock
+
+CX9's original client code (getEndpoint/ping/runCommand, EXECD_ACCESS_TOKEN injection, SSE parsing) was already reviewed and merged as code-complete in an earlier session — this entry covers closing the task for real once the human supplied the OpenSandbox credentials that had been the sole remaining blocker.
+
+Running the gated live integration test against clawsrv for the first time surfaced a genuine bug the fake-transport unit tests could never have caught: `getEndpoint`'s response from the real server is a scheme-less `host:port/path` string, which `fetch()` rejects as an invalid URL — silently mapped by `execdRequest`'s catch-all into a generic `REQUEST_FAILED` error with no status. Diagnosed directly against the live server with raw `curl` (confirming execd itself responded fine the whole time, isolating the bug to the client's own URL handling) rather than guessing. Fixed by normalizing the scheme from the client's own `baseUrl` before returning the endpoint. Reran: both live tests pass end-to-end — a real sandbox created, execd pinged, `echo hello` executed with exit 0, sandbox destroyed.
+
+Full package suite 23/23 (was 21/23 with 2 gated-skip), full `pnpm -r build`/`pnpm lint` clean. One open, non-blocking item: the execd image version discrepancy (README v1.0.22 vs upstream's 1.0.12) needs `docker images` run on clawsrv itself, which requires host shell access not available from here — flagged for whoever has it. Unblocks TASK-170 (all three Depends_On now satisfied).
