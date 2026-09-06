@@ -1,5 +1,5 @@
 ---
-plan_version: 23.1
+plan_version: 23.2
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave complete: TASK-184/182/183/196/189/193 all approved and merged this session (see REVIEW.md for full detail on each). Group routing and context compaction are now genuinely wired into the live production call site, not just unit-tested engines. TASK-195 (small routine PATCH) dispatched next. CORRECTION to an earlier status claim this session: TASK-187/188 are NOT actually unblocked — both depend (transitively via TASK-171) on TASK-170, which remains blocked on the external OpenSandbox API key human action item, same as TASK-169/171/185. Do not dispatch TASK-187/188 until that external dependency clears. Recurring lessons this session, both now fixed multiple times and worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it) — hit on TASK-190/194/189/193, rationale belongs in Description only; (2) dispatch.ps1 has a real bug reusing a stale, already-merged branch for a fresh task claim — hit twice (TASK-183, TASK-189 claims), feedback filed, fix by manually resetting the worktree branch before dispatch when a unit's prior task just merged."
@@ -5752,13 +5752,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-195
 **Title:** Add `PATCH /routines/:id` for edit-time skill rebinding
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Split from TASK-183 (see its Progress_Notes 2026-09-06T10:55:00Z) — TASK-183's description called for a skill selector "on create/edit", but no routine update route exists; `POST /roles/:roleId/routines` already accepts `skillId` at creation (TASK-182), so only the edit-time path is missing.
-**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts, packages/db/src/routines.ts, packages/db/src/routines.test.ts, packages/db/src/index.ts
 **Depends_On:** TASK-182
 **Description:** Add a `PATCH /routines/:id` route accepting `{skillId: string | null}` (matching the create route's optional-uuid validation), wired through `ports.ts` into `packages/db/src/routines.ts`'s existing typed layer (a small `updateRoutineSkill` or equivalent — check whether a more general routine-update accessor is preferable before adding a single-purpose one). 404-never-403 tenant scoping, matching every other routine route TASK-182 established. Small, self-contained; do not scope-creep into other routine fields.
+
+**[ORCH 2026-09-06T13:58:00Z, reply to blocked report] Real, and my own authoring miss when I split this task off TASK-183 — the DB-layer accessor this task's own Description calls for lives in `packages/db/src/routines.ts`, which I forgot to include in Owned_Paths originally. Widened to `packages/db/src/routines.ts`, `packages/db/src/routines.test.ts`, `packages/db/src/index.ts` — all confirmed unowned (TASK-182/196/189/193, the last active tasks on these files, are all done and merged).**
 **Acceptance_Criteria:**
 - [ ] PATCH /routines/:id updates skill_id (including clearing it via null) and returns the updated routine (test)
 - [ ] A request for another tenant's routine returns 404, not 403 (test)
