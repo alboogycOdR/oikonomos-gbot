@@ -145,7 +145,16 @@ integration("services/worker subprocessProviders — live budget enforcement (TA
       model: "gpt-5.4",
       costUsd: 1_000,
     });
-    const budget: GatedSubprocessBudgetOptions = { db, runId: "task-143-sp-run-3", routineId: routineIdNoBudget };
+    // Isolate this test's own claim (no ROUTINE budget means no routine-level
+    // cap) from the separately-tested PLATFORM ceiling below — $1,000 in
+    // spend would otherwise legitimately trip DEFAULT_PLATFORM_CEILING_ZAR's
+    // real, much smaller value (R350/month, ~$18.92 at the default rate).
+    const budget: GatedSubprocessBudgetOptions = {
+      db,
+      runId: "task-143-sp-run-3",
+      routineId: routineIdNoBudget,
+      platformCeilingZar: 1_000_000,
+    };
     const gated = wrapGateWithBudget(allowAll, budget);
     const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
     expect(result.allow).toBe(true);
@@ -217,6 +226,6 @@ integration("services/worker subprocessProviders — live budget enforcement (TA
 
   it("exposes the documented placeholder defaults", () => {
     expect(DEFAULT_USD_TO_ZAR_RATE).toBeGreaterThan(0);
-    expect(DEFAULT_PLATFORM_CEILING_ZAR).toBe(30_000);
+    expect(DEFAULT_PLATFORM_CEILING_ZAR).toBe(350);
   });
 });
