@@ -1,5 +1,5 @@
 ---
-plan_version: 28.37
+plan_version: 28.38
 last_updated: 2026-09-06T19:05:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET CORRECTED 2026-09-06 (human-directed): CLAUDE.md's hard ceiling is now R350/month (was R30,000/month, a ~100x reduction), applied to the real enforcement constant `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts` (not just the doc) — a genuine test regression this exposed (a no-routine-budget test recording $1,000 unmasked by an unisolated platform ceiling) was fixed properly, not papered over. TASK-200 filed (low priority) to re-evaluate ADR-011/OIK-164's cost conclusions, both reasoned against the old figure. This makes the upcoming Anthropic API key's usable monthly spend very small — worth keeping in mind for TASK-170's live proof and any future inference-heavy work. TASK-170 (OIK-043) is CODE-COMPLETE and independently re-verified after 9 correctly-diagnosed blocks this session (sandbox lifecycle + env-isolation live proof PASSED with real numbers: create 1,101ms, Running 2,412ms, pause 301ms; DOCKER-USER firewall applied+corrected+persisted+independently verified, full account in TASK-170's own Progress_Notes) — the ONLY remaining gap is a real Anthropic API key for the sandboxed CLI's non-interactive auth (`ANTHROPIC_API_KEY` is the only headless auth path; OAuth/keychain are never read), asked of the user directly, same discipline as the OpenSandbox credentials. TASK-162 (flaky real-Postgres test investigation) is `blocked` at low priority — real root cause found (packages/db's per-call ad-hoc pool pattern), CX's genuine partial fixes merged, the full architectural fix filed as TASK-199 (low priority, not blocking anything). TASK-163/164 both touch chatRunDriver.ts, which TASK-170 still owns — do not dispatch either until TASK-170 lands. TASK-171/185/186/187/188 all remain blocked behind TASK-170's live proof. GB and S5 have no independently-ready work right now. Recurring lessons this session, hit repeatedly, worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree — for a one-off redispatch, read the fresh value from the registry directly into the SAME PowerShell process that launches `dispatch.ps1`, so `Start-Process`'s inheritance carries it through, rather than doing a full session restart every time; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone."
@@ -6004,7 +6004,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-203
 **Title:** Wire real production LiveAgentPort (role_sandboxes + sandbox-client) for the mobile live-agent viewer
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** TASK-171's own `LiveAgentPort` interface (`services/control-api/src/liveAgent.routes.ts`) and its route logic are real and fully tested against fake ports; production wiring (resolving a role's actual sandbox via `@oikonomos/db`'s `role_sandboxes` and the execd PTY-viewer endpoint via `@oikonomos/sandbox-client`) was deliberately deferred since it needs `services/control-api/src/ports.ts`/`src/index.ts`, outside TASK-171's Owned_Paths — same shape as TASK-193's own `ThreadContextPort` follow-up.
@@ -6017,10 +6017,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-203-gb
 **Started_At:** 2026-09-06T21:23:17Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:** GB correctly stopped before writing code: production wiring needs `@oikonomos/sandbox-client`'s `getEndpoint`, but `services/control-api/package.json` doesn't declare it (confirmed directly) and `node_modules` isn't linked — the same class of gap seen repeatedly this session. Correctly declined to hand-roll the lifecycle HTTP call instead (would duplicate TASK-169's client boundary). Real fix needs `services/control-api/package.json` + `pnpm-lock.yaml` widened — but `pnpm-lock.yaml` is currently owned by TASK-185, which is actively `in_progress` on CX9 right now. Widening a file two units would touch simultaneously is a genuine territorial conflict, not a paperwork formality — holding this widen until TASK-185 merges. Checked the rest of the backlog for other independently-ready work: every other pending task either depends directly on TASK-185 (TASK-027/186/202) or touches `chatRunDriver.ts`, which TASK-185 also actively owns (TASK-163/164). GB has no other ready work right now — this is a genuine idle period, not a missed dispatch opportunity.
+**Artifacts:** dossiers/TASK-203.md
+**Test_Evidence:** No tests run; no source files changed.
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T21:23:17Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: needs `services/control-api/package.json` (add `@oikonomos/sandbox-client: workspace:*`) and `pnpm-lock.yaml`, but the latter is currently owned by the actively in-progress TASK-185 — widening it now would create a real two-unit collision, not just a formal one. Redispatch GB once TASK-185 merges and the lockfile is free.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T01:30:00Z
