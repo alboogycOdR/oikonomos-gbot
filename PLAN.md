@@ -1,5 +1,5 @@
 ---
-plan_version: 28.4
+plan_version: 28.5
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave complete: TASK-184/182/183/196/189/193 all approved and merged this session (see REVIEW.md for full detail on each). Group routing and context compaction are now genuinely wired into the live production call site, not just unit-tested engines. TASK-195 (small routine PATCH) dispatched next. CORRECTION to an earlier status claim this session: TASK-187/188 are NOT actually unblocked — both depend (transitively via TASK-171) on TASK-170, which remains blocked on the external OpenSandbox API key human action item, same as TASK-169/171/185. Do not dispatch TASK-187/188 until that external dependency clears. Recurring lessons this session, both now fixed multiple times and worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it) — hit on TASK-190/194/189/193, rationale belongs in Description only; (2) dispatch.ps1 has a real bug reusing a stale, already-merged branch for a fresh task claim — hit twice (TASK-183, TASK-189 claims), feedback filed, fix by manually resetting the worktree branch before dispatch when a unit's prior task just merged."
@@ -4808,7 +4808,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
 **Owned_Paths:** services/control-api/src/chat.routes.test.ts, packages/db/src/runs.test.ts
