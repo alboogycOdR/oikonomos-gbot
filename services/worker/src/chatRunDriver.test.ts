@@ -13,12 +13,13 @@ import {
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentSdkQueryFn, AgentSdkQueryInput } from "@oikonomos/harness-factory";
 import { defaultManifestsDir, loadManifests, type ConnectorManifest } from "@oikonomos/connectors";
+import type { Sandbox, SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
 
 import {
   createChatRunDriver,
@@ -145,6 +146,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
   const previousCapabilitiesEnabled = process.env.OIKONOMOS_CAPABILITIES_ENABLED;
 
   async function cleanup(): Promise<void> {
+    await pool.query(`DELETE FROM role_sandboxes WHERE role_id = $1`, [roleId]);
     await pool.query(
       `DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`,
       [roleId],
@@ -184,6 +186,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     process.env.OIKONOMOS_CAPABILITIES_ENABLED = "true";
     options = { connectionString: connectionString! };
     pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    // This additive migration is deliberately run by the migration-backed
+    // integration suite so a checked-out branch can prove its new accessor
+    // before an external deployment migration runner has caught up.
+    const roleSandboxTable = await pool.query<{ table_name: string | null }>("SELECT to_regclass('public.role_sandboxes') AS table_name");
+    if (roleSandboxTable.rows[0]?.table_name === null) {
+      await pool.query(await readFile(new URL("../../../infra/postgres/migrations/018_role_sandboxes.up.sql", import.meta.url), "utf8"));
+    }
     await cleanup();
 
     // Deliberately zero role_grants for this role: the test exercises
@@ -255,6 +264,63 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     },
     120_000,
   );
+
+  it("creates a role office once, then resumes it and re-resolves execd for the next sandboxed turn (TASK-170)", async () => {
+    const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+    const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+    process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-170-test-signing-key";
+    let state: Sandbox["status"]["state"] = "Running";
+    let creates = 0;
+    let resumes = 0;
+    let pauses = 0;
+    const endpointCalls: string[] = [];
+    const commands: Array<Parameters<SandboxClient["runCommand"]>[1]> = [];
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => {
+        creates += 1;
+        return { id: "task-170-office", createdAt: "2026-09-06T00:00:00Z", status: { state } };
+      },
+      getSandbox: async () => ({ id: "task-170-office", createdAt: "2026-09-06T00:00:00Z", status: { state } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => { pauses += 1; state = "Paused"; },
+      resumeSandbox: async () => { resumes += 1; state = "Running"; },
+      getEndpoint: async (): Promise<SandboxEndpoint> => {
+        const endpoint = `http://execd.test/${endpointCalls.length + 1}`;
+        endpointCalls.push(endpoint);
+        return { endpoint };
+      },
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        commands.push(command);
+        return { stdout: "Sandbox turn complete", stderr: "", exitCode: 0 };
+      },
+    };
+
+    try {
+      const driver = createChatRunDriver({ ...options, sandboxClient: fakeSandbox });
+      await driver.run({ task, threadId });
+      await driver.run({ task, threadId });
+
+      expect(creates).toBe(1);
+      expect(resumes).toBe(1);
+      expect(pauses).toBe(2);
+      expect(endpointCalls).toEqual(["http://execd.test/1", "http://execd.test/2"]);
+      expect(commands).toHaveLength(2);
+      expect(commands[0]?.envs).toMatchObject({
+        OIK_SANDBOX_BROKER_URL: "http://broker.test:3001",
+        OIK_SANDBOX_ROLE_ID: roleId,
+        OIK_SANDBOX_TENANT_ID: task.tenantId,
+      });
+      expect(commands[0]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
+    } finally {
+      if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
+      else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+      if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+      else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+    }
+  });
 
   it("continues a real parked run with its persisted SDK session and appends the continuation on the same thread (TASK-155)", async () => {
     const resumeTask = await createTask(options, {
