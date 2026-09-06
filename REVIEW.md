@@ -446,3 +446,11 @@ Wires context compaction/meter into the live production call site, closing out t
 Two blocked rounds, both real: (1) the process entrypoint gap above, found by reading `index.ts` directly; (2) the AC's own literal wording ("integration test... not a stubbed port") genuinely requires touching the test files that exercise the real wiring, not just the production code — CX9 correctly declined to claim completion via existing fake-port unit tests alone.
 
 Independently re-verified, not trusted: `threadContext.routes.test.ts` 11/11, `chatRunDriver.test.ts` 17/17 (including a new real chat-run compaction integration test), full `pnpm -r build`, `pnpm lint`, both banned-mode checks clean, run directly by ORCH. Merged --no-ff.
+
+## TASK-195 | CX | approved | first-pass: no (1 legitimate widen round — a genuine gap ORCH missed when splitting this task off TASK-183)
+
+Small, self-contained `PATCH /routines/:id` for edit-time skill rebinding, closing the gap left when TASK-183 scoped skill selection to create-time only. `updateRoutineSkill` follows the exact fetch-then-tenant-check-then-update pattern every other routine route this session established (404-never-403); the route's own schema validates `skillId` as a UUID-or-null before it ever reaches the DB, so a malformed id 400s cleanly instead of surfacing the `skill_id`→`skills` foreign key constraint raw.
+
+One blocked round, correctly diagnosed and ORCH's own fault: the DB-layer accessor this task's own description called for lives in `packages/db/src/routines.ts`, omitted from Owned_Paths when the task was split off TASK-183.
+
+Independently re-verified: `routines.routes.test.ts` 4/4, `packages/db/src/routines.test.ts` 10/10, full `pnpm -r build`, `pnpm lint`, both banned-mode checks clean, run directly by ORCH. Merged --no-ff. `validate_plan.py` now reports zero warnings across the entire plan — the Owned_Paths comma bug and every latent isolation warning from this session's wave are fully resolved.
