@@ -23,6 +23,10 @@ import { failRun, cancelRun, listOpenRuns, openRunStatuses, parkRun } from "./ru
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+// Each integration test performs database work sequentially. Keep its
+// connection demand small while workspace packages run against shared Postgres.
+const integrationPoolConfig = { ...defaultPoolConfig, max: 1 };
+const integrationOptions = { connectionString: connectionString ?? "", poolConfig: { max: 1 } };
 
 integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
   let pool: Pool;
@@ -46,10 +50,10 @@ integration("packages/db runs — listRuns (TASK-061 / OIK-084)", () => {
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
     await cleanup();
     const task = await createTask(
-      { connectionString: connectionString! },
+      integrationOptions,
       { roleId, title: "runs fixture", goal: "g", requestedBy: "alister" },
     );
     taskId = task.taskId;
@@ -251,10 +255,10 @@ integration("packages/db runs — completeRun (TASK-116)", () => {
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
     await cleanup();
     const task = await createTask(
-      { connectionString: connectionString! },
+      integrationOptions,
       { roleId, title: "completeRun fixture", goal: "g", requestedBy: "alister" },
     );
     taskId = task.taskId;
@@ -306,10 +310,10 @@ integration("packages/db runs — listOpenRuns (TASK-133 / OIK-106)", () => {
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
     await cleanup();
     const task = await createTask(
-      { connectionString: connectionString! },
+      integrationOptions,
       { roleId, title: "listOpenRuns fixture", goal: "g", requestedBy: "alister" },
     );
     taskId = task.taskId;
@@ -381,10 +385,10 @@ integration("packages/db runs — parkRun (TASK-136)", () => {
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
     await cleanup();
     const task = await createTask(
-      { connectionString: connectionString! },
+      integrationOptions,
       { roleId, title: "parkRun fixture", goal: "g", requestedBy: "alister" },
     );
     taskId = task.taskId;
