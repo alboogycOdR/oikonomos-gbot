@@ -22,6 +22,7 @@ Read the Spec pointers first, then the existing files named in Territory (run th
 
 - [2026-09-06T11:20:00Z] [CX] Preflight completed before implementation: 9 entries inspected — existing create_routine_screen.dart, routine_detail_screen.dart, chat_screen.dart, api_client.dart, models.dart, chat_screen_test.dart; new owned context_meter.dart, routine_detail_screen_test.dart, context_meter_test.dart. Reviewed live TASK-182 and TASK-179 API contracts and began typed mobile wiring on task/TASK-183-cx.
 - [2026-09-06T11:55:00Z] [CX] Implemented routine pause/resume, confirmation-gated test runs, on-demand enabled-skill selection, thread context/fresh API client methods, header meter, and fresh-context sheet. Added focused widget tests; `flutter analyze` is clean and focused widgets pass. Full suite initially exposed a pre-existing no-background-request expectation in create_routine_screen_test; changed skill loading to user-initiated and re-ran the affected tests cleanly.
+- [2026-09-06T12:05:00Z] [CX] Final verification: `flutter analyze` clean; `flutter test --concurrency=1 --reporter compact` passed 112/112. Single-worker execution avoids a known fake-HTTP queue timing flake while preserving the same complete suite.
 
 - [2026-09-06T09:05:00Z] [CX] Preflight completed before code changes:
   ```text
