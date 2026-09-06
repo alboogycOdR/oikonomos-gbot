@@ -289,7 +289,8 @@ async function executeSandboxChatRun(
     command,
     cwd: `/workspace/${safePathSegment(request.task.roleId)}`,
     // This is the whole child environment. Never spread process.env here:
-    // only the per-turn broker identity crosses the worker/sandbox boundary.
+    // only the per-turn broker identity and model credential cross the
+    // worker/sandbox boundary — the image itself carries neither (TASK-154).
     envs: {
       [sandboxHookEnvironment.brokerUrl]: requiredSandboxBrokerUrl(),
       [sandboxHookEnvironment.brokerToken]: token,
@@ -298,6 +299,7 @@ async function executeSandboxChatRun(
       [sandboxHookEnvironment.tenantId]: request.task.tenantId,
       [sandboxHookEnvironment.agentProvider]: agentRef.provider,
       [sandboxHookEnvironment.agentSessionRef]: agentRef.sessionRef,
+      ANTHROPIC_API_KEY: requiredSandboxAnthropicApiKey(),
     },
     timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
   });
@@ -372,6 +374,21 @@ function requiredSandboxBrokerUrl(): string {
   return value;
 }
 
+/**
+ * The sandboxed `claude -p` CLI has no credential of its own by design
+ * (TASK-154) and, per its own `--help`, authenticates non-interactively
+ * ONLY via `ANTHROPIC_API_KEY` (OAuth/keychain/subscription logins are never
+ * read headlessly, and — per Anthropic's Consumer Terms §3 — a subscription
+ * credential must never authenticate automated/non-human access in the
+ * first place). Read from `OIK_SECRET_*` to match this codebase's secret
+ * env-var convention; never spread `process.env` here.
+ */
+function requiredSandboxAnthropicApiKey(): string {
+  const value = process.env.OIK_SECRET_ANTHROPIC_API_KEY?.trim();
+  if (value === undefined || value.length === 0) throw new Error("OIK_SECRET_ANTHROPIC_API_KEY must be set for sandbox chat execution.");
+  return value;
+}
+
 function safePathSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, "-");
 }
@@ -380,9 +397,19 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\\"'\\\"'")}'`;
 }
 
+/**
+ * Cheapest available model by default — the R350/month platform ceiling
+ * (DEFAULT_PLATFORM_CEILING_ZAR) leaves very little headroom for sandboxed
+ * turns. Override via OIKONOMOS_SANDBOX_MODEL for a specific role/routine
+ * that genuinely needs a stronger model; never assume Sonnet/Opus pricing
+ * fits this budget by default.
+ */
+const DEFAULT_SANDBOX_MODEL = "claude-haiku-4-5-20251001";
+
 export function claudePrintCommand(prompt: string, systemPrompt: string, resume?: string): string {
+  const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
   return [
-    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", "text",
+    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", "text", "--model", shellQuote(model),
     "--allowedTools", shellQuote("Bash Read"), "--system-prompt", shellQuote(systemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");

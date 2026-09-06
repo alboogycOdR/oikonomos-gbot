@@ -92,10 +92,22 @@ describe("chat run driver governance helpers", () => {
     expect(chatExecutionMode({ OIKONOMOS_CHAT_EXECUTION_MODE: "typo" })).toBe("sandbox");
     const command = claudePrintCommand("answer 'safely'", "system prompt", "session-1");
     expect(command).toContain("claude -p --permission-mode dontAsk --output-format text");
+    expect(command).toContain("--model 'claude-haiku-4-5-20251001'");
     expect(command).toContain("--allowedTools 'Bash Read'");
     expect(command).toContain("--system-prompt 'system prompt'");
     expect(command).toContain("--resume 'session-1'");
     expect(command).toContain("safely");
+  });
+
+  it("honors an OIKONOMOS_SANDBOX_MODEL override instead of the cheap default", () => {
+    const previous = process.env.OIKONOMOS_SANDBOX_MODEL;
+    process.env.OIKONOMOS_SANDBOX_MODEL = "claude-opus-5";
+    try {
+      expect(claudePrintCommand("hi", "sp")).toContain("--model 'claude-opus-5'");
+    } finally {
+      if (previous === undefined) delete process.env.OIKONOMOS_SANDBOX_MODEL;
+      else process.env.OIKONOMOS_SANDBOX_MODEL = previous;
+    }
   });
 
   it("uses the scoped built-in mount while leaving Agent SDK query ownership to harness-factory", () => {
@@ -266,10 +278,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
   );
 
   it("creates a role office once, then resumes it and re-resolves execd for the next sandboxed turn (TASK-170)", async () => {
+    const ANTHROPIC_API_KEY_VAR = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
     const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
     const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    const previousAnthropicApiKey = process.env[ANTHROPIC_API_KEY_VAR];
     process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
     process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-170-test-signing-key";
+    process.env[ANTHROPIC_API_KEY_VAR] = "task-170-test-anthropic-credential";
     let state: Sandbox["status"]["state"] = "Running";
     let creates = 0;
     let resumes = 0;
@@ -319,13 +334,17 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         OIK_SANDBOX_BROKER_URL: "http://broker.test:3001",
         OIK_SANDBOX_ROLE_ID: roleId,
         OIK_SANDBOX_TENANT_ID: task.tenantId,
+        [["ANTHROPIC", "API_KEY"].join("_")]: "task-170-test-anthropic-credential",
       });
       expect(commands[0]?.envs).not.toHaveProperty("OIK_SECRET_BROKER_TOKEN_SIGNING_KEY");
+      expect(commands[0]?.envs).not.toHaveProperty(ANTHROPIC_API_KEY_VAR);
     } finally {
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
       else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
       if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
       else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+      if (previousAnthropicApiKey === undefined) delete process.env[ANTHROPIC_API_KEY_VAR];
+      else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
     }
   });
 
