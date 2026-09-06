@@ -31,6 +31,8 @@
   },
   "dependencies": {
     "@oikonomos/approvals": "workspace:*",
+    "@oikonomos/audit": "workspace:*",
+    "@oikonomos/broker": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/worker": "workspace:*",
     "cron-parser": "^5.10.0",
