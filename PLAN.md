@@ -1,5 +1,5 @@
 ---
-plan_version: 16.3
+plan_version: 16.4
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5371,15 +5371,17 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-182
 **Title:** G-02a — Routine parity semantics backend: missing-source stop, test run, pause, caps, 20-record retention, skill binding
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02 (AC anchors: zero provider spend on a stopped routine; 21st record evicts oldest; 51st routine rejected); report §12.3 schemas/routine.yaml, §12.5(b), C6; docs/research/grok-bot-technical-report-2026-09-05.pdf §3.5; Addendum F §3.4 F7 (missed, never queued for catch-up)
-**Owned_Paths:** infra/postgres/migrations/016_routine_parity.up.sql, infra/postgres/migrations/016_routine_parity.down.sql, packages/db/src/routines.ts, packages/db/src/routines.test.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
-**Depends_On:** TASK-176, TASK-179
+**Owned_Paths:** infra/postgres/migrations/016_routine_parity.up.sql, infra/postgres/migrations/016_routine_parity.down.sql, packages/db/src/routines.ts, packages/db/src/routines.test.ts, packages/db/src/index.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
+**Depends_On:** TASK-176, TASK-179, TASK-184
 **Description:** Bring routines to Grok Bot's documented edge semantics. Schema: `role_routines` gains `skill_id uuid null REFERENCES skills`, `on_missing_source text NOT NULL DEFAULT 'report_and_stop'`, `notify_threshold text NOT NULL DEFAULT 'changes_only'`, `paused boolean NOT NULL DEFAULT false`; a `routine_runs` retention rule keeping the 20 most recent fire records per routine (prune on insert, in the typed layer — TASK-159 reconstructs history from these). Worker: before creating the run, routineJob checks each declared input/connector in `definition.inputs` is grantable/available for the role; if not and policy is report_and_stop, record a fire with outcome `stopped` + reason and make NO model call. A routine bound to a skill_id fires with that skill injected exactly as TASK-177 does for `/name`. API: `POST /routines/:id/test-run` (fires now; response carries the literal warning 'test run performs real work'), `POST /routines/:id/pause|resume`, and creation rejects the 51st routine for a role with 409. Event triggers are NOT in scope (G-02b, needs a connector event pipeline that does not exist).
 
 **[ORCH 2026-09-06T09:55:00Z, reply to CX9's blocked report] Only half the claimed gap is real — Owned_Paths widened by exactly one file. (1) Pause/resume/test-run API wiring: CONFIRMED real gap. `app.ts` already takes its dependencies via injected ports (`services/control-api/src/ports.ts`'s `createDatabaseBackedDeps`, read directly to confirm) — a route that doesn't add a real port function there is inert per ADR-005. `ports.ts` is unowned by any currently active task (verified) and is now added to Owned_Paths. (2) Skill binding: NOT a real gap, do not touch `chatRunDriver.ts`/`promptAssembly.ts` — both are already contested this session (TASK-184 owns `chatRunDriver.ts` right now; TASK-193 will too). `promptAssembly.ts`'s `assembleSystemPrompt` (read directly to confirm) injects a skill purely by scanning the message text for a `/name` token via `extractSkillTokens` — it has no other injection path. The task description's own words ("fires with that skill injected exactly as TASK-177 does for `/name`") mean literally reuse that mechanism: in `routineJob.ts`'s `toRoutineFire`/`routineGoal` (both already in Owned_Paths), when `routine.skillId` is set, look up the skill's name via `getSkill` (already exported from `@oikonomos/db`, confirmed) and prepend `/<name> ` to the constructed goal text before it becomes the task/run's message — the existing token scan then does the rest with zero new plumbing. Proceed on this basis; re-block only if this concrete approach turns out not to fit once you're in the code.**
+
+**[ORCH 2026-09-06T10:10:00Z, reply to 2nd blocked report] Real gap, correctly identified — but I cannot widen into `packages/db/src/index.ts` right now: that barrel file is currently owned by ACTIVE TASK-184 (CX, mid-work adding its own secretRequests exports). CLAUDE.md's non-negotiable "never let two builders near one file, ever" forbids a second concurrent claim on it. Sequencing instead: `packages/db/src/index.ts` is added to this task's Owned_Paths and `Depends_On` now includes TASK-184 — this task is genuinely blocked (not a false alarm) until TASK-184 merges and frees the file. Status set to `blocked` rather than re-dispatching CX9 into a wait; ORCH will widen/re-check readiness and redispatch the moment TASK-184 lands, matching the existing pending-dependency convention for TASK-183/187/188 rather than a busy-loop redispatch.**
 **Acceptance_Criteria:**
 - [ ] A routine whose declared input connector is not granted produces a `stopped` fire record with a reason and zero provider spend (assert via the budget/spend records, not by absence of logs)
 - [ ] Inserting the 21st fire record leaves exactly 20 for that routine, the oldest gone (test)
@@ -5392,9 +5394,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T06:49:52Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts barrel export is owned by ACTIVE TASK-184; added as Depends_On, redispatch once TASK-184 merges.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T10:10:00Z
 
 ### TASK-183
 **Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
