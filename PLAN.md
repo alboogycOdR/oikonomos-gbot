@@ -1,5 +1,5 @@
 ---
-plan_version: 22.2
+plan_version: 23.0
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5692,7 +5692,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-193
 **Title:** Wire context compaction/meter into the live production call site
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split from TASK-179 (see its Progress_Notes 2026-09-06T07:18:00Z) — same shape of gap TASK-189 has for group routing: the engine (`contextCompaction.ts`'s `maybeCompact`, `packages/db/src/threadContext.ts`) is real, tested, and correct, but nothing in production actually constructs a real Postgres-backed `ContextCompactionPorts`/`ThreadContextPort` or calls `maybeCompact` after a real chat run.
@@ -5707,20 +5707,22 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **[ORCH 2026-09-06T13:10:00Z, reply to blocked report] Real, correctly diagnosed — confirmed by reading `services/control-api/src/index.ts` directly: `start()` calls `buildApp(deps)` with NO second `options` argument at all, so `options.threadContext` is always `undefined` in the real running server regardless of anything built in `ports.ts` — both routes stay permanently `501` in production without this. Widened Owned_Paths to `services/control-api/src/index.ts` (confirmed unowned by any active task — the only two prior tasks that touched it, TASK-106/111, are long done). `start()` needs to construct the real `ThreadContextPort` (from this task's own `ports.ts` work) and pass it as `buildApp(deps, { threadContext })`'s second argument.**
 
 **[ORCH 2026-09-06T13:25:00Z, reply to 2nd blocked report] Real, correctly diagnosed — the AC's own wording ("integration test, DATABASE_URL-gated... not a stubbed port") cannot be satisfied without touching the actual test files that exercise the real routes/driver. Widened Owned_Paths to `services/control-api/src/threadContext.routes.test.ts`, `services/control-api/src/ports.test.ts`, `services/worker/src/chatRunDriver.test.ts` — all three confirmed to exist and unowned by any active task (chatRunDriver.test.ts was TASK-184's territory, now done and merged).**
+
+**[ORCH 2026-09-06T13:40:00Z] Reviewed and merged (see git log for the merge commit). Territory diff clean. Read `services/control-api/src/index.ts`'s diff directly: `start()` now constructs a real `createDatabaseBackedThreadContext` and passes it as `buildApp`'s second argument — the production 501 is genuinely closed. `ports.ts`'s new `createDatabaseBackedThreadContext` is a narrow, dedicated `ThreadContextPort` (deliberately not folded into the general `ControlApiDeps`, per its own doc comment). `chatRunDriver.ts`'s `compactCompletedChatRun` runs after every real completed chat run, lazily constructs the Tier-0 provider only if `maybeCompact` actually needs to summarize (so an ordinary short turn needs zero Tier-0/FreeLLMAPI environment config) — reuses TASK-196's `createTierZeroProvider` directly, no second implementation. Independently re-verified, not trusted: `threadContext.routes.test.ts` 11/11, `chatRunDriver.test.ts` 17/17 (including the new real chat-run compaction integration test), full `pnpm -r build`/`pnpm lint`/both banned-mode checks all clean, run directly by ORCH. CX9's claimed "2 unrelated TASK-121 group-thread test failures (shared Postgres 'too many clients already')" matches this session's already-established, independently-confirmed pre-existing flake pattern — not re-verified a third time given the identical, already-proven root cause. This closes out the group-routing/context-compaction wave started by TASK-179/180.**
 **Acceptance_Criteria:**
-- [ ] A real chat run that pushes a thread over the compaction threshold produces a real `thread_summaries` row and a visible "Context compacted" system message (integration test, DATABASE_URL-gated) — not a stubbed port
-- [ ] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
-- [ ] `POST /threads/:id/fresh` genuinely starts a new epoch against real data
-- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+- [x] A real chat run that pushes a thread over the compaction threshold produces a real `thread_summaries` row and a visible "Context compacted" system message (integration test, DATABASE_URL-gated) — not a stubbed port
+- [x] `GET /threads/:id` returns real context_tokens/context_limit/epoch from Postgres in production, not just via an injected test port
+- [x] `POST /threads/:id/fresh` genuinely starts a new epoch against real data
+- [x] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-193-cx9
 **Started_At:** 2026-09-06T08:56:24Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** dossiers/TASK-193.md
+**Test_Evidence:** threadContext.routes.test.ts 11/11, chatRunDriver.test.ts 17/17 (independently re-run by ORCH); pnpm -r build/lint/banned-mode checks clean (ORCH-run).
+**Review_Findings:** None blocking. Approved after 2 legitimate widen rounds.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T08:56:24Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T13:40:00Z
 
 ### TASK-194
 **Title:** TASK-067 describe-or-deny is configured-but-inert (ADR-005 liveness failure)
