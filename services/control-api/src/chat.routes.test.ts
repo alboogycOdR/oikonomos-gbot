@@ -797,9 +797,16 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+// Each integration test performs database work sequentially. Keep its
+// connection demand small while workspace packages run against shared Postgres.
+const integrationPoolConfig = { ...defaultPoolConfig, max: 1 };
+const integrationOptions: DatabaseOptions = {
+  connectionString: connectionString ?? "",
+  poolConfig: { max: 1 },
+};
 
 integration("POST /roles — built-in grant database integration (TASK-117)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("persists every registered sdk:builtin capability at its own default tier", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
@@ -937,7 +944,7 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
 });
 
 integration("POST /roles/:roleId/grants — Always Allow standing grant, real Postgres (TASK-118)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("writes a real role_grants row — a fresh run no longer needs approval for this capability afterward", async () => {
     const database = new Database(options);
@@ -981,7 +988,7 @@ integration("POST /roles/:roleId/grants — Always Allow standing grant, real Po
 });
 
 integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("GET lists exactly the grants a role holds, exercising the real DB (not mocked)", async () => {
     const database = new Database(options);
@@ -1068,7 +1075,7 @@ integration("GET/DELETE /roles/:roleId/grants — real Postgres (TASK-119)", () 
 });
 
 integration("GET /roles/:roleId/messages — real Postgres (TASK-160)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("lists exactly the persisted sent and received handoffs for one role", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
@@ -1104,7 +1111,7 @@ integration("GET /roles/:roleId/messages — real Postgres (TASK-160)", () => {
 });
 
 integration("Role routines — cron scheduling, real Postgres (TASK-134)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("creates a scheduled routine with a persisted next fire time and lists it by role", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
@@ -1142,11 +1149,11 @@ integration("Role routines — cron scheduling, real Postgres (TASK-134)", () =>
 });
 
 integration("POST /approvals/:nonce/decide — continues a parked chat run, real Postgres (TASK-155)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("grants a real pending approval, resumes its persisted SDK session, and appends the continuation to the original thread", async () => {
     const roleId = `task-155-${randomUUID()}`;
-    const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
     let app: ReturnType<typeof buildApp> | undefined;
     try {
       const roleResult = await pool.query<{ role_id: string }>(
@@ -1231,16 +1238,17 @@ integration("POST /approvals/:nonce/decide — continues a parked chat run, real
 });
 
 integration("Group-thread control-api routes — real Postgres (TASK-121)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
-  const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+  const options = integrationOptions;
+  const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
   const fixtureRoleIds: string[] = [];
   const fixtureThreadIds: string[] = [];
 
   async function cleanup(): Promise<void> {
-    // TASK-126's group compose route creates a small dispatch task/run so
-    // its approval can retain the same real run FK as TASK-122's gate.
-    // Remove those dependents before their unique fixture roles.
-    const taskIds = (await pool.query<{ task_id: string }>(
+  // TASK-126's group compose route creates a small dispatch task/run so
+  // its approval can retain the same real run FK as TASK-122's gate.
+  // Remove those dependents before their unique fixture roles.
+  if (fixtureRoleIds.length === 0) return;
+  const taskIds = (await pool.query<{ task_id: string }>(
       "SELECT task_id FROM tasks WHERE requested_by LIKE 'chat:thread:%' AND role_id = ANY($1::text[])",
       [fixtureRoleIds],
     )).rows.map((row) => row.task_id);
@@ -1336,6 +1344,20 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       );
       expect(pendingApproval.rows).toEqual([{ status: "pending", capability_id: "chat.bot_fanout" }]);
 
+      // POST returns before the detached chat driver has finished parking the
+      // run. Wait for that terminal point before fixture teardown so cleanup
+      // never races the driver's final database operations.
+      let runStatus: string | undefined;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        runStatus = (await pool.query<{ status: string }>(
+          "SELECT status FROM runs WHERE run_id = $1",
+          [humanMessage.runId],
+        )).rows[0]?.status;
+        if (runStatus === "waiting_approval") break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(runStatus).toBe("waiting_approval");
+
       // The shared TASK-122 gate must stop before its direct-delivery branch:
       // this run may contain the human's group-thread message, but no newly
       // created 1:1 recipient-thread message. Removing the gate's fan-out
@@ -1349,6 +1371,11 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       try {
         await app.close();
       } finally {
+        // The route deliberately launches the chat driver out-of-band. Its
+        // observed waiting_approval transition above is committed before the
+        // driver's pool is closed, so yield once before reusing this fixture
+        // pool for destructive teardown.
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
         await cleanup();
       }
     }
@@ -1454,12 +1481,12 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
 });
 
 integration("POST /threads/:id/attachments — real Postgres + agent round trip (TASK-166)", () => {
-  const options: DatabaseOptions = { connectionString: connectionString ?? "" };
+  const options = integrationOptions;
 
   it("persists a file, records it on the message, and the chat driver actually reads the contents", async () => {
     const roleId = `task-166-${randomUUID()}`;
     const unique = `TASK-166-E2E-${randomUUID()}`;
-    const pool = new Pool({ connectionString: connectionString ?? "", ...defaultPoolConfig });
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
     const storeRoot = await mkdtemp(join(tmpdir(), "oik-att-e2e-"));
     let app: ReturnType<typeof buildApp> | undefined;
     let observedPrompt = "";
