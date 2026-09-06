@@ -2,6 +2,7 @@ connector_id: google-drive
 account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
 mcp_server: { name: google-drive, transport: remote, url_ref: secret://mcp/google-drive/url }
 oauth_scopes: [drive.readonly, drive.file]
+network_hosts: [www.googleapis.com, oauth2.googleapis.com]
 tools:
   - tool_name: mcp__google-drive__list_recent_files
     capability_id: drive.list

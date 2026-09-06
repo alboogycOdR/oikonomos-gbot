@@ -95,6 +95,7 @@ describe("createSandboxClient", () => {
         entrypoint: ["python", "/app/main.py"],
         resourceLimits: { cpu: "500m", memory: "512Mi" },
         timeout: 300,
+        networkPolicy: { defaultAction: "deny", egress: [{ action: "allow", target: "api.example.test" }] },
       });
 
       expect(result.id).toBe("sandbox-abc123");
@@ -104,6 +105,7 @@ describe("createSandboxClient", () => {
       expect(seenRequests[0]?.headers["open-sandbox-api-key"]).toBe(FAKE_API_KEY);
       expect(seenRequests[0]?.body).toContain("python:3.11");
       expect(JSON.parse(seenRequests[0]?.body ?? "{}").env.EXECD_ACCESS_TOKEN).toBe(FAKE_API_KEY);
+      expect(JSON.parse(seenRequests[0]?.body ?? "{}").networkPolicy).toEqual({ defaultAction: "deny", egress: [{ action: "allow", target: "api.example.test" }] });
     });
 
     it("throws SandboxClientError, never echoing the API key, when the server rejects the request", async () => {

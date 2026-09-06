@@ -1,6 +1,7 @@
 import { resolveEffectiveTier } from "./ceiling.js";
 
 export { resolveEffectiveTier } from "./ceiling.js";
+export { resolveEgressPolicy, type EgressManifest, type EgressPolicy, type EgressPolicyMode, type EgressRole, type EgressRoleGrant } from "./egress.js";
 export {
   ApprovalResolution,
   resolveApprovalRequest,

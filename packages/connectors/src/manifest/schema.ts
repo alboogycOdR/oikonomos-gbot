@@ -44,6 +44,7 @@ const roleGrantSchema = z
       .object({
         rate_per_hour: z.number().optional(),
         domains: z.array(z.string()).optional(),
+        strictEgress: z.boolean().optional(),
       })
       .strict(),
   })
@@ -61,6 +62,8 @@ export const connectorManifestSchema = z
       })
       .strict(),
     oauth_scopes: z.array(z.string().min(1)).optional(),
+    /** Public FQDNs needed by this connector; never derive these from secret URL refs. */
+    network_hosts: z.array(z.string().min(1)).optional(),
     tools: z.array(toolSchema).min(1),
     role_grants: z.array(roleGrantSchema),
     evals: z

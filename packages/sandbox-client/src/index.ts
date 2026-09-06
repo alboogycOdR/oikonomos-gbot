@@ -6,6 +6,7 @@ export function ping(): string {
 
 export { createSandboxClient, type CreateSandboxClientOptions, type FetchLike, type SandboxClient } from "./client.js";
 export { SandboxClientError, type SandboxClientErrorCode } from "./errors.js";
+export { toOpenSandboxNetworkPolicy } from "./egress.js";
 export {
   envKeyFromSecretRef,
   envSecretResolver,
@@ -21,6 +22,8 @@ export type {
   SandboxHealth,
   SandboxEndpoint,
   SandboxImageSpec,
+  NetworkPolicy,
+  NetworkRule,
   SandboxResourceLimits,
   SandboxState,
   SandboxStatus,

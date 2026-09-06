@@ -2,6 +2,7 @@ connector_id: google-calendar
 account_ownership: basileia                        # REQUIRED; onboarding rejects any other value
 mcp_server: { name: google-calendar, transport: remote, url_ref: secret://mcp/google-calendar/url }
 oauth_scopes: [calendar.readonly, calendar.events]
+network_hosts: [www.googleapis.com, oauth2.googleapis.com]
 tools:
   - tool_name: mcp__google-calendar__list_events
     capability_id: calendar.list

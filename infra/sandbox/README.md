@@ -145,6 +145,14 @@ Minimum valid create body (the API rejects each omission in turn — image must 
    sudo ip6tables -I DOCKER-USER 1 -i "$PUBIF" -p tcp -m conntrack --ctorigdstport 30000:30999 -j DROP
    ```
    Two properties to carry into that work: **it does not survive reboot** unless persisted (`netfilter-persistent save`, or a systemd unit), and **ufw will not manage it and will not show it** — `ufw status` will keep reporting a tidy default-deny while this rule is the thing actually doing the work. Verify by observed refusal from a genuinely independent external path (an online port-checker, or a device on an unrelated network — not a probe launched from infrastructure that might share network peering with the host), never by re-reading `ufw status`, and never by trusting the rule's own packet counter alone until a live external probe has actually incremented it.
+   **APPLIED 2026-09-06 (TASK-170/TASK-185).** The corrected IPv4 and IPv6
+   `--ctorigdstport` rules above are installed and persisted with
+   `netfilter-persistent`; TASK-170 independently observed external refusal
+   after applying them. `scripts/verify-docker-user-egress.sh` is the
+   mechanical liveness check: it exits non-zero if either installed rule is
+   missing or inertly changed back to post-DNAT `--dport` matching. Run it at
+   boot and before enabling a sandbox workload.
+
 2. **`Secure runtime is not configured`** appears at startup — no gVisor/Kata/Firecracker. Sandboxes use the default runc isolation. That is acceptable for OIK-042 but is exactly what OIK-045c (isolation strength per capability tier) exists to fix; Tier-3/4 execution must not rely on this deployment as-is.
 3. **No liveness assertion yet.** Per CLAUDE.md every mechanical control ships a check that fails when the control is *inert*. There is currently nothing that fails if this server stops, loses its Tailscale-only binding, or silently reverts to `network_mode = "host"`. The third is the dangerous one — it would still serve traffic and pass any naive health check while isolation was gone. Uptime-kuma is already on this host and is the obvious place to start, but a health check alone does not satisfy the rule.
 4. **The API key is single, static and host-local.** No rotation procedure exists. Rotation = regenerate per §3 step 4, then `docker restart opensandbox-server`; every client must be updated in the same window.
