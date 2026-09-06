@@ -161,8 +161,10 @@ hook, not its TypeScript source):
 pnpm --filter @oikonomos/harness-factory build
 docker build -f infra/sandbox/images/office-base/Dockerfile -t oikonomos-office-base:claude-2.1.263 .
 docker run --rm oikonomos-office-base:claude-2.1.263 claude --version
-docker run --rm --entrypoint sh oikonomos-office-base:claude-2.1.263 -c 'test -O /etc/claude-code/managed-settings.json && test ! -e "$HOME/.claude.json" && test ! -e "$HOME/.mcp.json"'
+docker run --rm --entrypoint sh oikonomos-office-base:claude-2.1.263 -c '[ "$(stat -c %U:%a /etc/claude-code/managed-settings.json)" = "root:444" ] && test ! -e "$HOME/.claude.json" && test ! -e "$HOME/.mcp.json"'
 ```
+
+(The container runs as the unprivileged `sandbox` user per the image's own `USER` directive, so `test -O` — true only when the file is owned by the *effective* user running the check — always evaluates false here by design; it does not test what it looks like it tests. Check the real invariant instead: root ownership and mode 0444, unwritable by `sandbox` regardless of who runs the check.)
 
 Run those commands on `clawsrv` (where OpenSandbox's Docker backend can see the
 local tag) before enabling sandbox chat runs. Set
