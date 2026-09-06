@@ -1,5 +1,5 @@
 ---
-plan_version: 28.7
+plan_version: 28.8
 last_updated: 2026-09-06T15:05:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-169 closed for real (live OpenSandbox creds obtained, real client bug found+fixed proving it live). TASK-170 (OIK-043, route real chat exec through a sandbox) escalated through 6 correctly-diagnosed blocks to a genuine architecture gap — resolved via ADR-015 (sandboxed broker enforcement, Accepted after Fable's adversarial review), decomposed into TASK-197 (OIK-084 real broker HTTP route/listener, done+merged) and TASK-198 (sandboxed PreToolUse hook script, done+merged), then TASK-170 resumed implementing ADR-015 point 3 (mint/inject per-turn token, wire sandbox exec). Currently in_progress on CX9 (task/TASK-170-cx9), 6th widen just applied (control-api brokerHttpRoute.test.ts import fix after the broker-token relocation). TASK-162 (flaky-test investigation, independent, no territory overlap) dispatched to CX in parallel. TASK-163/164 both touch chatRunDriver.ts, which TASK-170 owns — do not dispatch either until TASK-170 lands. TASK-171/185/186/187/188 all remain genuinely blocked behind TASK-170 (transitively for 187/188 via 171). GB and S5 have no independently-ready work right now — everything else in the backlog either depends on or territorially conflicts with TASK-170. Recurring lessons this session, hit repeatedly, worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At."
@@ -4807,7 +4807,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
@@ -4820,13 +4820,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Fix does not weaken what either test actually proves
 **Branch:** task/TASK-162-cx
 **Started_At:** 2026-09-06T15:02:43Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T15:02:43Z
+**Progress_Notes:**
+- [2026-09-06T15:15:00Z] [CX] Isolated `chat.routes.test.ts`'s original 2-test flake to real ordering/lifecycle races (fixed: consolidated ad-hoc `new Pool()` calls onto a shared `integrationPoolConfig` (`max: 1`), and made the group-thread fanout test wait for the detached chat driver's `waiting_approval` transition before tearing down fixtures instead of racing it) — real fixes, left uncommitted. Hit a second, deeper issue reproducing even in isolation: `sorry, too many clients already` (a genuine Postgres server-side connection-limit error, not a client-side symptom). Post-failure `pg_stat_activity` showed only 6 active connections against `max_connections=100`, pointing at a transient spike during the run rather than a persistent leak. Reported blocked as TOOLING_FAILURE, outside this task's 2-file ownership boundary.
+- [2026-09-06T15:20:00Z] [ORCH] Verified directly, and refined the diagnosis rather than accepting it as-is: queried live Postgres myself (`active: 6, max_connections: 100`, matching CX's own number) — confirms this is a genuine transient burst, not a stuck/leaking connection pool (that would still show elevated counts). The real mechanism, found by reading `packages/db/src/database.ts` and grepping every accessor (`roles.ts`, `runs.ts`, `messages.ts`, `threads.ts`, etc.): EVERY accessor function constructs its OWN ad-hoc `new Pool({ ...defaultPoolConfig })` (max 10 each) per call site — there is no shared/reused pool across a test's many accessor calls. `chat.routes.test.ts` is 1561 lines with 17+ `integration(...)` blocks each exercising many different route handlers (each handler calling multiple accessors) — under Vitest's default within-file concurrency this can transiently open far more than 10-per-accessor pools at once, easily crossing `max_connections=100` in a burst that fully drains once the burst passes (matching the observed 6-afterward reading). This is real and CX's root-cause work (the two committed-but-uncommitted fixes above) is correct and should land regardless — but the deeper fix (giving `packages/db`'s accessors a shared/injected pool instead of one-pool-per-call) is an architectural change spanning most of `packages/db`, genuinely outside this task's 2-file Owned_Paths and disproportionate to this task's `low` priority. Not escalating further: this doesn't block any other backlog item, so it stays `blocked` at low priority rather than consuming more builder time. CX: before stopping, please commit the two real fixes already made (pool consolidation + waiting_approval synchronization) even though they don't close this out — they are genuine improvements and shouldn't be lost. Filing the `packages/db` shared-pool refactor as a separate future low-priority task rather than folding it into this one.
+**Artifacts:** dossiers/TASK-162.md
+**Test_Evidence:** PASS (independent, in isolation): control-api PATCH-instructions target; approval-resume target; db runs.test.ts listOpenRuns target; db runs.test.ts full 13/13. FAIL (reproduces even in isolation, root cause identified with live-server evidence, not guessed): chat.routes.test.ts full-file run and its group-thread fanout target hit real Postgres connection-limit exhaustion from a transient burst, not a persistent leak.
+**Review_Findings:** Diagnosis is correct and well-evidenced; root cause is more precisely `packages/db`'s per-call ad-hoc-pool pattern (confirmed by direct code reading) than a "shared pooler" issue, since there is no PgBouncer in this deployment. No findings against CX — the investigation was honest and the two real fixes made along the way are correct and should be committed.
+**Blocked_Reason:** TOOLING_FAILURE: fixing the underlying transient connection-exhaustion pattern for real requires a shared/injected pool across `packages/db`'s accessors, a refactor spanning the whole package — genuinely outside this task's 2-file Owned_Paths and disproportionate to its `low` priority. Does not block any other backlog item; parking here rather than widening.
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T15:20:00Z
 
 ### TASK-163
 **Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
@@ -5888,3 +5890,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T16:20:00Z
+
+### TASK-199
+**Title:** packages/db accessors share a pool instead of opening one ad-hoc per call
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Found while investigating TASK-162 (2026-09-06). `packages/db/src/database.ts`'s `defaultPoolConfig` (max 10 connections, documented as "keep coordinated with the PgBouncer pool size") is spread into a brand-new `new Pool({...defaultPoolConfig, ...options.poolConfig})` inside nearly every individual accessor function (confirmed by direct grep across `roles.ts`, `runs.ts`, `messages.ts`, `threads.ts`, `threadContext.ts`, `deviceTokens.ts`, `secretRequests.ts`, and others) — there is no shared/injected pool reused across calls within one logical `Database`/request-scoped unit of work. Under heavy concurrent real-Postgres integration testing (`services/control-api/src/chat.routes.test.ts`, 1561 lines / 17+ `integration()` blocks, each exercising several route handlers that each call several accessors), this can transiently open far more real connections than `max_connections` allows (`sorry, too many clients already`, observed live: connections fully drain back to baseline afterward — confirmed a transient burst, not a leak).
+**Owned_Paths:** packages/db/src/database.ts, packages/db/src/*.ts (accessor pool-construction call sites only — do not touch query logic), packages/db/src/*.test.ts
+**Depends_On:** —
+**Description:** Investigate the real current call pattern before designing a fix — confirm exactly which accessors construct their own pool per call vs. which (if any) already accept an injected pool/client. Design a shared-pool-per-`Database`-instance (or per-request-scope) pattern that every accessor can use, matching this codebase's existing dependency-injection conventions (see how `DatabaseOptions`/`Database` are already threaded through `services/control-api`). This is real, low-priority hardening — it does not block any other backlog item today (the burst fully drains and no production incident has been observed), so do not let it grow scope beyond the pool-sharing change itself.
+**Acceptance_Criteria:**
+- [ ] A single `Database` instance (or equivalent request-scoped unit) reuses one pool across all its accessor calls, not one pool per call
+- [ ] `chat.routes.test.ts` run in isolation no longer produces `sorry, too many clients already` (repeated at least 3x)
+- [ ] No accessor's existing query behavior changes — this is pool-lifecycle-only
+- [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T15:20:00Z
