@@ -1,0 +1,6 @@
+# TASK-192 — Dynamic secret vault + resolver
+
+## Work Log
+
+- [2026-09-06T05:29:00Z] [CX9] Created `task/TASK-192-cx9` and completed the required preflight before implementation: `infra/postgres/migrations/019_secret_values.up.sql` NEW; `infra/postgres/migrations/019_secret_values.down.sql` NEW; `packages/db/src/secretVault.ts` NEW; `packages/db/src/secretVault.test.ts` NEW; `packages/db/src/index.ts` FILE (170 lines). Implemented migration 019 and AES-256-GCM vault helpers. Ciphertext stores encrypted bytes with the 16-byte GCM tag appended; each write gets a fresh 12-byte nonce. The module loads/validates `OIK_SECRET_VAULT_KEY` at import time and resolution filters `ref` plus `role_id` in SQL before decrypting.
+- [2026-09-06T05:29:00Z] [CX9] Verification complete using a throwaway 32-byte base64 `OIK_SECRET_VAULT_KEY`: `pnpm --filter @oikonomos/db typecheck` passed; `pnpm --filter @oikonomos/db test` passed (160 passed, 5 skipped); `pnpm -r test` passed; `pnpm -r build` passed; `pnpm lint` passed. The three migration-backed vault cases are deliberately skipped until migration 019 is applied to the shared test database; they exercise exact round-trip, raw-row plaintext/ciphertext separation, nonce uniqueness, and cross-role/missing indistinguishability once the migration is present. No shared database mutation was performed.

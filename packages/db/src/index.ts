@@ -168,3 +168,8 @@ export {
   type NewSpendRecord,
   type SpendRecord,
 } from "./spend.js";
+export {
+  resolveSecretValue,
+  storeSecret,
+  type NewSecretValue,
+} from "./secretVault.js";
