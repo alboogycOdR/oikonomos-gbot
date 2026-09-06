@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { execFileSync, sdkQuery } = vi.hoisted(() => ({
@@ -102,5 +104,80 @@ describe("defaultSdkQuery system Claude resolution", () => {
     const input = await invokeDefaultQuery();
 
     expect(input.options).not.toHaveProperty("pathToClaudeCodeExecutable");
+  });
+});
+
+describe("defaultSdkQuery host model pin", () => {
+  const originalHostModel = process.env.OIKONOMOS_HOST_MODEL;
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    if (originalHostModel === undefined) {
+      delete process.env.OIKONOMOS_HOST_MODEL;
+    } else {
+      process.env.OIKONOMOS_HOST_MODEL = originalHostModel;
+    }
+  });
+
+  it("uses the cheap default when the caller did not set options.model", async () => {
+    delete process.env.OIKONOMOS_HOST_MODEL;
+    execFileSync.mockReturnValue(`${SYSTEM_CLAUDE}\n`);
+
+    const input = await invokeDefaultQuery({ cwd: "/workspace" });
+
+    expect(input.options).toMatchObject({ model: "claude-haiku-4-5-20251001" });
+  });
+
+  it("never overwrites a caller-supplied options.model", async () => {
+    delete process.env.OIKONOMOS_HOST_MODEL;
+    const callerModel = "claude-opus-4-8";
+
+    const input = await invokeDefaultQuery({ model: callerModel });
+
+    expect(input.options).toMatchObject({ model: callerModel });
+  });
+
+  it("still pins the cheap default when the caller supplied an executable", async () => {
+    delete process.env.OIKONOMOS_HOST_MODEL;
+    const callerExecutable = "/caller/claude";
+
+    const input = await invokeDefaultQuery({ pathToClaudeCodeExecutable: callerExecutable });
+
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(input.options).toMatchObject({
+      pathToClaudeCodeExecutable: callerExecutable,
+      model: "claude-haiku-4-5-20251001",
+    });
+  });
+
+  it("honors an OIKONOMOS_HOST_MODEL override instead of the cheap default", async () => {
+    process.env.OIKONOMOS_HOST_MODEL = "claude-sonnet-5";
+
+    const input = await invokeDefaultQuery();
+
+    expect(input.options).toMatchObject({ model: "claude-sonnet-5" });
+  });
+
+  it("does not let OIKONOMOS_HOST_MODEL override an explicit caller model", async () => {
+    process.env.OIKONOMOS_HOST_MODEL = "claude-sonnet-5";
+
+    const input = await invokeDefaultQuery({ model: "claude-opus-4-8" });
+
+    expect(input.options).toMatchObject({ model: "claude-opus-4-8" });
+  });
+
+  it("treats a whitespace-only OIKONOMOS_HOST_MODEL as unset", async () => {
+    process.env.OIKONOMOS_HOST_MODEL = "   ";
+
+    const input = await invokeDefaultQuery();
+
+    expect(input.options).toMatchObject({ model: "claude-haiku-4-5-20251001" });
+  });
+
+  it("documents OIKONOMOS_HOST_MODEL against CLAUDE.md Budget", () => {
+    const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+    expect(source).toContain("OIKONOMOS_HOST_MODEL");
+    expect(source).toContain("CLAUDE.md");
+    expect(source).toContain("Budget");
   });
 });
