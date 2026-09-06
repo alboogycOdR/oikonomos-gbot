@@ -1,5 +1,5 @@
 ---
-plan_version: 26.1
+plan_version: 27.0
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "Wave complete: TASK-184/182/183/196/189/193 all approved and merged this session (see REVIEW.md for full detail on each). Group routing and context compaction are now genuinely wired into the live production call site, not just unit-tested engines. TASK-195 (small routine PATCH) dispatched next. CORRECTION to an earlier status claim this session: TASK-187/188 are NOT actually unblocked — both depend (transitively via TASK-171) on TASK-170, which remains blocked on the external OpenSandbox API key human action item, same as TASK-169/171/185. Do not dispatch TASK-187/188 until that external dependency clears. Recurring lessons this session, both now fixed multiple times and worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it) — hit on TASK-190/194/189/193, rationale belongs in Description only; (2) dispatch.ps1 has a real bug reusing a stale, already-merged branch for a fresh task claim — hit twice (TASK-183, TASK-189 claims), feedback filed, fix by manually resetting the worktree branch before dispatch when a unit's prior task just merged."
@@ -5827,30 +5827,31 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-197
 **Title:** OIK-084 — broker HTTP surface for sandboxed enforcement (own listener, per-turn token auth) (protected path)
-**Status:** claimed
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-015-sandboxed-broker-enforcement.md §Decision §1 and §2 (Accepted, after Fable 5.1's adversarial review — see the ADR's own history); docs/decisions/ADR-015-review-fable-2026-09-06.md changes 2 and 5 specifically; ADR-001 (the invariant this route serves, R3's 10s fail-closed deadline); ADR-004 (no caller-supplied prose — identity comes from the token, never the request body). PROTECTED PATH packages/broker/** (imports its types/logic directly) and this is itself the long-deferred OIK-084 broker HTTP surface — author CX, reviewer ORCH satisfies the different-model rule (Directive §3).
 **Owned_Paths:** services/control-api/src/brokerHttpRoute.ts, services/control-api/src/brokerHttpRoute.test.ts, services/control-api/src/brokerToken.ts, services/control-api/src/brokerToken.test.ts, services/control-api/src/index.ts, services/control-api/package.json, pnpm-lock.yaml
 **Depends_On:** —
 **Description:** Add `POST /v1/broker/pretooluse` as a thin wrapper around `handlePreToolUse` (`packages/broker/src/index.ts`) — the same pure function `createInProcessBrokerPort` already calls, now genuinely served over the network. Import the real `PreToolUseRequest`/`PreToolUseResponse` types directly rather than hand-copying a third shape (compose.ts's existing `BrokerDecisionRequest`/`BrokerDecisionResponse` duplication is a known pre-existing issue, noted in ADR-015 §4 — do not add a fourth copy here). **Per ADR-015 change 5 (non-negotiable): this route binds its own, separate Fastify listener on its own port** — not the same listener as every other control-api management route. iptables/Tailscale ACLs filter by port, not by path; a route merely excluded from the global auth `preHandler` by allowlist on the shared listener still leaves every management route one bearer token away from anything that can reach that port. Same process is fine (both listeners can run from `services/control-api`'s own entrypoint), but they must be two distinct `Fastify.listen()` calls on two distinct ports. **Per ADR-015 change 2 (non-negotiable): auth is a per-turn token minted server-side, bound to `runId`/`roleId`/`tenantId`/`agentRef`, expiring when the turn ends — never a static shared secret.** The route derives identity FROM the token (verify + decode), not from whatever the request body claims, and rejects (deny) any request whose body disagrees with the token's own binding. Export a `mintBrokerToken(binding, ttl)`/`verifyBrokerToken(token)` pair from `brokerToken.ts` (HMAC-signed, mirroring `services/control-api/src/auth.ts`'s existing `verifySessionToken` house style — reuse that pattern, don't invent a new one; a new `secret://broker/token_signing_key` → `OIK_SECRET_BROKER_TOKEN_SIGNING_KEY` secret seeds the HMAC key, following the existing `secret://` convention exactly). Add an explicit request body size cap and a rate limit on this route — over either maps to deny, not an unbounded retry or a crash. Fail-closed per ADR-001 R3: apply a defensive server-side timeout bound consistent with `BrokerFailure`'s existing taxonomy (`packages/broker/src/index.ts`), though the authoritative 10s deadline is enforced client-side by TASK-198's hook script.
+**[ORCH 2026-09-06T16:25:00Z] Reviewed and merged (see git log for the merge commit). Territory diff clean, all within Owned_Paths (one widen during review — see below). Read `brokerToken.ts`/`brokerHttpRoute.ts` in full directly: HMAC signing with `timingSafeEqual` mirrors `auth.ts`'s house style exactly (change 2); identity is derived FROM the verified token and any request-body identity mismatch is rejected (403 `broker.identity_mismatch`) BEFORE the broker handler ever runs — exactly the required binding, not a body-trusts-itself shape; the route binds its own separate `Fastify` instance, `index.ts`'s `start()` listens on two distinct validated ports (change 5); server-side 9s timeout via `bounded()` (leaves margin under the 10s client-authoritative deadline, change 2/ADR-001 R3); real sliding-window rate limiting and body-size cap, both mapping to deny not a crash; the signing key is resolved (and fails) at `buildBrokerHttpApp`'s CONSTRUCTION, not at module import — correctly reusing the factory-not-import-time discipline this session established for TASK-192. Found one real gap during review: the two new `@oikonomos/broker`/`@oikonomos/audit` dependencies were declared in `package.json` but `pnpm-lock.yaml` was never synced — confirmed for real with `pnpm install --frozen-lockfile`, which failed with `ERR_PNPM_OUTDATED_LOCKFILE`. Widened Owned_Paths to `pnpm-lock.yaml`, ran `pnpm install` myself, verified the lockfile now reflects both new edges, and committed it into CX's own branch (correct DEVTEAM_UNIT) rather than merging without it. Independently re-verified, not trusted: brokerHttpRoute/brokerToken test suites 10/10 (one test per AC, confirmed by name), full `pnpm -r build`/`pnpm lint`/both banned-mode checks all clean, run directly by ORCH. CX's claimed "2 pre-existing group-thread Postgres failures" match this session's already-established, independently-confirmed shared-DB contention flake — not re-verified a further time given the identical, already-proven root cause.**
 **Acceptance_Criteria:**
-- [ ] `POST /v1/broker/pretooluse` on its own listener/port genuinely calls `handlePreToolUse` and returns its real decision (integration test, real Postgres where the broker's own decision logic needs it)
-- [ ] `mintBrokerToken`/`verifyBrokerToken` round-trip correctly; a token minted for one `runId`/`roleId`/`tenantId` is rejected (deny) if the request body claims a different one (test)
-- [ ] An expired token is rejected (test)
-- [ ] `CONTROL_API_TOKEN` is rejected on the broker route; the broker token is rejected on every other control-api route (two explicit tests, per ADR-015 change 5)
-- [ ] A request over the body-size cap, or exceeding the rate limit, is denied, not crashed or retried unboundedly (test)
-- [ ] A slow/hung downstream broker call still resolves within a bounded server-side timeout, mapped to `BrokerFailure`'s existing taxonomy (test)
-- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
+- [x] `POST /v1/broker/pretooluse` on its own listener/port genuinely calls `handlePreToolUse` and returns its real decision (integration test, real Postgres where the broker's own decision logic needs it)
+- [x] `mintBrokerToken`/`verifyBrokerToken` round-trip correctly; a token minted for one `runId`/`roleId`/`tenantId` is rejected (deny) if the request body claims a different one (test)
+- [x] An expired token is rejected (test)
+- [x] `CONTROL_API_TOKEN` is rejected on the broker route; the broker token is rejected on every other control-api route (two explicit tests, per ADR-015 change 5)
+- [x] A request over the body-size cap, or exceeding the rate limit, is denied, not crashed or retried unboundedly (test)
+- [x] A slow/hung downstream broker call still resolves within a bounded server-side timeout, mapped to `BrokerFailure`'s existing taxonomy (test)
+- [x] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
 **Branch:** task/TASK-197-cx
 **Started_At:** 2026-09-06T13:25:52Z
 **Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** dossiers/TASK-197.md
+**Test_Evidence:** brokerHttpRoute/brokerToken 10/10 (independently re-run by ORCH); pnpm -r build/lint/banned-mode checks clean (ORCH-run).
+**Review_Findings:** None blocking. Approved after 1 review-time widen (lockfile sync).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T13:25:52Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T16:25:00Z
 
 ### TASK-198
 **Title:** OIK-084 — sandboxed PreToolUse hook script (fail-closed contract, managed-settings registration) (protected path)
