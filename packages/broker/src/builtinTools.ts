@@ -1,4 +1,5 @@
 import type { DeclaredTool } from "./capabilityRegistry.js";
+import { REQUEST_SECRET_CAPABILITY_ID, REQUEST_SECRET_TOOL } from "./requestSecret.js";
 
 /**
  * Reviewed declarations for the Agent SDK tools this process can mount.
@@ -24,6 +25,14 @@ export const BUILTIN_TOOLS = Object.freeze([
     capabilityId: "workspace.rename_self",
     // A bot can alter only its own display name; no third party or external effect.
     defaultTier: "T1_draft",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
+  {
+    toolName: REQUEST_SECRET_TOOL,
+    capabilityId: REQUEST_SECRET_CAPABILITY_ID,
+    defaultTier: "T3_external",
     adapter: "mcp:workspace",
     mcpServerName: "workspace",
     enabled: true,

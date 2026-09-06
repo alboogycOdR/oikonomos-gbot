@@ -30,6 +30,7 @@ import {
   resolveGrantedGoogleDriveConnector,
   resolveGrantedWorkspaceConnector,
   WORKSPACE_RENAME_SELF_TOOL,
+  WORKSPACE_REQUEST_SECRET_TOOL,
   WORKSPACE_SEND_TO_ROLE_TOOL,
 } from "./connectorResolution.js";
 export { combineConnectorContexts } from "./connectorResolution.js";
@@ -152,24 +153,6 @@ async function runChatTask(
       tenantId: request.task.tenantId,
       drivePoolFor: pools.drivePoolFor,
     });
-    const workspaceConnector = await resolveGrantedWorkspaceConnector({
-      database,
-      roleId: request.task.roleId,
-      tenantId: request.task.tenantId,
-      connectionString: options.connectionString,
-    });
-    const connector = combineConnectorContexts(
-      acquiredGmailConnector?.connector,
-      workspaceConnector,
-      acquiredCalendarConnector?.connector,
-      acquiredDriveConnector?.connector,
-    );
-    const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
-    const policy = new PolicyRegistry({
-      mountedToolNames,
-      policies: mountedToolNames.map((toolName) => ({ toolName })),
-      manifestToolNames: [...registry.enabledToolNames],
-    });
     let run;
     if (request.resume === undefined) {
       run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
@@ -184,6 +167,15 @@ async function runChatTask(
         throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
       }
     }
+    const workspaceConnector = await resolveGrantedWorkspaceConnector({
+      database, roleId: request.task.roleId, tenantId: request.task.tenantId,
+      connectionString: options.connectionString, runId: run.runId,
+    });
+    const connector = combineConnectorContexts(
+      acquiredGmailConnector?.connector, workspaceConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector,
+    );
+    const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
+    const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
     const workspace = await createChatRunWorkspace(run.runId);
     let result;
     try {
@@ -271,7 +263,8 @@ export function destinationFor(request: PreToolUseRequest): string {
             : request.toolName === "mcp__google-calendar__list_events" ? input.calendarId
               : request.toolName === "mcp__google-drive__search_files" ? input.query
             : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId
-              : request.toolName === WORKSPACE_RENAME_SELF_TOOL ? input.name : undefined;
+              : request.toolName === WORKSPACE_RENAME_SELF_TOOL ? input.name
+                : request.toolName === WORKSPACE_REQUEST_SECRET_TOOL ? input.label : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
 }

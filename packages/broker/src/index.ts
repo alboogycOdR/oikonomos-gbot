@@ -29,6 +29,7 @@ import {
   DESCRIBE_DENIED_AUDIT_TYPE,
   type DescriberRegistry,
 } from "./describe.js";
+import { describeRequestSecret, REQUEST_SECRET_TOOL } from "./requestSecret.js";
 
 export {
   resolveBudgetGate,
@@ -64,6 +65,15 @@ export {
   type PersistedRoleGrant,
 } from "./capabilityRegistry.js";
 export { BUILTIN_TOOLS } from "./builtinTools.js";
+export {
+  describeRequestSecret,
+  parseRequestSecretInput,
+  REQUEST_SECRET_CAPABILITY_ID,
+  REQUEST_SECRET_LABEL_MAX_CHARS,
+  REQUEST_SECRET_PURPOSE_MAX_CHARS,
+  REQUEST_SECRET_TOOL,
+  type RequestSecretInput,
+} from "./requestSecret.js";
 export {
   ALLOWLIST_MISS_REASON,
   recheckAgainstManifest,
@@ -342,7 +352,10 @@ async function resolveApprovalRequired(
       destination,
     },
     {
-      describers: dependencies.describers ?? builtinDescribers,
+      describers: dependencies.describers ?? {
+        ...builtinDescribers,
+        [REQUEST_SECRET_TOOL]: describeRequestSecret,
+      },
       tier,
     },
   );

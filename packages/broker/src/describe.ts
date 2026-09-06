@@ -26,6 +26,7 @@
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
 
 import { denyDecision, type DenyDecision } from "./decision.js";
+import { describeRequestSecret } from "./requestSecret.js";
 
 /** Grok Bot `SAND_LOCAL_TOOL_TARGET_MAX_CHARS`. Past this, the card cannot be shown. */
 export const TARGET_MAX_CHARS = 10_000;
@@ -189,6 +190,9 @@ export const builtinDescribers: Readonly<Record<string, Describer>> = Object.fre
   Bash: describeAs("run command", "command"),
   mcp__workspace__send_to_role: describeAs("send to role", "toRoleId"),
   mcp__workspace__rename_self: describeAs("rename self", "name"),
+  // This parser rejects malformed and oversized payloads before L1 can issue
+  // an approval, keeping secret-request card text derived from bounded input.
+  mcp__workspace__request_secret: describeRequestSecret,
   mcp__gmail__send_message: describeAs("send email", "to"),
   mcp__gmail__create_draft: describeAs("create draft", "to"),
   mcp__gmail__list_messages: describeAs("list messages", "q"),

@@ -1,14 +1,18 @@
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { updateRoleName } from "@oikonomos/db";
+import { createSecretRequest, insertAuditEvent, updateRoleName } from "@oikonomos/db";
 import { sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
+import { parkTaskRun } from "./runLifecycle.js";
+import { parseRequestSecretInput } from "@oikonomos/broker";
 
 export interface WorkspaceMcpServerIdentity {
   readonly connectionString: string;
   readonly tenantId: string;
   readonly fromRoleId: string;
+  /** The worker, not model input, binds a secret request to its live run. */
+  readonly runId?: string;
 }
 
 interface JsonRpcRequest {
@@ -20,6 +24,7 @@ interface JsonRpcRequest {
 
 const SEND_TO_ROLE_TOOL_NAME = "send_to_role";
 const RENAME_SELF_TOOL_NAME = "rename_self";
+const REQUEST_SECRET_TOOL_NAME = "request_secret";
 
 /**
  * Narrow stdio MCP bridge for the existing mailbox implementation. Identity
@@ -62,6 +67,7 @@ export async function handleWorkspaceMcpRequest(
     return resultResponse(request.id, { tools: [
       { name: SEND_TO_ROLE_TOOL_NAME, description: "Send an asynchronous role-to-role handoff.", inputSchema: sendToRoleInputSchema },
       { name: RENAME_SELF_TOOL_NAME, description: "Rename the calling bot's own display name.", inputSchema: renameSelfInputSchema },
+      { name: REQUEST_SECRET_TOOL_NAME, description: "Ask a human to provide a secret without placing its value in the transcript.", inputSchema: requestSecretInputSchema },
     ] });
   }
   if (request.method !== "tools/call") {
@@ -73,6 +79,21 @@ export async function handleWorkspaceMcpRequest(
       const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, toSendInput(call.arguments, identity));
       return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(acknowledgement) }] });
     }
+    if (call.name === REQUEST_SECRET_TOOL_NAME) {
+      if (identity.runId === undefined || identity.runId.trim().length === 0) throw new Error("request_secret requires a worker-bound run ID.");
+      const input = parseRequestSecretInput(call.arguments);
+      const secretRequest = await createSecretRequest(
+        { connectionString: identity.connectionString },
+        { tenantId: identity.tenantId, roleId: identity.fromRoleId, runId: identity.runId, ...input },
+      );
+      await insertAuditEvent(
+        { connectionString: identity.connectionString },
+        { tenantId: identity.tenantId, runId: identity.runId, actor: `agent:${identity.fromRoleId}`, eventType: "secret.requested", payload: { requestId: secretRequest.requestId, label: secretRequest.label, purpose: secretRequest.purpose } },
+      );
+      // The same typed lifecycle accessor used by the real RunParkPort.
+      await parkTaskRun({ connectionString: identity.connectionString }, identity.runId);
+      return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ status: "pending", requestId: secretRequest.requestId }) }] });
+    }
     const role = await updateRoleName({ connectionString: identity.connectionString }, identity.fromRoleId, toRenameInput(call.arguments));
     if (role === null) throw new Error("Calling role was not found.");
     return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, name: role.name }) }] });
@@ -81,10 +102,10 @@ export async function handleWorkspaceMcpRequest(
   }
 }
 
-function parseToolCall(params: unknown): { name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME; arguments: Record<string, unknown> } {
+function parseToolCall(params: unknown): { name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME; arguments: Record<string, unknown> } {
   if (typeof params !== "object" || params === null || Array.isArray(params)) throw new Error("tools/call requires params.");
   const call = params as { name?: unknown; arguments?: unknown };
-  if ((call.name !== SEND_TO_ROLE_TOOL_NAME && call.name !== RENAME_SELF_TOOL_NAME) || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
+  if ((call.name !== SEND_TO_ROLE_TOOL_NAME && call.name !== RENAME_SELF_TOOL_NAME && call.name !== REQUEST_SECRET_TOOL_NAME) || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
   return { name: call.name, arguments: call.arguments as Record<string, unknown> };
 }
 
@@ -132,10 +153,18 @@ const renameSelfInputSchema = {
   properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
 };
 
+const requestSecretInputSchema = {
+  type: "object", required: ["label", "purpose"], additionalProperties: false,
+  properties: {
+    label: { type: "string", minLength: 1, maxLength: 200 },
+    purpose: { type: "string", minLength: 1, maxLength: 2000 },
+  },
+};
+
 function readIdentity(argv: readonly string[]): WorkspaceMcpServerIdentity {
-  const [connectionString, tenantId, fromRoleId] = argv;
-  if ([connectionString, tenantId, fromRoleId].some((value) => typeof value !== "string" || value.trim().length === 0)) throw new Error("workspace MCP requires connection string, tenant ID, and sender role ID.");
-  return { connectionString, tenantId, fromRoleId };
+  const [connectionString, tenantId, fromRoleId, runId] = argv;
+  if ([connectionString, tenantId, fromRoleId, runId].some((value) => typeof value !== "string" || value.trim().length === 0)) throw new Error("workspace MCP requires connection string, tenant ID, sender role ID, and run ID.");
+  return { connectionString, tenantId, fromRoleId, runId };
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) startWorkspaceMcpServer(readIdentity(process.argv.slice(2)));
