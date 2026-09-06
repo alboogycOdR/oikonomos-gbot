@@ -319,7 +319,16 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
       if (typeof parsed !== "object" || parsed === null || typeof (parsed as Record<string, unknown>).endpoint !== "string") {
         throw new SandboxClientError("OpenSandbox endpoint response was not the expected shape", "INVALID_RESPONSE");
       }
-      return parsed as SandboxEndpoint;
+      const result = parsed as SandboxEndpoint;
+      // The live server returns a scheme-less host:port/path (confirmed against
+      // the real clawsrv server, 2026-09-06) — `fetch` rejects a URL with no
+      // scheme, so normalize it here rather than at every call site. The
+      // returned path is always reachable via the same scheme as `baseUrl`.
+      if (!/^https?:\/\//i.test(result.endpoint)) {
+        const scheme = baseUrl.startsWith("https://") ? "https://" : "http://";
+        return { ...result, endpoint: `${scheme}${result.endpoint}` };
+      }
+      return result;
     },
 
     async ping(endpoint: SandboxEndpoint): Promise<void> {
