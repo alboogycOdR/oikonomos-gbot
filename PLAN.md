@@ -1,5 +1,5 @@
 ---
-plan_version: 18.0
+plan_version: 18.1
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5406,15 +5406,20 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-183
 **Title:** G-02b/G-03b — Mobile: routine pause/test-run/skill binding, context meter, 'Start fresh', compaction event
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02, G-03 (visible meter in the mobile header); report §13.2 items 3–4 (context hygiene, transparent metering); TASK-158/159 routine screens and TASK-157 system-event styling are the surfaces to extend
 **Owned_Paths:** apps/mobile/lib/screens/create_routine_screen.dart, apps/mobile/lib/screens/routine_detail_screen.dart, apps/mobile/lib/widgets/context_meter.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/screens/routine_detail_screen_test.dart, apps/mobile/test/widgets/context_meter_test.dart, apps/mobile/test/screens/chat_screen_test.dart
 **Depends_On:** TASK-178, TASK-182
 **Description:** Surface TASK-179 and TASK-182 on mobile. Routine detail: Pause/Resume toggle, a 'Test run' button that shows the server's real-work warning in a confirm dialog before firing, and an optional skill selector (enabled skills only) on create/edit. Chat header: a compact context meter (used/limit, colour steps at 60/80%) fed by GET /threads/:id, and a 'Start fresh' action in the overflow menu with a confirm sheet explaining that earlier turns stay visible but the bot will not see them. Render the `Context compacted…` system message with TASK-157's system-event styling. Depends on TASK-178 only for the shared chat_screen.dart/api_client.dart territory — do not start until it is merged.
+
+**[ORCH 2026-09-06T10:55:00Z, reply to blocked report] Both real, resolving without new backend scope. (1) Test-run warning: `POST /routines/:id/test-run`'s warning string is a stable server-side literal (`"test run performs real work"`, `services/control-api/src/app.ts`, confirmed unchanged since TASK-182) — show it as a client-side literal in the pre-fire confirm dialog (matching what a prior, interrupted draft of this exact file already did — see the note below), then also surface the real server response afterward (e.g. a snackbar) so nothing is silently assumed post-fire. This satisfies the AC's intent (the exact known string, verbatim) without requiring a side-effect-free preview endpoint. (2) Edit-time skill rebinding: confirmed no `PATCH /routines/:id` exists anywhere — a real, separate gap, but it is new control-api surface, not mobile territory, and not worth blocking this task on. AC narrowed: skill selection is CREATE-time only (already fully supported — `POST /roles/:roleId/routines` already accepts `skillId`, confirmed in TASK-182's merged `app.ts`); split "routine skill rebinding after creation" into TASK-195 (TBD, low priority, small — a single `PATCH /routines/:id` route). Proceed on this basis.**
+
+**[ORCH 2026-09-06T10:55:00Z] Note on the "unexpected concurrent changes" CX correctly preserved without touching: these are ORCH's fault, not a mystery process. An earlier CX dispatch was launched against a stale, already-merged worktree branch (a dispatch.ps1 bug, see feedback filed separately) and had begun drafting real, seemingly-correct implementation (pause/resume toggle, a test-run confirm dialog already using the literal warning string, `context_meter.dart` scaffolding) before ORCH killed the process and reset the branch. `git checkout -B` does not clean the working tree, so those uncommitted edits survived onto the new `task/TASK-183-cx` branch. CX was right to not silently claim or discard unrecognised changes — but they are legitimate, on-task, unattributed prior work by this same unit; review and build on them (they already match the ORCH resolution above), don't discard them.**
 **Acceptance_Criteria:**
-- [ ] Test-run confirm dialog displays the server-supplied warning string verbatim, and only fires after confirmation (widget test)
+- [ ] Test-run confirm dialog displays the known literal warning string verbatim before firing, and only fires after confirmation (widget test)
+- [ ] Skill selector (enabled skills only) is offered at routine CREATE time only; a `PATCH /routines/:id` for edit-time rebinding is out of scope, split to TASK-195
 - [ ] Context meter renders the real values from a fake thread payload and changes colour at the thresholds (widget test)
 - [ ] 'Start fresh' calls POST /threads/:id/fresh and the chat still shows earlier messages afterwards (widget test)
 - [ ] flutter analyze and flutter test exit 0; nothing outside apps/mobile/** touched
@@ -5425,8 +5430,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-06T07:43:06Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T10:55:00Z
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
@@ -5726,3 +5731,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-06T08:25:00Z
+
+### TASK-195
+**Title:** Add `PATCH /routines/:id` for edit-time skill rebinding
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** Split from TASK-183 (see its Progress_Notes 2026-09-06T10:55:00Z) — TASK-183's description called for a skill selector "on create/edit", but no routine update route exists; `POST /roles/:roleId/routines` already accepts `skillId` at creation (TASK-182), so only the edit-time path is missing.
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
+**Depends_On:** TASK-182
+**Description:** Add a `PATCH /routines/:id` route accepting `{skillId: string | null}` (matching the create route's optional-uuid validation), wired through `ports.ts` into `packages/db/src/routines.ts`'s existing typed layer (a small `updateRoutineSkill` or equivalent — check whether a more general routine-update accessor is preferable before adding a single-purpose one). 404-never-403 tenant scoping, matching every other routine route TASK-182 established. Small, self-contained; do not scope-creep into other routine fields.
+**Acceptance_Criteria:**
+- [ ] PATCH /routines/:id updates skill_id (including clearing it via null) and returns the updated routine (test)
+- [ ] A request for another tenant's routine returns 404, not 403 (test)
+- [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-06T10:55:00Z
