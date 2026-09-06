@@ -1,12 +1,12 @@
 import { fileURLToPath } from "node:url";
 
 export { buildApp, type BuildAppOptions } from "./app.js";
-export { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
+export { createDatabaseBackedDeps, createDatabaseBackedThreadContext, type ControlApiDeps } from "./ports.js";
 export { getOpenApiDocument } from "./openapi.js";
 export { redactApprovalNonceFromUrl } from "./redact.js";
 
 import { buildApp } from "./app.js";
-import { createDatabaseBackedDeps } from "./ports.js";
+import { createDatabaseBackedDeps, createDatabaseBackedThreadContext } from "./ports.js";
 
 /**
  * Process entrypoint (not exercised by tests): read DATABASE_URL and PORT
@@ -19,7 +19,7 @@ export async function start(): Promise<void> {
   }
   const port = process.env.PORT !== undefined ? Number(process.env.PORT) : 3000;
   const deps = createDatabaseBackedDeps({ connectionString });
-  const app = buildApp(deps);
+  const app = buildApp(deps, { threadContext: createDatabaseBackedThreadContext({ connectionString }) });
   await app.listen({ port, host: "0.0.0.0" });
 }
 

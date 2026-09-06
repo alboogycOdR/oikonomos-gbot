@@ -157,6 +157,15 @@ export {
   type NewMessage,
 } from "./messages.js";
 export {
+  getOrInitThreadContext,
+  updateThreadContext,
+  startFreshEpoch,
+  insertThreadSummary,
+  getLatestThreadSummary,
+  type ThreadContext,
+  type ThreadSummary,
+} from "./threadContext.js";
+export {
   createRequireApprovalRule,
   getRequireApprovalRule,
   listRequireApprovalRules,
