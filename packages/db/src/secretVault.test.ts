@@ -91,7 +91,7 @@ integration("packages/db dynamic secret vault (TASK-192)", () => {
     const second = await storeSecret(options, { tenantId, roleId: ownerRoleId, value: "second" });
     const rows = await pool.query<{ ref: string; ciphertext: Buffer }>("SELECT ref, ciphertext FROM secret_values WHERE ref = ANY($1::uuid[])", [[first.ref, second.ref]]);
     const byRef = new Map(rows.rows.map((row) => [row.ref, row.ciphertext]));
-    await pool.query("UPDATE secret_values SET ciphertext = CASE WHEN ref = $1 THEN $2 WHEN ref = $3 THEN $4 END WHERE ref IN ($1, $3)", [first.ref, byRef.get(second.ref), second.ref, byRef.get(first.ref)]);
+    await pool.query("UPDATE secret_values SET ciphertext = CASE WHEN ref = $1 THEN $2::bytea WHEN ref = $3 THEN $4::bytea END WHERE ref IN ($1, $3)", [first.ref, byRef.get(second.ref), second.ref, byRef.get(first.ref)]);
     await expect(resolveSecretValue(options, first.ref, ownerRoleId, tenantId)).rejects.toThrow("Secret not found.");
     await expect(resolveSecretValue(options, second.ref, ownerRoleId, tenantId)).rejects.toThrow("Secret not found.");
   });
