@@ -252,6 +252,36 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/threads/{id}": {
+        get: {
+          summary: "Get a thread's context meter and 'start fresh' epoch (TASK-179, G-03a)",
+          operationId: "getThreadContext",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "Thread context meter",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ThreadContext" } } },
+            },
+            "404": { description: "No thread with that id (or owned by a different tenant)" },
+            "501": { description: "Thread context is not configured on this deployment" },
+          },
+        },
+      },
+      "/threads/{id}/fresh": {
+        post: {
+          summary: "'Start fresh': bump the thread's epoch (TASK-179, G-03a)",
+          operationId: "startThreadFresh",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "New epoch and reset context meter",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ThreadContext" } } },
+            },
+            "404": { description: "No thread with that id (or owned by a different tenant)" },
+            "501": { description: "Thread context is not configured on this deployment" },
+          },
+        },
+      },
     },
     components: {
       schemas: {
@@ -286,6 +316,16 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
         Skill: { type: "object" },
+        ThreadContext: {
+          type: "object",
+          required: ["id", "contextTokens", "contextLimit", "epoch"],
+          properties: {
+            id: { type: "string" },
+            contextTokens: { type: "integer", description: "Estimated tokens in the currently assembled prompt." },
+            contextLimit: { type: "integer" },
+            epoch: { type: "integer", description: "Bumped by POST /threads/{id}/fresh; only the current epoch's messages/summaries are assembled into the prompt." },
+          },
+        },
         NewTask: {
           type: "object",
           required: ["roleId", "title", "goal", "requestedBy"],
