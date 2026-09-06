@@ -5855,7 +5855,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-198
 **Title:** OIK-084 — sandboxed PreToolUse hook script (fail-closed contract, managed-settings registration) (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-015-sandboxed-broker-enforcement.md §Decision §3 (Accepted); docs/decisions/ADR-015-review-fable-2026-09-06.md change 3 (the four fail-open fixes, non-negotiable) and Context section (the resolved PreToolUse hook stdin/stdout schema, quoting the installed SDK's own `sdk.d.ts` — do not re-derive or guess this, it is already pinned in the ADR); the existing working reference implementation, `hooks/territory-firewall.js` (same exit-code contract: 0=allow, 2=block, reason on stderr). PROTECTED PATH packages/harness-factory/** — author CX9, reviewer ORCH satisfies the different-model rule (Directive §3).
@@ -5872,12 +5872,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A `permission_mode` matching a CLAUDE.md-banned mode denies without a network call (test)
 - [ ] `agentRef.isSubagent` is correctly derived from the `agent_id` field's presence (test, both cases)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-198-cx9
+**Started_At:** 2026-09-06T14:10:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T16:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T14:10:16Z
