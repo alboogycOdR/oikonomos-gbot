@@ -1,4 +1,5 @@
 import type { Role, Skill } from "@oikonomos/db";
+import type { ContextMessage } from "./contextCompaction.js";
 
 /** Build a useful identity even when an older role has no custom instructions. */
 export function buildRoleSystemPrompt(role: Role | null, fallbackRoleId: string): string {
@@ -93,4 +94,35 @@ export async function assembleSystemPrompt(params: {
     blocks.push(formatSkillBlock(skill));
   }
   return [base, ...blocks, ...notes].join("\n\n");
+}
+
+/**
+ * TASK-179 (G-03a) — full turn assembly: persona → skills → latest summary
+ * → verbatim messages after `compacted_through_message_id`. `history` MUST
+ * already be scoped to the thread's current epoch and to strictly-after
+ * `compactedThroughMessageId` by the caller (`contextCompaction.ts`'s ports
+ * do exactly this) — "start fresh" (epoch bump) works by the caller simply
+ * never handing this function a pre-fresh message or summary, so a
+ * pre-fresh turn can never leak into a post-fresh prompt (spec AC: "the
+ * assembled prompt contains zero pre-fresh messages or summaries").
+ */
+export async function assembleChatPrompt(params: {
+  role: Role | null;
+  fallbackRoleId: string;
+  message: string;
+  resolveEnabledSkill: SkillResolver;
+  /** The current epoch's latest `thread_summaries` row body, or null when none exists yet. */
+  summary: string | null;
+  /** Verbatim history for the current epoch, strictly after `compacted_through_message_id`, oldest first. */
+  history: readonly ContextMessage[];
+}): Promise<string> {
+  const systemPrompt = await assembleSystemPrompt(params);
+  const sections = [systemPrompt];
+  if (params.summary !== null && params.summary.trim().length > 0) {
+    sections.push(`## Earlier in this conversation\n\n${params.summary.trim()}`);
+  }
+  for (const message of params.history) {
+    sections.push(`[${message.role}] ${message.body}`);
+  }
+  return sections.join("\n\n");
 }

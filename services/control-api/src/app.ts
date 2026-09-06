@@ -83,6 +83,36 @@ export interface BuildAppOptions {
    * edit.
    */
   attachmentStore?: AttachmentStore;
+  /**
+   * TASK-179 (G-03a) — per-thread context meter/epoch, backing
+   * `GET /threads/:id` and `POST /threads/:id/fresh`. A plain port defined
+   * here (not a `ControlApiDeps` method) because `ports.ts` — which would
+   * need a new method added to that interface — and `@oikonomos/db`'s
+   * `index.ts` — which would need to re-export the new
+   * `packages/db/src/threadContext.ts` — are both outside this task's
+   * Owned_Paths (mirrors TASK-101's `openapi.ts`-outside-territory
+   * workaround above: route logic lands in-territory now, and real
+   * production wiring against Postgres is real, valuable follow-up work).
+   * Left `undefined` in production until that follow-up task exists; the
+   * two routes below answer `501` rather than silently fabricating state
+   * when it is absent (same shape as TASK-177's optional `ControlApiDeps`
+   * skills methods).
+   */
+  threadContext?: ThreadContextPort;
+}
+
+/** A thread's context-meter snapshot, per migration 015's `thread_context` row shape. */
+export interface ThreadContextSnapshot {
+  contextTokens: number;
+  contextLimit: number;
+  epoch: number;
+}
+
+/** Injected port for TASK-179's context-meter routes — see `BuildAppOptions.threadContext`. */
+export interface ThreadContextPort {
+  getContext(threadId: string): Promise<ThreadContextSnapshot>;
+  /** 'Start fresh': increments the epoch, resetting the meter. */
+  startFresh(threadId: string): Promise<ThreadContextSnapshot>;
 }
 
 const NEW_TASK_SCHEMA = {
@@ -1214,6 +1244,66 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  /**
+   * TASK-179 (G-03a): the thread's context meter — how close its assembled
+   * prompt is to `context_limit`, and its current 'start fresh' epoch. Same
+   * 404-never-403 tenant-ownership check as the sibling `/threads/:id/*`
+   * routes (`findTenantOwnedThread`). `501` when no `ThreadContextPort` is
+   * configured (see `BuildAppOptions.threadContext`'s doc comment) rather
+   * than fabricating a zeroed reading.
+   */
+  app.get<{ Params: { id: string } }>("/threads/:id", async (request, reply) => {
+    try {
+      const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+      if (thread === undefined) {
+        await reply.code(404).send({ error: "thread not found" });
+        return;
+      }
+      if (options.threadContext === undefined) {
+        await reply.code(501).send({ error: "thread context is not configured" });
+        return;
+      }
+      const context = await options.threadContext.getContext(thread.id);
+      await reply.code(200).send({
+        id: thread.id,
+        contextTokens: context.contextTokens,
+        contextLimit: context.contextLimit,
+        epoch: context.epoch,
+      });
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  /**
+   * TASK-179 (G-03a) — 'start fresh': bumps the thread's epoch so
+   * `promptAssembly` stops including any pre-fresh message or summary,
+   * while `GET /threads/:id/messages` keeps returning the full transcript
+   * unchanged (older turns stay visible, just invisible to the model).
+   */
+  app.post<{ Params: { id: string } }>("/threads/:id/fresh", async (request, reply) => {
+    try {
+      const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+      if (thread === undefined) {
+        await reply.code(404).send({ error: "thread not found" });
+        return;
+      }
+      if (options.threadContext === undefined) {
+        await reply.code(501).send({ error: "thread context is not configured" });
+        return;
+      }
+      const context = await options.threadContext.startFresh(thread.id);
+      await reply.code(200).send({
+        id: thread.id,
+        contextTokens: context.contextTokens,
+        contextLimit: context.contextLimit,
+        epoch: context.epoch,
+      });
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
 
   /**
    * TASK-129 (RT-01): replaces `ChatPage`'s client-side 2s
