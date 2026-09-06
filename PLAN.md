@@ -1,5 +1,5 @@
 ---
-plan_version: 20.0
+plan_version: 20.1
 last_updated: 2026-09-06T08:45:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-192 (secret vault, ADR-014) and TASK-194 (TASK-067 describe-or-deny liveness fix) both approved and merged. TASK-192 closed a genuine crypto correctness gap across two rework rounds (one substantial — a legitimate mid-task architecture review — one trivial SQL fix); TASK-194 closed a real ADR-005 liveness failure (an undescribable T3+ tool call could previously reach a valid approval card). Both independently re-verified with real tests, not trusted on the dossier's word. GB also self-caught and fixed a real bug (missing return-await) in its own TASK-194 work, and both TASK-190 and TASK-194 hit the identical Owned_Paths comma-parsing authoring mistake — worth remembering as a durable lesson, not just a one-off. TASK-184 (request_secret) is now unblocked — its Depends_On TASK-192 is satisfied — ready to redispatch to CX. TASK-169 stays blocked on the human action item."
@@ -5762,9 +5762,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-196
 **Title:** Governed Tier-0 provider composition (shared seam for group routing + context compaction)
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX
 **Priority:** medium
-**Spec_References:** Split from TASK-189 (see its Progress_Notes 2026-09-06T11:15:00Z) — TASK-189 and TASK-193 independently need the identical missing seam; CLAUDE.md's "shared files/cross-cutting work get their own single-owner integration task" rule applies. Budget rule: CLAUDE.md "Route Tier-0 observation work to cheap models via FreeLLMAPI."
+**Spec_References:** Split from TASK-189 (see its Progress_Notes 2026-09-06T11:15:00Z) — TASK-189 and TASK-193 independently need the identical missing seam; CLAUDE.md's "shared files/cross-cutting work get their own single-owner integration task" rule applies. Budget rule: CLAUDE.md "Route Tier-0 observation work to cheap models via FreeLLMAPI." PROTECTED PATH packages/harness-factory/** — author CX, reviewer ORCH satisfies the different-model rule (Directive §3).
 **Owned_Paths:** packages/harness-factory/src/tierZeroProvider.ts, packages/harness-factory/src/tierZeroProvider.test.ts, packages/harness-factory/src/index.ts
 **Depends_On:** —
 **Description:** Confirmed by grep (ORCH, 2026-09-06): no production code anywhere constructs a governed, standalone Tier-0 classifier call today. `packages/harness-factory/src/providers/gemini.ts`'s `createGeminiAdapter` is only ever wired inside `compose.ts`'s full L1 agent-run composition (a whole chat run), not callable standalone for a cheap classification/summarization call; `packages/agent-providers`'s `GeminiProvider` deliberately has no injected query function and fails closed by design. Build a small, focused `createTierZeroProvider(options): (prompt: string) => Promise<string>` (or equivalent minimal shape — investigate what `groupRouting.ts`'s `ShouldRespondScorer` and `contextCompaction.ts`'s `maybeCompact` actually need before fixing the signature) that composes a real FreeLLMAPI-backed call through the SAME governance line every other model call goes through (L1/broker — do not bypass PreToolUse or budget enforcement just because this is "just a classifier"). This is the one place both TASK-189 (group routing) and TASK-193 (context compaction) should import from — do not let either invent its own.
