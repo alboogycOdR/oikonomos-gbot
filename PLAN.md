@@ -6004,7 +6004,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-203
 **Title:** Wire real production LiveAgentPort (role_sandboxes + sandbox-client) for the mobile live-agent viewer
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** TASK-171's own `LiveAgentPort` interface (`services/control-api/src/liveAgent.routes.ts`) and its route logic are real and fully tested against fake ports; production wiring (resolving a role's actual sandbox via `@oikonomos/db`'s `role_sandboxes` and the execd PTY-viewer endpoint via `@oikonomos/sandbox-client`) was deliberately deferred since it needs `services/control-api/src/ports.ts`/`src/index.ts`, outside TASK-171's Owned_Paths — same shape as TASK-193's own `ThreadContextPort` follow-up.
@@ -6015,12 +6015,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A real chat run's active sandbox is resolvable through the production `LiveAgentPort`, proven against real Postgres
 - [ ] The resolved PTY-viewer endpoint routes through the Tailscale-bound lifecycle proxy, never the sandbox's directly-published port (same principle as TASK-169)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-203-gb
+**Started_At:** 2026-09-06T21:23:17Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T23:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T21:23:17Z
