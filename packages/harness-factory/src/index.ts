@@ -47,6 +47,17 @@ export {
   type BudgetTapReport,
   type BudgetTapSink,
 } from "./budgetTap.js";
+export {
+  SANDBOX_BROKER_PATH,
+  SANDBOX_HOOK_TIMEOUT_MS,
+  failClosedProcessHandlers,
+  installFailClosedProcessHandlers,
+  runSandboxPreToolUseHook,
+  sandboxHookEnvironment,
+  type SandboxHookDependencies,
+  type SandboxHookResult,
+  type SandboxPreToolUseInput,
+} from "./sandboxHook.js";
 
 export type {
   AgentSdkQueryFn,
