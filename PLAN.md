@@ -5572,7 +5572,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-189
 **Title:** G-04b — Wire single-owner group routing into the live production call site
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Split off TASK-180 (see its Progress_Notes 2026-09-06T00:20:00Z): TASK-180 builds the routing engine (route() + a real budgeted default Tier-0 scorer, both fully unit-testable in isolation); this task makes it the thing that actually decides who responds to a real group message. specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-04.
@@ -5590,15 +5590,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] TASK-122's existing fan-out approval behavior is unchanged for `@everyone`/multi-`@name` cases
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0
 **Branch:** task/TASK-189-cx9
-**Started_At:** 2026-09-06T07:57:43Z
+**Started_At:** 2026-09-06T08:35:05Z
 **Progress_Notes:**
 - [2026-09-06T02:10:00Z] [ORCH] Assigned to CX9 (idle capacity) and added TASK-179 to Depends_On: both tasks own services/control-api/src/app.ts and neither depended on the other (validate_plan.py's own latent-isolation warning) — sequenced rather than risk two builders on one file. Dispatch after TASK-179 merges.
 **Artifacts:** dossiers/TASK-189.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T12:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T08:35:05Z
 
 ### TASK-190
 **Title:** Security — enforce tenant ownership on every by-id route (cross-tenant IDOR) — skills/runs (DONE)
