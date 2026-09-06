@@ -294,6 +294,22 @@ class ApiClient {
         .toList();
   }
 
+  Future<ThreadContext> getThreadContext(String threadId) async {
+    final json = await _request(
+      'GET',
+      '/threads/${Uri.encodeComponent(threadId)}',
+    ) as Map<String, dynamic>;
+    return ThreadContext.fromJson(json);
+  }
+
+  Future<ThreadContext> startFresh(String threadId) async {
+    final json = await _request(
+      'POST',
+      '/threads/${Uri.encodeComponent(threadId)}/fresh',
+    ) as Map<String, dynamic>;
+    return ThreadContext.fromJson(json);
+  }
+
   Future<List<RoleHandoff>> listRoleHandoffs(String roleId) async {
     final json = await _request(
       'GET',
@@ -424,6 +440,7 @@ class ApiClient {
     String name,
     String schedule, {
     String? goal,
+    String? skillId,
   }) async {
     final trimmedGoal = goal?.trim();
     final body = <String, dynamic>{
@@ -431,6 +448,7 @@ class ApiClient {
       'schedule': schedule,
       if (trimmedGoal != null && trimmedGoal.isNotEmpty)
         'definition': {'goal': trimmedGoal},
+      if (skillId != null) 'skillId': skillId,
     };
     final json = await _request(
       'POST',
@@ -438,6 +456,22 @@ class ApiClient {
       body: body,
     );
     return Routine.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<Routine> setRoutinePaused(String routineId, bool paused) async {
+    final json = await _request(
+      'POST',
+      '/routines/${Uri.encodeComponent(routineId)}/${paused ? 'pause' : 'resume'}',
+    ) as Map<String, dynamic>;
+    return Routine.fromJson(json);
+  }
+
+  Future<RoutineTestRun> testRunRoutine(String routineId) async {
+    final json = await _request(
+      'POST',
+      '/routines/${Uri.encodeComponent(routineId)}/test-run',
+    ) as Map<String, dynamic>;
+    return RoutineTestRun.fromJson(json);
   }
 
   /// TASK-149 (Mobile Wave 2b) — `POST /devices`, authenticated with the

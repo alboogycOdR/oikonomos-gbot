@@ -23,11 +23,70 @@ class RoutineDetailScreen extends StatefulWidget {
 class _RoutineDetailScreenState extends State<RoutineDetailScreen> {
   List<RoutineRun>? _runs;
   String? _error;
+  late Routine _routine;
+  bool _updatingRoutine = false;
 
   @override
   void initState() {
     super.initState();
+    _routine = widget.routine;
     _loadHistory();
+  }
+
+  Future<void> _setPaused(bool paused) async {
+    if (_updatingRoutine) {
+      return;
+    }
+    setState(() => _updatingRoutine = true);
+    try {
+      final routine =
+          await widget.apiClient.setRoutinePaused(_routine.id, paused);
+      if (mounted) {
+        setState(() => _routine = routine);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update routine.')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingRoutine = false);
+      }
+    }
+  }
+
+  Future<void> _confirmTestRun() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Test run'),
+        content: const Text('test run performs real work'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Run test')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    try {
+      final result = await widget.apiClient.testRunRoutine(_routine.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(result.warning)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not start test run.')));
+      }
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -49,7 +108,7 @@ class _RoutineDetailScreenState extends State<RoutineDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final routine = widget.routine;
+    final routine = _routine;
     return Scaffold(
       appBar: AppBar(title: Text(routine.name)),
       body: ListView(
@@ -59,6 +118,20 @@ class _RoutineDetailScreenState extends State<RoutineDetailScreen> {
           const SizedBox(height: 8),
           Text('Schedule: ${routine.schedule ?? 'Not scheduled'}'),
           Text('Next run: ${routine.nextFireAt ?? 'Not scheduled'}'),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('routine-pause-resume'),
+            onPressed:
+                _updatingRoutine ? null : () => _setPaused(!routine.paused),
+            icon: Icon(routine.paused ? Icons.play_arrow : Icons.pause),
+            label: Text(routine.paused ? 'Resume routine' : 'Pause routine'),
+          ),
+          OutlinedButton.icon(
+            key: const Key('routine-test-run'),
+            onPressed: _confirmTestRun,
+            icon: const Icon(Icons.play_circle_outline),
+            label: const Text('Test run'),
+          ),
           const SizedBox(height: 24),
           Text('Run history', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),

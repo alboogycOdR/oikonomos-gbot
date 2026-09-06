@@ -189,6 +189,8 @@ class Routine {
     required this.schedule,
     required this.lastFireAt,
     required this.nextFireAt,
+    required this.paused,
+    this.skillId,
   });
 
   final String id;
@@ -196,6 +198,8 @@ class Routine {
   final String? schedule;
   final String? lastFireAt;
   final String? nextFireAt;
+  final bool paused;
+  final String? skillId;
 
   factory Routine.fromJson(Map<String, dynamic> json) {
     return Routine(
@@ -204,8 +208,42 @@ class Routine {
       schedule: json['schedule'] as String?,
       lastFireAt: json['lastFireAt'] as String?,
       nextFireAt: json['nextFireAt'] as String?,
+      paused: json['paused'] as bool? ?? false,
+      skillId: json['skillId'] as String?,
     );
   }
+}
+
+/// The live context accounting for one thread.  This is deliberately kept
+/// separate from [ThreadSummary]: the list endpoint does not return it.
+class ThreadContext {
+  const ThreadContext({
+    required this.contextTokens,
+    required this.contextLimit,
+    required this.epoch,
+  });
+
+  final int contextTokens;
+  final int contextLimit;
+  final int epoch;
+
+  factory ThreadContext.fromJson(Map<String, dynamic> json) => ThreadContext(
+        contextTokens: json['contextTokens'] as int,
+        contextLimit: json['contextLimit'] as int,
+        epoch: json['epoch'] as int,
+      );
+}
+
+class RoutineTestRun {
+  const RoutineTestRun({required this.routine, required this.warning});
+
+  final Routine routine;
+  final String warning;
+
+  factory RoutineTestRun.fromJson(Map<String, dynamic> json) => RoutineTestRun(
+        routine: Routine.fromJson(json['routine'] as Map<String, dynamic>),
+        warning: json['warning'] as String,
+      );
 }
 
 /// The subset of a task used to reconstruct a routine's fire history.
