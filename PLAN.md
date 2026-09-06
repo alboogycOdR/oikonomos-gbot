@@ -5420,7 +5420,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-184
 **Title:** G-05a — Secure secret intake: `request_secret` broker tool + sealed store + audit (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05 (AC anchors: value appears in zero rows of messages/audit_events/worker logs; ref resolves only for the requesting role); report C13, §8.2, §12.2 'Secure secret request'; ADR-010 Amendment (secret handling on the enforced line, N4); TASK-088/093 sealed-secret guard; TASK-131 sendToRole as the pattern for a real invokable broker tool. PROTECTED PATH packages/broker/** — author CX (Codex), reviewer ORCH on opus-4-8 satisfies the different-model rule (Directive §3).
@@ -5434,7 +5434,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The ref resolves through TASK-192's resolveSecretValue for the requesting role and is refused (404-shaped, not 403-shaped — indistinguishable from "does not exist") for another role (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
 **Branch:** task/TASK-184-cx
-**Started_At:** 2026-09-05T22:05:39Z
+**Started_At:** 2026-09-06T06:31:42Z
 **Progress_Notes:**
 - [2026-09-06T00:00:00Z] [CX] BLOCKED — OWNERSHIP_CONFLICT, correctly diagnosed: real tool mounting/dispatch lives in `services/worker/src/workspaceMcpServer.ts` (the sendToRole/rename_self pattern this task was told to follow); parking via `RunParkPort` requires wiring in `services/worker/src/chatRunDriver.ts`/`packages/harness-factory/src/compose.ts`; the D3 sealed-secret resolver lives in `packages/shared/src/sealedSecretRoot.ts`; and a public `packages/db` consumer needs an `index.ts` export. None was in the original Owned_Paths. Reported rather than reached outside territory or silently narrowed the AC.
 - [2026-09-06T00:15:00Z] [ORCH] Independently confirmed the diagnosis by reading `workspaceMcpServer.ts` and `chatRunDriver.ts` directly — CX is right: existing broker tools that park (none do today; only PreToolUse denials park, generically) don't cover "the tool's own handler runs, creates a row, and the run parks waiting on it", which is what this task's AC literally requires. Widened Owned_Paths to `workspaceMcpServer.ts`, `chatRunDriver.ts`, and `packages/db/src/index.ts` — the minimal real integration surface, not the whole worker package. Not splitting into a separate task: the mount/dispatch/park pieces are too tightly coupled to test independently from the broker tool itself. Unblocked, redispatching CX.
@@ -5447,8 +5447,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T02:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T06:31:42Z
 
 ### TASK-185
 **Title:** G-08 — Per-sandbox egress allowlist + close the sandbox port band at the host (protected path)
