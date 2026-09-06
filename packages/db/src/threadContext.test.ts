@@ -23,6 +23,7 @@ integration("packages/db threadContext — meter, summaries, epoch (TASK-179)", 
     await pool.query("DELETE FROM thread_summaries WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM thread_context WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
   }

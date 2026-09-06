@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 export interface NewThread {
   roleId: string;
@@ -109,19 +109,6 @@ function requireGroupRoleIds(roleIds: string[]): string[] {
     throw new Error("roleIds must not contain duplicates.");
   }
   return normalizedRoleIds;
-}
-
-async function withPool<T>(options: DatabaseOptions, fn: (pool: Pool) => Promise<T>): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({ connectionString: options.connectionString, ...defaultPoolConfig, ...options.poolConfig });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 export async function createThread(options: DatabaseOptions, input: NewThread): Promise<Thread> {

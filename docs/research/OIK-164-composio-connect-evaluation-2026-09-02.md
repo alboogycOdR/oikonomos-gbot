@@ -40,3 +40,32 @@ At the ordinary own-credential overage rate, even 1,000,000 calls is about US$30
 - Composio, [Composio Connect](https://docs.composio.dev/docs/composio-connect) — hosted endpoint, seven meta-tools, dynamic discovery, and multi-execute semantics.
 - Composio, [Authentication](https://docs.composio.dev/docs/authentication) and [Connected Accounts](https://docs.composio.dev/reference/api-reference/connected-accounts) — connected-account credential storage/refresh and hosted authentication.
 - Composio, [Pricing](https://composio.dev/pricing) — current rates, spend caps, ZDR/KMS limitation, and premium-tool pricing (checked 2026-09-02).
+
+---
+
+## Addendum 2026-09-06 — budget ceiling correction (R30,000 → R350)
+
+**Raised by:** ORCH as TASK-200, after the 2026-09-06 human-directed reset of CLAUDE.md's Budget section. **This addendum does not rewrite the 2026-09-02 spike body.** §§1–3 and the headline recommendation remain the historical record, including the R30,000 figure they reasoned against. Pricing numbers below are the spike's own 2026-09-02 figures, re-compared; this addendum does not re-fetch Composio's live price list.
+
+**What changed.** On 2026-09-06 the platform ceiling was reset from R30,000/month to **R350/month (inference + hosting)** — a ~100× reduction. Converted at the documented placeholder rate `DEFAULT_USD_TO_ZAR_RATE = 18.5` (`services/worker/src/subprocessProviders.ts`; "NOT authoritative. Override via `USD_TO_ZAR_RATE`"), that is ~US$18.92/month combined, not ~US$1,622/month.
+
+**What the original cost comparison assumed.** §3 treated ordinary-call pricing as "not the immediate budget blocker": Free = 100,000 tool calls/month hard-capped; Pro = US$29/month plus US$0.0003 per ordinary own-credential overage call; ~US$300 for 1,000,000 ordinary own-credential calls before subscription/add-ons; ~US$1,200 at the managed-app + ZDR + BAA rate before subscription; premium hosted-browser tasks ~US$0.70 each. Both US$300 and US$1,200 were called "small relative to the project-wide R30,000/month ceiling". The cost verdict was: ordinary-call pricing is acceptable only behind a per-provider spend cap materially below R30,000; cost does not cure the sovereignty (§1) or governance (§2) incompatibilities, so it is not a reason to adopt Connect.
+
+**Arithmetic against the new figure** (same 2026-09-02 rates, no new fetch):
+
+| Original §3 quantity | vs ~US$18.92 combined ceiling |
+|---|---|
+| Pro subscription floor US$29/month | **153% of the entire ceiling** before any tool call |
+| ~US$300 for 1M ordinary own-credential calls (ex-subscription) | **~16×** the entire monthly budget |
+| ~US$1,200 at managed-app + ZDR + BAA (ex-subscription) | **~63×** the entire monthly budget |
+| Premium hosted-browser task ~US$0.70 | **~3.7% of the month per task**; ~27 such tasks exhaust the ceiling |
+| Free plan (100,000 calls, $0) | The only quoted price point that fits, and §3 already called it "not an operational commitment" |
+
+Against R30,000 (~US$1,622) the US$300 figure was ~18% of the USD ceiling and the US$1,200 figure was already ~74% of it. Against R350 both dwarf the pot. The original framing that those sums were "small relative to" the ceiling does not hold.
+
+**Verdict — headline recommendation (do not adopt Composio Connect for G1): UNCHANGED, and reinforced. Cost verdict: CHANGED.**
+
+- **Unchanged / reinforced:** do not adopt. §§1–2 (N5 / R19 data-sovereignty; per-tool tier-mapping infeasibility against OIK-047) were independently sufficient and are untouched by the ceiling reset. A tighter budget makes an unmetered / hard-to-cap third-party gateway *less* attractive, not more.
+- **Changed:** cost is no longer "not the immediate budget blocker". Ordinary Pro pricing exceeds the entire combined inference+hosting ceiling **at the subscription floor** (US$29 > ~US$18.92). Even if sovereignty and governance were solved tomorrow, Connect's quoted Pro path is unaffordable under R350. The §3 clause "acceptable only behind a per-provider spend cap materially below R30,000" is recast: there is no remaining headroom in which a US$29/month third-party gateway subscription can sit "materially below" a US$18.92 combined ceiling. Cost is now an independent additional reason not to adopt, not merely a non-curative companion to §§1–2.
+
+This addendum does not cut a new ADR, does not change any connector code, and does not authorise a Free-plan experiment. A later, separately scoped ADR evaluation remains possible in principle (as the 2026-09-02 recommendation already allowed) but would have to start from R350, not from R30,000.

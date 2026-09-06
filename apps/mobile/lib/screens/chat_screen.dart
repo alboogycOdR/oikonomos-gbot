@@ -11,6 +11,7 @@ import '../attach/file_picker_port.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
 import '../widgets/context_meter.dart';
+import '../widgets/live_agent_button.dart';
 import '../widgets/skill_picker.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
@@ -451,6 +452,10 @@ class ChatScreenState extends State<ChatScreen>
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'fresh', child: Text('Start fresh')),
             ],
+          ),
+          LiveAgentButton(
+            apiClient: widget.apiClient,
+            roleId: widget.bot.roleId,
           ),
           IconButton(
             key: const Key('bot-settings-button'),

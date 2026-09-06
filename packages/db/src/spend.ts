@@ -1,6 +1,6 @@
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
-import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
+import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
  * TASK-143 / OIK-110/111 (narrowed scope: Codex/Grok subprocess path only —
@@ -94,26 +94,6 @@ function toSpendRecord(row: SpendRecordRow): SpendRecord {
 /** UTC calendar-month boundary, used as the default platform-spend window. */
 export function startOfCurrentMonthUtc(now: Date = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-}
-
-async function withPool<T>(
-  options: DatabaseOptions,
-  fn: (pool: Pool) => Promise<T>,
-): Promise<T> {
-  if (options.connectionString.trim().length === 0) {
-    throw new Error("Database connectionString must not be empty.");
-  }
-
-  const pool = new Pool({
-    connectionString: options.connectionString,
-    ...defaultPoolConfig,
-    ...options.poolConfig,
-  });
-  try {
-    return await fn(pool);
-  } finally {
-    await pool.end();
-  }
 }
 
 /**

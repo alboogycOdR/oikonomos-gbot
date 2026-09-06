@@ -51,3 +51,23 @@ Building a complete Gemini agentic adapter (subprocess/gate spawning, MCP wiring
 2. Decompose Stage 1 into concrete tasks (this session, ORCH, interactive — not deferred to a separate headless pass given real-time human availability for correction).
 3. Dispatch and build Stage 1 under the normal DEVDEPARTMENT protected-path review standard.
 4. A follow-up decompose pass cuts Stage 2 (full tool-executing parity) once Stage 1 is live and reviewed.
+
+---
+
+## 7. Amendment 2026-09-06 — budget ceiling correction (R30,000 → R350)
+
+**Raised by:** ORCH as TASK-200, after the 2026-09-06 human-directed reset of CLAUDE.md's Budget section. **This amendment does not rewrite §§1–6.** Those sections remain the historical decision record, including the R30,000 figure they reasoned against.
+
+**What changed.** On 2026-09-06 the platform ceiling was reset from R30,000/month to **R350/month (inference + hosting)** — a ~100× reduction. Converted at the documented placeholder rate `DEFAULT_USD_TO_ZAR_RATE = 18.5` (`services/worker/src/subprocessProviders.ts`; "NOT authoritative. Override via `USD_TO_ZAR_RATE`"), that is ~US$18.92/month combined, not ~US$1,622/month.
+
+**What the original cost comparison assumed.** §5 treated budget tracking as a bookkeeping companion to Stage 1, keyed on CLAUDE.md's then-current R30,000/month ceiling, with gemini-3.7-flash's introductory pricing ($0.75/1M input, $3.75/1M output) merely "differing materially from Claude's". §2.4 authorised gemini-3.7-flash as the default provider for new runs once the adapter's liveness canary passed; §3 narrowed the first wave to a Tier-0/observation default, with Stage 2 promotion to tool-executing default deferred but not cost-capped. No per-provider *hard cap* was set — only a cost table "alongside Stage 1".
+
+**Arithmetic against the new figure** (same Gemini introductory prices; 4:1 input:output mix as a labelled observation-workload assumption, not a measurement). If the entire ~US$18.92 were Gemini inference and hosting were free: ~11.2M input + ~2.8M output tokens/month. That is still enough for a careful Stage 1 observation load. It is not enough to treat Gemini, Claude Haiku (already the TASK-170/201 tool-executing default), Codex/Grok subprocess routing, *and* hosting as uncapped co-tenants of one pot. Hosting is in the same ceiling; TASK-143's own comment records that the enforced constant covers the Codex/Grok inference slice only. A single unmetered Stage 2 agentic loop would be able to consume the whole month.
+
+**Verdict — original adoption decision: UNCHANGED, and reinforced. Cost-control assumptions: CHANGED.**
+
+- **Unchanged / reinforced:** add Gemini as an additional provider; keep Claude as the reference implementation and fallback; ship Stage 1 as the cheap Tier-0/observation default. A 100× tighter ceiling makes routing observation work to gemini-3.7-flash *more* necessary, not less — it is the pressure-relief valve the Budget section already named ("Route Tier-0 observation work to cheap models via FreeLLMAPI").
+- **Changed:** §5's R30,000 tracking target is obsolete. Tracking spend against a ceiling the platform no longer has would be an inert control (ADR-005: a check keyed on the wrong constant is not a live control). The per-provider cost table is no longer "land alongside Stage 1, not after" bookkeeping — Gemini's table already exists (`packages/agent-providers/src/pricing.ts`, TASK-096); what the new ceiling requires, and §5 did not, is a **hard per-provider spend cap that is a small fraction of ~US$18.92/month**, leaving room for hosting and the Claude Haiku tool-executing path.
+- **Changed (qualification of §2.4):** under R350, gemini-3.7-flash must **not** become an uncapped default for all new runs, including tool-executing ones, merely because a liveness canary passed. §3's narrower "default **for Tier-0 work**" still holds. Stage 2 promotion stays authorised in direction, but is blocked on a documented per-provider cap recast against R350 — not on the canary alone.
+
+This amendment does not cut that cap, does not change `ComposeOptions.provider`, and does not reopen enforcement parity (§2.1–2.3, §4). Those remain in force. A follow-on decompose may cut the cap; this document only records that the original cost premise no longer supports an uncapped default.
