@@ -17,9 +17,10 @@
  * matching L1's approval threshold). N3: the same default applies on
  * lower tiers — we never run what we cannot render.
  *
- * Additive to L1 `handlePreToolUse`. `index.ts` is outside Owned_Paths
- * so this module is not wired into the HTTP handler in this task;
- * existing broker tests stay byte-identical.
+ * Wired into L1 `handlePreToolUse` (TASK-194): an undescribable tool
+ * is denied before `issueApproval` / `verifyAndConsume` run. The
+ * approval card itself remains ADR-004 `actionRender` in approvals —
+ * this module is the gate, not the card formatter.
  */
 
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
@@ -152,3 +153,47 @@ export function describeOrDeny(
   }
   return { decision: "allow", description, tier };
 }
+
+function stringInput(call: ToolCall, key: string): string | undefined {
+  const value = call.input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function targetOf(call: ToolCall, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = stringInput(call, key);
+    if (value !== undefined && value.length > 0) return value;
+  }
+  return call.destination ?? "";
+}
+
+function describeAs(action: string, ...keys: string[]): Describer {
+  return (call) => ({ action, target: targetOf(call, ...keys) });
+}
+
+/**
+ * Default whitelist used by `handlePreToolUse` when the caller does not
+ * inject `describers`. Unknown names are still undescribable — this is
+ * not a generic fallback.
+ *
+ * Covers Agent SDK builtins plus the T3 tools existing L1 / canary
+ * suites already issue approvals for (gmail send/draft, office act).
+ * A tool not listed here is denied before any approval is issued.
+ */
+export const builtinDescribers: Readonly<Record<string, Describer>> = Object.freeze({
+  Read: describeAs("read file", "file_path", "path"),
+  Glob: describeAs("glob files", "pattern", "path"),
+  Grep: describeAs("grep files", "pattern", "path"),
+  Edit: describeAs("edit file", "file_path", "path"),
+  Write: describeAs("write file", "file_path", "path"),
+  Bash: describeAs("run command", "command"),
+  mcp__workspace__send_to_role: describeAs("send to role", "toRoleId"),
+  mcp__workspace__rename_self: describeAs("rename self", "name"),
+  mcp__gmail__send_message: describeAs("send email", "to"),
+  mcp__gmail__create_draft: describeAs("create draft", "to"),
+  mcp__gmail__list_messages: describeAs("list messages", "q"),
+  mcp__office__act: describeAs("office action", "target"),
+});
+
+/** Audit payload type emitted when the describe gate denies on the L1 path. */
+export const DESCRIBE_DENIED_AUDIT_TYPE = "describe.denied" as const;

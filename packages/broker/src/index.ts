@@ -23,6 +23,12 @@ import {
 import { resolveEnforcementGate } from "./enforcementGate.js";
 import { RefusalMemory } from "./refusalMemory.js";
 import { guardSecretPath } from "./secretPathGuard.js";
+import {
+  builtinDescribers,
+  describeOrDeny,
+  DESCRIBE_DENIED_AUDIT_TYPE,
+  type DescriberRegistry,
+} from "./describe.js";
 
 export {
   resolveBudgetGate,
@@ -64,6 +70,19 @@ export {
   type ManifestMap,
   type RecheckDecision,
 } from "./recheck.js";
+export {
+  APPROVAL_TIER as DESCRIBE_APPROVAL_TIER,
+  builtinDescribers,
+  describeOrDeny,
+  describeToolCall,
+  formatDescribedAction,
+  DESCRIBE_DENIED_AUDIT_TYPE,
+  TARGET_MAX_CHARS,
+  type ActionDescription,
+  type Describer,
+  type DescriberRegistry,
+  type ToolCall,
+} from "./describe.js";
 
 /** Handover §4.1 request contract for POST /v1/broker/pretooluse. */
 export interface PreToolUseRequest {
@@ -128,6 +147,13 @@ export interface BrokerDependencies {
    * `manifestMap`.
    */
   manifestMap?: ManifestMap;
+  /**
+   * Whitelist describers for the TASK-067/194 describe-or-deny gate.
+   * When omitted, {@link builtinDescribers} is used. An empty registry
+   * is fail-closed (every tool is undescribable) — omitting the field
+   * is not the same as passing `{}`.
+   */
+  describers?: DescriberRegistry;
 }
 
 const APPROVAL_TIER: RiskTier = "T3_external";
@@ -295,6 +321,101 @@ async function failClosed(
 }
 
 /**
+ * Approval-required path: describe-or-deny first, then consume or issue.
+ * Both the legacy T3+ branch and the Addendum F enforced-class branch
+ * funnel through here so an undescribable tool cannot reach issueApproval
+ * on either site. MUTATION target: dropping the describeOrDeny call lets
+ * an unknown tool park as approval_pending and reddens index.test.ts.
+ */
+async function resolveApprovalRequired(
+  request: PreToolUseRequest,
+  dependencies: BrokerDependencies,
+  destination: string,
+  capability: RegisteredCapability,
+  tier: RiskTier,
+  auditPayload?: Record<string, unknown>,
+): Promise<PreToolUseResponse> {
+  const described = describeOrDeny(
+    {
+      toolName: request.toolName,
+      input: request.input,
+      destination,
+    },
+    {
+      describers: dependencies.describers ?? builtinDescribers,
+      tier,
+    },
+  );
+  if (described.decision === "deny") {
+    return deny(
+      dependencies,
+      request,
+      described.code,
+      capability.capabilityId,
+      tier,
+      {
+        type: DESCRIBE_DENIED_AUDIT_TYPE,
+        code: described.code,
+        ...auditPayload,
+      },
+    );
+  }
+
+  const action = actionFor(request, destination);
+  if (request.approvalNonce !== undefined) {
+    const consumed = await dependencies.verifyAndConsume(
+      request.approvalNonce,
+      dependencies.consumeDependencies,
+      action,
+    );
+    if (consumed.consumed) {
+      return {
+        decision: "allow",
+        tier,
+        auditEventId: await audit(dependencies, request, {
+          verdict: "allow",
+          capability: capability.capabilityId,
+          tier,
+          ...(auditPayload !== undefined ? { payload: auditPayload } : {}),
+        }),
+      };
+    }
+    return deny(
+      dependencies,
+      request,
+      "approval.not_granted",
+      capability.capabilityId,
+      tier,
+      auditPayload,
+    );
+  }
+
+  // ADR-004: only canonical payload fields are supplied; approvals derives render itself.
+  const pending = await dependencies.issueApproval(
+    {
+      runId: request.runId,
+      capabilityId: capability.capabilityId,
+      toolName: action.toolName,
+      input: action.input,
+      destination: action.destination,
+      tenantId: request.tenantId,
+    },
+    dependencies.issueApprovalDependencies,
+  );
+  return {
+    decision: "deny",
+    reason: "approval_pending",
+    approvalId: pending.approvalId,
+    auditEventId: await audit(dependencies, request, {
+      verdict: "require_approval",
+      capability: capability.capabilityId,
+      tier,
+      ...(auditPayload !== undefined ? { payload: auditPayload } : {}),
+    }),
+  };
+}
+
+/**
  * L1 broker decision handler. HTTP adaptation belongs to OIK-084; this
  * function composes policy, approvals, and audit without adding a framework.
  */
@@ -445,50 +566,9 @@ async function decidePreToolUse(
         }),
       };
     }
-    const action = actionFor(request, destination);
-    if (request.approvalNonce !== undefined) {
-      const consumed = await dependencies.verifyAndConsume(
-        request.approvalNonce,
-        dependencies.consumeDependencies,
-        action,
-      );
-      if (consumed.consumed) {
-        return {
-          decision: "allow",
-          tier,
-          auditEventId: await audit(dependencies, request, {
-            verdict: "allow",
-            capability: capability.capabilityId,
-            tier,
-          }),
-        };
-      }
-      return deny(dependencies, request, "approval.not_granted", capability.capabilityId, tier);
-    }
-    const pending = await dependencies.issueApproval(
-      {
-        runId: request.runId,
-        capabilityId: capability.capabilityId,
-        toolName: action.toolName,
-        input: action.input,
-        destination: action.destination,
-        tenantId: request.tenantId,
-      },
-      dependencies.issueApprovalDependencies,
-    );
-    return {
-      decision: "deny",
-      reason: "approval_pending",
-      approvalId: pending.approvalId,
-      auditEventId: await audit(dependencies, request, {
-        verdict: "require_approval",
-        capability: capability.capabilityId,
-        tier,
-      }),
-    };
+    return await resolveApprovalRequired(request, dependencies, destination, capability, tier);
   }
 
-  const action = actionFor(request, destination);
   const remembered = (dependencies.refusalMemory ?? refusalMemoryFor(dependencies)).consult({
     runId: request.runId,
     tool: request.toolName,
@@ -551,56 +631,17 @@ async function decidePreToolUse(
     };
   }
 
-  if (request.approvalNonce !== undefined) {
-    const consumed = await dependencies.verifyAndConsume(
-      request.approvalNonce,
-      dependencies.consumeDependencies,
-      action,
-    );
-    if (consumed.consumed) {
-      return {
-        decision: "allow",
-        tier,
-        auditEventId: await audit(dependencies, request, {
-          verdict: "allow",
-          capability: capability.capabilityId,
-          tier,
-          payload: {
-            enforcementClass: enforcement.enforcementClass,
-            enforcementRank: enforcement.rank,
-          },
-        }),
-      };
-    }
-    return deny(dependencies, request, "approval.not_granted", capability.capabilityId, tier);
-  }
-
-  // ADR-004: only canonical payload fields are supplied; approvals derives render itself.
-  const pending = await dependencies.issueApproval(
+  return await resolveApprovalRequired(
+    request,
+    dependencies,
+    destination,
+    capability,
+    tier,
     {
-      runId: request.runId,
-      capabilityId: capability.capabilityId,
-      toolName: action.toolName,
-      input: action.input,
-      destination: action.destination,
-      tenantId: request.tenantId,
+      enforcementClass: enforcement.enforcementClass,
+      enforcementRank: enforcement.rank,
     },
-    dependencies.issueApprovalDependencies,
   );
-  return {
-    decision: "deny",
-    reason: "approval_pending",
-    approvalId: pending.approvalId,
-    auditEventId: await audit(dependencies, request, {
-      verdict: "require_approval",
-      capability: capability.capabilityId,
-      tier,
-      payload: {
-        enforcementClass: enforcement.enforcementClass,
-        enforcementRank: enforcement.rank,
-      },
-    }),
-  };
   } catch (error) {
     if (error instanceof AuditUnavailableError) {
       return {
