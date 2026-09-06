@@ -1,5 +1,5 @@
 ---
-plan_version: 28.8
+plan_version: 28.9
 last_updated: 2026-09-06T15:05:00Z
 overall_status: in_progress
 orchestrator_notes: "TASK-169 closed for real (live OpenSandbox creds obtained, real client bug found+fixed proving it live). TASK-170 (OIK-043, route real chat exec through a sandbox) escalated through 6 correctly-diagnosed blocks to a genuine architecture gap — resolved via ADR-015 (sandboxed broker enforcement, Accepted after Fable's adversarial review), decomposed into TASK-197 (OIK-084 real broker HTTP route/listener, done+merged) and TASK-198 (sandboxed PreToolUse hook script, done+merged), then TASK-170 resumed implementing ADR-015 point 3 (mint/inject per-turn token, wire sandbox exec). Currently in_progress on CX9 (task/TASK-170-cx9), 6th widen just applied (control-api brokerHttpRoute.test.ts import fix after the broker-token relocation). TASK-162 (flaky-test investigation, independent, no territory overlap) dispatched to CX in parallel. TASK-163/164 both touch chatRunDriver.ts, which TASK-170 owns — do not dispatch either until TASK-170 lands. TASK-171/185/186/187/188 all remain genuinely blocked behind TASK-170 (transitively for 187/188 via 171). GB and S5 have no independently-ready work right now — everything else in the backlog either depends on or territorially conflicts with TASK-170. Recurring lessons this session, hit repeatedly, worth remembering: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At."
@@ -4807,7 +4807,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
@@ -4826,9 +4826,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Artifacts:** dossiers/TASK-162.md
 **Test_Evidence:** PASS (independent, in isolation): control-api PATCH-instructions target; approval-resume target; db runs.test.ts listOpenRuns target; db runs.test.ts full 13/13. FAIL (reproduces even in isolation, root cause identified with live-server evidence, not guessed): chat.routes.test.ts full-file run and its group-thread fanout target hit real Postgres connection-limit exhaustion from a transient burst, not a persistent leak.
 **Review_Findings:** Diagnosis is correct and well-evidenced; root cause is more precisely `packages/db`'s per-call ad-hoc-pool pattern (confirmed by direct code reading) than a "shared pooler" issue, since there is no PgBouncer in this deployment. No findings against CX — the investigation was honest and the two real fixes made along the way are correct and should be committed.
-**Blocked_Reason:** TOOLING_FAILURE: fixing the underlying transient connection-exhaustion pattern for real requires a shared/injected pool across `packages/db`'s accessors, a refactor spanning the whole package — genuinely outside this task's 2-file Owned_Paths and disproportionate to its `low` priority. Does not block any other backlog item; parking here rather than widening.
+**Blocked_Reason:** TOOLING_FAILURE: fixing the underlying transient connection-exhaustion pattern for real requires a shared/injected pool across `packages/db`'s accessors, a refactor spanning the whole package — genuinely outside this task's 2-file Owned_Paths and disproportionate to its `low` priority. Does not block any other backlog item; parking here rather than widening. CX's two genuine partial fixes (pool-size consolidation, group-thread fanout teardown sync) merged to master (commit history: `6b4a905` + merge) — independently re-verified: `packages/db/src/runs.test.ts` 13/13 clean in isolation; `services/control-api` full integration run still hits `sorry, too many clients already`, but now from a DIFFERENT, unowned file (`test/edit.route.integration.test.ts`), confirming this really is package-wide (TASK-199's scope), not something fixable inside TASK-162's two files.
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-06T15:20:00Z
+**Updated_At:** 2026-09-06T15:25:00Z
 
 ### TASK-163
 **Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
