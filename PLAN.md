@@ -5285,7 +5285,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-179
 **Title:** G-03a — Context hygiene backend: per-thread context meter, rolling compaction, 'start fresh'
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-03 (AC anchors incl. measured prompt-size reduction and no sealed secret in a summary); report §10.6 staff-confirmed Grok Bot gap, §12.3 memory.compaction, §13.2 item 3; Addendum F §3.3 ('memory is not the transcript'; nothing is written to memory as a side effect of a run)
@@ -5298,15 +5298,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] After POST /threads/:id/fresh the assembled prompt contains zero pre-fresh messages or summaries (test), while GET /threads/:id/messages still returns them
 - [ ] packages/memory is not imported by contextCompaction.ts (grep assertion in test); the compaction model call is routed to the Tier-0 provider
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-179-s5
+**Started_At:** 2026-09-06T05:13:44Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T05:13:44Z
 
 ### TASK-180
 **Title:** G-04 — Single-owner group routing: exactly one responder when nobody is @-mentioned
