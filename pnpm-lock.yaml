@@ -354,6 +354,12 @@ importers:
       '@oikonomos/approvals':
         specifier: workspace:*
         version: link:../../packages/approvals
+      '@oikonomos/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
+      '@oikonomos/broker':
+        specifier: workspace:*
+        version: link:../../packages/broker
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
