@@ -5827,7 +5827,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-197
 **Title:** OIK-084 — broker HTTP surface for sandboxed enforcement (own listener, per-turn token auth) (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-015-sandboxed-broker-enforcement.md §Decision §1 and §2 (Accepted, after Fable 5.1's adversarial review — see the ADR's own history); docs/decisions/ADR-015-review-fable-2026-09-06.md changes 2 and 5 specifically; ADR-001 (the invariant this route serves, R3's 10s fail-closed deadline); ADR-004 (no caller-supplied prose — identity comes from the token, never the request body). PROTECTED PATH packages/broker/** (imports its types/logic directly) and this is itself the long-deferred OIK-084 broker HTTP surface — author CX, reviewer ORCH satisfies the different-model rule (Directive §3).
@@ -5842,15 +5842,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A request over the body-size cap, or exceeding the rate limit, is denied, not crashed or retried unboundedly (test)
 - [ ] A slow/hung downstream broker call still resolves within a bounded server-side timeout, mapped to `BrokerFailure`'s existing taxonomy (test)
 - [ ] pnpm -r test, pnpm -r build, pnpm lint exit 0; CI banned-mode grep clean
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-197-cx
+**Started_At:** 2026-09-06T13:25:52Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T16:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T13:25:52Z
 
 ### TASK-198
 **Title:** OIK-084 — sandboxed PreToolUse hook script (fail-closed contract, managed-settings registration) (protected path)
