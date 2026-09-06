@@ -4807,7 +4807,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** low
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
@@ -4818,15 +4818,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Root cause identified and documented with evidence (not guessed)
 - [ ] Both tests pass reliably under `pnpm -r test`'s full parallel run, repeated at least 3x
 - [ ] Fix does not weaken what either test actually proves
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-162-cx
+**Started_At:** 2026-09-06T15:02:43Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-05T13:58:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T15:02:43Z
 
 ### TASK-163
 **Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
