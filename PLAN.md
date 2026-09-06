@@ -5949,7 +5949,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-201
 **Title:** Pin the non-sandboxed (host) chat path to a cheap default model, matching the R350/month ceiling (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** CLAUDE.md Budget (reset 2026-09-06 to R350/month). TASK-170's sandboxed path already fixed this same session (`services/worker/src/chatRunDriver.ts`'s `claudePrintCommand` now passes `--model claude-haiku-4-5-20251001` by default, override via `OIKONOMOS_SANDBOX_MODEL`) — this task is the equivalent fix for the OTHER execution path. Confirmed by direct code reading: `packages/harness-factory/src/index.ts`'s `defaultSdkQuery`/`lazySdkQuery` calls `@anthropic-ai/claude-agent-sdk`'s own `query()` with NO `model` field set anywhere in the options chain — it silently uses the SDK's own default (Sonnet-tier), which does not fit this budget. PROTECTED PATH `packages/harness-factory/**` — author must be a different model than the reviewer (CLAUDE.md's own non-negotiable, DEVDEPARTMENT's protected-paths rule).
@@ -5960,12 +5960,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A chat run with no explicit `options.model` uses the cheap default; one that sets it explicitly is left unchanged (both tested)
 - [ ] The override env var is documented in a code comment referencing CLAUDE.md's Budget section, matching TASK-170's own comment style
 - [ ] pnpm -r test, pnpm -r build, pnpm lint all exit 0; adversarial review by a different model than the author (Codex CLI or Grok Build) before merge, per this file's protected-path requirement
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-201-gb
+**Started_At:** 2026-09-06T19:10:54Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T20:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T19:10:54Z
