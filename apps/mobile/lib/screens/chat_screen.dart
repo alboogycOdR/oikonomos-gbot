@@ -12,6 +12,7 @@ import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
 import '../widgets/context_meter.dart';
 import '../widgets/live_agent_button.dart';
+import '../widgets/secret_request_card.dart';
 import '../widgets/skill_picker.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
@@ -58,6 +59,8 @@ class ChatScreenState extends State<ChatScreen>
   Map<String, Role> _rolesById = const {};
   final Map<String, String> _approvalStatuses = {};
   final Set<String> _decidingApprovals = {};
+  final Map<String, String> _secretRequestStatuses = {};
+  final Set<String> _decidingSecretRequests = {};
   final List<MessageAttachment> _pendingAttachments = [];
   bool _uploading = false;
   String? _uploadError;
@@ -221,6 +224,59 @@ class ChatScreenState extends State<ChatScreen>
       }
     } finally {
       if (mounted) setState(() => _decidingApprovals.remove(message.id));
+    }
+  }
+
+  /// TASK-187 (G-05b) — `value` is handed straight to the API client and
+  /// never stored on this state object; only the server's returned ref (or
+  /// a "no longer valid" message) is retained, for the same reason
+  /// [SecretRequestCard] itself never lets it escape past this callback.
+  Future<void> _provideSecret(ThreadMessage message, String value) async {
+    if (_decidingSecretRequests.contains(message.id)) return;
+    setState(() => _decidingSecretRequests.add(message.id));
+    try {
+      final ref = await widget.apiClient.fulfilSecretRequest(
+        message.secretRequest!.requestId,
+        value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _secretRequestStatuses[message.id] = ref == null
+            ? 'Already decided or no longer valid.'
+            : 'Provided · ${ref.startsWith('secret://') ? ref : 'secret://$ref'}';
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to provide secret.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _decidingSecretRequests.remove(message.id));
+    }
+  }
+
+  Future<void> _declineSecret(ThreadMessage message) async {
+    if (_decidingSecretRequests.contains(message.id)) return;
+    setState(() => _decidingSecretRequests.add(message.id));
+    try {
+      final declined = await widget.apiClient.declineSecretRequest(
+        message.secretRequest!.requestId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _secretRequestStatuses[message.id] = declined
+            ? 'Declined'
+            : 'Already decided or no longer valid.';
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to decline secret request.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _decidingSecretRequests.remove(message.id));
     }
   }
 
@@ -669,6 +725,18 @@ class ChatScreenState extends State<ChatScreen>
                     _approvalStatuses[message.id] ?? message.approval!.status,
                 deciding: _decidingApprovals.contains(message.id),
                 onDecide: (decision) => _decideApproval(message, decision),
+              ),
+            ],
+            if (message.secretRequest != null) ...[
+              const SizedBox(height: 8),
+              SecretRequestCard(
+                request: message.secretRequest!,
+                status:
+                    _secretRequestStatuses[message.id] ??
+                    message.secretRequest!.status,
+                busy: _decidingSecretRequests.contains(message.id),
+                onProvide: (value) => _provideSecret(message, value),
+                onDecline: () => _declineSecret(message),
               ),
             ],
           ],

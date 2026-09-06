@@ -117,6 +117,61 @@ export interface BuildAppOptions {
   dialLiveAgentUpstream?: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>;
   /** Test-only: observes the AC1 liveness assertion (fires whenever a viewer connection's input is discarded rather than forwarded). */
   onLiveAgentInputDiscarded?: (event: LiveAgentInputDiscardedEvent) => void;
+  /**
+   * TASK-187 (G-05b) — secret intake: `GET /secret-requests`,
+   * `POST /secret-requests/:id/fulfil`, `POST /secret-requests/:id/decline`.
+   * A plain port here, not a `ControlApiDeps` method, for the same reason
+   * as `threadContext` above: `packages/db/src/secretRequests.ts` has no
+   * list-pending or decline query yet (only `createSecretRequest`,
+   * `fulfillSecretRequest`, `getSecretRequest` are exported — confirmed by
+   * reading the file), and `ports.ts`'s `ControlApiDeps` would need a new
+   * method to expose them — both outside this task's `Owned_Paths`. The
+   * port owns the FULL fulfil/decline lifecycle (vault write, ref
+   * persistence, and resuming the parked run) rather than splitting that
+   * across this file and the port, because the "resume with a
+   * model-directed refusal message" half of decline needs a capability
+   * that does not exist anywhere yet either: `ControlApiDeps.runChatTask`'s
+   * `resume` shape carries only `{ runId, sessionRef }`, no message field
+   * (confirmed by reading `ports.ts`) — even the existing rejected-approval
+   * path below never resumes a parked run at all, it just leaves it
+   * parked. Real production wiring (the new `packages/db` queries, the
+   * `ControlApiDeps`/worker resume-with-message capability, and the
+   * `ports.ts` construction) is legitimate, valuable follow-up work, left
+   * `undefined` here (routes answer `501`) until it lands — same shape as
+   * TASK-179's `ThreadContextPort` and TASK-171's `LiveAgentPort` above.
+   */
+  secretRequests?: SecretRequestsPort;
+}
+
+/** One secret request awaiting a human's decision — the `GET /secret-requests` list shape. */
+export interface PendingSecretRequest {
+  requestId: string;
+  runId: string;
+  roleId: string;
+  label: string;
+  purpose: string;
+  createdAt: string;
+}
+
+export type FulfilSecretRequestResult =
+  | { found: true; ref: string }
+  | { found: false };
+
+export type DeclineSecretRequestResult = { found: true } | { found: false };
+
+/** Injected port for TASK-187's secret-intake routes — see `BuildAppOptions.secretRequests`. */
+export interface SecretRequestsPort {
+  /** Pending requests visible to the caller's tenant. */
+  listPending(tenantId: string): Promise<PendingSecretRequest[]>;
+  /**
+   * Stores `value` in the sealed vault, persists the returned ref against
+   * the request, and resumes the parked run. The result type has no field
+   * capable of carrying `value` back out — a caller cannot leak it even by
+   * mistake, since only an opaque `ref` is ever returned.
+   */
+  fulfil(requestId: string, tenantId: string, value: string): Promise<FulfilSecretRequestResult>;
+  /** Marks the request declined and resumes the parked run with a model-directed refusal message. */
+  decline(requestId: string, tenantId: string): Promise<DeclineSecretRequestResult>;
 }
 
 /** A thread's context-meter snapshot, per migration 015's `thread_context` row shape. */
@@ -372,6 +427,16 @@ const DECIDE_APPROVAL_SCHEMA = {
  * inside `packages/approvals`, never caller-supplied. `additionalProperties:
  * false` mechanically refuses a caller who tries to pass one.
  */
+/** TASK-187 — the value is required and non-blank; the schema itself never echoes it back (fastify validation errors don't include the offending value by default here since we check trim-emptiness ourselves below, not via `minLength` messaging). */
+const FULFIL_SECRET_REQUEST_SCHEMA = {
+  type: "object",
+  required: ["value"],
+  additionalProperties: false,
+  properties: {
+    value: { type: "string", minLength: 1 },
+  },
+} as const;
+
 const EDIT_APPROVAL_SCHEMA = {
   type: "object",
   required: ["runId", "capabilityId", "toolName", "input", "destination"],
@@ -417,8 +482,13 @@ function shapeMessage(
   approvalsByRunId: Map<string, Approval>,
   defaultTierByCapabilityId: Map<string, string>,
   roleNameById: Map<string, string>,
+  secretRequestsByRunId: Map<string, PendingSecretRequest> = new Map(),
 ): Record<string, unknown> {
   const approval = message.runId === null ? undefined : approvalsByRunId.get(message.runId);
+  // TASK-187 (G-05b): same shape as `approval` above — pushed inline on the
+  // message tied to the run that requested it, over the existing
+  // SSE/poll path, rather than a new transport.
+  const secretRequest = message.runId === null ? undefined : secretRequestsByRunId.get(message.runId);
   return {
     ...message,
     senderRoleId: message.senderRoleId ?? null,
@@ -442,6 +512,16 @@ function shapeMessage(
             status: approval.status,
             capability_id: approval.capabilityId,
             max_tier: defaultTierByCapabilityId.get(approval.capabilityId) ?? null,
+          },
+        }),
+    ...(secretRequest === undefined
+      ? {}
+      : {
+          secretRequest: {
+            request_id: secretRequest.requestId,
+            label: secretRequest.label,
+            purpose: secretRequest.purpose,
+            status: "pending",
           },
         }),
   };
@@ -482,20 +562,24 @@ async function inlineTextAttachments(
 async function loadMessageShapingContext(
   deps: ControlApiDeps,
   tenantId: string,
+  secretRequests?: SecretRequestsPort,
 ): Promise<{
   approvalsByRunId: Map<string, Approval>;
   defaultTierByCapabilityId: Map<string, string>;
   roleNameById: Map<string, string>;
+  secretRequestsByRunId: Map<string, PendingSecretRequest>;
 }> {
-  const [approvals, capabilities, roles] = await Promise.all([
+  const [approvals, capabilities, roles, pendingSecretRequests] = await Promise.all([
     deps.listPendingApprovals(),
     deps.listCapabilities(),
     deps.listRoles({ tenantId, status: "active" }),
+    secretRequests === undefined ? Promise.resolve([]) : secretRequests.listPending(tenantId),
   ]);
   return {
     approvalsByRunId: new Map(approvals.map((approval) => [approval.runId, approval])),
     defaultTierByCapabilityId: new Map(capabilities.map((capability) => [capability.capabilityId, capability.defaultTier])),
     roleNameById: new Map(roles.map((role) => [role.roleId, role.name])),
+    secretRequestsByRunId: new Map(pendingSecretRequests.map((request) => [request.runId, request])),
   };
 }
 
@@ -1279,7 +1363,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         }
         const [messages, context] = await Promise.all([
           deps.listMessages(request.params.id, request.query.after === undefined ? {} : { after: request.query.after }),
-          loadMessageShapingContext(deps, request.tenantId),
+          loadMessageShapingContext(deps, request.tenantId, options.secretRequests),
         ]);
         // TASK-118: the grants a client can request via "Always Allow"
         // are capability+tier scoped, but `Approval` itself never
@@ -1290,7 +1374,13 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         // built-in-grant path already uses as its ceiling.
         await reply.code(200).send(
           messages.map((message) =>
-            shapeMessage(message, context.approvalsByRunId, context.defaultTierByCapabilityId, context.roleNameById),
+            shapeMessage(
+              message,
+              context.approvalsByRunId,
+              context.defaultTierByCapabilityId,
+              context.roleNameById,
+              context.secretRequestsByRunId,
+            ),
           ),
         );
       } catch (error) {
@@ -1414,7 +1504,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       try {
         const [messages, context] = await Promise.all([
           deps.listMessages(threadId, cursor === undefined ? {} : { after: cursor }),
-          loadMessageShapingContext(deps, request.tenantId),
+          loadMessageShapingContext(deps, request.tenantId, options.secretRequests),
         ]);
         for (const message of messages) {
           cursor = message.id;
@@ -1424,6 +1514,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             context.approvalsByRunId,
             context.defaultTierByCapabilityId,
             context.roleNameById,
+            context.secretRequestsByRunId,
           );
           res.write(`id: ${message.id}\ndata: ${JSON.stringify(shaped)}\n\n`);
         }
@@ -1804,6 +1895,80 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  /**
+   * TASK-187 (G-05b) — secret intake: the human half of TASK-184's
+   * `request_secret` MCP tool. `501` when no `SecretRequestsPort` is
+   * configured — see `BuildAppOptions.secretRequests`'s doc comment for
+   * why real wiring is deferred follow-up work.
+   */
+  app.get<{ Querystring: { status?: string } }>("/secret-requests", async (request, reply) => {
+    try {
+      const status = request.query.status ?? "pending";
+      if (status !== "pending") {
+        await reply.code(400).send({ error: "status must be 'pending'" });
+        return;
+      }
+      if (options.secretRequests === undefined) {
+        await reply.code(501).send({ error: "secret requests are not configured" });
+        return;
+      }
+      const pending = await options.secretRequests.listPending(request.tenantId);
+      await reply.code(200).send(pending);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { value?: unknown } }>(
+    "/secret-requests/:id/fulfil",
+    { schema: { body: FULFIL_SECRET_REQUEST_SCHEMA } },
+    async (request, reply) => {
+      try {
+        const { value } = request.body;
+        // TASK-187 AC1: the value never appears in the response, and is
+        // never passed to `request.log` / any serializer — fastify's
+        // default req serializer covers method/url/hostname only (see
+        // `redact.ts`'s header comment: "request bodies are never logged
+        // at all"), so no additional redaction is needed here.
+        if (typeof value !== "string" || value.trim().length === 0) {
+          await reply.code(400).send({ error: "value must be a non-empty string" });
+          return;
+        }
+        if (options.secretRequests === undefined) {
+          await reply.code(501).send({ error: "secret requests are not configured" });
+          return;
+        }
+        const result = await options.secretRequests.fulfil(request.params.id, request.tenantId, value);
+        if (!result.found) {
+          await reply.code(404).send({ error: "secret request not found" });
+          return;
+        }
+        // AC1: only the opaque ref goes out — `FulfilSecretRequestResult`
+        // has no field capable of carrying `value` back to the caller.
+        await reply.code(200).send({ requestId: request.params.id, ref: result.ref });
+      } catch (error) {
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>("/secret-requests/:id/decline", async (request, reply) => {
+    try {
+      if (options.secretRequests === undefined) {
+        await reply.code(501).send({ error: "secret requests are not configured" });
+        return;
+      }
+      const result = await options.secretRequests.decline(request.params.id, request.tenantId);
+      if (!result.found) {
+        await reply.code(404).send({ error: "secret request not found" });
+        return;
+      }
+      await reply.code(200).send({ requestId: request.params.id, declined: true });
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
 
   // TASK-171 — mobile live-agent PTY viewer: status route + raw WS upgrade.
   registerLiveAgentRoutes(app, {

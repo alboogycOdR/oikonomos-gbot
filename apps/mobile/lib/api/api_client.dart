@@ -391,6 +391,46 @@ class ApiClient {
     return true;
   }
 
+  /// TASK-187 (G-05b) — provides the requested secret value. The server
+  /// response carries only an opaque vault ref; `value` itself is never
+  /// stored, logged, or included in analytics on this client (non-negotiable
+  /// 4). A 404 means the request was already decided (fulfilled/declined)
+  /// or belongs to a different tenant — callers should disable the card,
+  /// same as [decideApproval]'s 409 handling.
+  Future<String?> fulfilSecretRequest(String requestId, String value) async {
+    final uri = Uri.parse(
+      '$baseUrl/secret-requests/${Uri.encodeComponent(requestId)}/fulfil',
+    );
+    final response = await _client.post(
+      uri,
+      headers: _headers(),
+      body: jsonEncode({'value': value}),
+    );
+    _captureCookie(response);
+    if (response.statusCode == 404) return null;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return decoded['ref'] as String;
+  }
+
+  /// Declines a secret request. A 404 means it was already decided or
+  /// belongs to a different tenant — same "disable the card" contract as
+  /// [fulfilSecretRequest]'s null return.
+  Future<bool> declineSecretRequest(String requestId) async {
+    final uri = Uri.parse(
+      '$baseUrl/secret-requests/${Uri.encodeComponent(requestId)}/decline',
+    );
+    final response = await _client.post(uri, headers: _headers());
+    _captureCookie(response);
+    if (response.statusCode == 404) return false;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    return true;
+  }
+
   Future<List<Routine>> listRoutines(String roleId) async {
     final json = await _request(
       'GET',

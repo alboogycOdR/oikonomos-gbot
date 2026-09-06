@@ -181,6 +181,34 @@ class ApprovalRef {
   }
 }
 
+/// TASK-187 (G-05b) — the nested `secretRequest` object `GET
+/// /threads/:id/messages` and the SSE stream attach to the message tied to
+/// the run that requested it (`services/control-api/src/app.ts`'s
+/// `shapeMessage`), same convention as [ApprovalRef] above: snake_case keys
+/// because that is what the server sends.
+class SecretRequestRef {
+  const SecretRequestRef({
+    required this.requestId,
+    required this.label,
+    required this.purpose,
+    required this.status,
+  });
+
+  final String requestId;
+  final String label;
+  final String purpose;
+  final String status;
+
+  factory SecretRequestRef.fromJson(Map<String, dynamic> json) {
+    return SecretRequestRef(
+      requestId: json['request_id'] as String,
+      label: json['label'] as String,
+      purpose: json['purpose'] as String,
+      status: json['status'] as String,
+    );
+  }
+}
+
 /// A scheduled routine returned by `GET /roles/:roleId/routines`.
 class Routine {
   const Routine({
@@ -310,6 +338,7 @@ class ThreadMessage {
     this.senderRoleId,
     this.senderName,
     this.approval,
+    this.secretRequest,
     this.attachments = const [],
   });
 
@@ -322,6 +351,7 @@ class ThreadMessage {
   final String? senderRoleId;
   final String? senderName;
   final ApprovalRef? approval;
+  final SecretRequestRef? secretRequest;
   final List<MessageAttachment> attachments;
 
   factory ThreadMessage.fromJson(Map<String, dynamic> json) {
@@ -338,6 +368,11 @@ class ThreadMessage {
       approval: json['approval'] == null
           ? null
           : ApprovalRef.fromJson(json['approval'] as Map<String, dynamic>),
+      secretRequest: json['secretRequest'] == null
+          ? null
+          : SecretRequestRef.fromJson(
+              json['secretRequest'] as Map<String, dynamic>,
+            ),
       attachments: rawAttachments is List
           ? rawAttachments
               .whereType<Map<String, dynamic>>()
