@@ -20,6 +20,29 @@ Read the Spec pointers first, then the existing files named in Territory (run th
 
 ## Work Log
 
+- [2026-09-06T09:00:00Z] [CX] Resumed TASK-184 on `task/TASK-184-cx`; rebased the prior coordination-only commits onto current master after TASK-192 merged. Preflight output (verbatim):
+  ```text
+  [preflight] TASK-184 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE
+  [preflight] 14 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    packages/broker/src/requestSecret.ts  -> does not exist; parent packages/broker/src/ exists
+    NEW    packages/broker/src/requestSecret.test.ts  -> does not exist; parent packages/broker/src/ exists
+    FILE   packages/broker/src/builtinTools.ts  -> exists, 31 line(s), 1525 bytes
+    FILE   packages/broker/src/builtinTools.test.ts  -> exists, 19 line(s), 1438 bytes
+    FILE   packages/broker/src/index.ts  -> exists, 658 line(s), 22400 bytes
+    NEW    infra/postgres/migrations/017_secret_requests.up.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    NEW    infra/postgres/migrations/017_secret_requests.down.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    NEW    packages/db/src/secretRequests.ts  -> does not exist; parent packages/db/src/ exists
+    NEW    packages/db/src/secretRequests.test.ts  -> does not exist; parent packages/db/src/ exists
+    FILE   packages/db/src/index.ts  -> exists, 180 line(s), 3836 bytes
+    FILE   services/worker/src/workspaceMcpServer.ts  -> exists, 141 line(s), 7181 bytes
+    FILE   services/worker/src/chatRunDriver.ts  -> exists, 292 line(s), 15126 bytes
+    FILE   services/worker/src/connectorResolution.ts  -> exists, 128 line(s), 6016 bytes
+    FILE   services/worker/src/connectorResolution.test.ts  -> exists, 48 line(s), 3203 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+
+- [2026-09-06T09:20:00Z] [CX] Implemented the task-owned request schema/accessors, broker declaration plus bounded pre-approval parser/descriptor, workspace MCP handler, worker run identity wiring, and grant-gated connector admission. `pnpm --filter @oikonomos/db build`, `pnpm --filter @oikonomos/broker build`, and `pnpm --filter @oikonomos/worker typecheck` pass. DB suite: 35 files passed, 1 migration-gated file skipped, 174 tests passed / 4 skipped. Broker suite has one expected territory blocker: its existing liveness test reads `builtinDescribers` directly from `packages/broker/src/describe.ts`, so it fails for the new BUILTIN_TOOLS entry until the descriptor is added there; `describe.ts` and `index.test.ts` are not Owned_Paths. Worker suite: 18 files pass, but 14 tests fail because the existing persistent capability fixtures lack `workspace.request_secret`; registration/seeding and `registerCapabilities.test.ts` are outside Owned_Paths. This is an OWNERSHIP_CONFLICT, not a code workaround candidate. The shared dev DB also has no `secret_requests` table because migration 017 is unapplied; applying it is shared-infrastructure mutation and outside territory. Need ORCH to widen ownership (at least `packages/broker/src/describe.ts`, its test, worker capability registration/fixture files) and arrange/apply the migration, or assign those seams to their owners.
+
 - [2026-09-06T00:00:00Z] [CX] Created `task/TASK-184-cx`, rebased it onto current `master` after TASK-176, and completed the required territory preflight:
 
 ```text

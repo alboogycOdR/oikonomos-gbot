@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { combineConnectorContexts } from "./connectorResolution.js";
+import {
+  combineConnectorContexts,
+  WORKSPACE_REQUEST_SECRET_CAPABILITY_ID,
+  WORKSPACE_REQUEST_SECRET_TOOL,
+} from "./connectorResolution.js";
 import type { ConnectorContext } from "./executeRun.js";
 
 // TASK-175 carve: this file's own source plus chatRunDriver.ts's are both
@@ -18,6 +22,11 @@ const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
 );
 
 describe("connector resolution", () => {
+  it("declares request_secret as a grant-gated workspace MCP surface", () => {
+    expect(WORKSPACE_REQUEST_SECRET_CAPABILITY_ID).toBe("workspace.request_secret");
+    expect(WORKSPACE_REQUEST_SECRET_TOOL).toBe("mcp__workspace__request_secret");
+    expect(connectorResolutionSource).toContain("grantedCapabilities.has(WORKSPACE_REQUEST_SECRET_CAPABILITY_ID)");
+  });
   it("merges zero, one, two, and four connector contexts without pairwise limits (TASK-139)", () => {
     const context = (id: string): ConnectorContext => ({
       manifest: { connector_id: id, mcp_server: { name: id }, tools: [] },
