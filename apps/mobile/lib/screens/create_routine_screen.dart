@@ -46,6 +46,43 @@ class CreateRoutineScreenState extends State<CreateRoutineScreen> {
   final _goalController = TextEditingController();
   bool _submitting = false;
   String? _error;
+  String? _skillId;
+
+  Future<void> _chooseSkill() async {
+    try {
+      final skills = await widget.apiClient.listRoleSkills(widget.roleId);
+      if (!mounted) return;
+      final selected = await showModalBottomSheet<String>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: const Text('No skill'),
+                onTap: () => Navigator.of(context).pop(''),
+              ),
+              ...skills.map(
+                (skill) => ListTile(
+                  title: Text('/${skill.name}'),
+                  onTap: () => Navigator.of(context).pop(skill.id),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (selected != null && mounted) {
+        setState(() => _skillId = selected.isEmpty ? null : selected);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load enabled skills.')),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -77,6 +114,7 @@ class CreateRoutineScreenState extends State<CreateRoutineScreen> {
         name,
         schedule,
         goal: _goalController.text,
+        skillId: _skillId,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -121,7 +159,8 @@ class CreateRoutineScreenState extends State<CreateRoutineScreen> {
               decoration: const InputDecoration(
                 labelText: 'Schedule (cron expression)',
                 hintText: 'e.g. 0 8 * * 1-5',
-                helperText: 'Standard 5-field cron — minute hour day month weekday.',
+                helperText:
+                    'Standard 5-field cron — minute hour day month weekday.',
               ),
               onChanged: (_) => setState(() {
                 if (_error != null) _error = null;
@@ -136,6 +175,14 @@ class CreateRoutineScreenState extends State<CreateRoutineScreen> {
                 hintText: 'What should this routine do?',
               ),
               maxLines: 3,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              key: const Key('routine-skill-selector'),
+              onPressed: _chooseSkill,
+              child: Text(
+                _skillId == null ? 'Choose skill (optional)' : 'Skill selected',
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),

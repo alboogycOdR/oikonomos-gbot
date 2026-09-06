@@ -10,6 +10,7 @@ import '../attach/channel_file_picker.dart';
 import '../attach/file_picker_port.dart';
 import '../realtime/sse_client.dart';
 import '../widgets/avatar.dart';
+import '../widgets/context_meter.dart';
 import '../widgets/skill_picker.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
@@ -60,6 +61,7 @@ class ChatScreenState extends State<ChatScreen>
   bool _uploading = false;
   String? _uploadError;
   bool _skillPickerOpen = false;
+  ThreadContext? _threadContext;
 
   /// Exposed for tests: true once the SSE subscription has been opened
   /// (and not yet closed) for this screen instance.
@@ -71,7 +73,61 @@ class ChatScreenState extends State<ChatScreen>
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(_onTabChanged);
     _load();
+    _loadThreadContext();
     _loadHandoffs();
+  }
+
+  Future<void> _loadThreadContext() async {
+    try {
+      final context = await widget.apiClient.getThreadContext(widget.bot.id);
+      if (mounted) {
+        setState(() => _threadContext = context);
+      }
+    } catch (_) {
+      // Metering is supplemental: a failure must not hide a transcript.
+    }
+  }
+
+  Future<void> _confirmStartFresh() async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Start fresh?',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              const Text(
+                  'Earlier turns stay visible, but the bot will not see them in the new context.'),
+              const SizedBox(height: 16),
+              FilledButton(
+                key: const Key('start-fresh-confirm'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Start fresh'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    try {
+      final context = await widget.apiClient.startFresh(widget.bot.id);
+      if (mounted) {
+        setState(() => _threadContext = context);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not start a fresh context.')));
+      }
+    }
   }
 
   @override
@@ -374,9 +430,28 @@ class ChatScreenState extends State<ChatScreen>
             Expanded(
               child: Text(widget.bot.botName, overflow: TextOverflow.ellipsis),
             ),
+            if (_threadContext case final threadContext?)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: ContextMeter(
+                  used: threadContext.contextTokens,
+                  limit: threadContext.contextLimit,
+                ),
+              ),
           ],
         ),
         actions: [
+          PopupMenuButton<String>(
+            key: const Key('chat-overflow-menu'),
+            onSelected: (value) {
+              if (value == 'fresh') {
+                _confirmStartFresh();
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'fresh', child: Text('Start fresh')),
+            ],
+          ),
           IconButton(
             key: const Key('bot-settings-button'),
             icon: const Icon(Icons.settings_outlined),

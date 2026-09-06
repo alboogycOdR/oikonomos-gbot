@@ -31,6 +31,15 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
   );
   final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
   await client.login('shared-token');
+  // The context meter is an optional header enhancement. Give existing
+  // transcript-focused tests a deterministic default without changing their
+  // chronological request queues.
+  fake.queueJsonFor('GET', '/threads/thread-1', 200, {
+    'id': 'thread-1',
+    'contextTokens': 12,
+    'contextLimit': 100,
+    'epoch': 0,
+  });
   return client;
 }
 
@@ -61,6 +70,49 @@ Map<String, dynamic> _approvalMessage(String id) => {
     };
 
 void main() {
+  testWidgets(
+      'context meter uses the real thread payload and fresh keeps earlier messages',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1', 200, {
+      'id': 'thread-1',
+      'contextTokens': 80,
+      'contextLimit': 100,
+      'epoch': 2,
+    });
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200,
+        [_messageJson('1', body: 'Earlier turn')]);
+    fake.queueJsonFor('POST', '/threads/thread-1/fresh', 200, {
+      'id': 'thread-1',
+      'contextTokens': 0,
+      'contextLimit': 100,
+      'epoch': 3,
+    });
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('context-meter')), findsOneWidget);
+    expect(find.text('Earlier turn'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('chat-overflow-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Start fresh'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Earlier turns stay visible'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('start-fresh-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(
+        fake.requests.any((request) =>
+            request.method == 'POST' &&
+            request.url.path == '/threads/thread-1/fresh'),
+        isTrue);
+    expect(find.text('Earlier turn'), findsOneWidget);
+  });
+
   testWidgets('typing slash opens enabled-only picker and inserts its token',
       (tester) async {
     final fake = FakeHttpClient();
@@ -605,6 +657,16 @@ void main() {
     (tester) async {
       final fake = FakeHttpClient();
       final client = await _loggedIn(fake);
+      fake.queueJsonFor('GET', '/roles/role-1/skills', 200, [
+        {
+          'skillId': 'skill-enabled',
+          'name': 'summarize',
+          'description': 'Condense text',
+          'body': '# Steps',
+          'approvals': <String>[],
+          'status': 'active',
+        },
+      ]);
       fake.queueJson(200, <Object?>[]);
       fake.queueHangingStream(200);
       fake.queueJson(200, <Object?>[]); // initial (empty) routines load
@@ -625,6 +687,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('routine-name-field')), findsOneWidget);
+      expect(find.byKey(const Key('routine-skill-selector')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('routine-skill-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('/summarize').last);
+      await tester.pumpAndSettle();
 
       await tester.enterText(
         find.byKey(const Key('routine-name-field')),
@@ -657,6 +724,12 @@ void main() {
 
       expect(find.byKey(const Key('routine-name-field')), findsNothing);
       expect(find.text('Morning digest'), findsOneWidget);
+      final createRequest = fake.requests.lastWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.url.path == '/roles/role-1/routines',
+      ) as http.Request;
+      expect(jsonDecode(createRequest.body)['skillId'], 'skill-enabled');
     },
   );
 
@@ -824,13 +897,14 @@ void main() {
     );
   });
 
-  testWidgets('a system message renders as a muted line, not a chat bubble', (
+  testWidgets('a context-compacted system message renders as a muted line', (
     tester,
   ) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, [
-      _messageJson('1', role: 'system', body: 'Renamed to Assistant'),
+      _messageJson('1',
+          role: 'system', body: 'Context compacted: earlier turns summarized'),
     ]);
     fake.queueHangingStream(200);
 
@@ -841,7 +915,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Renamed to Assistant'), findsOneWidget);
+    expect(find.text('Context compacted: earlier turns summarized'),
+        findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsOneWidget);
     // No chat-bubble Container is built for a system event.
     expect(find.byKey(const Key('message-body-1')), findsNothing);

@@ -20,6 +20,8 @@ Read the Spec pointers first, then the existing files named in Territory (run th
 
 ## Work Log
 
+- [2026-09-06T11:20:00Z] [CX] Preflight completed before implementation: 9 entries inspected — existing create_routine_screen.dart, routine_detail_screen.dart, chat_screen.dart, api_client.dart, models.dart, chat_screen_test.dart; new owned context_meter.dart, routine_detail_screen_test.dart, context_meter_test.dart. Reviewed live TASK-182 and TASK-179 API contracts and began typed mobile wiring on task/TASK-183-cx.
+
 - [2026-09-06T09:05:00Z] [CX] Preflight completed before code changes:
   ```text
   [preflight] TASK-183 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex-GROKBOT-CLONE
@@ -36,3 +38,5 @@ Read the Spec pointers first, then the existing files named in Territory (run th
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-06T09:08:00Z] [CX] BLOCKED before implementation: `POST /routines/:id/test-run` is the sole exposed test-run route and returns `{ routine, warning: "test run performs real work" }` only with its `202` response, after `deps.testRunRoutine(...)` has already executed. TASK-183 requires that exact server-supplied warning be shown in a confirm dialog before firing, which cannot be obtained from this API before the side effect. Separately, `POST /roles/:roleId/routines` accepts `skillId`, but no routine update route exists for the required create/edit skill binding. Need an API contract decision: add side-effect-free routine metadata/preview plus an update endpoint, or explicitly permit an in-app copy of the warning and create-only skill binding.
+
+- [2026-09-06T07:52:59Z] [CX] Completed the ORCH-resolved implementation on `task/TASK-183-cx`: create-time enabled-skill selector and `skillId` POST body, pause/resume plus literal-warning-confirmed test runs, typed thread context/fresh API calls, 60/80% context meter, fresh-confirm sheet preserving visible transcript, and context-compaction system-event coverage. Verified `flutter test` (112 passed) and `flutter analyze` (no issues); `git diff --check` clean.
