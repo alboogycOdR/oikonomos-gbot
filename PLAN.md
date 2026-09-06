@@ -5625,7 +5625,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-192
 **Title:** Dynamic secret vault + resolver (blocks TASK-184's re-scoped request_secret tool)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md (this task implements §2-§5 of that decision — read it in full before writing anything); split from TASK-184's third block (see its Progress_Notes 2026-09-06T01:55:00Z/02:15:00Z). PROTECTED-ADJACENT: this is a genuine security/data-model primitive (encrypted secret-at-rest storage) even though packages/db itself is not on CLAUDE.md's protected-paths list — treat with the same rigor (real crypto correctness tests, real cross-role refusal test, no shortcuts) regardless.
@@ -5639,12 +5639,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The raw ciphertext is never equal to the plaintext value and the plaintext never appears verbatim in the stored row (test — a real assertion against the DB row, not just "encryption was called")
 - [ ] Process import of secretVault.ts throws immediately (not on first call) if OIK_SECRET_VAULT_KEY is unset or the wrong length once decoded (test)
 - [ ] No SQL outside packages/db (CLAUDE.md convention); pnpm -r test, pnpm -r build, pnpm lint exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-192-cx9
+**Started_At:** 2026-09-06T05:22:09Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-06T02:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-06T05:22:09Z
