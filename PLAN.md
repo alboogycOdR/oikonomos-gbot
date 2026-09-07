@@ -1,5 +1,5 @@
 ---
-plan_version: 28.83
+plan_version: 28.93
 last_updated: 2026-09-07T19:30:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. TWO credential-exposure incidents this session, both self-caught, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. Both credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\") is unconditional and was still violated; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's two recorded incidents both prove is easy to get wrong even when actively trying to be careful."
@@ -6359,7 +6359,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-215
 **Title:** Wire the Gemini execution lane into a real chat run — part 1, governance
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `packages/harness-factory/src/compose.ts`'s `provider?: "claude" | "gemini"`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `packages/broker/src/budgetGate.ts`'s `resolveProviderCapUsd` (TASK-209); ADR-011 §7.
@@ -6490,3 +6490,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z
+
+### TASK-220
+**Title:** Wire the Gemini execution lane into a real chat run — part 2, execution
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `packages/harness-factory/src/compose.ts`'s `composeHarness({ provider: "gemini" })`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `services/worker/src/geminiChatRun.ts`'s `resolveGeminiBudget`/`geminiTurnCostUsd` (TASK-215 part 1); `STAGE_TWO_MAXIMUM_TOOL_TIER` (TASK-212).
+**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts
+**Depends_On:** TASK-215
+**Description:** Part 1 shipped the governance gate; nothing yet runs a Gemini turn. Five merged pieces are still inert without this: the adapter, TASK-211's sandbox executors, TASK-212's tool ceiling, TASK-215's budget gate, and TASK-210's attribution. This task is the function that composes them into an actual turn — resolve the role's sandbox, build the executors against it, compose the harness with `provider: "gemini"` and the Stage-2 ceiling, gate on the budget, run, and record spend under provider `gemini` with a real cost. Until it lands, no bot runs on Gemini for anything except Wave 1's Tier-0 background work.
+**Acceptance_Criteria:**
+- [ ] A real Gemini turn executes through `composeHarness({ provider: "gemini" })`, with TASK-211's executors mounted so every tool runs inside the role's sandbox rather than the worker process.
+- [ ] The ceiling passed is `STAGE_TWO_MAXIMUM_TOOL_TIER`, and a T3 tool is observed refused in a real run — not merely asserted in a unit test.
+- [ ] `resolveGeminiBudget` gates the turn before any token is spent, and a null cap denies with the env var named.
+- [ ] Spend records under provider `gemini` with non-zero cost derived from the turn's own token counts, including thinking tokens.
+- [ ] Proven LIVE end to end against the real API and a real sandbox, verified from the sandbox's own transcript rather than from the bot's final reply — the standard TASK-208 was held to.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T20:40:00Z] [ORCH] Filed as the explicit part 2 Fable's review required, rather than reopening the merged part 1. Note for whoever builds it: the five pieces this composes were each reviewed and merged in isolation, and every one of them was green while the product did nothing — so the only acceptance criterion that actually matters here is the live one.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T20:40:00Z
