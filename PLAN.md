@@ -1,5 +1,5 @@
 ---
-plan_version: 28.73
+plan_version: 28.80
 last_updated: 2026-09-07T14:00:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. TWO credential-exposure incidents this session, both self-caught, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. Both credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\") is unconditional and was still violated; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's two recorded incidents both prove is easy to get wrong even when actively trying to be careful."
@@ -6353,3 +6353,127 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-215
+**Title:** Wire the Gemini execution lane into a real chat run
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `packages/harness-factory/src/compose.ts`'s `provider?: "claude" | "gemini"`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `packages/broker/src/budgetGate.ts`'s `resolveProviderCapUsd` (TASK-209); ADR-011 §7.
+**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts
+**Depends_On:** TASK-211, TASK-212
+**Description:** Gap found while closing TASK-212: nothing in production constructs `createGeminiAdapter`. `composeHarness` accepts `provider: "gemini"` and is passed it only from a test, TASK-211 built sandbox-backed executors nothing mounts, and TASK-212 raised a ceiling no caller configures. This task is the missing caller that turns three merged-but-inert pieces into a lane. It carries the four acceptance criteria moved off TASK-212, all of which describe caller behaviour that could not be asserted against a non-existent caller.
+**Acceptance_Criteria:**
+- [ ] A tool-executing Gemini run whose resolved provider cap is `null` DENIES. ADR-011 §7 forbids an uncapped tool-executing Gemini default; unset-means-uncapped is correct for the pure gate but must not fall through to the platform ceiling here (Fable review of `2a18571`).
+- [ ] The caller computes ONE `since` instant and passes it to both `getPlatformSpendUsd` and `getProviderSpendUsd`; two independent default parameters resolve at two instants and can drift.
+- [ ] `resolveProviderCapUsd` is called INSIDE the existing budget try/catch, so a malformed cap converts to a deny like every other budget read rather than crashing at module load.
+- [ ] TASK-209's per-provider cap is demonstrably in force for a real tool-executing Gemini run — observed denying, not merely merged.
+- [ ] The lane mounts TASK-211's sandbox executors and passes `STAGE_TWO_MAXIMUM_TOOL_TIER`; spend records under provider `gemini` with non-zero cost (TASK-210's attribution).
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Filed on discovering the decomposition gap — Wave 2 had an adapter, executors and a ceiling but no caller, so every piece could go green while the product remained exactly as it was.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T14:45:00Z
+
+### TASK-216
+**Title:** Thirteen calendar/drive tools plus gmail create_draft have no governed destination
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `services/worker/src/chatRunDriver.ts`'s `destinationFor` (ADR-013 v1 target extraction); `packages/connectors/manifests/google-calendar.yaml`, `google-drive.yaml`, `gmail.yaml`.
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Found by the closure test added in TASK-207 and confirmed by Fable's TASK-207 review. `destinationFor` throws for any tool it does not recognise, and the broker turns that into a deny — so it fails CLOSED, which is why this is an availability gap rather than a security one. But it is a real product gap: only `list_events` and `search_files` have branches, so of the calendar and drive manifests' declared tools roughly thirteen are unusable, and `mcp__gmail__create_draft` has none either, meaning a draft-only Gmail bot cannot draft. Add the missing branches, extracting a genuine governed target per tool from its own input rather than a placeholder — a sentinel that names nothing specific defeats the purpose of the approval render.
+**Acceptance_Criteria:**
+- [ ] Every tool declared by every loaded connector manifest has a non-throwing `destinationFor` branch; the TASK-207 closure test is widened from steel-browser-only to all manifests and passes.
+- [ ] Each destination names the real target of that call (a calendar id, a file id/name, a draft recipient), not a generic sentinel — except where a tool genuinely acts on implicit current state, which must be justified in a comment as `steel_snapshot`'s is.
+- [ ] A tool that is NOT declared by any manifest still fails closed exactly as today.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Filed; carried from TASK-207's review, where it was correctly judged non-blocking for that merge but flagged as needing its own task.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T14:45:00Z
+
+### TASK-217
+**Title:** Gemini price table silently halves the real cost on 2027-01-01
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** `packages/agent-providers/src/pricing.ts`; Google's published pricing, re-verified live 2026-09-07: gemini-3.7-flash is $0.75 in / $3.75 out per 1M tokens "through December 31, 2026", then $1.50 / $7.50 from January 1, 2027.
+**Owned_Paths:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts
+**Depends_On:** —
+**Description:** The price constants are correct today and become exactly half the real price on 2027-01-01, with nothing in the system aware of the change. Every Gemini turn would then be costed at 50%, the platform ceiling and TASK-209's per-provider cap would both permit roughly double the intended spend, and nothing would look wrong. This is a dated cliff, not a guess: the doubling is published. Make the price a function of the turn's date rather than a single constant, so the cliff is handled rather than merely commented.
+**Acceptance_Criteria:**
+- [ ] `costForUsage` prices a turn dated on or after 2027-01-01 at the higher published rate, and one before it at the current rate.
+- [ ] Test asserts both sides of the boundary explicitly, including the exact instant.
+- [ ] Existing callers that pass no date keep today's behaviour until the cliff, then follow it automatically.
+- [ ] The published source and verification date are recorded in the source, as the current constants already are.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Filed after re-verifying the published pricing live while routing Tier-0 at Gemini.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T14:45:00Z
+
+### TASK-218
+**Title:** Approvals raised inside a sandboxed run are a dead end
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `services/worker/src/chatRunDriver.ts` (`park: createRunParkPort(...)` is wired into the LOCAL branch only); TASK-136 (park on `approval_pending`), TASK-155 (continue after approval).
+**Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts
+**Depends_On:** —
+**Description:** Reported by the user 2026-09-07 from the mobile client, then traced in the DB: run `da9ad52f` requested approval for `which python3` at 10:52:52, COMPLETED at 10:57:27, and the user approved at 10:59:57 — two and a half minutes after there was anything left to resume. Cause confirmed in source: `createRunParkPort` is passed only to the local execution branch; `executeSandboxChatRun` receives no park port, so a sandboxed run never parks on `approval_pending`. The CLI treats the broker's deny as an ordinary tool error and finishes without the tool. Three approvals currently sit `pending` against already-completed runs for this reason. **This task deliberately covers only the unambiguous half.** Whether the product should park-and-resume (correct governance, but withholds an answer the bot could already give) or complete-then-offer-rerun (never strands the user, weaker semantics) is a genuine product decision the user has not made; it is recorded in the notes below and must be decided before the behavioural half is built.
+**Acceptance_Criteria:**
+- [ ] An approval still `pending` when its run reaches a terminal state is resolved rather than left live, so the mobile client never shows an actionable card for a finished run.
+- [ ] Resolution is distinguishable from a user decision in the audit trail — it must never look like the operator granted or rejected it.
+- [ ] Deciding an already-resolved approval is a no-op that reports why, not a silent nothing.
+- [ ] The park-vs-rerun product decision is recorded as decided (with reasoning) or explicitly deferred; it is NOT silently implemented one way.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Filed from a real user report with DB evidence, not a hypothetical. The behavioural fork was put to the user and not answered before priorities moved to multi-provider work; recording it here so it is not silently decided by whoever implements this.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T14:45:00Z
+
+### TASK-219
+**Title:** spend_records has no index for the per-provider cap's query
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** `packages/db/src/spend.ts`'s `getProviderSpendUsd` (`WHERE provider = $1 AND occurred_at >= $2`); existing indexes cover `routine_id` and `occurred_at` only.
+**Owned_Paths:** infra/postgres/migrations
+**Depends_On:** TASK-209
+**Description:** Carried from Fable's TASK-209 review as non-blocking. The per-provider cap runs its query on every governed call, and `spend_records` grows monotonically, so this becomes a hot read against a growing table with no supporting index. Add `(provider, occurred_at)`.
+**Acceptance_Criteria:**
+- [ ] A migration adds the index, and is revertible.
+- [ ] The migration is idempotent / safe to re-run, matching the conventions of the existing migrations.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Filed from Fable's TASK-209 review rather than dropped.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T14:45:00Z
