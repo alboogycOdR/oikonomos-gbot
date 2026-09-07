@@ -621,7 +621,7 @@ export function claudePrintCommand(
     : ["--mcp-config", shellQuote(JSON.stringify({ mcpServers: connector.mcpServers }))];
   const effectiveSystemPrompt = connector === undefined || connector.allowedTools.length === 0
     ? systemPrompt
-    : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly (e.g. steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page).`;
+    : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly: steel_session_create first to open a session, then steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page, and steel_session_release when you are done.`;
   return [
     "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
     "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(effectiveSystemPrompt),
@@ -862,6 +862,7 @@ export function destinationFor(request: PreToolUseRequest): string {
                   : request.toolName === "mcp__steel__steel_navigate" ? input.url
                     : request.toolName === "mcp__steel__steel_act" ? input.action
                       : request.toolName === "mcp__steel__steel_snapshot" || request.toolName === "mcp__steel__steel_screenshot"
+                        || request.toolName === "mcp__steel__steel_session_create" || request.toolName === "mcp__steel__steel_session_release"
                         ? STEEL_CURRENT_PAGE_DESTINATION : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;

@@ -23,6 +23,7 @@ import {
 import { resolveEnforcementGate } from "./enforcementGate.js";
 import { RefusalMemory } from "./refusalMemory.js";
 import { guardSecretPath } from "./secretPathGuard.js";
+import { guardSteelSessionSafety } from "./steelSessionGuard.js";
 import {
   builtinDescribers,
   describeOrDeny,
@@ -517,6 +518,22 @@ async function decidePreToolUse(
         null,
         null,
         { ...secretPathDecision.auditEvent },
+      );
+    }
+
+    // Non-negotiable #6, same fixed-floor shape as the D3 guard above: a
+    // steel_session_create call requesting CAPTCHA solving, a proxy, a
+    // persisted profile, or a namespace is denied before grants/tiers/allow
+    // rules are ever consulted (TASK-207 Blocking-2).
+    const steelSessionDecision = guardSteelSessionSafety(request.toolName, request.input);
+    if (steelSessionDecision.decision === "deny") {
+      return deny(
+        dependencies,
+        request,
+        steelSessionDecision.reason,
+        null,
+        null,
+        { ...steelSessionDecision.auditEvent },
       );
     }
 

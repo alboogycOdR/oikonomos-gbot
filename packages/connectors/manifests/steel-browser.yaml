@@ -5,6 +5,24 @@ account_ownership: basileia
 mcp_server: { name: steel, transport: remote, url_ref: secret://mcp/steel-browser/url }
 network_hosts: []
 tools:
+  # steel_navigate rejects any call without an existing session_id — the
+  # steel-mcp server's own error names steel_session_create as the
+  # recommended_tool. Confirmed live 2026-09-07: with these two tools
+  # absent, a role holding every OTHER browser.* grant still could not
+  # complete a single navigation — steel_navigate always failed input
+  # validation on the missing session_id, and the broker correctly (and
+  # separately) refused the model's attempt to route around the gap via
+  # ToolSearch, since neither steel_session_create/_release nor ToolSearch
+  # itself is declared here. One shared capability_id: creating and
+  # releasing a session are a matched pair a caller holding either grant
+  # trivially deduces the other from (the MCP tool descriptions alone),
+  # so gating them separately buys no real isolation, only friction.
+  - tool_name: mcp__steel__steel_session_create
+    capability_id: browser.session
+    default_tier: T1_draft
+  - tool_name: mcp__steel__steel_session_release
+    capability_id: browser.session
+    default_tier: T1_draft
   - tool_name: mcp__steel__steel_navigate
     capability_id: browser.navigate
     default_tier: T1_draft

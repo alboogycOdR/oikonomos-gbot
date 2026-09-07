@@ -19,6 +19,10 @@ import {
   SECRET_PATH_AUDIT_EVENT_TYPE,
   SECRET_PATH_DENIAL_REASON,
 } from "./secretPathGuard.js";
+import {
+  STEEL_SESSION_AUDIT_EVENT_TYPE,
+  STEEL_SESSION_DENIAL_REASON,
+} from "./steelSessionGuard.js";
 
 const sealedTarget = `${SEALED_SECRET_ROOT}/browser-profile/Default/Cookies`;
 
@@ -118,6 +122,83 @@ describe("handlePreToolUse — D3 secret-path gate (Addendum F N13)", () => {
     const deps = dependencies();
     const response = await handlePreToolUse(request, deps);
     // Removing the call above lets this autonomous capability reach the executor.
+    expect(response.decision).toBe("deny");
+    expect(response.decision).not.toBe("allow");
+  });
+});
+
+const steelSessionRequest: PreToolUseRequest = {
+  toolUseId: "steel-session-1",
+  runId: "22222222-2222-2222-2222-222222222222",
+  roleId: "news-reader",
+  tenantId: "basileia",
+  toolName: "mcp__steel__steel_session_create",
+  input: { solve_captcha: true },
+  agentRef: { provider: "claude", sessionRef: "session-2", isSubagent: false },
+};
+
+function steelSessionCapability(): RegisteredCapability {
+  return {
+    toolName: steelSessionRequest.toolName,
+    capabilityId: "browser.session",
+    defaultTier: "T1_draft",
+    enforcementEnabled: true,
+    enforcedActionClasses: [],
+  };
+}
+
+describe("handlePreToolUse — Steel session-safety gate (non-negotiable #6, TASK-207 Blocking-2)", () => {
+  it("denies a solve_captcha/use_proxy/profile_id/namespace request on the real path before an otherwise autonomous six-rank resolution", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => steelSessionCapability()),
+      getRoleGrant: vi.fn(async () => ({ maxTier: "T4_irreversible" as const })),
+      destinationFor: vi.fn(() => "current_page"),
+      recordDecision: vi.fn(async () => ({ eventId: "audit-steel-1" })),
+    });
+
+    await expect(handlePreToolUse(steelSessionRequest, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: STEEL_SESSION_DENIAL_REASON,
+      auditEventId: "audit-steel-1",
+    });
+    expect(deps.getCapability).not.toHaveBeenCalled();
+    expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({
+      verdict: "deny",
+      reason: STEEL_SESSION_DENIAL_REASON,
+      payload: expect.objectContaining({
+        type: STEEL_SESSION_AUDIT_EVENT_TYPE,
+        verdict: "deny",
+        reason: STEEL_SESSION_DENIAL_REASON,
+        fields: ["solve_captcha"],
+      }),
+    }));
+  });
+
+  it("allows a plain steel_session_create with no circumvention fields through to the six-rank resolver", async () => {
+    const deps = dependencies({
+      getCapability: vi.fn(async () => steelSessionCapability()),
+      getRoleGrant: vi.fn(async () => ({ maxTier: "T4_irreversible" as const })),
+      destinationFor: vi.fn(() => "current_page"),
+    });
+
+    const response = await handlePreToolUse({ ...steelSessionRequest, input: {} }, deps);
+    expect(response.decision).toBe("allow");
+    expect(deps.getCapability).toHaveBeenCalled();
+  });
+
+  it("LIVENESS: removing the index guard call makes a solve_captcha request reach the six-rank resolver", async () => {
+    const source = readFileSync(fileURLToPath(new URL("./index.ts", import.meta.url)), "utf8");
+
+    expect(source).toMatch(/import\s*\{\s*guardSteelSessionSafety\s*\}\s*from\s*"\.\/steelSessionGuard\.js"/);
+    expect(source).toContain("guardSteelSessionSafety(request.toolName, request.input)");
+
+    const deps = dependencies({
+      getCapability: vi.fn(async () => steelSessionCapability()),
+      getRoleGrant: vi.fn(async () => ({ maxTier: "T4_irreversible" as const })),
+      destinationFor: vi.fn(() => "current_page"),
+    });
+    const response = await handlePreToolUse(steelSessionRequest, deps);
+    // Removing the call above lets this circumvention request reach the resolver and allow.
     expect(response.decision).toBe("deny");
     expect(response.decision).not.toBe("allow");
   });
