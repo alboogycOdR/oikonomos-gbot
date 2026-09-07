@@ -27,7 +27,10 @@ import {
   claudePrintCommand,
   destinationFor,
   finalText,
+  LOCAL_LANE_MODEL,
+  resolveChatRunExecution,
   sandboxEntrypointFor,
+  SPEND_UNRECORDED_EVENT_TYPE,
 } from "./chatRunDriver.js";
 import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
@@ -157,6 +160,45 @@ describe("chat run driver governance helpers", () => {
     expect(sandboxEntrypointFor("some-operator-override:latest")).toEqual([
       "node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null",
     ]);
+  });
+
+  // TASK-210 — spend attribution must describe what actually ran. The old
+  // code recorded `provider: "claude"` plus the SANDBOX model string on both
+  // lanes, so a local-lane run was labelled with a model it never used, and
+  // any non-Anthropic run would have been attributed to Claude outright —
+  // invisible to TASK-209's per-provider cap, which keys on that column.
+  it("attributes a run to the lane that actually executes it, not to a literal (TASK-210)", () => {
+    const db = { connectionString: "postgres://example/db" };
+    const previousModel = process.env.OIKONOMOS_SANDBOX_MODEL;
+    try {
+      delete process.env.OIKONOMOS_SANDBOX_MODEL;
+      // The sandbox lane — the PRODUCTION one — does pin a model.
+      expect(resolveChatRunExecution(db, true)).toEqual({
+        provider: "claude",
+        model: "claude-haiku-4-5-20251001",
+      });
+
+      process.env.OIKONOMOS_SANDBOX_MODEL = "claude-opus-5";
+      expect(resolveChatRunExecution(db, true).model).toBe("claude-opus-5");
+
+      // The local lane pins no model at all — the SDK chooses. Naming that is
+      // truthful; borrowing the sandbox model string, as the old code did,
+      // labelled every local run with a model it never used.
+      expect(resolveChatRunExecution(db, false)).toEqual({
+        provider: "claude",
+        model: LOCAL_LANE_MODEL,
+      });
+    } finally {
+      if (previousModel === undefined) delete process.env.OIKONOMOS_SANDBOX_MODEL;
+      else process.env.OIKONOMOS_SANDBOX_MODEL = previousModel;
+    }
+  });
+
+  it("names the provider vocabulary TASK-209's cap reads back (TASK-210)", () => {
+    // A cap keyed on a name nothing writes is silently inert. These must stay
+    // the same string in both places; this test is the pin.
+    expect(resolveChatRunExecution({ connectionString: "postgres://example/db" }, true).provider).toBe("claude");
+    expect(SPEND_UNRECORDED_EVENT_TYPE).toBe("spend.unrecorded");
   });
 
   it("derives only ADR-013's approved destinations and fails closed otherwise", () => {

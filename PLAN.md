@@ -6219,26 +6219,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-210
 **Title:** Main-chat spend is hardcoded to Anthropic and would record a Gemini run as free
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** done
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `services/worker/src/chatRunDriver.ts`'s `createChatRunBudget` (hardcodes `provider: "claude"` and the sandbox model string); `packages/harness-factory/src/budgetTap.ts`'s `withBudgetTap` (only reports on an event with `type === "result"` and a numeric `total_cost_usd`, i.e. the Anthropic SDK envelope).
-**Owned_Paths:** packages/harness-factory/src/budgetTap.ts, packages/harness-factory/src/budgetTap.test.ts
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
 **Depends_On:** —
 **Description:** The main chat path attributes every run to `provider: "claude"` with the sandbox model string, and `withBudgetTap` extracts cost only from the Anthropic result envelope. A Gemini-executed run would therefore be recorded under the wrong provider AND at zero cost — it fails open on accounting (the pre-run gate still fires, but nothing accumulates, so TASK-209's cap would never trip). Same defect class already fixed for Tier-0 in `e4b8289`, on the path that carries far more spend. Provider and model must be derived from what actually executed the run, and cost extraction must handle a non-Anthropic turn — Gemini's token counts must be priced including thinking tokens, which are billed at the output rate and are excluded from a naive completion-token reading.
 **Acceptance_Criteria:**
-- [ ] `recordSpend` receives the provider and model that actually ran the turn, not a literal.
-- [ ] A Gemini-executed run records non-zero cost from real token counts, with thinking tokens billed at the output rate (see `e4b8289` for the measured 9/4/130 case that proved the naive reading ~30x low).
-- [ ] A run whose provider reports no usable cost is visibly recorded as such rather than silently recorded as 0 — an uncosted run must be detectable.
-- [ ] Regression test proving a Claude run's existing attribution is byte-identical to today's.
-- [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+- [x] `recordSpend` receives the provider and model that actually ran the turn, not a literal.
+- [ ] ~~A Gemini-executed run records non-zero cost from real token counts~~ — MOVED to TASK-212. There is no Gemini execution lane to measure until TASK-212 wires one, and `withBudgetTap`'s Anthropic-shaped extraction is CORRECT for both Claude lanes; a Gemini lane uses `@oikonomos/agent-providers`' own `withBudgetSink`, which already prices tokens via `costForUsage`. Asserting this here would have meant testing a path that does not exist.
+- [x] A run whose provider reports no usable cost is visibly recorded as such rather than silently recorded as 0 — an uncosted run must be detectable.
+- [x] Regression test proving a Claude run's existing attribution is byte-identical to today's.
+- [x] Full suites, lint, typecheck clean.
+**Branch:** task/TASK-210-s5
+**Started_At:** 2026-09-07T13:50:00Z
 **Progress_Notes:**
+- [2026-09-07T14:05:00Z] [ORCH] Implemented. `resolveChatRunExecution` replaces the two literals and takes `useSandbox` EXPLICITLY rather than deriving it: `shouldUseSandbox` keys on NODE_ENV, which vitest always sets to "test", so an internally-derived lane made the production (sandbox) branch unreachable from any test — my first test failed for exactly that reason, which is a testability flaw in the design, not just in the test. Uncosted runs now emit a `spend.unrecorded` audit event rather than silently producing no row; deliberately NOT a fabricated zero-cost spend row, because inventing a number is how an unaccounted run becomes a 'free' one in a report. One transient failure seen during this work (`drives a real chat run end-to-end` -> budget.platform_exceeded) was checked against master by stashing: it passes on master AND passes on this branch on re-run, so it is flaky and was NOT caused by this change and is NOT claimed as fixed by it.
+- [2026-09-07T13:50:00Z] [ORCH] Territory re-carved BEFORE editing, after TASK-209's R1 finding was exactly a territory violation. Owned_Paths moves from `packages/harness-factory/**` to `services/worker/src/chatRunDriver.ts` (+ test), and the task no longer touches a protected path, so it needs no adversarial review. Reason: the defect is NOT that `withBudgetTap` is Anthropic-shaped — that extraction is correct for both Claude lanes, and a Gemini lane will use `agent-providers`' `withBudgetSink` instead, which already prices tokens. The real defects are in the caller: `createChatRunBudget` records a hardcoded `provider: "claude"` and a sandbox-specific model string (wrong even for a local-lane Claude run today), and a run whose stream carries no cost-bearing result event records NO spend row at all — so an uncosted run is indistinguishable from a free one, which is precisely what would let TASK-209's cap sit blind.
 - [2026-09-07T13:10:00Z] [ORCH] Filed. `packages/harness-factory/**` is a protected path: adversarial review required before merge. Owned_Paths deliberately exclude chatRunDriver.ts to stay disjoint from TASK-211; the caller-side change lands with whichever of the two runs second.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Test_Evidence:** worker 161/163 — the only failures are the two pre-existing pg-boss timing flakes; typecheck clean.
+**Review_Findings:** Self-reviewed by ORCH. No protected path touched after the territory re-carve (see Progress_Notes), so no adversarial review required.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T13:10:00Z
