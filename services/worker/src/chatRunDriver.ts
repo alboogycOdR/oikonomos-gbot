@@ -391,6 +391,13 @@ async function executeSandboxChatRun(
     // This is the whole child environment. Never spread process.env here:
     // only the per-turn broker identity and model credential cross the
     // worker/sandbox boundary — the image itself carries neither (TASK-154).
+    // PATH is required too: execd spawns the child directly (no interactive
+    // shell to supply a compiled-in default), so without it `claude` — an
+    // `npm install --global` binary living in /usr/local/bin, outside the
+    // POSIX execvp() fallback search path (/bin:/usr/bin) — resolves to
+    // "command not found" (exit 127). Confirmed live 2026-09-07: a bare
+    // `env -i` invocation lacking PATH reproduces exit 127 byte-for-byte
+    // against the real office-browser image; adding PATH back fixes it.
     envs: {
       [sandboxHookEnvironment.brokerUrl]: requiredSandboxBrokerUrl(),
       [sandboxHookEnvironment.brokerToken]: token,
@@ -400,6 +407,17 @@ async function executeSandboxChatRun(
       [sandboxHookEnvironment.agentProvider]: agentRef.provider,
       [sandboxHookEnvironment.agentSessionRef]: agentRef.sessionRef,
       ANTHROPIC_API_KEY: requiredSandboxAnthropicApiKey(),
+      PATH: SANDBOX_CHILD_PATH,
+      // The steel-mcp stdio server (spawned as `claude`'s own child, so it
+      // inherits this same env) defaults to Steel Cloud and throws without
+      // an API key we don't provision. office-browser's own entrypoint runs
+      // Steel local-only on 127.0.0.1:3000 (browser-entrypoint.sh) — telling
+      // the MCP server that is what makes it actually reach the browser
+      // instead of the bot silently reporting "browser tools unavailable"
+      // (confirmed live 2026-09-07: this was the last gap after the
+      // shellQuote/PATH fixes — the command ran clean but steel-mcp had
+      // nothing to connect to). Harmless to set when no connector is mounted.
+      STEEL_LOCAL: "true",
     },
     timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
   });
@@ -550,8 +568,27 @@ function safePathSegment(value: string): string {
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\\"'\\\"'")}'`;
+  // POSIX single-quote escaping: close the quote, emit a backslash-escaped
+  // literal single quote, reopen the quote. The prior `'\"'\"'` sequence
+  // (backslash-DOUBLE-quote) silently closed the outer quoting instead of
+  // re-escaping it, leaving everything after the first apostrophe as
+  // unquoted shell text — confirmed live 2026-09-07 against the real
+  // sandboxed CLI: a system prompt containing "I've" broke the whole
+  // command into stray `I: command not found` lines and an unterminated
+  // quote. Never exercised until this session's first genuine end-to-end
+  // browser-lane chat run (all prior tests used apostrophe-free fixtures).
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
+
+/**
+ * The `envs` passed to `client.runCommand` is the whole child environment
+ * (see the call site above) — execd spawns the process directly rather than
+ * through an interactive shell, so nothing supplies a default PATH search
+ * unless one is listed explicitly here. Matches every office-* image's own
+ * `RUN npm install --global @anthropic-ai/claude-code` layout, which puts
+ * the binary in /usr/local/bin — outside the POSIX execvp() fallback path.
+ */
+const SANDBOX_CHILD_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 /**
  * Cheapest available model by default — the R350/month platform ceiling
@@ -582,9 +619,12 @@ export function claudePrintCommand(
   const mcpConfigFlag = connector === undefined || Object.keys(connector.mcpServers).length === 0
     ? []
     : ["--mcp-config", shellQuote(JSON.stringify({ mcpServers: connector.mcpServers }))];
+  const effectiveSystemPrompt = connector === undefined || connector.allowedTools.length === 0
+    ? systemPrompt
+    : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly (e.g. steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page).`;
   return [
     "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
-    "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(systemPrompt),
+    "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(effectiveSystemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");
 }

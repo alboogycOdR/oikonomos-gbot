@@ -7,14 +7,17 @@ import {
   BUILTIN_TOOLS,
   BrokerFailure,
   CapabilityRegistry,
+  declaredToolsFromManifest,
   handlePreToolUse,
   type BrokerDependencies,
+  type DeclaredTool,
   type PreToolUseRequest,
   type PreToolUseResponse,
   resolveBrokerTokenSigningKey,
   verifyBrokerToken,
   type BrokerTokenBinding,
 } from "@oikonomos/broker";
+import { defaultManifestsDir, loadManifests } from "@oikonomos/connectors";
 import { Database, type DatabaseOptions } from "@oikonomos/db";
 import { destinationFor } from "@oikonomos/worker";
 
@@ -155,7 +158,17 @@ export async function buildDatabaseBrokerHttpApp(
 ): Promise<FastifyInstance> {
   const database = new Database(databaseOptions);
   try {
-    const registry = await CapabilityRegistry.build({ declared: BUILTIN_TOOLS, persisted: database });
+    // BUILTIN_TOOLS alone never taught the registry about a connector's own
+    // tools (mcp__steel__steel_navigate and friends): every role_grant for a
+    // connector capability was real, but the broker denied the call anyway
+    // with "capability.unregistered" because the manifest that maps that
+    // tool name to its capability_id was never loaded into this process.
+    // Confirmed live 2026-09-07 — the first genuine end-to-end browser-lane
+    // chat run reached this exact gap after every earlier layer (PATH,
+    // shellQuote, STEEL_LOCAL, the capabilities kill switch) was fixed.
+    const manifests = await loadManifests(defaultManifestsDir());
+    const manifestTools: DeclaredTool[] = manifests.flatMap((manifest) => declaredToolsFromManifest(manifest));
+    const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifestTools], persisted: database });
     const app = buildBrokerHttpApp({
       ...options,
       dependencies: {

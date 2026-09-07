@@ -7,7 +7,8 @@ FROM ghcr.io/steel-dev/steel-browser@sha256:54750fc5deb3102b5f8cc844abfdc7ec4629
 # package for the stdio entrypoint.
 FROM node:22.17.0-bookworm-slim AS steel-mcp-build
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && update-ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 RUN git clone https://github.com/steel-dev/steel-mcp-server.git . \
@@ -27,6 +28,14 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.263 \
  && chown root:root /oikonomos/secrets /oikonomos/secrets/browser-profiles \
  && chmod 0700 /oikonomos/secrets /oikonomos/secrets/browser-profiles
 
+# dist alone isn't runnable: the build is plain tsc (no bundler), so every
+# import of an external package (e.g. @modelcontextprotocol/server) resolves
+# at runtime through node_modules, not something dist embeds. Confirmed live
+# 2026-09-07: omitting this line produces ERR_MODULE_NOT_FOUND the moment the
+# MCP stdio server starts, closing the connection before the CLI ever sees a
+# steel_* tool — the actual `npm prune --omit=dev` step above already strips
+# this down to production-only deps, so nothing extra ships by copying it.
+COPY --from=steel-mcp-build /src/node_modules /opt/oikonomos/steel-mcp/node_modules
 COPY --from=steel-mcp-build /src/dist /opt/oikonomos/steel-mcp/dist
 COPY packages/harness-factory/dist/sandboxHook.js /opt/oikonomos/sandboxHook.js
 COPY infra/sandbox/images/office-base/managed-settings.json /etc/claude-code/managed-settings.json

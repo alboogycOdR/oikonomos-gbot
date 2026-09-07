@@ -360,6 +360,9 @@ importers:
       '@oikonomos/broker':
         specifier: workspace:*
         version: link:../../packages/broker
+      '@oikonomos/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db

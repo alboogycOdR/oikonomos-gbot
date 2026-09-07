@@ -33,6 +33,7 @@
     "@oikonomos/approvals": "workspace:*",
     "@oikonomos/audit": "workspace:*",
     "@oikonomos/broker": "workspace:*",
+    "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/sandbox-client": "workspace:*",
     "@oikonomos/worker": "workspace:*",
