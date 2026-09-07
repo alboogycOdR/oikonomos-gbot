@@ -32,6 +32,7 @@ describe("registerCapabilities", () => {
       "gmail",
       "google-calendar",
       "google-drive",
+      "steel-browser",
       "builtins",
       "workspace",
     ]);
