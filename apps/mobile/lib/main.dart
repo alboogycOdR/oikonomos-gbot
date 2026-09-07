@@ -7,14 +7,22 @@ import 'push/noop_push_port.dart';
 import 'push/push_port.dart';
 import 'screens/login_screen.dart';
 
-/// TASK-144 (Mobile Wave 1a) — default control-api base URL for local
-/// development. No CORS constraint applies to a native client (mirrors
-/// the task Description); overridable at build time via
-/// `--dart-define=CONTROL_API_BASE_URL=...` for a device pointed at a
-/// non-default host.
+/// TASK-144 (Mobile Wave 1a) — default control-api base URL. No CORS
+/// constraint applies to a native client (mirrors the task Description);
+/// overridable at build time via `--dart-define=CONTROL_API_BASE_URL=...`
+/// for a device pointed at a different host.
+///
+/// `localhost` never resolves to anything useful on a physical device —
+/// it means the device itself, not the machine running control-api — so a
+/// real device build always fails to connect regardless of network
+/// reachability. Defaults to the dev machine's own Tailscale address
+/// instead: control-api binds `0.0.0.0` (services/control-api/src/index.ts),
+/// so it's already reachable there once running, and every other client in
+/// this project (clawsrv, OpenSandbox, the worker) already addresses peers
+/// by their Tailscale IP, not `localhost`, for exactly this reason.
 const String _defaultBaseUrl = String.fromEnvironment(
   'CONTROL_API_BASE_URL',
-  defaultValue: 'http://localhost:3000',
+  defaultValue: 'http://100.67.177.24:3000',
 );
 
 /// TASK-149 (Mobile Wave 2b) — the push config gate. No
