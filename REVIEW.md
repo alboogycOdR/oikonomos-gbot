@@ -690,3 +690,19 @@ Decisions approved: absolute cap (§7 itself names an absolute fraction of ~US$1
 Non-blocking: type `provider` as `ProviderId` or document the vocabulary — the cap keys on the exact spend-column string and the chat path writes "claude" where adapters write "claude-code"; add an index on `spend_records (provider, occurred_at)`.
 
 Theatre question: merging before TASK-210 is acceptable — TASK-213 (Gemini as default) already Depends_On TASK-210, so nothing promotes Gemini past a cap that cannot see it. State on TASK-212/213 that the cap is not live for the chat path until TASK-210 merges.
+
+## TASK-209 (merge) | ORCH-authored (Opus 5), reviewed by Fable 5.1 | approved | first-pass: no (1 rework, both items small)
+
+Both rework items landed. R1 was PLAN.md-only and Fable corrected it directly: the two `index.ts` export files were genuinely outside the declared Owned_Paths, and the `budgetGate.test.ts` I listed never existed (tests are in-source via `import.meta.vitest`) — a real territory error on my part, not a formatting quibble.
+
+R2 was the substantive one and the finding was correct: the case titled "applies the same hard-ceiling semantics (>=, not >)" asserted only `4.999 < 5`, so the mutation it was named for left it green and was caught only incidentally by an unrelated test. A test that does not prove its own title is worse than no test, because it is counted as coverage. Added the boundary assertion (`spend == cap` denies) inside that case, then verified by mutation rather than by reading: with `>` in place the correctly-titled test fails (2 failed / 164 passed) and passes again restored.
+
+Took one non-blocking item immediately — documented the provider-name vocabulary on `ProviderBudgetInput`, including that the chat path writes `"claude"` while adapters write `ProviderId` values like `"claude-code"`, so a cap on one does not bind the other. A cap keyed on a name nothing writes is silently inert and looks identical to a cap that is never reached.
+
+Fable's one substantive obligation is recorded where it binds rather than left implicit in the gate: TASK-212 now carries an explicit acceptance criterion that a tool-executing Gemini run whose resolved cap is `null` must DENY, not fall through to the platform ceiling — unset-means-uncapped is correct for the pure function but is precisely what ADR-011 §7 forbids on that path. Its single-`since` and try/catch-placement requirements are recorded there too, and the remaining non-blocking items (an index on `spend_records (provider, occurred_at)`; typing the vocabulary) on TASK-213.
+
+Verified on master AFTER the merge, not assumed from the branch: broker 166/166, db 190/190 (+2 pre-existing skips), lint and `infra/ci/banned-modes.mjs` clean. Merged `--no-ff`.
+
+On the theatre question I put to the reviewer: Fable's answer is accepted — shipping the cap before TASK-210 is acceptable *because* TASK-213 already `Depends_On` TASK-210, so nothing can promote Gemini past a cap blind to it. That reasoning is load-bearing, so it is now written into TASK-213's own acceptance criteria rather than living only in a review entry.
+
+Still unresolved, third round running: the reviewer is same-vendor-different-model from the author. ORCH has not ruled whether that satisfies CLAUDE.md's "Codex CLI or Grok Build" wording, and merging on it three times without deciding is itself a drift worth naming.
