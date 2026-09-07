@@ -1,5 +1,5 @@
 import { costForUsage } from "@oikonomos/agent-providers";
-import { resolveBudgetGate, resolveProviderCapUsd, type BudgetGateDecision } from "@oikonomos/broker";
+import { providerCapEnvVar, resolveBudgetGate, resolveProviderCapUsd, type BudgetGateDecision } from "@oikonomos/broker";
 import {
   getPlatformSpendUsd,
   getProviderSpendUsd,
@@ -57,7 +57,12 @@ export async function resolveGeminiBudget(input: GeminiBudgetInput): Promise<Gem
     // every other budget read rather than escaping as an unhandled error.
     const capUsd = resolveCap(GEMINI_PROVIDER_ID);
     if (capUsd === null) {
-      return { decision: "deny", reason: GEMINI_CAP_MISSING_REASON };
+      // Name the variable an operator has to set. A deny that does not say
+      // what is missing turns a one-line config fix into an investigation.
+      return {
+        decision: "deny",
+        reason: `${GEMINI_CAP_MISSING_REASON}: set ${providerCapEnvVar(GEMINI_PROVIDER_ID)}`,
+      };
     }
 
     // ONE instant for both reads. They default independently, so left to
@@ -101,13 +106,28 @@ export async function resolveGeminiBudget(input: GeminiBudgetInput): Promise<Gem
  * output roughly thirty-fold (see `e4b8289`).
  */
 export function geminiTurnCostUsd(
-  usage: { promptTokenCount?: number | null; candidatesTokenCount?: number | null; totalTokenCount?: number | null } | null | undefined,
+  usage: {
+    promptTokenCount?: number | null;
+    candidatesTokenCount?: number | null;
+    thoughtsTokenCount?: number | null;
+    totalTokenCount?: number | null;
+  } | null | undefined,
   at: Date = new Date(),
 ): number {
   const inputTokens = nonNegative(usage?.promptTokenCount);
   const candidates = nonNegative(usage?.candidatesTokenCount);
+  const thoughts = nonNegative(usage?.thoughtsTokenCount);
   const total = nonNegative(usage?.totalTokenCount);
-  const outputTokens = Math.max(candidates, total - inputTokens >= 0 ? total - inputTokens : 0);
+
+  // Google documents total as prompt + thoughts + candidates, with cached
+  // input counted inside prompt — so deriving output from the remainder
+  // cannot over-bill (confirmed in Fable's TASK-215 review). Prefer the
+  // explicit thoughts count when the response carries it, and fall back to
+  // the remainder when it does not: the OpenAI-compatible surface omits it
+  // entirely, which is how the ~30x under-billing was found in the first
+  // place.
+  const remainder = total - inputTokens >= 0 ? total - inputTokens : 0;
+  const outputTokens = thoughts > 0 ? candidates + thoughts : Math.max(candidates, remainder);
   return costForUsage({ inputTokens, outputTokens }, at);
 }
 

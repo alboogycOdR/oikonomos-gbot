@@ -35,7 +35,11 @@ describe("resolveGeminiBudget — ADR-011 §7's gate on tool-executing Gemini (T
     // gate; on THIS path it is the exact thing the amendment forbids.
     const decision = await resolveGeminiBudget({ ...base, resolveCap: () => null });
 
-    expect(decision).toEqual({ decision: "deny", reason: GEMINI_CAP_MISSING_REASON });
+    expect(decision.decision).toBe("deny");
+    // The deny must name the variable to set; otherwise a one-line config fix
+    // becomes an investigation.
+    expect(decision).toMatchObject({ reason: expect.stringContaining(GEMINI_CAP_MISSING_REASON) });
+    expect(decision).toMatchObject({ reason: expect.stringContaining("OIK_PROVIDER_CAP_USD_GEMINI") });
     // Denied before any spend is even read — nothing to weigh, the answer is
     // structural.
     expect(dbMocks.getPlatformSpendUsd).not.toHaveBeenCalled();
@@ -107,6 +111,20 @@ describe("geminiTurnCostUsd — thinking tokens are billed output (TASK-215)", (
 
     const naive = (9 / 1_000_000) * 0.75 + (4 / 1_000_000) * 3.75;
     expect(cost).toBeGreaterThan(naive * 10);
+  });
+
+  it("uses Gemini's explicit thoughts count when the response carries one", () => {
+    const before2027 = new Date("2026-09-07T00:00:00Z");
+    // total = prompt + thoughts + candidates, per Google's documentation.
+    const withThoughts = geminiTurnCostUsd(
+      { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 117, totalTokenCount: 130 },
+      before2027,
+    );
+    const fromRemainder = geminiTurnCostUsd(
+      { promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 130 },
+      before2027,
+    );
+    expect(withThoughts).toBeCloseTo(fromRemainder, 12);
   });
 
   it("never returns a negative or NaN cost for a malformed usage record", () => {

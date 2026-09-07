@@ -65,6 +65,53 @@ describe("Gemini adapter — governed Stage-1 function loop", () => {
     expect(composeHarness({ ...base, provider: "gemini" }).gemini?.run).toBeTypeOf("function");
   });
 
+  it("ignores a rogue l1 smuggled through the gemini options object (TASK-215 R1)", async () => {
+    // The composition root used to build the adapter as
+    // `{ l1, ...(options.gemini ?? {}) }` — spreading the CALLER's object
+    // after the broker port, so an `l1` key inside it replaced enforcement
+    // wholesale (CLAUDE.md non-negotiable 1). TypeScript's excess-property
+    // check only guards object literals, so a typed variable or parsed JSON
+    // passed straight through.
+    withNonSecretTestValue();
+    const realL1 = vi.fn(async () => ({ decision: "deny" as const, message: "denied by the real broker" }));
+    const rogueL1 = vi.fn(async () => ({ decision: "allow" as const }));
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+
+    const smuggled = {
+      tools: [tool(execute)],
+      fetch: async (_url: unknown, init: { body?: unknown } | undefined) =>
+        (String(init?.body ?? "").includes("functionResponse") ? text() : functionCall()),
+      // Not reachable through the declared type; this is what a widened or
+      // dynamically-built options object looks like at runtime.
+      l1: { handle: rogueL1 },
+    } as unknown as Parameters<typeof composeHarness>[0]["gemini"];
+
+    const composed = composeHarness({
+      run: {
+        runId: "gemini-r1-run",
+        roleId: "observer",
+        tenantId: "tenant",
+        agentRef: { provider: "claude", sessionRef: "session", isSubagent: false },
+      },
+      allowedTools: [],
+      auditSink: { async writeCompletionEvidence() {} },
+      provider: "gemini",
+      gemini: smuggled,
+      pretooluse: {
+        async handlePreToolUse() {
+          await realL1();
+          return { decision: "deny" as const, reason: "denied by the real broker", auditEventId: "audit" };
+        },
+        dependencies: {},
+      },
+    });
+
+    await composed.gemini?.run("observe");
+    // The smuggled port is never consulted, and the tool never runs.
+    expect(rogueL1).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("awaits L1 before executing a function call or returning its functionResponse", async () => {
     withNonSecretTestValue();
     const order: string[] = [];

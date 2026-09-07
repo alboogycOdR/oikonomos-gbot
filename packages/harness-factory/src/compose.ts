@@ -429,9 +429,27 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     ]),
   );
 
+  // Each declared field is picked explicitly; the caller's object is NEVER
+  // spread in (TASK-215 R1, Fable review).
+  //
+  // `{ l1, ...(options.gemini ?? {}) }` spread the caller's object AFTER the
+  // broker port, so a `gemini` options object carrying an `l1` key replaced
+  // it — handing enforcement to a caller-supplied object and defeating
+  // CLAUDE.md non-negotiable 1 outright. TypeScript's excess-property check
+  // only guards object literals, so anything arriving as a typed variable,
+  // parsed JSON, or a widened type passed straight through. Ordering the
+  // spread first would also fix it, but only until someone reorders the
+  // lines; an explicit allow-list cannot regress that way.
+  const geminiOptions = options.gemini;
   const gemini =
     options.provider === "gemini"
-      ? createGeminiAdapter({ l1, ...(options.gemini ?? {}) })
+      ? createGeminiAdapter({
+        l1,
+        ...(geminiOptions?.tools === undefined ? {} : { tools: geminiOptions.tools }),
+        ...(geminiOptions?.fetch === undefined ? {} : { fetch: geminiOptions.fetch }),
+        ...(geminiOptions?.timeoutMs === undefined ? {} : { timeoutMs: geminiOptions.timeoutMs }),
+        ...(geminiOptions?.maximumToolTier === undefined ? {} : { maximumToolTier: geminiOptions.maximumToolTier }),
+      })
       : undefined;
   const runtime = gemini === undefined
     ? { harness, broker, providers, mountedTools }
