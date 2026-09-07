@@ -41,6 +41,8 @@ import {
   listEnabledForRole as dbListEnabledForRole,
   getOrInitThreadContext as dbGetOrInitThreadContext,
   startFreshEpoch as dbStartFreshEpoch,
+  getRole as dbGetRole,
+  getRoleSandbox as dbGetRoleSandbox,
   getRoutine as dbGetRoutine,
   setRoutinePaused as dbSetRoutinePaused,
   updateRoutineSkill as dbUpdateRoutineSkill,
@@ -98,8 +100,21 @@ import {
   type CreateChatRunDriverOptions,
   type GroupRoute,
 } from "@oikonomos/worker";
+import {
+  createSandboxClient,
+  envSecretResolver,
+  OPENSANDBOX_EXECD_ACCESS_TOKEN_REF,
+  type FetchLike,
+  type SandboxClient,
+  type SecretResolver,
+} from "@oikonomos/sandbox-client";
 import type { ThreadContextPort } from "./app.js";
+import type { LiveAgentPort } from "./liveAgent.routes.js";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
+
+/** execd's documented PTY/command port, reached only via the lifecycle proxy. */
+const EXECD_PTY_PORT = 44_772;
+const EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN";
 
 /**
  * The port every route handler is written against. Route-level tests
@@ -218,6 +233,85 @@ export function createDatabaseBackedThreadContext(options: DatabaseOptions): Thr
       };
     },
   };
+}
+
+export interface CreateDatabaseBackedLiveAgentOptions extends DatabaseOptions {
+  /**
+   * Test seam. Production constructs an authenticated client from
+   * SANDBOX_INTEGRATION_URL on first PTY-endpoint resolution.
+   */
+  sandboxClient?: Pick<SandboxClient, "getEndpoint">;
+  /** Test seam for the lifecycle base URL; production reads SANDBOX_INTEGRATION_URL. */
+  sandboxBaseUrl?: string;
+  fetchImpl?: FetchLike;
+  resolveApiKey?: SecretResolver;
+  resolveExecdAccessToken?: SecretResolver;
+}
+
+/**
+ * Production LiveAgentPort: a role's current sandbox from `role_sandboxes`,
+ * then execd's PTY-viewer URL via sandbox-client `getEndpoint` with
+ * `use_server_proxy=true` (TASK-169). Direct sandbox-published ports are
+ * refused even if a client returns one.
+ */
+export function createDatabaseBackedLiveAgent(options: CreateDatabaseBackedLiveAgentOptions): LiveAgentPort {
+  let client: Pick<SandboxClient, "getEndpoint"> | undefined = options.sandboxClient;
+  const resolveExecdAccessToken = options.resolveExecdAccessToken ?? envSecretResolver;
+
+  function resolveClient(): Pick<SandboxClient, "getEndpoint"> {
+    if (client !== undefined) return client;
+    const baseUrl = (options.sandboxBaseUrl ?? process.env.SANDBOX_INTEGRATION_URL)?.trim();
+    if (baseUrl === undefined || baseUrl.length === 0) {
+      throw new Error("SANDBOX_INTEGRATION_URL must be set to resolve a live-agent PTY viewer endpoint.");
+    }
+    client = createSandboxClient({
+      baseUrl,
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+      ...(options.resolveApiKey === undefined ? {} : { resolveApiKey: options.resolveApiKey }),
+      ...(options.resolveExecdAccessToken === undefined ? {} : { resolveExecdAccessToken: options.resolveExecdAccessToken }),
+    });
+    return client;
+  }
+
+  return {
+    async getActiveSandbox(roleId, tenantId) {
+      const role = await dbGetRole(options, roleId);
+      if (role === null || role.tenantId !== tenantId) return null;
+      const record = await dbGetRoleSandbox(options, roleId);
+      if (record === null) return null;
+      return { sandboxId: record.sandboxId, state: record.state };
+    },
+    async getPtyViewerEndpoint(sandboxId) {
+      const resolved = await resolveClient().getEndpoint(sandboxId, EXECD_PTY_PORT, true);
+      const httpUrl = requireLifecycleProxyUrl(resolved.endpoint);
+      const wsProtocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
+      const pathname = httpUrl.pathname.replace(/\/$/, "");
+      const token = await resolveExecdAccessToken(OPENSANDBOX_EXECD_ACCESS_TOKEN_REF);
+      return {
+        url: `${wsProtocol}//${httpUrl.host}${pathname}/pty/${encodeURIComponent(sandboxId)}/ws?mode=viewer&since=0`,
+        headers: {
+          ...resolved.headers,
+          [EXECD_ACCESS_TOKEN_HEADER]: token,
+        },
+      };
+    },
+  };
+}
+
+function requireLifecycleProxyUrl(endpoint: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error("live-agent execd endpoint was not a valid URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("live-agent execd endpoint must be http:// or https://");
+  }
+  if (!/\/proxy\/\d+\/?$/.test(parsed.pathname)) {
+    throw new Error("live-agent execd endpoint must route through the lifecycle server proxy");
+  }
+  return parsed;
 }
 
 export interface PushNotificationDeps {

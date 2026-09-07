@@ -363,6 +363,9 @@ importers:
       '@oikonomos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oikonomos/sandbox-client':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-client
       '@oikonomos/worker':
         specifier: workspace:*
         version: link:../worker

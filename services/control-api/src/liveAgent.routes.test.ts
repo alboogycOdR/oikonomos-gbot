@@ -1,8 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer, Socket, type Server } from "node:net";
+import { fileURLToPath } from "node:url";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRole, upsertRoleSandbox, type DatabaseOptions } from "@oikonomos/db";
+import type { FetchLike } from "@oikonomos/sandbox-client";
 
 import {
   FrameReader,
@@ -15,6 +19,7 @@ import {
   type LiveAgentSandboxRef,
   type UpstreamConnection,
 } from "./liveAgent.routes.js";
+import { createDatabaseBackedLiveAgent } from "./ports.js";
 
 const TOKEN = "task-171-fixture-token";
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -456,5 +461,171 @@ describe("GET /roles/:roleId/live-agent/pty — real upgrade + relay over loopba
 
     const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", {});
     expect(viewer.statusLine).toContain("401");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-203 — production LiveAgentPort (role_sandboxes + sandbox-client)
+// ---------------------------------------------------------------------------
+
+const connectionString = process.env.DATABASE_URL;
+const integration = connectionString === undefined ? describe.skip : describe;
+const FAKE_API_KEY = "test-api-key-not-a-real-secret";
+const FAKE_EXECD_TOKEN = "test-execd-token-not-a-real-secret";
+const LIFECYCLE_BASE = "http://100.78.70.2:8080";
+const PROXY_ENDPOINT = `${LIFECYCLE_BASE}/v1/sandboxes/sbx-live/proxy/44772`;
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+async function cleanupRole(roleId: string): Promise<void> {
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: connectionString!, max: 1 });
+  try {
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  } finally {
+    await pool.end();
+  }
+}
+
+describe("TASK-203 production LiveAgentPort wiring", () => {
+  it("start() constructs the production port (liveness: the factory is not dead code)", () => {
+    const source = readFileSync(fileURLToPath(new URL("./index.ts", import.meta.url)), "utf8");
+    expect(source).toMatch(/liveAgent:\s*createDatabaseBackedLiveAgent\(dbOptions\)/);
+  });
+
+  it("resolves the PTY-viewer URL through the lifecycle proxy and never a published sandbox port", async () => {
+    const getEndpoint = vi.fn(async (sandboxId: string, port?: number, useServerProxy?: boolean) => {
+      expect(sandboxId).toBe("sbx-live");
+      expect(port).toBe(44_772);
+      expect(useServerProxy).toBe(true);
+      return { endpoint: PROXY_ENDPOINT, headers: { "x-proxy-token": "route-token" } };
+    });
+    const liveAgent = createDatabaseBackedLiveAgent({
+      connectionString: "postgresql://unused.invalid/test",
+      sandboxClient: { getEndpoint },
+      resolveExecdAccessToken: async () => FAKE_EXECD_TOKEN,
+    });
+
+    const endpoint = await liveAgent.getPtyViewerEndpoint("sbx-live");
+    expect(getEndpoint).toHaveBeenCalledWith("sbx-live", 44_772, true);
+    expect(endpoint.url).toBe(`ws://100.78.70.2:8080/v1/sandboxes/sbx-live/proxy/44772/pty/sbx-live/ws?mode=viewer&since=0`);
+    expect(endpoint.url).toContain("/proxy/");
+    expect(endpoint.url).not.toMatch(/:30\d{3}\b/);
+    expect(endpoint.headers).toEqual({
+      "x-proxy-token": "route-token",
+      "X-EXECD-ACCESS-TOKEN": FAKE_EXECD_TOKEN,
+    });
+  });
+
+  it("refuses a directly-published sandbox port even if getEndpoint returns one", async () => {
+    const getEndpoint = vi.fn(async () => ({ endpoint: "http://10.0.0.8:30017" }));
+    const liveAgent = createDatabaseBackedLiveAgent({
+      connectionString: "postgresql://unused.invalid/test",
+      sandboxClient: { getEndpoint },
+      resolveExecdAccessToken: async () => FAKE_EXECD_TOKEN,
+    });
+    await expect(liveAgent.getPtyViewerEndpoint("sbx-direct")).rejects.toThrow(/lifecycle server proxy/);
+    expect(getEndpoint).toHaveBeenCalledWith("sbx-direct", 44_772, true);
+  });
+
+  it("the real sandbox-client request asks for use_server_proxy=true on execd port 44772", async () => {
+    const seen: string[] = [];
+    const fetchImpl: FetchLike = async (input) => {
+      seen.push(String(input));
+      return jsonResponse({ endpoint: PROXY_ENDPOINT, headers: { "x-proxy-token": "route-token" } });
+    };
+    const liveAgent = createDatabaseBackedLiveAgent({
+      connectionString: "postgresql://unused.invalid/test",
+      sandboxBaseUrl: LIFECYCLE_BASE,
+      fetchImpl,
+      resolveApiKey: async () => FAKE_API_KEY,
+      resolveExecdAccessToken: async () => FAKE_EXECD_TOKEN,
+    });
+
+    const endpoint = await liveAgent.getPtyViewerEndpoint("sbx-live");
+    expect(seen).toEqual([`${LIFECYCLE_BASE}/v1/sandboxes/sbx-live/endpoints/44772?use_server_proxy=true`]);
+    expect(endpoint.url).toBe(`ws://100.78.70.2:8080/v1/sandboxes/sbx-live/proxy/44772/pty/sbx-live/ws?mode=viewer&since=0`);
+  });
+});
+
+integration("TASK-203 — live Postgres LiveAgentPort", () => {
+  const options: DatabaseOptions = { connectionString: connectionString!, poolConfig: { max: 1 } };
+
+  it("resolves a real role_sandboxes row through the production port and the status route", async () => {
+    const roleId = `task-203-live-${randomUUID()}`;
+    const sandboxId = `sbx-task-203-${randomUUID()}`;
+    await createRole(options, {
+      roleId,
+      name: "TASK-203 live fixture",
+      title: "Live agent fixture",
+      description: "DATABASE_URL-gated LiveAgentPort fixture.",
+    });
+    try {
+      const liveAgent = createDatabaseBackedLiveAgent(options);
+      await expect(liveAgent.getActiveSandbox(roleId, "basileia")).resolves.toBeNull();
+
+      await upsertRoleSandbox(options, {
+        roleId,
+        sandboxId,
+        state: "Running",
+        execdTokenRef: "secret://opensandbox/execd_access_token",
+      });
+
+      await expect(liveAgent.getActiveSandbox(roleId, "basileia")).resolves.toEqual({
+        sandboxId,
+        state: "Running",
+      });
+      await expect(liveAgent.getActiveSandbox(roleId, "other-tenant")).resolves.toBeNull();
+
+      const app = Fastify({ logger: false });
+      app.decorateRequest("tenantId", "");
+      app.addHook("preHandler", async (request, reply) => {
+        if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+          await reply.code(401).send({ error: "unauthorized" });
+          return;
+        }
+        request.tenantId = "basileia";
+      });
+      registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+      try {
+        const response = await app.inject({
+          method: "GET",
+          url: `/roles/${roleId}/live-agent/status`,
+          headers: authHeaders(),
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ available: true, state: "Running" });
+      } finally {
+        await app.close();
+      }
+    } finally {
+      await cleanupRole(roleId);
+    }
+  });
+
+  it("does not leak another tenant's sandbox as available", async () => {
+    const roleId = `task-203-other-${randomUUID()}`;
+    await createRole(options, {
+      roleId,
+      tenantId: "other-tenant",
+      name: "TASK-203 other-tenant fixture",
+      title: "Other tenant",
+      description: "Must never appear as this tenant's live agent.",
+    });
+    try {
+      await upsertRoleSandbox(options, {
+        roleId,
+        sandboxId: `sbx-other-${randomUUID()}`,
+        state: "Running",
+        execdTokenRef: "secret://opensandbox/execd_access_token",
+      });
+      const liveAgent = createDatabaseBackedLiveAgent(options);
+      await expect(liveAgent.getActiveSandbox(roleId, "basileia")).resolves.toBeNull();
+    } finally {
+      await cleanupRole(roleId);
+    }
   });
 });
