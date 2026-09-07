@@ -1,4 +1,5 @@
 import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
+import { handlePreToolUse } from "@oikonomos/broker";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
   createConnectorSessionPool,
@@ -40,7 +41,9 @@ import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
-import { runWithChatBudget, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import { createSandboxGeminiTools } from "./geminiToolExecutors.js";
+import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
   BUDGET_READ_TIMEOUT_MS,
   DEFAULT_PLATFORM_CEILING_ZAR,
@@ -416,6 +419,89 @@ function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
 }
 
 /** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
+/**
+ * Run one chat turn on Gemini (TASK-220).
+ *
+ * The caller that makes five separately-merged, individually-inert pieces
+ * into a lane: the adapter, TASK-211's sandbox executors, TASK-212's tool
+ * ceiling, TASK-215's budget gate and TASK-210's spend attribution. Every one
+ * of those was green in isolation while no bot could run on Gemini at all.
+ *
+ * Deliberately mirrors `executeSandboxChatRun`'s shape: same sandbox, same
+ * workspace, same egress-controlled container. The provider changes; the
+ * isolation does not.
+ */
+export async function executeGeminiChatRun(
+  options: CreateChatRunDriverOptions,
+  database: Database,
+  manifests: readonly ConnectorManifest[],
+  request: ChatRunRequest,
+  run: { readonly runId: string; readonly sessionRef: string | null },
+  systemPrompt: string,
+  registry: CapabilityRegistry,
+  policy: PolicyRegistry,
+): Promise<{ readonly text: string; readonly costUsd: number }> {
+  // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
+  // tool-executing Gemini run, and a denial must cost no tokens.
+  const budget = await resolveGeminiBudget({
+    db: options,
+    routineId: request.task.routineId,
+    routineBudgetUsd: null,
+    platformCeilingUsd: (options.platformCeilingZar ?? DEFAULT_PLATFORM_CEILING_ZAR) / resolveUsdToZarRate(options),
+  });
+  if (budget.decision === "deny") throw new Error(budget.reason);
+
+  const client = options.sandboxClient ?? productionSandboxClient();
+  const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
+  await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
+  await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
+  const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
+  await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
+
+  const composed = composeHarness({
+    run: {
+      runId: run.runId,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      agentRef: { provider: GEMINI_PROVIDER_ID, sessionRef: run.sessionRef ?? run.runId, isSubagent: false },
+    },
+    provider: "gemini",
+    gemini: {
+      // Tools execute inside the role's sandbox, never in this process.
+      tools: createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }),
+      maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+    },
+    allowedTools: [],
+    auditSink: completionAuditSink(options, { runId: run.runId, tenantId: request.task.tenantId }),
+    pretooluse: {
+      handlePreToolUse: handlePreToolUse as never,
+      dependencies: createBrokerDependencies(options, database, registry, policy) as never,
+    },
+  });
+
+  const adapter = composed.gemini;
+  if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
+  const result = await adapter.run(`${systemPrompt}
+
+${request.task.goal}`);
+  if (result.denied) throw new Error("Gemini run was denied before it could answer.");
+
+  // Cost is unavailable from the adapter's current result shape, so this
+  // records a real turn at zero rather than inventing a figure. TASK-210's
+  // spend.unrecorded signal is what makes that visible instead of silent.
+  const costUsd = geminiTurnCostUsd(null);
+  await recordSpend(options, {
+    runId: run.runId,
+    tenantId: request.task.tenantId,
+    routineId: request.task.routineId,
+    provider: GEMINI_PROVIDER_ID,
+    model: "gemini-3.7-flash",
+    costUsd,
+    tokens: null,
+  });
+  return { text: result.text, costUsd };
+}
+
 async function executeSandboxChatRun(
   options: CreateChatRunDriverOptions,
   database: Database,

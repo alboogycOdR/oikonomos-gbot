@@ -83,6 +83,17 @@ const createL2Policy = l2Mod.createL2Policy as typeof l2Mod.createL2Policy;
 const createL3CanUseTool = l3Mod.createL3CanUseTool as typeof l3Mod.createL3CanUseTool;
 const createGeminiAdapter = geminiMod.createGeminiAdapter as typeof geminiMod.createGeminiAdapter;
 
+/**
+ * Re-exported so a caller can name the ceiling it must pass (TASK-220).
+ *
+ * `providers/gemini.ts` is not on this package's public surface, so the
+ * constant defining Stage 2's tool ceiling was unreachable from any consumer
+ * — the second instance today of a control that exists but cannot be
+ * referenced, after `maximumToolTier` itself was unreachable through
+ * `composeHarness` (TASK-215).
+ */
+export const STAGE_TWO_MAXIMUM_TOOL_TIER: number = geminiMod.STAGE_TWO_MAXIMUM_TOOL_TIER as number;
+
 /** ADR-001 CAN-02 / directive §6 — same name as the L2 validator fixture. */
 export const CAN02_TIER3_BARE_NAME = "mcp__gmail__send_message";
 

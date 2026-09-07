@@ -6493,11 +6493,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-220
 **Title:** Wire the Gemini execution lane into a real chat run — part 2, execution
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** in_progress
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `packages/harness-factory/src/compose.ts`'s `composeHarness({ provider: "gemini" })`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `services/worker/src/geminiChatRun.ts`'s `resolveGeminiBudget`/`geminiTurnCostUsd` (TASK-215 part 1); `STAGE_TWO_MAXIMUM_TOOL_TIER` (TASK-212).
-**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts
+**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts, services/worker/src/chatRunDriver.ts, packages/harness-factory/src/compose.ts
 **Depends_On:** TASK-215
 **Description:** Part 1 shipped the governance gate; nothing yet runs a Gemini turn. Five merged pieces are still inert without this: the adapter, TASK-211's sandbox executors, TASK-212's tool ceiling, TASK-215's budget gate, and TASK-210's attribution. This task is the function that composes them into an actual turn — resolve the role's sandbox, build the executors against it, compose the harness with `provider: "gemini"` and the Stage-2 ceiling, gate on the budget, run, and record spend under provider `gemini` with a real cost. Until it lands, no bot runs on Gemini for anything except Wave 1's Tier-0 background work.
 **Acceptance_Criteria:**
@@ -6507,9 +6507,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Spend records under provider `gemini` with non-zero cost derived from the turn's own token counts, including thinking tokens.
 - [ ] Proven LIVE end to end against the real API and a real sandbox, verified from the sandbox's own transcript rather than from the bot's final reply — the standard TASK-208 was held to.
 - [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-220-s5
+**Started_At:** 2026-09-07T20:45:00Z
 **Progress_Notes:**
+- [2026-09-07T20:50:00Z] [ORCH] Territory widened again, and the reason is itself a finding: `STAGE_TWO_MAXIMUM_TOOL_TIER` is exported from `providers/gemini.ts`, which is NOT on the package's public surface (exports map: ".", "./compose", "./mcp"), so no worker code could name the ceiling it is required to pass. This is the second instance of the same class found today — TASK-215 found `maximumToolTier` unreachable through `composeHarness`, and this is the constant itself. A control that cannot be referenced is inert in the same way as one that cannot be configured.
+- [2026-09-07T20:45:00Z] [ORCH] Territory widened before editing to include `chatRunDriver.ts`: `resolveRoleSandbox` and `createBrokerDependencies` are private to it, so composition cannot happen anywhere else. Building the lane outside it would have produced a sixth piece that still could not connect to anything — the exact failure this task exists to end.
 - [2026-09-07T20:40:00Z] [ORCH] Filed as the explicit part 2 Fable's review required, rather than reopening the merged part 1. Note for whoever builds it: the five pieces this composes were each reviewed and merged in isolation, and every one of them was green while the product did nothing — so the only acceptance criterion that actually matters here is the live one.
 **Artifacts:** —
 **Test_Evidence:** —
