@@ -6524,7 +6524,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-221
 **Title:** Scheduled routines never actually fire — pg-boss never processes the routine-poll queue at all
-**Status:** pending
+**Status:** blocked
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** `services/worker/src/jobs/workerJobQueue.test.ts` — "uses a real pg-boss poll job to queue each due routine and persist its fire outcome" and "records a due routine as missed without queueing work when its role is not active"; `packages/db/src/routines.ts`'s due-selection and `recordRoutineFire`.
@@ -6540,12 +6540,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-07T22:15:00Z] [ORCH] PARKED at the user's request, mid-investigation, with a near-final lead recorded so the next pass starts close to the answer rather than from scratch. ROOT CAUSE ISOLATED (not yet fixed): it is NOT the `singleton` policy, and NOT `boss.schedule()`, in general — a minimal probe with a BRAND-NEW queue name using the identical `policy: "singleton"` + `schedule()` + `send()` pattern fetched successfully both with and without singleton. The actual defect is queue-name-specific: pointed at the REAL, already-polluted `worker.routine-poll` queue name (which has 5+ stale `created` rows accumulated from today's test runs), an otherwise-identical fresh probe NEVER fetched in 15s. So the defect is that pg-boss's job-selection query for a `singleton`-policy queue appears to get permanently stuck once enough unprocessed `created` rows have accumulated for that queue name — plausibly it is always selecting/checking against the oldest stale row and never reaching a fresh one, or the singleton check itself misfires once multiple `created` rows coexist. NEXT STEP for whoever resumes this: (1) manually clear every row in `pgboss.job` where `name = 'worker.routine-poll'` and re-test whether a fresh send on that exact queue name then fetches normally — if yes, the bug is specifically about STALE-ROW ACCUMULATION under singleton policy, and the real-world fix is likely either a maintenance/cleanup gap (pg-boss's own `deleteAfterSeconds`/maintenance job not running in this environment) or a `retentionSeconds`/`expireInSeconds` misconfiguration that lets created-but-never-expired rows pile up and jam the singleton slot; (2) if clearing does NOT fix it, the defect is something else entirely queue-name-specific and this lead is a dead end. PRODUCTION IMPACT while parked: scheduled routines remain silently non-functional; this is the state to communicate if anyone asks whether that feature works.
 - [2026-09-07T21:55:00Z] [ORCH] Verdict established live against the real database — NOT fixed yet, and not claiming otherwise. Evidence: (1) `pgboss.job` history shows five independent routine-poll jobs from 18:33 through 19:30, every one still `created`/`retry_count 0`/`started_on NULL` hours later; (2) a fresh isolated probe outside the test framework, given 30 seconds of a genuinely live worker process instead of the test's 2, still left its job unstarted the entire window; (3) `worker.heartbeat` in the SAME file, registered through the identical `createQueue`->`work` sequence, completes in ~2s every single time, which rules out the pg-boss connection/schema/dispatch machinery in general. The one thing routine-poll does that heartbeat does not is call `boss.schedule(...)` on a `policy: "singleton"` queue. NEXT STEP, not yet taken: isolate whether `boss.schedule()` + `singleton` is the actual interaction (try `work()` without the `schedule()` call and see if `send()`-only jobs start fetching), or read pg-boss v12.30.0's own source for how it selects jobs eligible for `singleton` + scheduled queues specifically.
 - [2026-09-07T21:35:00Z] [ORCH] Filed after disproving my own hypothesis. I had just suggested these failures might be memory pressure, having noticed the host at 4.8GB free; running them alone refuted that immediately and surfaced something worse — they are not intermittent at all. The lesson is mine to own: "known flake" is a label that stops investigation, and I applied it to a consistently-red test roughly a dozen times today without once running it in isolation, which took under a minute.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OTHER:Parked at the user's explicit request (2026-09-07T22:15Z) to prioritize other work for the next several hours, not blocked on a dependency or decision. Root cause isolated (see Progress_Notes), not fixed. Resume when capacity allows.
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T21:35:00Z
 
