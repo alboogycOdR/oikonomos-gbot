@@ -1,5 +1,5 @@
 ---
-plan_version: 28.47
+plan_version: 28.48
 last_updated: 2026-09-06T19:05:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. TWO credential-exposure incidents this session, both self-caught, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. Both credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\") is unconditional and was still violated; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's two recorded incidents both prove is easy to get wrong even when actively trying to be careful."
@@ -4835,8 +4835,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-163
 **Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** Real gap confirmed during TASK-143's investigation (2026-09-04/05): `withBudgetSink` (packages/agent-providers) only decorates `AgentProvider.sendPrompt()`, which covers the Codex/Grok subprocess-routing path (`subprocessProviders.ts`) — TASK-143 (narrowed per human decision, Option 2 of 3) ships budget enforcement for that path ONLY. The primary chat path (`chatRunDriver.ts` → direct Claude Agent SDK `query()` call, which carries most of oikonomos's real traffic) has ZERO cost-tracking of any kind today: `AgentSdkQueryFn`'s stream is typed `AsyncIterable<unknown>` with no cost/usage shape anywhere in `packages/harness-factory/src/ports.ts`/`compose.ts`. This task closes that gap — until it lands, the R30,000/month platform ceiling in CLAUDE.md is only enforced against a fraction of real spend.
 **Owned_Paths:** packages/harness-factory/src/compose.ts, packages/harness-factory/src/compose.test.ts, packages/db/src/spend.ts, services/worker/src/chatRunDriver.ts
@@ -4849,15 +4849,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The broker denies further tool calls when a routine's or the platform's accumulated spend (now covering BOTH paths) exceeds its configured ceiling
 - [ ] TASK-143's existing Codex/Grok enforcement is unaffected — existing tests pass unmodified
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-163-gb
+**Started_At:** 2026-09-07T03:25:00Z
+**Progress_Notes:**
+- [2026-09-07T03:25:00Z] [ORCH] Dispatched to GB — this task touches `packages/harness-factory/src/compose.ts` (CLAUDE.md top-level protected path), needing a different-model author than ORCH; GB satisfies this. Depends_On (TASK-170/175/179) all done. Was held pending until now because it shared `chatRunDriver.ts` with TASK-186 while TASK-186 was active — TASK-186 was re-scoped this session (see its own Progress_Notes) and no longer touches that file, freeing this task to dispatch alongside it. Still latently conflicts with TASK-204 (also `chatRunDriver.ts`) per `validate_plan.py`'s own warning — do not co-activate with TASK-204.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_At:** 2026-09-07T03:25:00Z
 
 ### TASK-164
 **Title:** Wire Codex/Grok subprocess routing into a real production execution path
