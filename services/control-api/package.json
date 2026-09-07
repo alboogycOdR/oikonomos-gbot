@@ -34,6 +34,7 @@
     "@oikonomos/audit": "workspace:*",
     "@oikonomos/broker": "workspace:*",
     "@oikonomos/db": "workspace:*",
+    "@oikonomos/sandbox-client": "workspace:*",
     "@oikonomos/worker": "workspace:*",
     "cron-parser": "^5.10.0",
     "fastify": "^5.12.1",

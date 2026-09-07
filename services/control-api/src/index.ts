@@ -1,7 +1,12 @@
 import { fileURLToPath } from "node:url";
 
 export { buildApp, type BuildAppOptions } from "./app.js";
-export { createDatabaseBackedDeps, createDatabaseBackedThreadContext, type ControlApiDeps } from "./ports.js";
+export {
+  createDatabaseBackedDeps,
+  createDatabaseBackedThreadContext,
+  createDatabaseBackedLiveAgent,
+  type ControlApiDeps,
+} from "./ports.js";
 export { getOpenApiDocument } from "./openapi.js";
 export { redactApprovalNonceFromUrl } from "./redact.js";
 export {
@@ -14,7 +19,7 @@ export {
 
 import { buildApp } from "./app.js";
 import { buildDatabaseBrokerHttpApp } from "./brokerHttpRoute.js";
-import { createDatabaseBackedDeps, createDatabaseBackedThreadContext } from "./ports.js";
+import { createDatabaseBackedDeps, createDatabaseBackedLiveAgent, createDatabaseBackedThreadContext } from "./ports.js";
 
 /**
  * Process entrypoint (not exercised by tests): read DATABASE_URL and PORT
@@ -30,8 +35,12 @@ export async function start(): Promise<void> {
   if (!Number.isSafeInteger(port) || port <= 0 || !Number.isSafeInteger(brokerPort) || brokerPort <= 0 || brokerPort === port) {
     throw new Error("PORT and BROKER_PORT must be distinct positive integer ports.");
   }
-  const deps = createDatabaseBackedDeps({ connectionString });
-  const app = buildApp(deps, { threadContext: createDatabaseBackedThreadContext({ connectionString }) });
+  const dbOptions = { connectionString };
+  const deps = createDatabaseBackedDeps(dbOptions);
+  const app = buildApp(deps, {
+    threadContext: createDatabaseBackedThreadContext(dbOptions),
+    liveAgent: createDatabaseBackedLiveAgent(dbOptions),
+  });
   const brokerApp = await buildDatabaseBrokerHttpApp({ connectionString });
   try {
     await Promise.all([
