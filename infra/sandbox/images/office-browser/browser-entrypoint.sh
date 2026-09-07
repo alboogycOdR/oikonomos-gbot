@@ -21,10 +21,19 @@ chmod 0700 "$profile_dir"
 steel_pid=$!
 trap 'kill "$steel_pid" 2>/dev/null || true; wait "$steel_pid" 2>/dev/null || true' EXIT INT TERM
 
+# TASK-208: `/v1/health`, not `/health` — the pinned steel-browser image
+# serves its health route under the versioned prefix and 404s the bare path,
+# which `--fail` turns into a never-satisfied loop. Verified live inside a
+# real sandbox: /v1/health -> 200, /health -> 404. This wait loop had never
+# actually run before TASK-208 made OpenSandbox invoke this script at all,
+# so the wrong path never surfaced.
+#
+# Chromium takes a while to come up on a 500m-CPU sandbox; 30s was tight
+# even when the path was right. 90 attempts keeps the same 1s cadence.
 attempt=0
-until curl --fail --silent --show-error http://127.0.0.1:3000/health >/dev/null 2>&1; do
+until curl --fail --silent --show-error http://127.0.0.1:3000/v1/health >/dev/null 2>&1; do
   attempt=$((attempt + 1))
-  if [ "$attempt" -ge 30 ]; then
+  if [ "$attempt" -ge 90 ]; then
     echo "Steel Browser did not become healthy" >&2
     exit 1
   fi

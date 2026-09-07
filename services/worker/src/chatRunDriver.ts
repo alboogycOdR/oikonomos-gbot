@@ -116,6 +116,55 @@ const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
  * reference; do not select an image by an untagged name in production).
  */
 const OFFICE_BROWSER_SANDBOX_IMAGE = "oikonomos-office-browser:claude-2.1.263";
+
+/** The base image's marker-writing wrapper; every image carries this one. */
+const EGRESS_ENTRYPOINT = ["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"] as const;
+/**
+ * office-browser's own wrapper: starts Steel on loopback, waits for its
+ * health endpoint, THEN `exec`s the egress entrypoint above with the same
+ * argv — so the egress marker chain `assertEgressPolicyApplied` depends on
+ * is preserved exactly, with Steel already live before the CLI ever runs.
+ */
+const BROWSER_ENTRYPOINT = ["/opt/oikonomos/browser-entrypoint.sh", "tail", "-f", "/dev/null"] as const;
+
+/**
+ * TASK-208: the `entrypoint` sent to `createSandbox` MUST follow the image
+ * actually selected, not be a single hardcoded array. OpenSandbox always
+ * replaces the image's own Docker `ENTRYPOINT` with its `bootstrap.sh` and
+ * runs this field as the command instead (see the call site), so pinning it
+ * to the base image's wrapper meant `office-browser`'s `browser-entrypoint.sh`
+ * — the only thing that starts Steel Browser — never ran in a real sandbox.
+ * Found live 2026-09-07: `ps aux` inside a genuine office-browser sandbox
+ * showed no Steel process at all and `steel_session_create` failed with
+ * "Could not reach Steel at http://localhost:3000", after every earlier
+ * layer (PATH, shellQuote, STEEL_LOCAL, image node_modules, the broker's
+ * manifest registry, and the session-tool grants) was already fixed.
+ *
+ * Keyed on the resolved image, not on `isBrowserLaneGranted`, so an
+ * `OIKONOMOS_SANDBOX_IMAGE` override gets the entrypoint its own image can
+ * actually run. An unrecognized override falls back to the base wrapper:
+ * every office-* image carries `egress-entrypoint.mjs`, only office-browser
+ * carries `browser-entrypoint.sh`, so this is the fail-safe direction.
+ */
+export function sandboxEntrypointFor(image: string): readonly string[] {
+  return image === OFFICE_BROWSER_SANDBOX_IMAGE ? BROWSER_ENTRYPOINT : EGRESS_ENTRYPOINT;
+}
+
+/**
+ * TASK-208: office-browser runs a real Chromium, which cannot start inside
+ * office-base's 500m/512Mi budget — confirmed live 2026-09-07, where Steel's
+ * own API came up healthy but every `steel_session_create` failed with
+ * "Browser launch timeout after 60000ms" until the box was made bigger.
+ * Kept as tight as Chromium actually tolerates rather than generous: the
+ * R350/month platform ceiling means an oversized default box is a real cost,
+ * and only browser-granted roles pay this one.
+ */
+const BASE_RESOURCE_LIMITS = { cpu: "500m", memory: "512Mi" } as const;
+const BROWSER_RESOURCE_LIMITS = { cpu: "2000m", memory: "2Gi" } as const;
+
+export function sandboxResourceLimitsFor(image: string): { readonly cpu: string; readonly memory: string } {
+  return image === OFFICE_BROWSER_SANDBOX_IMAGE ? BROWSER_RESOURCE_LIMITS : BASE_RESOURCE_LIMITS;
+}
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
@@ -382,7 +431,7 @@ async function executeSandboxChatRun(
   // helper keeps `--output-format text` for its existing unit test.
   const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json", connector);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
-  await assertEgressPolicyApplied(client, resolvedSandbox.endpoint);
+  await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
   const response = await client.runCommand(resolvedSandbox.endpoint, {
@@ -449,14 +498,48 @@ async function assertManagedSettingsIntegrity(client: SandboxClient, endpoint: S
   }
 }
 
-/** A root-owned image entrypoint writes this only after its sidecar reports a live policy. */
-async function assertEgressPolicyApplied(client: SandboxClient, endpoint: SandboxEndpoint): Promise<void> {
-  const result = await client.runCommand(endpoint, {
-    command: "test -f /run/oikonomos/egress-policy-applied",
-    envs: {},
-    timeoutMs: 10_000,
-  });
-  if (result.exitCode !== 0) throw new Error("Sandbox egress policy marker is absent; refusing governed command.");
+/**
+ * A root-owned image entrypoint writes this only after its sidecar reports a
+ * live policy.
+ *
+ * TASK-208: polled, not checked once. OpenSandbox reports `Running` as soon
+ * as the CONTAINER is up, which on office-browser is well before its
+ * entrypoint has finished starting Steel Browser and `exec`ed into the
+ * egress entrypoint that writes this marker — a real race, hit live
+ * 2026-09-07 (the marker appeared ~30s after the single check refused).
+ * Still fail-closed: a marker that never appears refuses exactly as before,
+ * just after a bounded wait instead of instantly.
+ */
+const EGRESS_MARKER_POLL_MS = 2_000;
+
+/**
+ * Only office-browser needs the wait: its entrypoint starts Steel Browser
+ * (and a full Chromium) before `exec`ing the egress entrypoint that writes
+ * the marker. office-base writes it within its own startup, so it keeps the
+ * original single-check behavior — an absent marker there is a genuine
+ * refusal, not a race, and must fail instantly rather than hang.
+ */
+export function egressMarkerWaitMsFor(image: string): number {
+  return image === OFFICE_BROWSER_SANDBOX_IMAGE ? 120_000 : 0;
+}
+
+async function assertEgressPolicyApplied(
+  client: SandboxClient,
+  endpoint: SandboxEndpoint,
+  maxWaitMs: number,
+): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  for (;;) {
+    const result = await client.runCommand(endpoint, {
+      command: "test -f /run/oikonomos/egress-policy-applied",
+      envs: {},
+      timeoutMs: 10_000,
+    });
+    if (result.exitCode === 0) return;
+    if (Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, EGRESS_MARKER_POLL_MS));
+  }
+  throw new Error("Sandbox egress policy marker is absent; refusing governed command.");
 }
 
 /** Create the role's durable in-sandbox workspace before execd validates cwd. */
@@ -485,7 +568,14 @@ async function resolveRoleSandbox(
   client: SandboxClient,
   roleId: string,
   manifests: readonly ConnectorManifest[],
-): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint }> {
+): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint; readonly image: string }> {
+  // The image this role's office runs, whether it was created just now or on
+  // an earlier turn — the caller needs it to know how long a slow-starting
+  // image may take to write its egress marker (TASK-208).
+  const roleImage = process.env.OIKONOMOS_SANDBOX_IMAGE?.trim()
+    || (isBrowserLaneGranted(manifests, new Set((await database.listRoleGrants(roleId)).map((grant) => grant.capabilityId)))
+      ? OFFICE_BROWSER_SANDBOX_IMAGE
+      : SANDBOX_IMAGE);
   let record = await getRoleSandbox(options, roleId);
   if (record === null) {
     const grants = await database.listRoleGrants(roleId);
@@ -494,13 +584,12 @@ async function resolveRoleSandbox(
     // AC1: a role granted browser.* capabilities gets the office-browser
     // image, not office-base, at sandbox creation time. An explicit
     // OIKONOMOS_SANDBOX_IMAGE override still wins for either case, matching
-    // the pre-existing single-image override behavior exactly.
-    const grantedCapabilityIds = new Set(grants.map((grant) => grant.capabilityId));
-    const defaultImage = isBrowserLaneGranted(manifests, grantedCapabilityIds)
-      ? OFFICE_BROWSER_SANDBOX_IMAGE
-      : SANDBOX_IMAGE;
+    // the pre-existing single-image override behavior exactly. `roleImage`
+    // above resolves exactly that, and is reused here so the created image
+    // and the one reported back to the caller can never disagree.
+    const image = roleImage;
     const created = await client.createSandbox({
-      image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || defaultImage },
+      image: { uri: image },
       // TASK-185: OpenSandbox's own container entrypoint is ALWAYS its own
       // `/opt/opensandbox/bootstrap.sh`, injected regardless of what the
       // image itself declares as ENTRYPOINT (verified live against clawsrv,
@@ -513,8 +602,8 @@ async function resolveRoleSandbox(
       // ever reached by a plain `docker run` outside OpenSandbox (kept for
       // that direct-invocation/sanity-check use, not dead weight, but never
       // exercised by the real deployment).
-      entrypoint: ["node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null"],
-      resourceLimits: { cpu: "500m", memory: "512Mi" },
+      entrypoint: sandboxEntrypointFor(image),
+      resourceLimits: sandboxResourceLimitsFor(image),
       metadata: { roleId },
       ...(networkPolicy === undefined ? {} : { networkPolicy }),
     });
@@ -526,7 +615,7 @@ async function resolveRoleSandbox(
   }
   const running = await waitForSandboxRunning(client, record.sandboxId);
   await updateRoleSandboxState(options, roleId, running.status.state);
-  return { sandboxId: record.sandboxId, endpoint: await client.getEndpoint(record.sandboxId) };
+  return { sandboxId: record.sandboxId, endpoint: await client.getEndpoint(record.sandboxId), image: roleImage };
 }
 
 async function waitForSandboxRunning(client: SandboxClient, sandboxId: string): Promise<Sandbox> {
@@ -621,7 +710,7 @@ export function claudePrintCommand(
     : ["--mcp-config", shellQuote(JSON.stringify({ mcpServers: connector.mcpServers }))];
   const effectiveSystemPrompt = connector === undefined || connector.allowedTools.length === 0
     ? systemPrompt
-    : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly: steel_session_create first to open a session, then steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page, and steel_session_release when you are done.`;
+    : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly: steel_session_create first to open a session, then steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page, and steel_session_release when you are done.\n\nOnly your FINAL message is delivered to the person who asked — nothing you write between tool calls reaches them. Put your complete answer in that last message, even if it repeats what you already wrote while working.`;
   return [
     "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
     "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(effectiveSystemPrompt),

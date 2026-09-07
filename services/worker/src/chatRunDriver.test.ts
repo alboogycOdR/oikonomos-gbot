@@ -27,6 +27,7 @@ import {
   claudePrintCommand,
   destinationFor,
   finalText,
+  sandboxEntrypointFor,
 } from "./chatRunDriver.js";
 import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
@@ -137,6 +138,25 @@ describe("chat run driver governance helpers", () => {
     // fixture; production still leaves Agent SDK ownership with the factory.
     expect(chatRunDriverSource).toContain("options.queryFn");
     expect(chatRunDriverSource).not.toContain("@anthropic-ai/claude-agent-sdk");
+  });
+
+  // TASK-208: the entrypoint must follow the image actually selected.
+  // Pinning it to the base wrapper meant office-browser's own Steel-starting
+  // script never ran in a real sandbox — OpenSandbox replaces the image's
+  // Docker ENTRYPOINT with its own bootstrap and runs THIS field instead.
+  it("pairs each sandbox image with the entrypoint that image can actually run (TASK-208)", () => {
+    expect(sandboxEntrypointFor("oikonomos-office-browser:claude-2.1.263")).toEqual([
+      "/opt/oikonomos/browser-entrypoint.sh", "tail", "-f", "/dev/null",
+    ]);
+    expect(sandboxEntrypointFor("oikonomos-office-base:claude-2.1.263")).toEqual([
+      "node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null",
+    ]);
+    // An unrecognized override falls back to the base wrapper: every office-*
+    // image carries egress-entrypoint.mjs, only office-browser carries
+    // browser-entrypoint.sh, so this is the fail-safe direction.
+    expect(sandboxEntrypointFor("some-operator-override:latest")).toEqual([
+      "node", "/opt/oikonomos/egress-entrypoint.mjs", "tail", "-f", "/dev/null",
+    ]);
   });
 
   it("derives only ADR-013's approved destinations and fails closed otherwise", () => {
@@ -1217,11 +1237,13 @@ integration("createChatRunDriver — browser lane live-wiring (TASK-204)", () =>
 
   it("selects the office-browser sandbox image (not office-base) for a role granted browser.* capabilities (AC1)", async () => {
     let requestedImageUri: string | undefined;
+    let requestedEntrypoint: readonly string[] | undefined;
     let state: "Running" | "Paused" = "Running";
     const fakeSandbox: SandboxClient = {
       health: async () => ({ status: "ok" }),
-      createSandbox: async (spec: { image: { uri: string } }) => {
+      createSandbox: async (spec: { image: { uri: string }; entrypoint?: readonly string[] }) => {
         requestedImageUri = spec.image.uri;
+        requestedEntrypoint = spec.entrypoint;
         return { id: "task-204-office", createdAt: "2026-09-07T00:00:00Z", status: { state } };
       },
       getSandbox: async () => ({ id: "task-204-office", createdAt: "2026-09-07T00:00:00Z", status: { state } }),
@@ -1256,6 +1278,11 @@ integration("createChatRunDriver — browser lane live-wiring (TASK-204)", () =>
         platformCeilingZar: 1_000_000,
       }).run({ task, threadId });
       expect(requestedImageUri).toBe("oikonomos-office-browser:claude-2.1.263");
+      // TASK-208: the office-browser image must be created with its OWN
+      // Steel-starting wrapper, not the base image's. Without this the
+      // container comes up with no Steel process and every steel_* tool
+      // fails with "Could not reach Steel at http://localhost:3000".
+      expect(requestedEntrypoint).toEqual(["/opt/oikonomos/browser-entrypoint.sh", "tail", "-f", "/dev/null"]);
     } finally {
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL; else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
       if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY; else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
