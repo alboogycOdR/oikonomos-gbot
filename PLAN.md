@@ -6547,3 +6547,29 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T21:35:00Z
+
+### TASK-222
+**Title:** A sandbox's DB-tracked state can drift from its real container state, causing DOCKER::SANDBOX_NOT_PAUSED/NOT_RUNNING
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** `services/worker/src/chatRunDriver.ts`'s `resolveRoleSandbox` (`if (record.state === "Paused") await client.resumeSandbox(...)`, trusting `record.state` without checking the real container); `packages/db/src/roleSandboxes.ts`'s `getRoleSandbox`/`upsertRoleSandbox`; `packages/sandbox-client`'s `getSandbox`/`resumeSandbox`/`pauseSandbox`.
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Hit repeatedly today (2026-09-07), always the same shape: `role_sandboxes.state` said `Paused`, the real container on clawsrv was actually `Running` (or vice versa), and the next chat run failed with `DOCKER::SANDBOX_NOT_PAUSED` / `DOCKER::SANDBOX_NOT_RUNNING` from OpenSandbox's own lifecycle API rejecting a resume/pause it correctly saw was already in that state. Root cause each time was ORCH manually `docker exec`/`unpause`-ing a sandbox for live debugging without updating the DB record afterward — a self-inflicted drift, not triggered by normal chat-run traffic. But `resolveRoleSandbox` trusts the cached `record.state` unconditionally before deciding whether to call `resumeSandbox`, so ANY drift — manual intervention, a prior run crashing mid-transition, two worker instances racing — produces the same denial with no automatic recovery, only a manual `docker pause`/`unpause` to force resync. A user-visible incident from a stuck sandbox would look identical to this.
+**Acceptance_Criteria:**
+- [ ] Before trusting `record.state` to decide resume-vs-not, `resolveRoleSandbox` confirms the SANDBOX'S OWN reported state via `getSandbox`, not the DB's cached copy — the DB record already gets corrected via `updateRoleSandboxState` right after a successful transition, so this is a read-time consistency check, not a new source of truth.
+- [ ] A drifted state (DB says Paused, sandbox is actually Running, or the reverse) is detected and reconciled automatically — the DB row is corrected and the run proceeds — rather than surfacing `DOCKER::SANDBOX_NOT_PAUSED`/`NOT_RUNNING` to the caller.
+- [ ] A test proves the reconciliation: seed a DB record in one state, fake the sandbox client reporting the other, confirm the run still succeeds and the DB is corrected.
+- [ ] Does not mask a genuinely dead/unreachable sandbox — that must still fail closed, distinguishably from a drift.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T21:45:00Z] [ORCH] Filed at the user's request after reviewing clawsrv's operational state. Same finding pattern as TASK-208/215/220 today: a control that assumes its cached state is correct is inert exactly when reality has moved without it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T21:45:00Z
