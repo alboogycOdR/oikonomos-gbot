@@ -38,8 +38,19 @@ export const STAGE_ONE_MAXIMUM_TOOL_TIER = 0;
  */
 export const STAGE_TWO_MAXIMUM_TOOL_TIER = 2;
 
-/** Highest tier this adapter will accept as a configured ceiling, ever. */
-const ABSOLUTE_MAXIMUM_TOOL_TIER = STAGE_TWO_MAXIMUM_TOOL_TIER;
+/**
+ * Highest tier this adapter will accept as a configured ceiling, ever.
+ *
+ * A LITERAL, deliberately not derived from {@link STAGE_TWO_MAXIMUM_TOOL_TIER}
+ * (Fable review of `81be2aa`). Aliasing the two expressed the wrong intent:
+ * raising the Stage-2 ceiling later would silently raise the absolute bound
+ * with it, so the backstop would move whenever the thing it is supposed to
+ * backstop moved. They answer different questions — "what does this stage
+ * allow" versus "what may this adapter ever be configured to allow" — and
+ * only the second is a security boundary. The guard test below fails if they
+ * are ever collapsed back together.
+ */
+const ABSOLUTE_MAXIMUM_TOOL_TIER = 2;
 
 export interface GeminiFunctionDeclaration {
   readonly name: string;
@@ -145,20 +156,16 @@ async function decideFunctionCall(
   toolByName: ReadonlyMap<string, GeminiTool>,
   maximumToolTier: number,
 ): Promise<{ allow: true; input: Record<string, unknown> } | { allow: false; message: string }> {
-  let decision;
-  try {
-    decision = await l1.handle({
-      toolName: call.name,
-      toolUseId: `gemini:${randomUUID()}`,
-      input: call.arguments,
-    });
-  } catch {
-    return { allow: false, message: "Gemini tool request denied: broker unavailable" };
-  }
-  if (decision.decision === "deny") {
-    return { allow: false, message: decision.message };
-  }
-
+  // Structural checks run BEFORE the broker, and only ever deny.
+  //
+  // Ordering finding, Fable review of 81be2aa: with the broker first, a T3
+  // call could consume a NONCE-BOUND, SINGLE-USE operator approval
+  // (CLAUDE.md non-negotiable 8) and then be refused locally — burning the
+  // operator's approval on an action that never ran, with the refusal
+  // recorded nowhere the broker can see. A pre-filter that can only ever
+  // deny cannot make anything more permissive, so putting it first costs no
+  // authority: the broker still decides everything that survives it, and
+  // remains the single source of allow.
   const tool = toolByName.get(call.name);
   if (tool === undefined) {
     return { allow: false, message: "Gemini requested an unknown tool" };
@@ -173,6 +180,21 @@ async function decideFunctionCall(
       message: `Gemini permits tools at tier ${maximumToolTier} or below; this tool is tier ${String(tool.tier)}`,
     };
   }
+
+  let decision;
+  try {
+    decision = await l1.handle({
+      toolName: call.name,
+      toolUseId: `gemini:${randomUUID()}`,
+      input: call.arguments,
+    });
+  } catch {
+    return { allow: false, message: "Gemini tool request denied: broker unavailable" };
+  }
+  if (decision.decision === "deny") {
+    return { allow: false, message: decision.message };
+  }
+
   return { allow: true, input: decision.updatedInput ?? call.arguments };
 }
 
