@@ -45,7 +45,7 @@ function authHeaders(): Record<string, string> {
 
 function makeRole(overrides: Partial<Role> = {}): Role {
   return {
-    roleId: "bot-a", tenantId: TENANT_A, name: "Bot A", title: "Bot A", description: "d", instructions: null,
+    roleId: "bot-a", tenantId: TENANT_A, name: "Bot A", title: "Bot A", description: "d", instructions: null, provider: null, model: null,
     status: "active", createdAt: new Date(), updatedAt: new Date(), ...overrides,
   };
 }

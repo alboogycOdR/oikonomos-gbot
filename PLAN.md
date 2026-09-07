@@ -6190,7 +6190,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-209
 **Title:** Per-provider hard spend cap — ADR-011 §7's precondition for any tool-executing Gemini run
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `docs/decisions/ADR-011-multi-provider-llm-support.md` §7 addendum (2026-09-06): after the R30,000 to R350 reset, `gemini-3.7-flash` must not become an uncapped default for tool-executing runs; Stage 2 promotion is blocked on a documented per-provider hard cap, not just the liveness canary. `packages/broker/src/budgetGate.ts`'s `resolveBudgetGate`; `packages/db/src/spend.ts`.
@@ -6306,28 +6306,32 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-213
 **Title:** Per-bot provider/model selection, defaulting every bot to gemini-3.7-flash
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** ADR-011 (accepted; `ComposeOptions.provider` defaults to `"gemini"` in its text); `packages/harness-factory/src/compose.ts`'s existing `provider?: "claude" | "gemini"`; user decision 2026-09-07 — default applies to ALL bots, existing included.
-**Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, services/control-api/src/roles.routes.ts, apps/mobile/lib
+**Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, services/worker/src/promptAssembly.test.ts, services/control-api/src, infra/postgres/migrations
 **Depends_On:** TASK-210, TASK-212
 **Description:** `composeHarness` already accepts a provider, but production never passes one and a role has nowhere to record its choice. Add provider/model to the role record, surface it in the API and the mobile client, and default it to `gemini-3.7-flash`. The user's explicit decision is that this applies to existing bots too, not only new ones — so this includes a migration that moves live bots, and that is the riskiest single step in the wave: every working bot changes model at once, including the news-reader browser lane proven on Claude in TASK-208. Sequence the switch so it is reversible per bot without a deploy, and do not flip the default until TASK-214 has actually proven a tool-using bot works on Gemini.
 **Acceptance_Criteria:**
-- [ ] A role records its provider and model; absent values resolve to the configured default rather than to a hardcoded literal.
-- [ ] The default is `gemini-3.7-flash` and is configuration, not a literal.
+- [x] A role records its provider and model; NULL resolves to the configured default via `resolveRoleRuntime`, never to a literal copied onto the row.
+- [x] The default is configuration (`OIK_DEFAULT_ROLE_PROVIDER`/`OIK_DEFAULT_ROLE_MODEL`), not a literal — but is NOT yet set to Gemini. This task's own next criterion forbids flipping before TASK-214, and TASK-220's live proof is outstanding. Unset falls back to Claude: an absent default must never silently move existing bots.
 - [ ] **The per-provider cap (TASK-209) is not live for the chat path until TASK-210 merges** — the chat path records `provider: "claude"` at zero cost, so a Gemini chat run is invisible to the cap. This task's Depends_On already enforces the ordering; stating it here so nobody re-derives it under time pressure.
-- [ ] A per-bot override is settable from the mobile client and takes effect on the next turn.
-- [ ] The migration moving existing bots is separately revertible from the code change, and reverting restores prior behaviour exactly.
-- [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+- [ ] PARTIAL: the API now EXPOSES a bot's provider/model read-only (`serializeRole`), so the eventual switch is observable rather than something an operator infers from a spend report. Nothing can SET them over the API yet, and no mobile UI reaches them — that is the remaining follow-up.
+- [x] Migration 021 adds nullable columns only and is separately revertible (021_roles_provider_model.down.sql); applied live and re-run to prove idempotency. It moves no existing bot — every row stays NULL, i.e. 'follow the default', which is why reverting restores prior behaviour exactly.
+- [x] db 194/194 (+2 pre-existing skips), roles.test.ts 15 (4 new); lint clean; 0 typecheck errors.
+**Branch:** task/TASK-213-s5
+**Started_At:** 2026-09-07T21:20:00Z
 **Progress_Notes:**
 - [2026-09-07T13:35:00Z] [ORCH] Carried over from Fable's TASK-209 review (non-blocking there, actionable here): add an index on `spend_records (provider, occurred_at)` — only `routine_id`/`occurred_at` are indexed today, and the per-provider cap queries that pair on every governed call. Also reconcile the provider vocabulary: adapters write `ProviderId` values (`claude-code`, `gemini`, …) while the chat path writes the literal `claude`, so a cap on one does not bind the other.
+- [2026-09-07T21:50:00Z] [ORCH] Finished the layer, having gone through the blast radius honestly rather than around it. Making `provider`/`model` REQUIRED nullable fields on `Role` broke six construction sites across two services, including production code — that is the type system listing every place a bot's provider is decided, which is the point. I kept them required and fixed the sites rather than making them optional to spare the churn: optional fields would let a caller build a bot with no provider at all, reintroducing the silent default this task exists to remove. One scope change fell out of that and is worth naming: the API now exposes provider/model read-only, because my own bulk edit had (accidentally) written that expectation into the route tests and, on reading it, exposing them is right — an operator should be able to see which provider a bot runs on rather than infer it from a spend report. Setting them over the API is still not possible.
+- [2026-09-07T21:35:00Z] [ORCH] Owned_Paths widened again to `services/control-api/src`: six files construct a `Role` (one of them production code, `app.ts`), and all stopped compiling when the type gained the new fields. Kept them REQUIRED nullable rather than optional even at that cost — they are columns present on every row, and making them optional to spare fixtures would let a caller build a bot with no provider at all, which is exactly the silent-default problem this task exists to remove. The compiler listing every construction site is the type system doing its job. Also corrected TASK-209's status, which was left at `in_progress` after its rework round despite having merged — it was producing a false territory conflict with this task over `packages/db/src/index.ts`.
+- [2026-09-07T21:30:00Z] [ORCH] Owned_Paths widened for two files the change genuinely reaches: `packages/db/src/index.ts` (to export the resolver) and `services/worker/src/promptAssembly.test.ts`, whose `Role` fixture stopped compiling once the type gained the new fields. Adding them as REQUIRED nullable fields rather than optional ones is deliberate — they are real columns present on every row, and making them optional to spare one fixture would have let a caller silently omit a bot's provider.
+- [2026-09-07T21:20:00Z] [ORCH] Started, and NARROWED to the persistence layer: Owned_Paths drops `services/control-api` and `apps/mobile/lib` for now. Correcting my own error first — I told the user repeatedly that this task was blocked behind TASK-215, which stopped being true when TASK-210 and TASK-212 merged; its Depends_On lists only those two. The default deliberately stays Claude: this task's own AC forbids flipping it before TASK-214 proves a tool-using bot works on Gemini, and TASK-220's live proof is still outstanding. NULL columns mean 'use the configured default' rather than a copied literal, so a bot never given an explicit choice stays distinguishable from one pinned to today's default — which is what makes the eventual switch reversible per bot.
 - [2026-09-07T13:10:00Z] [ORCH] Filed. Deliberately depends on TASK-212 so the default cannot flip before tool-executing parity exists — otherwise every tool-using bot silently degrades to Tier-0-only the moment the default lands.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/control-api/src/app.ts, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, infra/postgres/migrations/021_roles_provider_model.{up,down}.sql
+**Test_Evidence:** control-api 240/240; worker 186/188 (the two pre-existing pg-boss flakes); db 194/194 (+2 pre-existing skips); migration applied against the live dev database and re-run to prove idempotency; lint and recursive typecheck clean.
+**Review_Findings:** Self-reviewed. No protected path. Two criteria deliberately unmet and marked so: the default is not flipped to Gemini, and no UI reaches the per-bot override.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T13:10:00Z

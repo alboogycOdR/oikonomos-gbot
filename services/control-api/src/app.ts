@@ -622,6 +622,8 @@ function serializeRole(role: {
   name: string;
   description: string;
   title: string;
+  provider: string | null;
+  model: string | null;
   instructions: string | null;
 }): {
   id: string;
@@ -630,6 +632,8 @@ function serializeRole(role: {
   avatarSeed: string;
   title: string | null;
   instructions: string | null;
+  provider: string | null;
+  model: string | null;
 } {
   return {
     id: role.roleId,
@@ -638,6 +642,12 @@ function serializeRole(role: {
     avatarSeed: role.roleId,
     title: role.title,
     instructions: role.instructions,
+    // TASK-213: read-only for now. Exposing which provider a bot runs on is
+    // what makes the eventual switch observable to the operator rather than
+    // something they have to infer from a spend report. Nothing can SET these
+    // over the API yet — that lands with the per-bot override UI.
+    provider: role.provider,
+    model: role.model,
   };
 }
 
@@ -2077,6 +2087,8 @@ if (import.meta.vitest) {
       title: "Tenant A bot",
       description: "d",
       instructions: null,
+      provider: null,
+      model: null,
       status: "active",
       createdAt: new Date(),
       updatedAt: new Date(),

@@ -37,6 +37,8 @@ function makeRole(overrides: Partial<Role> = {}): Role {
     title: "Bot",
     description: "SSE fixture bot",
     instructions: null,
+    provider: null,
+    model: null,
     status: "active",
     createdAt: new Date(),
     updatedAt: new Date(),

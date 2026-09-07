@@ -35,6 +35,16 @@ export interface Role {
   description: string;
   /** Optional custom system-prompt material; null means no custom persona. */
   instructions: string | null;
+  /**
+   * Provider this bot runs on. NULL means "use the configured platform
+   * default" rather than a copied literal (TASK-213) — so a bot that has
+   * never been given an explicit choice stays distinguishable from one
+   * deliberately pinned to whatever the default happens to be today. That
+   * distinction is what makes changing the default reversible per bot.
+   */
+  provider: string | null;
+  /** Model within that provider; NULL follows the provider's own default. */
+  model: string | null;
   status: RoleStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -47,12 +57,14 @@ interface RoleRow extends QueryResultRow {
   title: string;
   description: string;
   instructions: string | null;
+  provider: string | null;
+  model: string | null;
   status: RoleStatus;
   created_at: Date;
   updated_at: Date;
 }
 
-const roleColumns = `role_id, tenant_id, name, title, description, instructions, status, created_at, updated_at`;
+const roleColumns = `role_id, tenant_id, name, title, description, instructions, provider, model, status, created_at, updated_at`;
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -77,6 +89,8 @@ function toRole(row: RoleRow): Role {
     title: row.title,
     description: row.description,
     instructions: row.instructions,
+    provider: row.provider ?? null,
+    model: row.model ?? null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -279,4 +293,34 @@ if (import.meta.vitest) {
       await expect(updateRoleName(live, "r1", "x".repeat(MAX_ROLE_NAME_LENGTH + 1))).rejects.toThrow(/at most/);
     });
   });
+}
+
+
+/** Platform default provider when a role has not chosen one (TASK-213). */
+export const DEFAULT_ROLE_PROVIDER_ENV = "OIK_DEFAULT_ROLE_PROVIDER";
+/** Platform default model when a role has not chosen one. */
+export const DEFAULT_ROLE_MODEL_ENV = "OIK_DEFAULT_ROLE_MODEL";
+
+/**
+ * Resolves which provider and model a role actually runs on.
+ *
+ * A role's own values win; otherwise the configured platform default applies.
+ * The default is CONFIGURATION, not a literal, so switching every bot is an
+ * operational change rather than a deploy — and, critically, so it can be
+ * switched BACK the same way. The user's decision is that Gemini eventually
+ * becomes the default for all bots including existing ones; this function is
+ * the single place that decision takes effect, and it is deliberately not
+ * flipped yet: TASK-213's own acceptance criteria forbid flipping before
+ * TASK-214 proves a tool-using bot actually works on Gemini.
+ *
+ * Falls back to Claude when nothing is configured. An unset default must not
+ * silently move existing bots onto a different provider.
+ */
+export function resolveRoleRuntime(
+  role: Pick<Role, "provider" | "model">,
+  env: Record<string, string | undefined> = process.env,
+): { readonly provider: string; readonly model: string | null } {
+  const provider = role.provider?.trim() || env[DEFAULT_ROLE_PROVIDER_ENV]?.trim() || "claude";
+  const model = role.model?.trim() || env[DEFAULT_ROLE_MODEL_ENV]?.trim() || null;
+  return { provider, model };
 }

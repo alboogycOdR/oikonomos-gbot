@@ -17,6 +17,10 @@ function role(overrides: Partial<Role> = {}): Role {
     title: "Market Analyst",
     description: "Explains market movements with sources.",
     instructions: null,
+    // TASK-213: NULL means "follow the configured platform default", which
+    // is what a bot that has never been pinned to a provider looks like.
+    provider: null,
+    model: null,
     status: "active",
     createdAt: new Date(),
     updatedAt: new Date(),

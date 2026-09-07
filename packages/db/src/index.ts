@@ -80,6 +80,9 @@ export {
 } from "./tasks.js";
 export {
   createRole,
+  DEFAULT_ROLE_MODEL_ENV,
+  DEFAULT_ROLE_PROVIDER_ENV,
+  resolveRoleRuntime,
   getRole,
   listRoles,
   updateRoleInstructions,
