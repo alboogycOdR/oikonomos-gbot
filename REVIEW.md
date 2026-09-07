@@ -675,3 +675,18 @@ Independently re-verified on master AFTER the merge, not assumed from the branch
 Two findings from this task remain genuinely open, disclosed but not yet filed as their own tasks: (1) the ~13 google-calendar/google-drive tools plus `mcp__gmail__create_draft` with no `destinationFor` branch — fails closed, so not a merge blocker, but a real product gap; (2) TASK-185's `createSandbox` entrypoint override is image-unaware, so `office-browser`'s own Steel-starting entrypoint never actually runs in a live sandbox — found during this task's own live end-to-end proof, well outside a manifest-fix's scope to carry.
 
 Also still open: whether Fable 5.1 (same vendor, different model ID from the author) satisfies CLAUDE.md's "different model" requirement for protected-path review. Both rounds proceeded on that basis; ORCH has not made a documented decision either way, and this note does not close it.
+
+## TASK-209 | ORCH-authored (Opus 5), reviewed by Fable 5.1 | rework | first-pass: no
+
+Adversarial review of `task/TASK-209-s5` @ `2a18571` (per-provider hard spend cap in `resolveBudgetGate`, `getProviderSpendUsd`, `resolveProviderCapUsd`/`providerCapEnvVar`). Reviewer disclosure unchanged: same vendor as the author, different model ID; ORCH has not ruled on whether that satisfies the "Codex CLI / Grok Build" wording.
+
+Verified independently on a fresh worktree: full `pnpm -r test` green everywhere except the two pre-existing pg-boss timeouts in `services/worker` (identical on master); `pnpm lint` and `pnpm -r typecheck` exit 0; broker 166/166 with 19 in-source budgetGate tests; db `spend.test.ts` 6/6 against real Postgres. Mutation 1 (entire provider block deleted from `resolveBudgetGate`): four budgetGate tests go red including the LIVENESS case — a genuine ADR-005 assertion. Mutation 2 (`>=` weakened to `>`): only the "names the provider" test goes red; the test titled "(>=, not >)" stays green because it never asserts the spend == cap boundary.
+
+**R1 — territory.** `packages/broker/src/index.ts` and `packages/db/src/index.ts` modified outside Owned_Paths; the listed `budgetGate.test.ts` does not exist (tests are in-source). Owned_Paths corrected in PLAN.md 28.72; no code change.
+**R2 — under-specified test.** Add `spendUsd: 5, capUsd: 5` → deny to the `>=` semantics test so it can distinguish `>=` from `>`.
+
+Decisions approved: absolute cap (§7 itself names an absolute fraction of ~US$18.92; the forgotten-cap failure is the safe direction); platform → provider → routine ordering; malformed value throws — all three existing callers (`tierZeroProvider`, `subprocessProviders`, `chatRunDriver.createChatRunBudget`) wrap the gate in fail-closed try/catch, so a future `resolveProviderCapUsd` call inside that block fails closed; unset = uncapped is right for the pure function, but §7's obligation must land on the wiring task: a tool-executing Gemini run with a null resolved cap must deny. Window alignment holds only if callers pass neither `since`; callers should compute one and pass it to both reads.
+
+Non-blocking: type `provider` as `ProviderId` or document the vocabulary — the cap keys on the exact spend-column string and the chat path writes "claude" where adapters write "claude-code"; add an index on `spend_records (provider, occurred_at)`.
+
+Theatre question: merging before TASK-210 is acceptable — TASK-213 (Gemini as default) already Depends_On TASK-210, so nothing promotes Gemini past a cap that cannot see it. State on TASK-212/213 that the cap is not live for the chat path until TASK-210 merges.
