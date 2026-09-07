@@ -6408,25 +6408,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-217
 **Title:** Gemini price table silently halves the real cost on 2027-01-01
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** done
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/agent-providers/src/pricing.ts`; Google's published pricing, re-verified live 2026-09-07: gemini-3.7-flash is $0.75 in / $3.75 out per 1M tokens "through December 31, 2026", then $1.50 / $7.50 from January 1, 2027.
 **Owned_Paths:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts
 **Depends_On:** —
 **Description:** The price constants are correct today and become exactly half the real price on 2027-01-01, with nothing in the system aware of the change. Every Gemini turn would then be costed at 50%, the platform ceiling and TASK-209's per-provider cap would both permit roughly double the intended spend, and nothing would look wrong. This is a dated cliff, not a guess: the doubling is published. Make the price a function of the turn's date rather than a single constant, so the cliff is handled rather than merely commented.
 **Acceptance_Criteria:**
-- [ ] `costForUsage` prices a turn dated on or after 2027-01-01 at the higher published rate, and one before it at the current rate.
-- [ ] Test asserts both sides of the boundary explicitly, including the exact instant.
-- [ ] Existing callers that pass no date keep today's behaviour until the cliff, then follow it automatically.
-- [ ] The published source and verification date are recorded in the source, as the current constants already are.
+- [x] `costForUsage` prices a turn dated on or after 2027-01-01 at the higher published rate, and one before it at the current rate.
+- [x] Test asserts both sides of the boundary explicitly, including the exact instant.
+- [x] Existing callers that pass no date keep today's behaviour until the cliff, then follow it automatically.
+- [x] The published source and verification date are recorded in the source, as the current constants already are.
 **Branch:** —
-**Started_At:** —
+**Started_At:** 2026-09-07T15:05:00Z
 **Progress_Notes:**
+- [2026-09-07T15:10:00Z] [ORCH] Implemented as a date-dependent rate rather than a comment: a comment warning about a future date is only as good as whoever happens to read it that week. `costForUsage` now takes an optional instant defaulting to now, so every existing caller keeps today's rate until the published cliff and then follows it with no code change. Tests assert BOTH sides at the exact instant (cliff minus 1ms, and the cliff itself), plus the consequence explicitly — after the cliff the same usage costs exactly double, which is the amount the platform ceiling and TASK-209's per-provider cap would each have over-permitted.
 - [2026-09-07T14:45:00Z] [ORCH] Filed after re-verifying the published pricing live while routing Tier-0 at Gemini.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts
+**Test_Evidence:** agent-providers 104/104 (pricing.test.ts 13, 4 new); build clean.
+**Review_Findings:** Self-reviewed by ORCH; no protected path touched.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z
@@ -6458,23 +6459,24 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-219
 **Title:** spend_records has no index for the per-provider cap's query
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** done
+**Assigned_To:** S5
 **Priority:** low
 **Spec_References:** `packages/db/src/spend.ts`'s `getProviderSpendUsd` (`WHERE provider = $1 AND occurred_at >= $2`); existing indexes cover `routine_id` and `occurred_at` only.
 **Owned_Paths:** infra/postgres/migrations
 **Depends_On:** TASK-209
 **Description:** Carried from Fable's TASK-209 review as non-blocking. The per-provider cap runs its query on every governed call, and `spend_records` grows monotonically, so this becomes a hot read against a growing table with no supporting index. Add `(provider, occurred_at)`.
 **Acceptance_Criteria:**
-- [ ] A migration adds the index, and is revertible.
-- [ ] The migration is idempotent / safe to re-run, matching the conventions of the existing migrations.
+- [x] A migration adds the index, and is revertible.
+- [x] The migration is idempotent / safe to re-run, matching the conventions of the existing migrations.
 **Branch:** —
-**Started_At:** —
+**Started_At:** 2026-09-07T15:05:00Z
 **Progress_Notes:**
+- [2026-09-07T15:10:00Z] [ORCH] Implemented and applied live, not just written: the index exists on the dev database and the migration was re-run to prove idempotency.
 - [2026-09-07T14:45:00Z] [ORCH] Filed from Fable's TASK-209 review rather than dropped.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** infra/postgres/migrations/020_spend_records_provider_index.up.sql, infra/postgres/migrations/020_spend_records_provider_index.down.sql
+**Test_Evidence:** Applied against the live dev database and confirmed present via \di; re-running the up migration is a no-op (IF NOT EXISTS).
+**Review_Findings:** Self-reviewed by ORCH; no protected path touched.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z
