@@ -33,7 +33,21 @@
  * re-decided by a human to change.
  */
 export interface ProviderBudgetInput {
-  /** Provider whose spend this is, e.g. "gemini". Named in the deny reason. */
+  /**
+   * Provider whose spend this is. Named in the deny reason.
+   *
+   * MUST be the exact string written to `spend_records.provider`, because
+   * that column is what {@link resolveProviderCapUsd}'s cap is compared
+   * against — a cap keyed on a name nothing writes is silently inert, which
+   * looks identical to a cap that is simply never reached. Left as `string`
+   * rather than `ProviderId` only because `packages/broker` deliberately
+   * takes no dependency on `@oikonomos/agent-providers`; the vocabulary is
+   * that package's `ProviderId` ("claude-code" | "codex" | "grok" | "gemini"
+   * | "free-llm-api"), EXCEPT that the main chat path currently writes the
+   * literal "claude" rather than "claude-code" — so those two names are not
+   * yet interchangeable, and a cap on one does not bind the other. TASK-210
+   * owns reconciling that.
+   */
   readonly provider: string;
   /** That provider's own spend over the same window as the platform figure. */
   readonly spendUsd: number;
@@ -264,12 +278,24 @@ if (import.meta.vitest) {
     });
 
     it("applies the same hard-ceiling semantics as the other two ceilings (>=, not >)", () => {
+      // Just under the cap still allows...
       expect(
         resolveBudgetGate({
           ...withinEverythingElse,
           provider: { provider: "gemini", spendUsd: 4.999, capUsd: 5 },
         }),
       ).toEqual({ decision: "allow" });
+
+      // ...and spend EXACTLY AT the cap already denies the next call. Without
+      // this assertion the test's own title is unproven: weakening `>=` to
+      // `>` left it green (Fable review of 2a18571, R2), so it was only
+      // catching the mutation incidentally, via an unrelated case.
+      expect(
+        resolveBudgetGate({
+          ...withinEverythingElse,
+          provider: { provider: "gemini", spendUsd: 5, capUsd: 5 },
+        }),
+      ).toEqual({ decision: "deny", reason: "budget.provider_exceeded", provider: "gemini" });
     });
 
     it("allows an uncapped provider, leaving the platform ceiling as its only bound", () => {
