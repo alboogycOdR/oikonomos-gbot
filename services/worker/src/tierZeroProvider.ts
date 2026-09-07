@@ -1,4 +1,4 @@
-import { FreeLlmApiProvider, withBudgetSink, type FreeLlmApiFetch } from "@oikonomos/agent-providers";
+import { costForUsage, FreeLlmApiProvider, withBudgetSink, type FreeLlmApiFetch } from "@oikonomos/agent-providers";
 import {
   getPlatformSpendUsd,
   getRoutine,
@@ -34,6 +34,60 @@ export interface CreateTierZeroProviderOptions {
   readonly platformCeilingZar?: number;
   /** Injectable only for deterministic tests. */
   readonly fetch?: FreeLlmApiFetch;
+  /**
+   * Prices a turn from token counts when the endpoint reports no cost of its
+   * own. Google's OpenAI-compatible endpoint returns token counts and no
+   * cost, so without this every Gemini-backed Tier-0 turn records $0.00 and
+   * never counts against the platform ceiling.
+   */
+  readonly costFromUsage?: (usage: { readonly inputTokens: number; readonly outputTokens: number }) => number;
+  /**
+   * Provider name recorded against this call's spend. The transport is
+   * `FreeLlmApiProvider` whichever backend is configured, so its own id
+   * ("free-llm-api") would attribute Gemini spend to the wrong provider and
+   * make per-provider cost reporting wrong at exactly the moment it starts
+   * to matter. Defaults to the transport's id when unset.
+   */
+  readonly providerId?: string;
+}
+
+/** Google's OpenAI-compatible chat-completions surface. */
+export const GEMINI_OPENAI_COMPATIBLE_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+/** ADR-011's chosen Gemini model; matches packages/agent-providers' price table. */
+export const GEMINI_TIER_ZERO_MODEL = "gemini-3.7-flash";
+
+/**
+ * Tier-0 configuration derived from the environment.
+ *
+ * Prefers Gemini (ADR-011's accepted provider) whenever `GEMINI_API_KEY` is
+ * set, falling back to whatever `FREE_LLM_API_*` points at. Tier-0 is
+ * text-only with no tool surface, so ADR-011 §3's Stage-1 boundary
+ * (observation only, no tool execution) is satisfied by construction — this
+ * routing does not touch the tool-executing path its §7 addendum gates.
+ *
+ * Returns `undefined` when neither provider is configured, so the caller can
+ * raise its own error naming what to set.
+ */
+export function resolveTierZeroEnvConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): Pick<CreateTierZeroProviderOptions, "endpoint" | "model" | "apiKey" | "costFromUsage" | "providerId"> | undefined {
+  const geminiKey = env.GEMINI_API_KEY?.trim();
+  if (geminiKey !== undefined && geminiKey.length > 0) {
+    return {
+      endpoint: GEMINI_OPENAI_COMPATIBLE_ENDPOINT,
+      model: env.GEMINI_TIER_ZERO_MODEL?.trim() || GEMINI_TIER_ZERO_MODEL,
+      apiKey: geminiKey,
+      costFromUsage: costForUsage,
+      providerId: "gemini",
+    };
+  }
+  const endpoint = env.FREE_LLM_API_ENDPOINT?.trim();
+  const model = env.FREE_LLM_API_MODEL?.trim();
+  if (endpoint === undefined || endpoint.length === 0) return undefined;
+  if (model === undefined || model.length === 0) return undefined;
+  const apiKey = env.FREE_LLM_API_KEY?.trim();
+  return { endpoint, model, ...(apiKey === undefined || apiKey.length === 0 ? {} : { apiKey }) };
 }
 
 /** A governed, text-only Tier-0 completion call suitable for routing and compaction. */
@@ -52,13 +106,14 @@ export function createTierZeroProvider(options: CreateTierZeroProviderOptions): 
       defaultModel: options.model,
       apiKey: options.apiKey,
       fetch: options.fetch,
+      ...(options.costFromUsage === undefined ? {} : { costFromUsage: options.costFromUsage }),
     }),
     {
       async report(entry): Promise<void> {
         await recordSpend(options.db, {
           runId: options.runId,
           routineId: options.routineId ?? null,
-          provider: entry.provider,
+          provider: options.providerId ?? entry.provider,
           model: entry.model,
           costUsd: entry.costUsd,
           tokens: entry.tokens,

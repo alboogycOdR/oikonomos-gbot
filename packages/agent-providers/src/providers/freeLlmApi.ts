@@ -3,6 +3,12 @@ import type { AgentProvider, ProviderCapabilities, ProviderEvent, SendPromptOpti
 /** The minimal fetch surface required by the OpenAI-compatible FreeLLMAPI endpoint. */
 export type FreeLlmApiFetch = typeof fetch;
 
+/** Token counts an OpenAI-compatible response reports for one turn. */
+export interface FreeLlmApiUsageTokens {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+}
+
 export interface FreeLlmApiProviderOptions {
   /** Full OpenAI-compatible chat-completions endpoint, e.g. http://router:3002/v1/chat/completions. */
   readonly endpoint: string;
@@ -11,11 +17,30 @@ export interface FreeLlmApiProviderOptions {
   readonly apiKey?: string;
   /** Injectable only for deterministic tests. Production uses the platform fetch. */
   readonly fetch?: FreeLlmApiFetch;
+  /**
+   * Computes this turn's cost from reported token counts, used ONLY when the
+   * endpoint reports no cost of its own.
+   *
+   * Aggregator routers (the original FreeLLMAPI case) return `usage.cost_usd`,
+   * so they never need this. First-party OpenAI-compatible endpoints do not:
+   * Google's returns `prompt_tokens`/`completion_tokens` and no cost at all,
+   * which silently recorded every such turn as $0.00 — spend that never
+   * counted against the platform ceiling. The caller knows which model it
+   * configured, so it supplies the price; this adapter stays provider-neutral
+   * and never embeds a pricing table.
+   */
+  readonly costFromUsage?: (usage: FreeLlmApiUsageTokens) => number;
 }
 
 interface CompletionResponse {
   readonly choices?: readonly { readonly message?: { readonly content?: unknown } }[];
-  readonly usage?: { readonly cost?: unknown; readonly cost_usd?: unknown };
+  readonly usage?: {
+    readonly cost?: unknown;
+    readonly cost_usd?: unknown;
+    readonly prompt_tokens?: unknown;
+    readonly completion_tokens?: unknown;
+    readonly total_tokens?: unknown;
+  };
 }
 
 /**
@@ -37,6 +62,7 @@ export class FreeLlmApiProvider implements AgentProvider {
   private readonly endpoint: string;
   private readonly apiKey: string | undefined;
   private readonly fetchFn: FreeLlmApiFetch;
+  private readonly costFromUsage: ((usage: FreeLlmApiUsageTokens) => number) | undefined;
   private activeAbort: AbortController | null = null;
 
   constructor(options: FreeLlmApiProviderOptions) {
@@ -47,6 +73,7 @@ export class FreeLlmApiProvider implements AgentProvider {
     this.availableModels = [options.defaultModel];
     this.apiKey = options.apiKey;
     this.fetchFn = options.fetch ?? fetch;
+    this.costFromUsage = options.costFromUsage;
   }
 
   async interrupt(): Promise<void> {
@@ -91,7 +118,7 @@ export class FreeLlmApiProvider implements AgentProvider {
       yield {
         type: "turn_complete",
         sessionId: null,
-        costUsd: responseCostUsd(parsed.usage),
+        costUsd: responseCostUsd(parsed.usage, this.costFromUsage),
         durationMs: null,
         turns: 1,
       };
@@ -108,7 +135,43 @@ export class FreeLlmApiProvider implements AgentProvider {
   }
 }
 
-function responseCostUsd(usage: CompletionResponse["usage"]): number {
-  const value = usage?.cost_usd ?? usage?.cost;
+function responseCostUsd(
+  usage: CompletionResponse["usage"],
+  costFromUsage: ((usage: FreeLlmApiUsageTokens) => number) | undefined,
+): number {
+  const reported = usage?.cost_usd ?? usage?.cost;
+  if (typeof reported === "number" && Number.isFinite(reported) && reported >= 0) return reported;
+
+  // No cost reported. Price it from token counts when the caller told us how;
+  // otherwise fall back to 0, which is what every caller got before.
+  if (costFromUsage === undefined) return 0;
+  const derived = costFromUsage({
+    inputTokens: tokenCount(usage?.prompt_tokens),
+    outputTokens: billableOutputTokens(usage),
+  });
+  return typeof derived === "number" && Number.isFinite(derived) && derived >= 0 ? derived : 0;
+}
+
+/**
+ * Output tokens a caller will actually be billed for.
+ *
+ * A reasoning model's `completion_tokens` counts only the visible reply and
+ * excludes its thinking tokens, while `total_tokens` includes them — a real
+ * Gemini 3.7 Flash turn measured 2026-09-07 reported
+ * `{prompt: 9, completion: 4, total: 130}`, so the ~117 thinking tokens were
+ * 90% of the turn and every one of them is billed at the output rate. Pricing
+ * on `completion_tokens` alone under-counted that turn's output ~30x.
+ *
+ * Uses whichever is larger, so a provider that omits `total_tokens`, or that
+ * reports no thinking tokens at all, is unaffected.
+ */
+function billableOutputTokens(usage: CompletionResponse["usage"]): number {
+  const completion = tokenCount(usage?.completion_tokens);
+  const total = tokenCount(usage?.total_tokens);
+  const prompt = tokenCount(usage?.prompt_tokens);
+  return Math.max(completion, total - prompt >= 0 ? total - prompt : 0);
+}
+
+function tokenCount(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }

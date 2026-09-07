@@ -66,4 +66,4 @@ export type { GrokProviderOptions, GrokSandboxProfile } from "./grok.js";
 export { GeminiProvider } from "./gemini.js";
 export type { GeminiProviderOptions, GeminiQueryFn, GeminiQueryResult, GeminiUsageMetadata } from "./gemini.js";
 export { FreeLlmApiProvider } from "./freeLlmApi.js";
-export type { FreeLlmApiProviderOptions, FreeLlmApiFetch } from "./freeLlmApi.js";
+export type { FreeLlmApiProviderOptions, FreeLlmApiFetch, FreeLlmApiUsageTokens } from "./freeLlmApi.js";

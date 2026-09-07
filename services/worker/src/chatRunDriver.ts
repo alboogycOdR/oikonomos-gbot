@@ -48,7 +48,7 @@ import {
 } from "./subprocessProviders.js";
 import { buildRoleSystemPrompt } from "./promptAssembly.js";
 import { maybeCompact } from "./contextCompaction.js";
-import { createTierZeroProvider, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
+import { createTierZeroProvider, resolveTierZeroEnvConfig, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
 import { createChatRunWorkspace, removeChatRunWorkspace } from "./runWorkspace.js";
 import {
   combineConnectorContexts,
@@ -877,12 +877,11 @@ function resolveTierZeroProviderOptions(
   options: CreateChatRunDriverOptions,
 ): Omit<CreateTierZeroProviderOptions, "db" | "runId"> {
   if (options.tierZeroProviderOptions !== undefined) return options.tierZeroProviderOptions;
-  const endpoint = process.env.FREE_LLM_API_ENDPOINT?.trim();
-  const model = process.env.FREE_LLM_API_MODEL?.trim();
-  if (endpoint === undefined || endpoint.length === 0) throw new Error("FREE_LLM_API_ENDPOINT must be set for context compaction.");
-  if (model === undefined || model.length === 0) throw new Error("FREE_LLM_API_MODEL must be set for context compaction.");
-  const apiKey = process.env.FREE_LLM_API_KEY?.trim();
-  return { endpoint, model, ...(apiKey === undefined || apiKey.length === 0 ? {} : { apiKey }) };
+  const resolved = resolveTierZeroEnvConfig();
+  if (resolved === undefined) {
+    throw new Error("Set GEMINI_API_KEY (preferred) or FREE_LLM_API_ENDPOINT + FREE_LLM_API_MODEL for context compaction.");
+  }
+  return resolved;
 }
 
 /**

@@ -96,6 +96,95 @@ describe("createTierZeroProvider", () => {
     })).toThrow(/usdToZarRate/);
   });
 
+  // ADR-011 makes Gemini the adopted provider; Tier-0 is text-only, so this
+  // routing sits inside §3's Stage-1 boundary (observation, no tool
+  // execution) and does not touch what §7's addendum gates.
+  it("prefers Gemini when GEMINI_API_KEY is set, and prices its turns", async () => {
+    const { resolveTierZeroEnvConfig, GEMINI_OPENAI_COMPATIBLE_ENDPOINT } = await import("./tierZeroProvider.js");
+
+    const config = resolveTierZeroEnvConfig({ GEMINI_API_KEY: "test-key" } as NodeJS.ProcessEnv);
+
+    expect(config?.endpoint).toBe(GEMINI_OPENAI_COMPATIBLE_ENDPOINT);
+    expect(config?.model).toBe("gemini-3.7-flash");
+    expect(config?.providerId).toBe("gemini");
+    // Without this the endpoint's missing cost field records every turn as $0.
+    expect(config?.costFromUsage).toBeTypeOf("function");
+    expect(config?.costFromUsage?.({ inputTokens: 1_000_000, outputTokens: 0 })).toBeCloseTo(0.75, 6);
+  });
+
+  it("falls back to the FreeLLMAPI router when no Gemini key is configured", async () => {
+    const { resolveTierZeroEnvConfig } = await import("./tierZeroProvider.js");
+
+    const config = resolveTierZeroEnvConfig({
+      FREE_LLM_API_ENDPOINT: "http://router/v1/chat/completions",
+      FREE_LLM_API_MODEL: "cheap",
+    } as NodeJS.ProcessEnv);
+
+    expect(config?.endpoint).toBe("http://router/v1/chat/completions");
+    expect(config?.providerId).toBeUndefined();
+    expect(resolveTierZeroEnvConfig({} as NodeJS.ProcessEnv)).toBeUndefined();
+  });
+
+  it("attributes Gemini-backed spend to gemini, not to the FreeLLMAPI transport", async () => {
+    configureBudget();
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+      // Google's OpenAI-compatible surface reports tokens and no cost.
+      usage: { prompt_tokens: 1_000_000, completion_tokens: 0, total_tokens: 1_000_000 },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const complete = createTierZeroProvider({
+      db: { connectionString: "postgres://example/db" },
+      runId: "tier-zero-gemini",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      model: "gemini-3.7-flash",
+      providerId: "gemini",
+      costFromUsage: ({ inputTokens, outputTokens }) => (inputTokens / 1_000_000) * 0.75 + (outputTokens / 1_000_000) * 3.75,
+      fetch: fetch as never,
+    });
+
+    await complete("summarise this");
+
+    expect(dbMocks.recordSpend).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ provider: "gemini", costUsd: expect.closeTo(0.75, 6) }),
+    );
+  });
+
+  // Real shape measured live against gemini-3.7-flash on 2026-09-07:
+  // {prompt_tokens: 9, completion_tokens: 4, total_tokens: 130}. The 117
+  // unaccounted tokens are thinking tokens, which Google bills at the OUTPUT
+  // rate. Pricing on completion_tokens alone under-counts this turn ~30x.
+  it("bills a reasoning model's thinking tokens, not just its visible reply", async () => {
+    configureBudget();
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "TIER0 OK" } }],
+      usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 130 },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const complete = createTierZeroProvider({
+      db: { connectionString: "postgres://example/db" },
+      runId: "tier-zero-thinking",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      model: "gemini-3.7-flash",
+      providerId: "gemini",
+      costFromUsage: ({ inputTokens, outputTokens }) => (inputTokens / 1_000_000) * 0.75 + (outputTokens / 1_000_000) * 3.75,
+      fetch: fetch as never,
+    });
+
+    await complete("summarise this");
+
+    // 9 input @ $0.75/M + (130 - 9) = 121 billable output @ $3.75/M.
+    const expected = (9 / 1_000_000) * 0.75 + (121 / 1_000_000) * 3.75;
+    expect(dbMocks.recordSpend).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ costUsd: expect.closeTo(expected, 12) }),
+    );
+    // The naive reading would have been ~30x cheaper than reality.
+    const naive = (9 / 1_000_000) * 0.75 + (4 / 1_000_000) * 3.75;
+    expect(expected).toBeGreaterThan(naive * 10);
+  });
+
   // The production caller (chatRunDriver's resolveTierZeroProviderOptions)
   // passes only endpoint/model/apiKey, so this default IS the live ceiling
   // for every context-compaction and group-routing call. It was a second,
