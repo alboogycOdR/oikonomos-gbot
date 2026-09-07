@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGeminiAdapter,
   GEMINI_REQUEST_TIMEOUT_MS,
+  STAGE_TWO_MAXIMUM_TOOL_TIER,
   type GeminiTool,
 } from "./gemini.js";
 import { composeHarness } from "../compose.js";
@@ -147,7 +148,92 @@ describe("Gemini adapter — governed Stage-1 function loop", () => {
 
     await adapter.run("observe");
     expect(execute).not.toHaveBeenCalled();
-    expect(responsePayload).toContain("Tier-0 tools only");
+    expect(responsePayload).toContain("tier 0 or below");
+  });
+
+  // TASK-212 — the Stage-1 -> Stage-2 promotion.
+  it("runs a tool at the configured Stage-2 ceiling that Stage 1 refused", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ ran: true }));
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [tool(execute, STAGE_TWO_MAXIMUM_TOOL_TIER)],
+      maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+      fetch: async (_url, init) => (String(init?.body ?? "").includes("functionResponse") ? text() : functionCall()),
+    });
+
+    await adapter.run("browse");
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("still refuses a tool ABOVE the configured ceiling", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    let responsePayload = "";
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      // T3_external: an approval-requiring tier, deliberately out of reach.
+      tools: [tool(execute, STAGE_TWO_MAXIMUM_TOOL_TIER + 1)],
+      maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+      fetch: async (_url, init) => {
+        responsePayload = String(init?.body ?? "");
+        return responsePayload.includes("functionResponse") ? text() : functionCall();
+      },
+    });
+
+    await adapter.run("browse");
+    expect(execute).not.toHaveBeenCalled();
+    expect(responsePayload).toContain(`tier ${STAGE_TWO_MAXIMUM_TOOL_TIER} or below`);
+  });
+
+  it("refuses a ceiling above T2 at construction rather than honouring it", () => {
+    withNonSecretTestValue();
+    const build = (maximumToolTier: number) => createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      maximumToolTier,
+      fetch: async () => text(),
+    });
+
+    // T3_external / T4_irreversible are the approval-requiring tiers. Handing
+    // them to the cheapest model in the fleet is a separate ADR decision, so
+    // configuration must not be able to reach them.
+    expect(() => build(STAGE_TWO_MAXIMUM_TOOL_TIER + 1)).toThrow(/maximumToolTier/);
+    expect(() => build(4)).toThrow(/maximumToolTier/);
+    expect(() => build(-1)).toThrow(/maximumToolTier/);
+    expect(() => build(1.5)).toThrow(/maximumToolTier/);
+    expect(() => build(STAGE_TWO_MAXIMUM_TOOL_TIER)).not.toThrow();
+  });
+
+  it("defaults to the Stage-1 ceiling, so every existing caller is unchanged", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [tool(execute, 1)],
+      fetch: async (_url, init) => (String(init?.body ?? "").includes("functionResponse") ? text() : functionCall()),
+    });
+
+    await adapter.run("observe");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("LIVENESS: an inert tier ceiling is detectable — an above-ceiling tool must never execute", async () => {
+    // ADR-005 / ADR-011 §7's canary, keyed on the refusal the check emits
+    // when it does its job. Deleting the tier block in decideFunctionCall
+    // lets this T3 tool run on an L1 that allows everything, turning this
+    // red — which is the whole point: the broker is the authority, and this
+    // ceiling is the backstop for when the broker is misconfigured.
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ shouldNot: "run" }));
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [tool(execute, 3)],
+      maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+      fetch: async (_url, init) => (String(init?.body ?? "").includes("functionResponse") ? text() : functionCall()),
+    });
+
+    await adapter.run("browse");
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -6274,29 +6274,30 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-212
 **Title:** Lift the Gemini adapter's Stage-1 Tier-0 tool cap to governed parity
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/harness-factory/src/providers/gemini.ts`'s `STAGE_ONE_MAXIMUM_TOOL_TIER = 0` and its strict `tool.tier !== STAGE_ONE_MAXIMUM_TOOL_TIER` check; ADR-011 §3 (Stage 2 explicitly not cut) and §7 (promotion gated on the cap and a canary).
 **Owned_Paths:** packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts
 **Depends_On:** TASK-209, TASK-211
 **Description:** The adapter permits Tier-0 tools ONLY — a strict equality check, so a T1 browser navigate or a T2 interact is refused with "Gemini Stage 1 permits Tier-0 tools only" no matter what the role is granted. That is ADR-011 §3's deliberate Stage-1 boundary, and lifting it IS the Stage-2 promotion, so it may not land before TASK-209's cap exists. Replace the equality check with a bounded maximum tier, keeping the broker decision as the real authority (the tier check is defence in depth, not the gate). Do not simply remove the check: an unbounded adapter would permit T3/T4 external-irreversible calls on the cheapest model in the fleet, which is the opposite of what §7 was protecting.
 **Acceptance_Criteria:**
-- [ ] The cap becomes a bounded maximum rather than an equality test, and its ceiling is justified in writing against ADR-011 §3.
-- [ ] A tool above the ceiling is still refused, with a test proving it.
-- [ ] The ADR-011 liveness canary exists and fails when the tier check is inert.
-- [ ] TASK-209's per-provider cap is demonstrably in force for a tool-executing Gemini run — not merely merged.
-- [ ] **A tool-executing Gemini run whose resolved provider cap is `null` DENIES.** TASK-209 made unset mean uncapped, which is right for the pure gate but is exactly what ADR-011 §7 forbids for this path: an uncapped tool-executing Gemini default. It must not fall through to the platform ceiling. (Fable review of `2a18571` required this obligation be recorded here rather than left implicit in the gate.)
-- [ ] The caller computes ONE `since` instant and passes it to both `getPlatformSpendUsd` and `getProviderSpendUsd`. They only cannot drift while both defaults are left unevaluated; two independent default parameters resolve at two instants.
-- [ ] `resolveProviderCapUsd` is called INSIDE the caller's existing budget try/catch, so a malformed cap converts to a deny like every other budget read rather than crashing at module load.
+- [x] The cap becomes a bounded maximum rather than an equality test, and its ceiling is justified in writing against ADR-011 §3.
+- [x] A tool above the ceiling is still refused, with a test proving it.
+- [x] The ADR-011 liveness canary exists and fails when the tier check is inert.
+- [ ] TASK-209's per-provider cap is demonstrably in force for a tool-executing Gemini run — MOVED to TASK-215 (the wiring task), because this adapter has no caller: nothing in production constructs it, so there is no run here to demonstrate a cap against.
+- [ ] MOVED to TASK-215 (wiring): **a tool-executing Gemini run whose resolved provider cap is `null` DENIES.** TASK-209 made unset mean uncapped, which is right for the pure gate but is exactly what ADR-011 §7 forbids for this path: an uncapped tool-executing Gemini default. It must not fall through to the platform ceiling. (Fable review of `2a18571` required this obligation be recorded here rather than left implicit in the gate.)
+- [ ] MOVED to TASK-215 (wiring): the caller computes ONE `since` instant and passes it to both `getPlatformSpendUsd` and `getProviderSpendUsd`. They only cannot drift while both defaults are left unevaluated; two independent default parameters resolve at two instants.
+- [ ] MOVED to TASK-215 (wiring): `resolveProviderCapUsd` is called INSIDE the caller's existing budget try/catch, so a malformed cap converts to a deny like every other budget read rather than crashing at module load.
 - [ ] Adversarial review by a different model (protected path) before merge.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-212-s5
+**Started_At:** 2026-09-07T14:35:00Z
 **Progress_Notes:**
+- [2026-09-07T14:45:00Z] [ORCH] Implemented. Ceiling set at T2_internal, justified in the source: T3_external/T4_irreversible are exactly the approval-requiring tiers, and extending those to the cheapest model in the fleet is a materially different decision that ADR-011 never took — while T2 already buys the whole browser lane (`browser.navigate` T1, `browser.interact` T2), which is the product this unblocks. Configuration cannot reach above T2: an out-of-range `maximumToolTier` is REFUSED at construction rather than clamped, because silently lowering hides a misconfiguration and silently honouring it hands out irreversible actions. Default stays Stage-1 (0), so every existing caller is byte-unchanged. FOUR acceptance criteria moved to a new TASK-215: they all describe the CALLER (null-cap deny, single `since`, try/catch placement, cap demonstrably in force), and this adapter still has no production caller at all — ticking them here would have been asserting behaviour of code that does not exist.
 - [2026-09-07T13:10:00Z] [ORCH] Filed. This is the actual Stage-1 to Stage-2 promotion and is the most security-sensitive task in the wave.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** harness-factory 136/136, gemini.test.ts 14 (6 new). Tier canary mutation-tested: deleting the tier block in `decideFunctionCall` turns the LIVENESS case red along with 3 others. Lint clean.
+**Review_Findings:** Pending adversarial review (protected path `packages/harness-factory/**`).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T13:10:00Z
