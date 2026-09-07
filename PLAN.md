@@ -6437,25 +6437,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-218
 **Title:** Approvals raised inside a sandboxed run are a dead end
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `services/worker/src/chatRunDriver.ts` (`park: createRunParkPort(...)` is wired into the LOCAL branch only); TASK-136 (park on `approval_pending`), TASK-155 (continue after approval).
-**Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts
+**Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, packages/db/src/approvals.ts
 **Depends_On:** —
 **Description:** Reported by the user 2026-09-07 from the mobile client, then traced in the DB: run `da9ad52f` requested approval for `which python3` at 10:52:52, COMPLETED at 10:57:27, and the user approved at 10:59:57 — two and a half minutes after there was anything left to resume. Cause confirmed in source: `createRunParkPort` is passed only to the local execution branch; `executeSandboxChatRun` receives no park port, so a sandboxed run never parks on `approval_pending`. The CLI treats the broker's deny as an ordinary tool error and finishes without the tool. Three approvals currently sit `pending` against already-completed runs for this reason. **This task deliberately covers only the unambiguous half.** Whether the product should park-and-resume (correct governance, but withholds an answer the bot could already give) or complete-then-offer-rerun (never strands the user, weaker semantics) is a genuine product decision the user has not made; it is recorded in the notes below and must be decided before the behavioural half is built.
 **Acceptance_Criteria:**
-- [ ] An approval still `pending` when its run reaches a terminal state is resolved rather than left live, so the mobile client never shows an actionable card for a finished run.
-- [ ] Resolution is distinguishable from a user decision in the audit trail — it must never look like the operator granted or rejected it.
+- [x] PARTIAL, and narrowed on purpose: resolved for `failed` and `cancelled` runs — the states nothing can resume. NOT for `completed`, because a completed run's pending approval is indistinguishable from one a parked run is legitimately awaiting (TASK-155's resume path), and voiding it would decide the park-vs-rerun fork by implication. The existing TASK-136 test caught an earlier version that did exactly that.
+- [x] Uses `invalidated`, never `rejected`, and records `approval.abandoned_at_run_end` with actor `system:run-lifecycle`. Misreporting a person's decision would be worse than the dangling card.
 - [ ] Deciding an already-resolved approval is a no-op that reports why, not a silent nothing.
-- [ ] The park-vs-rerun product decision is recorded as decided (with reasoning) or explicitly deferred; it is NOT silently implemented one way.
-**Branch:** —
-**Started_At:** —
+- [x] Explicitly deferred, in both the source and this block — and the `completed` case is left untouched precisely so the fork stays open.
+**Branch:** task/TASK-218-s5
+**Started_At:** 2026-09-07T19:45:00Z
 **Progress_Notes:**
+- [2026-09-07T20:00:00Z] [ORCH] Implemented the unambiguous half — then narrowed it, because the first version was wrong and the existing TASK-136 test proved it. Voiding on `completeTaskRun` broke the working approval flow: a run parked at `waiting_approval` legitimately holds a live pending approval that the operator is expected to answer and TASK-155 resumes from. Worse, a completed run's pending approval is exactly the ambiguous case this task said not to decide, so that version settled the park-vs-rerun fork by implication. Now scoped to `failed`/`cancelled` only. Also added `runId`/`includeExpired` to `listPendingApprovals`: the existing filter excludes lapsed rows, which is right for 'what can a person act on' and wrong for 'what did this run leave behind'.
+- [2026-09-07T19:45:00Z] [ORCH] Territory widened before editing: `listPendingApprovals` filters by tenant only, so there is no way to find the approvals belonging to one run — the accessor this task needs does not exist yet. `packages/db` is not a protected path. Note the existing filter also excludes already-expired rows (`expires_at > now()`), which is right for 'what can a user act on' but wrong for 'what did this run leave behind', so the run-scoped read must not inherit that predicate.
 - [2026-09-07T14:45:00Z] [ORCH] Filed from a real user report with DB evidence, not a hypothetical. The behavioural fork was put to the user and not answered before priorities moved to multi-provider work; recording it here so it is not silently decided by whoever implements this.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/runLifecycle.ts, services/worker/test/runLifecycle.test.ts, packages/db/src/approvals.ts
+**Test_Evidence:** worker 175/177 (only the two pre-existing pg-boss flakes); runLifecycle.test.ts 11 (3 new, all against real Postgres); lint and typecheck clean.
+**Review_Findings:** Self-reviewed. No protected path. One AC only partially met, by design, and marked as such rather than ticked.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z

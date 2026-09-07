@@ -2,9 +2,10 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { grantApproval, issueApproval, verifyAndConsume } from "@oikonomos/approvals";
-import { Database, getRun, type DatabaseOptions } from "@oikonomos/db";
+import { Database, getAuditEventsForRun, getRun, listPendingApprovals, type DatabaseOptions } from "@oikonomos/db";
 
 import {
+  APPROVAL_ABANDONED_EVENT_TYPE,
   cancelTaskRun,
   completeTaskRun,
   failTaskRun,
@@ -333,5 +334,89 @@ integration("@oikonomos/worker durable resume vs. pending approvals (TASK-135 / 
 
     const replay = await verifyAndConsume(waitSignal.nonce, { database: options });
     expect(replay.consumed).toBe(false);
+  });
+
+  // TASK-218 — reported by a user from the mobile client, then confirmed in
+  // the database: a run requested an approval at 10:52:52, COMPLETED at
+  // 10:57:27, and the operator granted it at 10:59:57 — two and a half
+  // minutes after there was anything left to resume. The card stayed
+  // actionable and answering it did nothing.
+  it("leaves a completed run's pending approval ALONE — that is the undecided fork (TASK-218)", async () => {
+    const run = await startTaskRun(options, { taskId, provider: "claude-code" });
+    await issueApproval(
+      {
+        runId: run.runId,
+        capabilityId,
+        toolName: "test.governed_tool",
+        input: { action: "send", target: "ops@basileia.example" },
+        destination: "ops@basileia.example",
+      },
+      { database: options },
+    );
+    expect(await listPendingApprovals(options, { runId: run.runId, includeExpired: true })).toHaveLength(1);
+
+    await completeTaskRun(options, run.runId);
+
+    // A completed run's pending approval may be the reported dead end, or a
+    // run awaiting the answer TASK-155 would resume it with. Voiding it here
+    // would decide the park-vs-rerun fork by implication AND break the
+    // working approval flow — which is exactly how the TASK-136 test caught
+    // an earlier, more aggressive version of this change.
+    expect(await listPendingApprovals(options, { runId: run.runId, includeExpired: true })).toHaveLength(1);
+  });
+
+  it("voids a cancelled run's pending approval, and says the run ended underneath it (TASK-218)", async () => {
+    const run = await startTaskRun(options, { taskId, provider: "claude-code" });
+    await issueApproval(
+      {
+        runId: run.runId,
+        capabilityId,
+        toolName: "test.governed_tool",
+        input: { action: "send", target: "ops@basileia.example" },
+        destination: "ops@basileia.example",
+      },
+      { database: options },
+    );
+
+    await cancelTaskRun(options, run.runId);
+
+    expect(await listPendingApprovals(options, { runId: run.runId, includeExpired: true })).toHaveLength(0);
+    // The audit trail must never suggest the operator turned it down.
+    // Misreporting a person's decision is worse than the dangling card.
+    const events = await getAuditEventsForRun(options, run.runId);
+    const abandoned = events.filter((event) => event.eventType === APPROVAL_ABANDONED_EVENT_TYPE);
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]?.actor).toBe("system:run-lifecycle");
+  });
+
+  it("does the same when a run fails, not only when it completes (TASK-218)", async () => {
+    const run = await startTaskRun(options, { taskId, provider: "claude-code" });
+    await issueApproval(
+      {
+        runId: run.runId,
+        capabilityId,
+        toolName: "test.governed_tool",
+        input: { action: "send", target: "ops@basileia.example" },
+        destination: "ops@basileia.example",
+      },
+      { database: options },
+    );
+
+    await failTaskRun(options, run.runId, "provider unavailable");
+
+    expect(await listPendingApprovals(options, { runId: run.runId, includeExpired: true })).toHaveLength(0);
+  });
+
+  it("never lets approval tidy-up turn a finished run into a failed one (TASK-218)", async () => {
+    // A run that genuinely completed must still be reported as completed even
+    // if its housekeeping cannot run.
+    const run = await startTaskRun(options, { taskId, provider: "claude-code" });
+    const broken = { connectionString: "postgres://nobody@127.0.0.1:1/none" } as DatabaseOptions;
+
+    const { resolveDanglingApprovals } = await import("../src/runLifecycle.js");
+    await expect(resolveDanglingApprovals(broken, { ...run, status: "completed" } as never)).resolves.toBe(0);
+
+    const completed = await completeTaskRun(options, run.runId);
+    expect(completed.status).toBe("completed");
   });
 });
