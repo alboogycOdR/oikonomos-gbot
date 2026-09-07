@@ -71,3 +71,17 @@ Building a complete Gemini agentic adapter (subprocess/gate spawning, MCP wiring
 - **Changed (qualification of §2.4):** under R350, gemini-3.7-flash must **not** become an uncapped default for all new runs, including tool-executing ones, merely because a liveness canary passed. §3's narrower "default **for Tier-0 work**" still holds. Stage 2 promotion stays authorised in direction, but is blocked on a documented per-provider cap recast against R350 — not on the canary alone.
 
 This amendment does not cut that cap, does not change `ComposeOptions.provider`, and does not reopen enforcement parity (§2.1–2.3, §4). Those remain in force. A follow-on decompose may cut the cap; this document only records that the original cost premise no longer supports an uncapped default.
+
+## 8. Amendment 2026-09-07 — Stage 2 lands at T2_internal, not at full parity
+
+§3 describes Stage 2 as "full parity". TASK-212 did not deliver that, and the difference is deliberate rather than an unfinished edge, so §3's wording is corrected here rather than left to be read as satisfied.
+
+**What shipped:** the Gemini adapter's Stage-1 Tier-0 equality check became a bounded maximum, and Stage 2's ceiling is **T2_internal**. Tools above it are refused by the adapter regardless of what the role is granted.
+
+**Why not parity.** T3_external and T4_irreversible are precisely the tiers that require an operator approval before they run. Extending them to the cheapest model in the fleet is a materially different decision from "let Gemini use tools", and this ADR never took it — §7 had just finished constraining exactly that direction under the R350 ceiling. T2 is also sufficient for the capability Stage 2 exists to unblock: the browser lane's tools are `browser.navigate` (T1) and `browser.interact` (T2).
+
+**What this costs, stated plainly:** `runtime.bash` is T3 in the capability registry, so **Bash is refused on Gemini and will stay refused until a later decision raises this ceiling**. A bot that runs Bash on Claude will not run it on Gemini. That is a real behavioural divergence between providers, and it is the price of not handing approval-requiring actions to the cheapest model by default. Anyone reading §3's "full parity" should read it as superseded by this section.
+
+**Ordering correction (same task).** The adapter's structural checks — unknown tool, tier ceiling — now run **before** the broker call, not after. With the broker first, a T3 call could consume a nonce-bound, single-use operator approval (CLAUDE.md non-negotiable 8) and then be refused locally: the operator's approval spent on an action that never ran, with the refusal invisible to the broker's audit trail. A pre-filter that can only ever deny cannot make anything more permissive, so this costs the broker no authority — it remains the single source of allow for everything that survives the filter.
+
+Raising the ceiling above T2 requires a further amendment here, not a configuration change: the adapter refuses an out-of-range ceiling at construction, and its absolute bound is an independent literal rather than an alias of the Stage-2 constant, so raising one does not silently raise the other.

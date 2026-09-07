@@ -14,6 +14,44 @@ export const GEMINI_REQUEST_TIMEOUT_MS = 10_000;
 /** Stage 1's ceiling. Stage 2 changes this one named policy constant. */
 export const STAGE_ONE_MAXIMUM_TOOL_TIER = 0;
 
+/**
+ * Stage 2's ceiling: T2_internal (TASK-212).
+ *
+ * ADR-011 §3 leaves Stage 2 as "full tool-executing parity" without naming a
+ * tier, and §7 then constrained it — after the R30,000 → R350 reset,
+ * `gemini-3.7-flash` must not become an uncapped default for tool-executing
+ * runs. Two things follow, and they point at T2 rather than at parity:
+ *
+ * 1. T3_external and T4_irreversible are precisely the tiers that require an
+ *    operator approval before they run. Extending them to the cheapest model
+ *    in the fleet is a materially different decision from "let Gemini use
+ *    tools", and it is not one ADR-011 actually took. It needs its own.
+ * 2. T2 is enough for the product this unblocks: the browser lane's tools are
+ *    `browser.navigate` (T1) and `browser.interact` (T2). Capping at T2 buys
+ *    the whole browsing capability while leaving the irreversible tiers where
+ *    they were.
+ *
+ * The tier check is defence in depth, NOT the gate — the broker's decision is
+ * the authority, and it still runs first. This ceiling exists so that a
+ * broker misconfiguration cannot hand the cheapest model an irreversible
+ * external action.
+ */
+export const STAGE_TWO_MAXIMUM_TOOL_TIER = 2;
+
+/**
+ * Highest tier this adapter will accept as a configured ceiling, ever.
+ *
+ * A LITERAL, deliberately not derived from {@link STAGE_TWO_MAXIMUM_TOOL_TIER}
+ * (Fable review of `81be2aa`). Aliasing the two expressed the wrong intent:
+ * raising the Stage-2 ceiling later would silently raise the absolute bound
+ * with it, so the backstop would move whenever the thing it is supposed to
+ * backstop moved. They answer different questions — "what does this stage
+ * allow" versus "what may this adapter ever be configured to allow" — and
+ * only the second is a security boundary. The guard test below fails if they
+ * are ever collapsed back together.
+ */
+const ABSOLUTE_MAXIMUM_TOOL_TIER = 2;
+
 export interface GeminiFunctionDeclaration {
   readonly name: string;
   readonly description?: string;
@@ -29,6 +67,16 @@ export interface GeminiTool extends GeminiFunctionDeclaration {
 export interface GeminiAdapterOptions {
   readonly l1: PreToolUseHookPort;
   readonly tools?: readonly GeminiTool[];
+  /**
+   * Highest tool tier this run may execute. Defaults to
+   * {@link STAGE_ONE_MAXIMUM_TOOL_TIER} so every existing caller keeps its
+   * current behaviour; the Stage-2 wiring passes
+   * {@link STAGE_TWO_MAXIMUM_TOOL_TIER} explicitly. Values above
+   * {@link STAGE_TWO_MAXIMUM_TOOL_TIER} are refused at construction rather
+   * than honoured — an adapter that accepted "5" would silently permit
+   * irreversible external actions on the cheapest model in the fleet.
+   */
+  readonly maximumToolTier?: number;
   /** Test transport seam; production defaults to Node 22's native fetch. */
   readonly fetch?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
@@ -58,6 +106,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
   const toolByName = new Map(options.tools?.map((tool) => [tool.name, tool]) ?? []);
   const fetchFn = options.fetch ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? GEMINI_REQUEST_TIMEOUT_MS;
+  const maximumToolTier = options.maximumToolTier ?? STAGE_ONE_MAXIMUM_TOOL_TIER;
 
   return {
     async run(prompt: string): Promise<GeminiRunResult> {
@@ -87,7 +136,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
         const responseParts: Array<Record<string, unknown>> = [];
         for (const call of functionCalls) {
           // This await is deliberately adjacent to execution: ADR-011 §2.2.
-          const decision = await decideFunctionCall(options.l1, call, toolByName);
+          const decision = await decideFunctionCall(options.l1, call, toolByName, maximumToolTier);
           const functionResponse = await functionResponseFor(call, decision, toolByName);
           functionResponses.push(functionResponse);
           responseParts.push({ functionResponse });
@@ -105,7 +154,33 @@ async function decideFunctionCall(
   l1: PreToolUseHookPort,
   call: GeminiFunctionCall,
   toolByName: ReadonlyMap<string, GeminiTool>,
+  maximumToolTier: number,
 ): Promise<{ allow: true; input: Record<string, unknown> } | { allow: false; message: string }> {
+  // Structural checks run BEFORE the broker, and only ever deny.
+  //
+  // Ordering finding, Fable review of 81be2aa: with the broker first, a T3
+  // call could consume a NONCE-BOUND, SINGLE-USE operator approval
+  // (CLAUDE.md non-negotiable 8) and then be refused locally — burning the
+  // operator's approval on an action that never ran, with the refusal
+  // recorded nowhere the broker can see. A pre-filter that can only ever
+  // deny cannot make anything more permissive, so putting it first costs no
+  // authority: the broker still decides everything that survives it, and
+  // remains the single source of allow.
+  const tool = toolByName.get(call.name);
+  if (tool === undefined) {
+    return { allow: false, message: "Gemini requested an unknown tool" };
+  }
+  // Bounded maximum, not an equality test: a tool at or below the ceiling
+  // runs, anything above it is refused. Equality also refused a HIGHER
+  // ceiling's lower-tier tools, which made the constant impossible to raise
+  // without changing its meaning.
+  if (!Number.isInteger(tool.tier) || tool.tier < 0 || tool.tier > maximumToolTier) {
+    return {
+      allow: false,
+      message: `Gemini permits tools at tier ${maximumToolTier} or below; this tool is tier ${String(tool.tier)}`,
+    };
+  }
+
   let decision;
   try {
     decision = await l1.handle({
@@ -120,13 +195,6 @@ async function decideFunctionCall(
     return { allow: false, message: decision.message };
   }
 
-  const tool = toolByName.get(call.name);
-  if (tool === undefined) {
-    return { allow: false, message: "Gemini requested an unknown tool" };
-  }
-  if (tool.tier !== STAGE_ONE_MAXIMUM_TOOL_TIER) {
-    return { allow: false, message: "Gemini Stage 1 permits Tier-0 tools only" };
-  }
   return { allow: true, input: decision.updatedInput ?? call.arguments };
 }
 
@@ -241,6 +309,22 @@ function assertOptions(options: GeminiAdapterOptions): void {
   }
   if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)) {
     throw new Error("Gemini adapter timeoutMs must be positive");
+  }
+  // Refused at construction, not clamped: silently lowering a ceiling an
+  // operator asked for would hide a misconfiguration, and silently honouring
+  // one above T2 would hand irreversible external actions to the cheapest
+  // model in the fleet. Raising this bound is a deliberate ADR decision, not
+  // a config change.
+  if (options.maximumToolTier !== undefined) {
+    if (
+      !Number.isInteger(options.maximumToolTier) ||
+      options.maximumToolTier < 0 ||
+      options.maximumToolTier > ABSOLUTE_MAXIMUM_TOOL_TIER
+    ) {
+      throw new Error(
+        `Gemini adapter maximumToolTier must be an integer between 0 and ${ABSOLUTE_MAXIMUM_TOOL_TIER}`,
+      );
+    }
   }
   for (const tool of options.tools ?? []) {
     if (
