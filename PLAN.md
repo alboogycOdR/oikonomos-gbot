@@ -6247,26 +6247,27 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-211
 **Title:** Sandbox-backed tool executors for the Gemini lane
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** done
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `packages/harness-factory/src/providers/gemini.ts`'s `GeminiTool.execute()`; `packages/sandbox-client`'s `runCommand`; `services/worker/src/chatRunDriver.ts`'s `executeSandboxChatRun`.
 **Owned_Paths:** services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts
 **Depends_On:** —
 **Description:** `createGeminiAdapter` calls `tool.execute()` for each allowed function call, and the CALLER supplies those implementations — so where a Gemini bot's tools run is entirely our choice, and nothing forces it to be the worker process. It must not be: Claude bots execute tools inside the egress-controlled OpenSandbox container, and a Gemini bot executing `Bash` in the worker process would run model-directed commands on the control-plane host itself, discarding the isolation TASK-185/208 built. Supply `GeminiTool` implementations whose `execute()` dispatches through the same execd `runCommand` path the Claude lane uses, against the role's own sandbox. Preserve the ordering guarantee: the adapter awaits `l1.handle()` immediately before `execute()` (ADR-011 §2.2), so an executor must never pre-warm or side-effect before that decision returns.
 **Acceptance_Criteria:**
-- [ ] Every Gemini tool executes inside the role's sandbox via execd, never in the worker process.
-- [ ] A liveness assertion proving it: a test that fails if execution silently falls back to local, keyed on evidence only sandboxed execution produces.
-- [ ] The broker decision still strictly precedes execution; a denied call performs no side effect at all.
-- [ ] Sandbox failures surface as a tool error to the model, not as a crashed run.
-- [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+- [x] Every Gemini tool executes inside the role's sandbox via execd, never in the worker process.
+- [x] A liveness assertion proving it: a test that fails if execution silently falls back to local, keyed on evidence only sandboxed execution produces.
+- [x] The broker decision still strictly precedes execution; a denied call performs no side effect at all.
+- [x] Sandbox failures surface as a tool error to the model, not as a crashed run.
+- [x] Full suites, lint, typecheck clean.
+**Branch:** task/TASK-211-s5
+**Started_At:** 2026-09-07T14:15:00Z
 **Progress_Notes:**
+- [2026-09-07T14:25:00Z] [ORCH] Implemented. Tiers are the REAL registry tiers — `Bash` is T3_external, `Read` is T0_observe — deliberately NOT flattened to 0 to slip past the adapter's `STAGE_ONE_MAXIMUM_TOOL_TIER`. Under Stage 1 that means Read works and Bash is refused, which is correct: TASK-212 lifts the ceiling deliberately with the cap and canary in place, and mislabelling Bash as Tier-0 here would have quietly defeated the exact control ADR-011 §3 put there. Construction is inert so nothing can side-effect ahead of the broker decision (§2.2). A non-zero exit or unreachable sandbox returns a RESULT the model can react to rather than throwing and killing the run, and the transport error message is replaced with a generic one so endpoint/token detail never reaches a model. Liveness mutation-tested: swapping the execd call for a local result makes the canary red, which is the whole point — a silent local fallback would otherwise look like success.
 - [2026-09-07T13:10:00Z] [ORCH] Filed. Owned_Paths are new files only, so this is territorially disjoint from TASK-209/210 and can run alongside them.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts
+**Test_Evidence:** geminiToolExecutors 8/8; worker 169/171 (only the two pre-existing pg-boss flakes); lint and typecheck clean. Liveness proven by MUTATION, not by reading: replacing the execd call with a local result turns both the LIVENESS case and the isolation case red.
+**Review_Findings:** Self-reviewed by ORCH. No protected path touched (new files under services/worker only), so no adversarial review required. Not yet wired into a run — TASK-212 mounts these.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T13:10:00Z
