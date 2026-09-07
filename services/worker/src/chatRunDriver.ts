@@ -299,7 +299,8 @@ async function runChatTask(
     );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
-    const budget = createChatRunBudget(options, request, run.runId);
+    const execution = resolveChatRunExecution(options);
+    const budget = createChatRunBudget(options, request, run.runId, execution);
     // Fail closed before any Claude tokens are spent: a ceiling already at
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
@@ -347,6 +348,9 @@ async function runChatTask(
       }
     }
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
+    // A run that reached here having accounted for nothing is unrecorded, not
+    // free. Say so explicitly rather than leaving an absence to be misread.
+    if (!budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
   } catch (error) {
@@ -739,29 +743,103 @@ export function eventFromSandboxStdout(stdout: string): Record<string, unknown> 
   return { type: "result", result: trimmed };
 }
 
+/**
+ * What actually executed a run, for spend attribution (TASK-210).
+ *
+ * `provider` MUST be the vocabulary `spend_records.provider` is read back
+ * with — TASK-209's per-provider cap compares against that exact string, so
+ * a run attributed to a name the cap does not key on is invisible to it.
+ */
+export interface ChatRunExecution {
+  readonly provider: string;
+  readonly model: string;
+}
+
+/** The Agent SDK picks its own model; we pin none, so name that rather than lie. */
+export const LOCAL_LANE_MODEL = "claude-agent-sdk-default";
+
+/**
+ * Resolves who will run this turn, BEFORE it runs, so the same values gate
+ * the budget and label the spend.
+ *
+ * Previously both were literals: `provider: "claude"` always, and the
+ * sandbox model string even on the local lane, which pins no model at all.
+ * That was already wrong for local-lane runs and would have recorded a
+ * Gemini run as Claude — attributing spend to a provider that never ran it.
+ */
+export function resolveChatRunExecution(
+  options: CreateChatRunDriverOptions,
+  // Explicit rather than read internally: `shouldUseSandbox` keys on
+  // NODE_ENV, which is always "test" under vitest, so an internally-derived
+  // lane would make the sandbox branch — the production one — unreachable
+  // from any test. Passing it in keeps this a pure function of its inputs.
+  useSandbox: boolean = shouldUseSandbox(options),
+): ChatRunExecution {
+  return useSandbox
+    ? { provider: "claude", model: process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL }
+    : { provider: "claude", model: LOCAL_LANE_MODEL };
+}
+
+/** Emitted when a run finished having recorded no spend at all (TASK-210). */
+export const SPEND_UNRECORDED_EVENT_TYPE = "spend.unrecorded";
+
 function createChatRunBudget(
   options: CreateChatRunDriverOptions,
   request: ChatRunRequest,
   runId: string,
-): { tap: BudgetTapSink; check: BudgetGateCheck } {
-  const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
+  execution: ChatRunExecution,
+): { tap: BudgetTapSink; check: BudgetGateCheck; reported: () => boolean } {
   const routineId = request.task.routineId;
+  let reportCount = 0;
   return {
     tap: {
       async report(entry: { costUsd: number; tokens?: number }): Promise<void> {
+        reportCount += 1;
         await recordSpend(options, {
           runId,
           tenantId: request.task.tenantId,
           routineId,
-          provider: "claude",
-          model,
+          provider: execution.provider,
+          model: execution.model,
           costUsd: entry.costUsd,
           tokens: entry.tokens ?? null,
         });
       },
     },
     check: () => evaluateChatBudget(options, routineId),
+    reported: () => reportCount > 0,
   };
+}
+
+/**
+ * A run that recorded no spend is not evidence of a free run — it is
+ * evidence that nothing accounted for it. `withBudgetTap` only reports on a
+ * terminal event carrying a numeric `total_cost_usd`, so a stream that ends
+ * without one produces no `spend_records` row at all, and the run is
+ * indistinguishable from one that genuinely cost nothing.
+ *
+ * That silence is what would let TASK-209's per-provider cap sit permanently
+ * blind, so it is recorded as an audit event rather than inferred later from
+ * an absence. Deliberately NOT a fabricated zero-cost spend row: inventing a
+ * number is how an unaccounted run becomes a "free" one in a report.
+ */
+async function noteUnrecordedSpend(
+  options: CreateChatRunDriverOptions,
+  request: ChatRunRequest,
+  runId: string,
+  execution: ChatRunExecution,
+): Promise<void> {
+  try {
+    await recordAuditEvent(options, {
+      tenantId: request.task.tenantId,
+      runId,
+      actor: `agent:${execution.provider}`,
+      eventType: SPEND_UNRECORDED_EVENT_TYPE,
+      payload: { provider: execution.provider, model: execution.model },
+    });
+  } catch {
+    // Never fail a completed run because its accounting footnote failed.
+  }
 }
 
 async function assertChatBudgetAllows(check: BudgetGateCheck): Promise<void> {
