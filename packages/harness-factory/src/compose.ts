@@ -173,6 +173,21 @@ export interface GeminiComposeOptions {
   }[];
   readonly fetch?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  /**
+   * Highest tool tier this composition may execute (TASK-212's ceiling).
+   *
+   * Without this, that ceiling was unreachable: `createGeminiAdapter` is not
+   * on this package's public surface (the exports map is ".", "./compose",
+   * "./mcp"), so `composeHarness` is the only way to construct the adapter,
+   * and it had no way to pass the option through. A control that cannot be
+   * configured is inert in a different way from one that is misconfigured —
+   * TASK-212's review verified an out-of-range ceiling is REFUSED, but not
+   * that any ceiling could be SET.
+   *
+   * Omitted keeps the adapter's Stage-1 default; the adapter still refuses
+   * anything above its own absolute bound at construction.
+   */
+  readonly maximumToolTier?: number;
 }
 
 export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unknown> {
@@ -414,9 +429,27 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     ]),
   );
 
+  // Each declared field is picked explicitly; the caller's object is NEVER
+  // spread in (TASK-215 R1, Fable review).
+  //
+  // `{ l1, ...(options.gemini ?? {}) }` spread the caller's object AFTER the
+  // broker port, so a `gemini` options object carrying an `l1` key replaced
+  // it — handing enforcement to a caller-supplied object and defeating
+  // CLAUDE.md non-negotiable 1 outright. TypeScript's excess-property check
+  // only guards object literals, so anything arriving as a typed variable,
+  // parsed JSON, or a widened type passed straight through. Ordering the
+  // spread first would also fix it, but only until someone reorders the
+  // lines; an explicit allow-list cannot regress that way.
+  const geminiOptions = options.gemini;
   const gemini =
     options.provider === "gemini"
-      ? createGeminiAdapter({ l1, ...(options.gemini ?? {}) })
+      ? createGeminiAdapter({
+        l1,
+        ...(geminiOptions?.tools === undefined ? {} : { tools: geminiOptions.tools }),
+        ...(geminiOptions?.fetch === undefined ? {} : { fetch: geminiOptions.fetch }),
+        ...(geminiOptions?.timeoutMs === undefined ? {} : { timeoutMs: geminiOptions.timeoutMs }),
+        ...(geminiOptions?.maximumToolTier === undefined ? {} : { maximumToolTier: geminiOptions.maximumToolTier }),
+      })
       : undefined;
   const runtime = gemini === undefined
     ? { harness, broker, providers, mountedTools }
