@@ -144,7 +144,38 @@ describe("chat run driver governance helpers", () => {
     expect(destinationFor({ ...base, toolName: "Glob", input: { pattern: "src/**/*.ts" } })).toBe("src/**/*.ts");
     expect(destinationFor({ ...base, toolName: "Bash", input: { command: "git status" } })).toBe("git status");
     expect(destinationFor({ ...base, toolName: "mcp__gmail__send_message", input: { to: "user@example.test" } })).toBe("user@example.test");
+    expect(destinationFor({ ...base, toolName: "mcp__steel__steel_session_create", input: {} })).toBe("current_page");
+    expect(destinationFor({ ...base, toolName: "mcp__steel__steel_session_release", input: {} })).toBe("current_page");
     expect(() => destinationFor({ ...base, toolName: "WebFetch", input: { url: "https://example.test" } })).toThrow(/No governed destination/);
+  });
+
+  // TASK-207 non-blocking (Fable review of d44e64a): the exact bug class
+  // this task fixed — a manifest tool declared with no matching
+  // destinationFor branch — is only caught by hand when someone happens to
+  // exercise that specific tool. This closure test catches it for every
+  // tool the steel-browser manifest declares, automatically, the moment a
+  // new one is added without updating destinationFor to match.
+  //
+  // Scoped to steel-browser, not every loaded manifest: running this over
+  // google-calendar/google-drive too surfaces ~13 pre-existing tools with
+  // no destinationFor branch at all (only list_events/search_files have
+  // one) — a real, separate gap, discovered here but out of this task's
+  // scope to fix; left for its own task rather than folded in.
+  it("gives every tool declared by the steel-browser manifest a non-throwing destination (closure over destinationFor)", async () => {
+    const manifests = await loadManifests(defaultManifestsDir());
+    const steelManifest = manifests.find((manifest) => manifest.connector_id === "steel-browser");
+    const toolNames = steelManifest?.tools.map((tool) => tool.tool_name) ?? [];
+    expect(toolNames.length).toBeGreaterThan(0);
+
+    const missing: string[] = [];
+    for (const toolName of toolNames) {
+      try {
+        destinationFor({ ...base, toolName, input: { url: "https://example.test", action: "click" } });
+      } catch {
+        missing.push(toolName);
+      }
+    }
+    expect(missing, "destinationFor has no branch for these steel-browser tools").toEqual([]);
   });
 
   it("uses the final SDK result while keeping a non-empty fallback reply", () => {
@@ -1109,11 +1140,21 @@ integration("createChatRunDriver — live context compaction (TASK-193)", () => 
 // sealed profile directory is denied and audited — the D3 guard TASK-186
 // deferred), and AC4 (a human_takeover_required signal parks the run via a
 // real, persisted event instead of failing it).
+// TASK-207 Blocking-1 (Fable review of d44e64a): this fixture's tools MUST
+// mirror packages/connectors/manifests/steel-browser.yaml's own declared
+// set exactly. Once a tool is registered against the real shared DB (which
+// register-capabilities does the moment the manifest gains it), any test
+// that builds a full CapabilityRegistry from a fixture missing that tool
+// hits C6's stale-row check (`StaleCapabilityRowError`) — this is exactly
+// how the drift here (missing steel_session_create/steel_session_release)
+// broke every describe block below, not just the browser-specific ones.
 const steelBrowserManifest: ConnectorManifest = {
   connector_id: "steel-browser",
   account_ownership: "basileia",
   mcp_server: { name: "steel", transport: "remote", url_ref: "secret://mcp/steel-browser/url" },
   tools: [
+    { tool_name: "mcp__steel__steel_session_create", capability_id: "browser.session", default_tier: "T1_draft" },
+    { tool_name: "mcp__steel__steel_session_release", capability_id: "browser.session", default_tier: "T1_draft" },
     { tool_name: "mcp__steel__steel_navigate", capability_id: "browser.navigate", default_tier: "T1_draft" },
     { tool_name: "mcp__steel__steel_snapshot", capability_id: "browser.read", default_tier: "T0_observe" },
     { tool_name: "mcp__steel__steel_act", capability_id: "browser.interact", default_tier: "T2_internal" },

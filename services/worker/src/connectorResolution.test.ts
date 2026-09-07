@@ -61,11 +61,17 @@ describe("connector resolution", () => {
 });
 
 describe("browser lane grant resolution (TASK-204)", () => {
+  // TASK-207 Blocking-1 (Fable review of d44e64a): keep this in exact sync
+  // with packages/connectors/manifests/steel-browser.yaml's own declared
+  // tools — see chatRunDriver.test.ts's own steelBrowserManifest for the
+  // full explanation of why drift here breaks unrelated tests.
   const steelManifest: ConnectorManifest = {
     connector_id: "steel-browser",
     account_ownership: "basileia",
     mcp_server: { name: "steel", transport: "remote", url_ref: "secret://mcp/steel-browser/url" },
     tools: [
+      { tool_name: "mcp__steel__steel_session_create", capability_id: "browser.session", default_tier: "T1_draft" },
+      { tool_name: "mcp__steel__steel_session_release", capability_id: "browser.session", default_tier: "T1_draft" },
       { tool_name: "mcp__steel__steel_navigate", capability_id: "browser.navigate", default_tier: "T1_draft" },
       { tool_name: "mcp__steel__steel_snapshot", capability_id: "browser.read", default_tier: "T0_observe" },
       { tool_name: "mcp__steel__steel_act", capability_id: "browser.interact", default_tier: "T2_internal" },
