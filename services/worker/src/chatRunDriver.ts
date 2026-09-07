@@ -862,6 +862,7 @@ export function destinationFor(request: PreToolUseRequest): string {
                   : request.toolName === "mcp__steel__steel_navigate" ? input.url
                     : request.toolName === "mcp__steel__steel_act" ? input.action
                       : request.toolName === "mcp__steel__steel_snapshot" || request.toolName === "mcp__steel__steel_screenshot"
+                        || request.toolName === "mcp__steel__steel_session_create" || request.toolName === "mcp__steel__steel_session_release"
                         ? STEEL_CURRENT_PAGE_DESTINATION : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
