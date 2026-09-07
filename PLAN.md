@@ -6521,3 +6521,29 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T20:40:00Z
+
+### TASK-221
+**Title:** The two "pg-boss flakes" are not flaky — they fail deterministically, and they cover scheduled routines
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `services/worker/src/jobs/workerJobQueue.test.ts` — "uses a real pg-boss poll job to queue each due routine and persist its fire outcome" and "records a due routine as missed without queueing work when its role is not active"; `packages/db/src/routines.ts`'s due-selection and `recordRoutineFire`.
+**Owned_Paths:** services/worker/src/jobs/workerJobQueue.test.ts, services/worker/src/jobs/routineJob.ts
+**Depends_On:** —
+**Description:** These two tests have been reported as "the two pre-existing pg-boss timing flakes" throughout 2026-09-07 and cited as such in the Test_Evidence of several merged tasks, including by ORCH and at least once by a reviewer. That characterisation is wrong, and it was never checked. Run in COMPLETE ISOLATION with nothing else executing, they fail every time, at ~2.6s, with `Timed out waiting for the pg-boss routine poll job.` Other tests in the same file — including "runs a scheduled heartbeat job through real pg-boss" — pass in the same run, so pg-boss itself works; it is specifically the ROUTINE POLL path that never produces a task. A timeout-shaped failure was assumed to be a timing flake because it looked like one, and the assumption was repeated often enough to become accepted fact. **This matters beyond hygiene: scheduled routines are a shipped user-facing feature (TASK-134), and nobody currently knows whether the failure is a defective fixture or a genuinely broken poll path.** Establish which BEFORE touching either. A promising first thread, not yet confirmed: the fixture creates a routine with no `schedule` and no `nextFireAt`, relying on `recordRoutineFire(..., "missed", dueAt)` to set `next_fire_at` into the past — verify that argument actually maps to `next_fire_at` and that due-selection sees the row.
+**Acceptance_Criteria:**
+- [ ] A stated, evidenced verdict on whether this is a test defect or a product defect. Do not fix anything before that verdict exists.
+- [ ] If the poll path is genuinely broken, a test that fails against the real defect and a fix that makes a due routine actually fire.
+- [ ] If the fixture is at fault, it is corrected so the test proves the behaviour its name claims.
+- [ ] Either way, `pnpm --filter @oikonomos/worker test` is green with no failure anyone has to explain away.
+- [ ] Every place these were cited as "known flakes" is left accurate — the Test_Evidence on already-merged tasks is not rewritten, but this task's verdict is linked so the record is correctable.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T21:35:00Z] [ORCH] Filed after disproving my own hypothesis. I had just suggested these failures might be memory pressure, having noticed the host at 4.8GB free; running them alone refuted that immediately and surfaced something worse — they are not intermittent at all. The lesson is mine to own: "known flake" is a label that stops investigation, and I applied it to a consistently-red test roughly a dozen times today without once running it in isolation, which took under a minute.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T21:35:00Z
