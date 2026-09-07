@@ -5,9 +5,11 @@ import {
   defaultPoolConfig,
   getAuditEventsForRun,
   getOrCreateThreadForRole,
+  getRoleSandbox,
   insertMessage,
   listMessages,
   listRuns,
+  upsertRoleSandbox,
   type DatabaseOptions,
 } from "@oikonomos/db";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -534,6 +536,170 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
       if (previousAnthropicApiKey === undefined) delete process.env[ANTHROPIC_API_KEY_VAR];
       else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
+    }
+  });
+
+  // TASK-222 — the DB's cached sandbox state can drift from the sandbox's own
+  // reality (manual operator intervention was the real-world trigger this
+  // session, but a crashed mid-transition run or two racing worker instances
+  // produce the identical shape). Both directions were live failures before
+  // this fix: resuming an already-Running sandbox threw
+  // DOCKER::SANDBOX_NOT_PAUSED; a DB row stuck on "Running" while the real
+  // sandbox was Paused was never even checked, so the turn spun in
+  // waitForSandboxRunning until its own timeout instead of resuming.
+  it("reconciles a drifted sandbox state instead of trusting the stale DB record (TASK-222)", async () => {
+    const ANTHROPIC_API_KEY_VAR = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+    const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+    const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    const previousAnthropicApiKey = process.env[ANTHROPIC_API_KEY_VAR];
+    process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+    process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-222-test-signing-key";
+    process.env[ANTHROPIC_API_KEY_VAR] = "task-222-test-anthropic-credential";
+
+    const driftRoleId = "task-222-sandbox-drift";
+    // Delete order mirrors the suite-level cleanup() above: messages/
+    // audit_events/approvals FK-reference runs, which FK-references tasks.
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+    await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+    await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [driftRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [driftRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [driftRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [driftRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [driftRoleId]);
+    await createRole(options, { roleId: driftRoleId, name: driftRoleId, title: "TASK-222 drift fixture", description: "" });
+    const driftTask = await createTask(options, { roleId: driftRoleId, title: "TASK-222 fixture", goal: "Run `pwd`.", requestedBy: "task-222-suite" });
+    const driftThreadResult = await pool.query<{ id: string }>(
+      `INSERT INTO threads (role_id) VALUES ($1) RETURNING id`,
+      [driftRoleId],
+    );
+    const driftThreadId = driftThreadResult.rows[0]!.id;
+
+    // Live sandbox state the fake client reports — independent of whatever
+    // the DB record says, which is exactly the point.
+    let liveState: Sandbox["status"]["state"] = "Running";
+    let resumeCalls = 0;
+    const driftClient: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-222-office", createdAt: "2026-09-07T00:00:00Z", status: { state: liveState } }),
+      getSandbox: async () => ({ id: "task-222-office", createdAt: "2026-09-07T00:00:00Z", status: { state: liveState } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => { liveState = "Paused"; },
+      // Mirrors the real OpenSandbox behavior this task's bug report was
+      // built on: resuming an already-Running sandbox is a real error
+      // (DOCKER::SANDBOX_NOT_PAUSED), not a no-op. This is what makes
+      // direction 1 below an actual regression guard rather than a check
+      // that happens to pass either way.
+      resumeSandbox: async () => {
+        if (liveState === "Running") throw new Error("DOCKER::SANDBOX_NOT_PAUSED");
+        resumeCalls += 1;
+        liveState = "Running";
+      },
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-222" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854  /etc/claude-code/managed-settings.json\n", stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: "Sandbox turn complete", stderr: "", exitCode: 0 };
+      },
+    };
+
+    try {
+      // DB says Paused; the sandbox is actually already Running. Before this
+      // fix, this called resumeSandbox on an already-running sandbox — the
+      // real DOCKER::SANDBOX_NOT_PAUSED failure hit repeatedly today.
+      await upsertRoleSandbox(options, { roleId: driftRoleId, sandboxId: "task-222-office", state: "Paused", execdTokenRef: "secret://opensandbox/execd_access_token" });
+      liveState = "Running";
+
+      // A driver still trusting the stale "Paused" record would call
+      // resumeSandbox here and hit the fake's DOCKER::SANDBOX_NOT_PAUSED
+      // throw, since the live sandbox is already Running. Reconciling first
+      // means the run completes cleanly instead.
+      const driver = createChatRunDriver({ ...options, sandboxClient: driftClient });
+      await driver.run({ task: driftTask, threadId: driftThreadId });
+      expect(resumeCalls).toBe(0);
+      // The normal end-of-turn pause runs after every completed turn (same
+      // as TASK-170), so the DB is "Paused" again by the time the run
+      // returns — that's expected, not a sign reconciliation didn't happen.
+      liveState = "Paused";
+
+      // Reverse direction: DB says Running; the sandbox is actually Paused.
+      // Before this fix, the resume branch was never even reached — the turn
+      // would spin in waitForSandboxRunning polling a sandbox that can never
+      // become Running without an explicit resume, until its own timeout.
+      await upsertRoleSandbox(options, { roleId: driftRoleId, sandboxId: "task-222-office", state: "Running", execdTokenRef: "secret://opensandbox/execd_access_token" });
+
+      await driver.run({ task: driftTask, threadId: driftThreadId });
+
+      expect(resumeCalls).toBe(1);
+    } finally {
+      if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
+      else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+      if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+      else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+      if (previousAnthropicApiKey === undefined) delete process.env[ANTHROPIC_API_KEY_VAR];
+      else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+      await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [driftRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [driftRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [driftRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [driftRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [driftRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [driftRoleId]);
+    }
+  });
+
+  // A genuinely dead/unreachable sandbox must still fail closed — reconciling
+  // drift must never be mistaken for tolerating a real failure.
+  it("still fails closed when the sandbox is genuinely unreachable, not silently treated as drift (TASK-222)", async () => {
+    const unreachableClient: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-222-dead", createdAt: "2026-09-07T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => { throw new Error("sandbox not found"); },
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-222-dead" }),
+      ping: async () => undefined,
+      runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+    } as unknown as SandboxClient;
+
+    const deadRoleId = "task-222-sandbox-dead";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+    await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+    await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [deadRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [deadRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [deadRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [deadRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [deadRoleId]);
+    await createRole(options, { roleId: deadRoleId, name: deadRoleId, title: "TASK-222 dead-sandbox fixture", description: "" });
+    const deadTask = await createTask(options, { roleId: deadRoleId, title: "dead", goal: "Run `pwd`.", requestedBy: "task-222-suite" });
+    const deadThreadResult = await pool.query<{ id: string }>(
+      `INSERT INTO threads (role_id) VALUES ($1) RETURNING id`,
+      [deadRoleId],
+    );
+    await upsertRoleSandbox(options, { roleId: deadRoleId, sandboxId: "task-222-dead", state: "Paused", execdTokenRef: "secret://opensandbox/execd_access_token" });
+
+    try {
+      await expect(
+        createChatRunDriver({ ...options, sandboxClient: unreachableClient }).run({
+          task: deadTask,
+          threadId: deadThreadResult.rows[0]!.id,
+        }),
+      ).rejects.toThrow(/sandbox not found/);
+    } finally {
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+      await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [deadRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [deadRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [deadRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [deadRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [deadRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [deadRoleId]);
     }
   });
 

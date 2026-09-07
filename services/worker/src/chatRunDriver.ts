@@ -613,7 +613,24 @@ async function resolveRoleSandbox(
     });
     record = await upsertRoleSandbox(options, { roleId, sandboxId: created.id, state: created.status.state, execdTokenRef: SANDBOX_EXECD_TOKEN_REF });
   }
-  if (record.state === "Paused") {
+  // The sandbox's OWN reported state is authoritative, not the DB's cached
+  // copy (TASK-222). `record.state` is written back after every successful
+  // transition, so this drifts only when something outside that path moves
+  // the real container — a crashed mid-transition run, two worker instances
+  // racing, or manual operator intervention (confirmed live, repeatedly,
+  // 2026-09-07: `docker exec`/`unpause` for debugging without a matching DB
+  // update). Trusting the stale value in either direction throws: resuming
+  // an already-Running sandbox gets `DOCKER::SANDBOX_NOT_PAUSED`; skipping
+  // resume on an actually-Paused one spins `waitForSandboxRunning` until its
+  // own timeout, since a paused container never becomes Running on its own.
+  // A `getSandbox` failure here (unreachable/unknown sandbox) is NOT caught —
+  // that is a genuinely dead sandbox and must still fail closed, not be
+  // silently treated as drift.
+  const liveState = (await client.getSandbox(record.sandboxId)).status.state;
+  if (liveState !== record.state) {
+    await updateRoleSandboxState(options, roleId, liveState);
+  }
+  if (liveState === "Paused") {
     await client.resumeSandbox(record.sandboxId);
     await updateRoleSandboxState(options, roleId, "Resuming");
   }
