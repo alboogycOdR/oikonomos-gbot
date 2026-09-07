@@ -35,6 +35,10 @@ describe("guardSteelSessionSafety — non-negotiable #6", () => {
     ["use_proxy: true", { use_proxy: true }],
     ["a profile_id", { profile_id: "persisted-profile-1" }],
     ["a namespace", { namespace: "tenant-shared" }],
+    // Unreachable today (mintable only by steel_session_options, which the
+    // manifest doesn't declare) but the guard exists specifically not to
+    // depend on that staying true — see steelSessionGuard.ts's own doc.
+    ["a configuration plan token", { configuration: "signed-plan-token" }],
     ["several fields at once", { solve_captcha: true, use_proxy: true, profile_id: "p1" }],
   ] as const)("denies steel_session_create when the input sets %s", (_label, input) => {
     expect(invokeTool(GUARDED_TOOL, input)).toMatchObject({
@@ -67,7 +71,13 @@ describe("guardSteelSessionSafety — non-negotiable #6", () => {
     expect(JSON.stringify(result.audit)).not.toContain("do-not-leak-this-id");
   });
 
-  it("LIVENESS: disabling the guard lets a solve_captcha request reach the harness executor", () => {
+  // Not the ADR-005 liveness proof (renamed from "LIVENESS" per Fable 5.1's
+  // re-review: this swaps in an injected no-op guard, so it can only show
+  // the harness's own dispatch is well-formed — it cannot observe the real
+  // wiring in decidePreToolUse. That proof is the mutation-verified pair in
+  // packages/broker/src/index.test.ts (the real-path deny test plus its own
+  // LIVENESS test), which mirrors secretPathGuard.test.ts's precedent.
+  it("documents the harness's own guard-disabled shape (real wiring liveness lives in index.test.ts)", () => {
     const input = { solve_captcha: true };
 
     expect(invokeTool(GUARDED_TOOL, input)).toMatchObject({ outcome: "denied" });

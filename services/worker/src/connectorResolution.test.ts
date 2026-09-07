@@ -8,7 +8,7 @@ import {
   WORKSPACE_REQUEST_SECRET_TOOL,
 } from "./connectorResolution.js";
 import type { ConnectorContext } from "./executeRun.js";
-import type { ConnectorManifest } from "@oikonomos/connectors";
+import { defaultManifestsDir, loadManifests, type ConnectorManifest } from "@oikonomos/connectors";
 import type { Database } from "@oikonomos/db";
 
 // TASK-175 carve: this file's own source plus chatRunDriver.ts's are both
@@ -89,6 +89,17 @@ describe("browser lane grant resolution (TASK-204)", () => {
       })),
     } as unknown as Database;
   }
+
+  // TASK-207 re-review (Fable 5.1): a comment is not a structural guard —
+  // make drift a build failure instead. `enabled: false` on screenshot here
+  // is a deliberate per-test override (see the AC below), not drift, so
+  // compare name/capability_id/tier only, not the raw tools array.
+  it("keeps steelManifest's tool_name/capability_id/default_tier in exact sync with the real steel-browser.yaml manifest", async () => {
+    const realManifest = (await loadManifests(defaultManifestsDir())).find((manifest) => manifest.connector_id === "steel-browser");
+    const strip = (tools: ConnectorManifest["tools"]) =>
+      tools.map(({ tool_name, capability_id, default_tier }) => ({ tool_name, capability_id, default_tier }));
+    expect(strip(steelManifest.tools)).toEqual(strip(realManifest?.tools ?? []));
+  });
 
   it("mounts no browser tools for a role with zero granted browser.* capabilities", async () => {
     const connector = await resolveGrantedBrowserConnector({

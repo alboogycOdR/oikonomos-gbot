@@ -16,6 +16,14 @@
  * TASK-207 Blocking-2 (Fable review of `d44e64a`): guardSecretPath's D3
  * backstop is the direct precedent — a fixed-floor gate ahead of the
  * six-rank resolver, immune to grant/tier/allow-rule state.
+ *
+ * `configuration` (TASK-207 re-review, Fable 5.1): the pinned server's plan
+ * token can also carry `solveCaptcha`/`useProxy`/`stealthConfig` into a
+ * session. Traced and currently unreachable — the token is HMAC-signed
+ * (per-process random secret when `STEEL_REQUEST_STATE_SECRET` is unset),
+ * bound to the caller, and mintable only by `steel_session_options`, which
+ * the manifest does not declare — but this guard exists specifically to
+ * not depend on upstream behavior staying that way, so it's denied here too.
  */
 
 export const STEEL_SESSION_AUDIT_EVENT_TYPE = "steel_session_circumvention_attempt";
@@ -23,8 +31,12 @@ export const STEEL_SESSION_DENIAL_REASON = "steel_session.circumvention_attempt"
 
 const GUARDED_TOOL_NAME = "mcp__steel__steel_session_create";
 
-/** Every field steel-mcp's own bot-block guidance names as a way past detection. */
-const CIRCUMVENTION_FIELDS = ["use_proxy", "solve_captcha", "profile_id", "namespace"] as const;
+/**
+ * Every field steel-mcp's own bot-block guidance names as a way past
+ * detection, plus `configuration` — the plan-token field that can carry the
+ * same settings through a different door (see the module doc above).
+ */
+const CIRCUMVENTION_FIELDS = ["use_proxy", "solve_captcha", "profile_id", "namespace", "configuration"] as const;
 
 export interface SteelSessionAuditEvent {
   readonly type: typeof STEEL_SESSION_AUDIT_EVENT_TYPE;

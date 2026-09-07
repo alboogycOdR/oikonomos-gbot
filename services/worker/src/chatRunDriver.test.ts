@@ -1206,6 +1206,15 @@ integration("createChatRunDriver — browser lane live-wiring (TASK-204)", () =>
     delete process.env.OIKONOMOS_CAPABILITIES_ENABLED;
   });
 
+  // TASK-207 re-review (Fable 5.1): a comment is not a structural guard — on
+  // a clean DB the C6 stale-row check this fixture drifted from never
+  // fires, so drift stays invisible until someone registers the manifest.
+  // This makes drift a build failure instead.
+  it("keeps steelBrowserManifest's tools in exact sync with the real steel-browser.yaml manifest", async () => {
+    const realManifest = (await loadManifests(defaultManifestsDir())).find((manifest) => manifest.connector_id === "steel-browser");
+    expect(steelBrowserManifest.tools).toEqual(realManifest?.tools);
+  });
+
   it("selects the office-browser sandbox image (not office-base) for a role granted browser.* capabilities (AC1)", async () => {
     let requestedImageUri: string | undefined;
     let state: "Running" | "Paused" = "Running";
