@@ -6,6 +6,8 @@
  * createHarness itself still does not hard-import those adapters.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   createHarness,
   type AgentSdkQueryFn,
@@ -14,6 +16,7 @@ import {
   type PreToolUseHookPort,
   type PreToolUsePortDecision,
 } from "./index.js";
+import { withBudgetTap, type BudgetTapSink } from "./budgetTap.js";
 import {
   bindEnvironment,
   type BoundEnvironment,
@@ -215,6 +218,54 @@ export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unkno
   mountedTools?: readonly MountedTool[];
   /** Millisecond budgets keyed by mounted tool name. An omitted name has no timeout. */
   toolTimeoutMsByName?: Readonly<Record<string, number>>;
+  /**
+   * Optional Claude Agent SDK cost sink (TASK-163). When set, the final
+   * `harness.query` (after MCP attach) is wrapped with `withBudgetTap`.
+   * Omitting it preserves existing compositions byte-for-byte unless a sink
+   * is bound for this call via {@link runWithChatBudget}.
+   */
+  budgetTap?: BudgetTapSink;
+  /**
+   * Optional live budget decision invoked before every L1 PreToolUse call.
+   * A deny short-circuits the broker; a thrown check fails closed. Same ALS
+   * fallback as `budgetTap`.
+   */
+  budgetCheck?: BudgetGateCheck;
+}
+
+/**
+ * Live per-decision budget check. Mirrors `resolveBudgetGate`'s decision
+ * shape without importing `@oikonomos/broker` (this package has no broker
+ * dependency). The worker supplies the real DB-backed implementation.
+ */
+export type BudgetGateCheck = () => Promise<
+  { readonly decision: "allow" } | { readonly decision: "deny"; readonly reason: string }
+>;
+
+/**
+ * Call-scoped budget wiring for the Claude SDK path. `executeTaskRun` is
+ * the sole production `composeHarness` caller and cannot grow a new option
+ * in this task (out of territory), so the chat driver binds the sink/check
+ * around that call with {@link runWithChatBudget}. composeHarness reads the
+ * store at composition time — wrap the `composeHarness` invocation, not
+ * only the later `harness.query` iteration.
+ */
+export interface ChatBudgetContext {
+  readonly tap: BudgetTapSink;
+  readonly check?: BudgetGateCheck;
+}
+
+const chatBudgetStorage = new AsyncLocalStorage<ChatBudgetContext>();
+
+/** Bind a Claude-path budget tap/check for the duration of `fn`. */
+export function runWithChatBudget<T>(context: ChatBudgetContext, fn: () => T): T {
+  if (typeof context?.tap?.report !== "function") {
+    throw new Error("runWithChatBudget requires a budget tap with report()");
+  }
+  if (context.check !== undefined && typeof context.check !== "function") {
+    throw new Error("runWithChatBudget check must be a function when provided");
+  }
+  return chatBudgetStorage.run(context, fn);
 }
 
 export interface ComposedRuntime<TCodex = unknown, TGrok = unknown> {
@@ -302,12 +353,17 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
     options.environment === undefined ? undefined : bindEnvironment(options.run, options.environment);
 
   const broker = resolveBroker(options);
+  const budgetTap = resolveBudgetTap(options.budgetTap);
+  const budgetCheck = resolveBudgetCheck(options.budgetCheck);
   const l1 = withPark(
-    createL1PreToolUseHook({
-      broker,
-      run: options.run,
-      approvalNonceFor: options.approvalNonceFor,
-    }),
+    withBudgetGate(
+      createL1PreToolUseHook({
+        broker,
+        run: options.run,
+        approvalNonceFor: options.approvalNonceFor,
+      }),
+      budgetCheck,
+    ),
     options.park,
   );
   const l2 = createL2Policy(options.allowedTools, {
@@ -329,13 +385,16 @@ export function composeHarness<TDeps = unknown, TCodex = unknown, TGrok = unknow
   });
 
   const mcpServers = resolveMcpServers(options.mcpServers);
-  const harness: Harness =
-    mcpServers === undefined
-      ? created
-      : {
-          ...created,
-          query: attachMcpServersToQuery(created.query, mcpServers),
-        };
+  // TASK-150: wrap the final composed query (after MCP attach) so the tap
+  // observes the primary SDK path. A missing tap is a no-op — existing
+  // callers that never opted into cost tracking stay byte-identical.
+  let query = mcpServers === undefined
+    ? created.query
+    : attachMcpServersToQuery(created.query, mcpServers);
+  if (budgetTap !== undefined) {
+    query = withBudgetTap(query, budgetTap);
+  }
+  const harness: Harness = query === created.query ? created : { ...created, query };
 
   const providers: ComposedRuntime<TCodex, TGrok>["providers"] = {};
   if (options.subprocessProviders) {
@@ -376,6 +435,48 @@ function resolveBroker<TDeps>(options: ComposeOptions<TDeps>): BrokerHttpPort {
     );
   }
   throw new Error("composeHarness requires pretooluse or broker");
+}
+
+function resolveBudgetTap(composeTap: BudgetTapSink | undefined): BudgetTapSink | undefined {
+  const tap = composeTap ?? chatBudgetStorage.getStore()?.tap;
+  if (tap !== undefined && typeof tap.report !== "function") {
+    throw new Error("budgetTap must implement report()");
+  }
+  return tap;
+}
+
+function resolveBudgetCheck(composeCheck: BudgetGateCheck | undefined): BudgetGateCheck | undefined {
+  const check = composeCheck ?? chatBudgetStorage.getStore()?.check;
+  if (check !== undefined && typeof check !== "function") {
+    throw new Error("budgetCheck must be a function");
+  }
+  return check;
+}
+
+/**
+ * Live budget gate in front of L1. A deny does not park — budget reasons
+ * are not in PARK_REASONS — so the tool call fails for that turn and the
+ * next call re-reads spend.
+ */
+function withBudgetGate(l1: PreToolUseHookPort, check: BudgetGateCheck | undefined): PreToolUseHookPort {
+  if (check === undefined) {
+    return l1;
+  }
+  return {
+    async handle(request): Promise<PreToolUsePortDecision> {
+      let decision;
+      try {
+        decision = await check();
+      } catch (error) {
+        const message = error instanceof Error && error.message ? error.message : "budget check failed";
+        return { decision: "deny", message: `budget.check_failed: ${message}` };
+      }
+      if (decision.decision === "deny") {
+        return { decision: "deny", message: decision.reason };
+      }
+      return l1.handle(request);
+    },
+  };
 }
 
 function withPark(l1: PreToolUseHookPort, park: RunParkPort | undefined): PreToolUseHookPort {

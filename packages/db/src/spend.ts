@@ -3,16 +3,21 @@ import type { QueryResultRow } from "pg";
 import { withPool, type DatabaseOptions } from "./database.js";
 
 /**
- * TASK-143 / OIK-110/111 (narrowed scope: Codex/Grok subprocess path only —
- * see PLAN.md TASK-143's scope-narrowing decision). Records the real
- * per-turn spend `withBudgetSink` (packages/agent-providers) already
- * observes, so a routine's accumulated cost and the platform-wide monthly
- * ceiling can be read live at decision time (never cached/derived).
+ * TASK-143 / TASK-163 / OIK-110/111. Records real per-turn spend so a
+ * routine's accumulated cost and the platform-wide monthly ceiling can be
+ * read live at decision time (never cached/derived).
  *
- * The Claude-SDK chat path (`chatRunDriver.ts`) does not write here today —
- * that gap is real and tracked separately (TASK-163). Every row this module
- * writes comes from the Codex/Grok subprocess path only.
+ * Both inference paths write here — they are not duplicated schemas:
+ *   - Codex/Grok subprocess path (`withBudgetSink` / TASK-143)
+ *   - Claude Agent SDK chat path (`withBudgetTap` / TASK-163, provider
+ *     {@link CLAUDE_SDK_SPEND_PROVIDER})
+ *
+ * `getRoutineSpendUsd` / `getPlatformSpendUsd` sum every row regardless of
+ * provider, so the broker's ceiling covers BOTH paths.
  */
+
+/** `spend_records.provider` value for the primary Claude Agent SDK chat path. */
+export const CLAUDE_SDK_SPEND_PROVIDER = "claude";
 
 export interface NewSpendRecord {
   tenantId?: string;
@@ -170,9 +175,9 @@ export async function getRoutineSpendUsd(
 
 /**
  * Live platform-wide spend, in USD, since `since` (default: start of the
- * current UTC calendar month — CLAUDE.md's ceiling is monthly). This is the
- * Codex/Grok inference-cost portion only (this task's documented narrowing);
- * hosting costs are out of scope and there is no telemetry for them yet.
+ * current UTC calendar month — CLAUDE.md's ceiling is monthly). Sums every
+ * recorded inference path (Codex/Grok subprocess + Claude SDK chat). Hosting
+ * costs are out of scope and there is no telemetry for them yet.
  */
 export async function getPlatformSpendUsd(
   options: DatabaseOptions,
@@ -229,6 +234,10 @@ if (import.meta.vitest) {
           { runId: "   ", provider: "codex", model: "gpt-5.4", costUsd: 1 },
         ),
       ).rejects.toThrow(/runId/);
+    });
+
+    it("exports the Claude SDK provider token used on the shared spend schema (TASK-163)", () => {
+      expect(CLAUDE_SDK_SPEND_PROVIDER).toBe("claude");
     });
   });
 
