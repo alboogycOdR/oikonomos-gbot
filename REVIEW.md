@@ -627,3 +627,15 @@ Investigated directly (no builder work was dispatched, and the root cause was we
 Fix is exactly as narrow as the root cause: re-export `parkTaskRun`, call it when the fan-out result is `delivered: false`. No new test needed — the existing test's own `waiting_approval` assertion is the regression guard, now passing reliably (verified 3x). Full `@oikonomos/control-api` suite is 240/240, the first fully-green run of this file all session. Neither touched file is a protected path; self-reviewed to the same standard as builder work (root cause traced through every layer by reading the actual code, broader build/lint/typecheck all re-confirmed clean).
 
 Committed directly to master.
+
+## TASK-206 | ORCH-executed | approved | first-pass: yes
+
+Implemented at the user's explicit request, following the earlier idle-tick investigation that correctly re-scoped this from "missing seed data" to a real resilience bug. `ConnectorRegistrationStore.register()` used to wrap one manifest's capabilities AND role_grants inserts in a single transaction — a foreign-key violation on one role_grants row (a role that genuinely doesn't exist yet, a normal state for a partially-populated deployment) rolled back that manifest's own valid capabilities too, and the outer registration loop let the error propagate, aborting every subsequent manifest.
+
+Fix pre-checks role existence before each grant insert (not insert-then-catch, since Postgres aborts the whole transaction on a real constraint violation) — a missing role skips just that grant while everything else in the manifest still commits, and the skip is reported back rather than silently dropped. The interface change (`Promise<void>` → `Promise<ConnectorRegistrationResult>`) was scoped responsibly: every real caller was found first (only two exist anywhere in the codebase, one of them already dead code) before touching the contract, and both fake-store test doubles were updated to match.
+
+**Live-verified against the real shared dev DB, not just a test fixture**: ran the actual `register-capabilities` script before and after — before, it aborted entirely on the first bad grant; after, it exits 0, logs each skip (catching a second, previously-unknown instance of the same issue, `drive-assistant`), and a direct query confirmed all four connector manifests' capabilities are now registered — gmail, google-calendar, and google-drive had never fully succeeded before this fix, not just steel-browser as originally assumed.
+
+Independently re-verified via subagent: the new integration test passes, full recursive suite showed only the already-documented resource-contention flake class (a different specific test each run, none touching the changed interface), build/lint/typecheck all clean.
+
+Committed directly to master.
