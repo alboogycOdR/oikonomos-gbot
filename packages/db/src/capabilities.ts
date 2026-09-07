@@ -24,9 +24,25 @@ export interface ConnectorRegistrationRows {
   readonly roleGrants: readonly ConnectorRoleGrantRow[];
 }
 
+/**
+ * TASK-206: a role_grants row whose target role doesn't exist YET (a
+ * normal, expected state — roles and connector manifests are registered
+ * independently over time, not a data-integrity problem). Skipped rather
+ * than failing the whole manifest's registration.
+ */
+export interface SkippedRoleGrant {
+  readonly roleId: string;
+  readonly capabilityId: string;
+  readonly reason: string;
+}
+
+export interface ConnectorRegistrationResult {
+  readonly skippedRoleGrants: readonly SkippedRoleGrant[];
+}
+
 /** DB-owned registration boundary; callers never issue registration SQL. */
 export interface ConnectorRegistrationStore {
-  register(rows: ConnectorRegistrationRows): Promise<void>;
+  register(rows: ConnectorRegistrationRows): Promise<ConnectorRegistrationResult>;
   deregister(connectorId: string): Promise<void>;
 }
 
@@ -48,9 +64,10 @@ async function rollback(client: PoolClient): Promise<void> {
  */
 export function createConnectorRegistrationStore(pool: Pool): ConnectorRegistrationStore {
   return {
-    async register(rows: ConnectorRegistrationRows): Promise<void> {
+    async register(rows: ConnectorRegistrationRows): Promise<ConnectorRegistrationResult> {
       const client = await pool.connect();
       const adapter = rows.adapter ?? adapterFor(rows.connectorId);
+      const skippedRoleGrants: SkippedRoleGrant[] = [];
       try {
         await client.query("BEGIN");
         for (const capability of rows.capabilities) {
@@ -82,6 +99,26 @@ export function createConnectorRegistrationStore(pool: Pool): ConnectorRegistrat
           );
         }
         for (const grant of rows.roleGrants) {
+          // TASK-206: a role_grants row referencing a role that doesn't
+          // exist YET is a normal, expected state for a partially-populated
+          // deployment (roles and connector manifests register
+          // independently over time), not a data-integrity error — checked
+          // first (rather than inserting and catching the FK violation)
+          // because Postgres aborts the whole transaction on a constraint
+          // error, which would undo every capability and grant this
+          // manifest already committed in this same transaction.
+          const roleExists = await client.query<{ exists: boolean }>(
+            `SELECT EXISTS(SELECT 1 FROM roles WHERE role_id = $1) AS exists`,
+            [grant.roleId],
+          );
+          if (roleExists.rows[0]?.exists !== true) {
+            skippedRoleGrants.push({
+              roleId: grant.roleId,
+              capabilityId: grant.capabilityId,
+              reason: `role '${grant.roleId}' does not exist yet`,
+            });
+            continue;
+          }
           await client.query(
             `INSERT INTO role_grants (role_id, capability_id, max_tier, constraints)
              VALUES ($1, $2, $3, $4::jsonb)
@@ -97,6 +134,7 @@ export function createConnectorRegistrationStore(pool: Pool): ConnectorRegistrat
           );
         }
         await client.query("COMMIT");
+        return { skippedRoleGrants };
       } catch (error) {
         await rollback(client);
         throw error;

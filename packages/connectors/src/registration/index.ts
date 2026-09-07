@@ -1,4 +1,5 @@
 import type {
+  ConnectorRegistrationResult,
   ConnectorRegistrationRows,
   ConnectorRegistrationStore,
 } from "@oikonomos/db";
@@ -43,8 +44,8 @@ function rowsFromManifest(raw: string): ConnectorRegistrationRows {
 export async function registerConnector(
   rawManifest: string,
   store: ConnectorRegistrationStore,
-): Promise<void> {
-  await store.register(rowsFromManifest(rawManifest));
+): Promise<ConnectorRegistrationResult> {
+  return store.register(rowsFromManifest(rawManifest));
 }
 
 /** Removes only rows owned by this connector's `mcp:<connector_id>` adapter. */

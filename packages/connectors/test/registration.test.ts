@@ -1,4 +1,4 @@
-import type { ConnectorRegistrationRows, ConnectorRegistrationStore } from "@oikonomos/db";
+import type { ConnectorRegistrationResult, ConnectorRegistrationRows, ConnectorRegistrationStore } from "@oikonomos/db";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -14,7 +14,7 @@ class MemoryRegistrationStore implements ConnectorRegistrationStore {
   readonly grants = new Map<string, ConnectorRegistrationRows["roleGrants"][number]>();
   readonly owners = new Map<string, string>();
 
-  public async register(rows: ConnectorRegistrationRows): Promise<void> {
+  public async register(rows: ConnectorRegistrationRows): Promise<ConnectorRegistrationResult> {
     this.registerCalls += 1;
     for (const capability of rows.capabilities) {
       const owner = this.owners.get(capability.capabilityId);
@@ -27,6 +27,7 @@ class MemoryRegistrationStore implements ConnectorRegistrationStore {
     for (const grant of rows.roleGrants) {
       this.grants.set(`${grant.roleId}:${grant.capabilityId}`, grant);
     }
+    return { skippedRoleGrants: [] };
   }
 
   public async deregister(connectorId: string): Promise<void> {

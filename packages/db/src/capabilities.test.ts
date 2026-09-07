@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -138,5 +140,33 @@ integration("connector registration persistence (TASK-044 / OIK-048)", () => {
 
     expect(await snapshot(alpha.connectorId)).toEqual({ capabilities: [], grants: [] });
     expect(JSON.stringify(await snapshot(beta.connectorId))).toBe(betaBefore);
+  });
+
+  it("TASK-206: skips a role_grant whose role doesn't exist yet, but still commits the manifest's capabilities and its other valid grants", async () => {
+    const notYetCreatedRoleId = `task-206-not-created-${randomUUID()}`;
+    const gamma = fixture("gamma");
+    const withMixedGrants: ConnectorRegistrationRows = {
+      ...gamma,
+      roleGrants: [
+        ...gamma.roleGrants, // roleId: "inbox-triage" — a real, pre-existing role
+        { roleId: notYetCreatedRoleId, capabilityId: gamma.capabilities[0]!.capabilityId, maxTier: "T1_draft", constraints: {} },
+      ],
+    };
+    try {
+      const result = await store.register(withMixedGrants);
+
+      expect(result.skippedRoleGrants).toEqual([
+        { roleId: notYetCreatedRoleId, capabilityId: gamma.capabilities[0]!.capabilityId, reason: expect.stringContaining(notYetCreatedRoleId) },
+      ]);
+      // The capability itself and the OTHER (valid) grant both still committed —
+      // one bad grant does not roll back the rest of this same manifest.
+      const persisted = await snapshot(gamma.connectorId);
+      expect(persisted).toMatchObject({
+        capabilities: [{ capability_id: gamma.capabilities[0]!.capabilityId, enabled: false }],
+        grants: [{ role_id: "inbox-triage", capability_id: gamma.capabilities[0]!.capabilityId }],
+      });
+    } finally {
+      await store.deregister(gamma.connectorId);
+    }
   });
 });

@@ -21,9 +21,11 @@ export {
 export {
   createConnectorRegistrationStore,
   type ConnectorCapabilityRow,
+  type ConnectorRegistrationResult,
   type ConnectorRegistrationRows,
   type ConnectorRegistrationStore,
   type ConnectorRoleGrantRow,
+  type SkippedRoleGrant,
 } from "./capabilities.js";
 export {
   getAuditEventsForRun,

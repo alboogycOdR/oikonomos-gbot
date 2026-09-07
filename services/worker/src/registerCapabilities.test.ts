@@ -5,6 +5,7 @@ import { BUILTIN_TOOLS } from "@oikonomos/broker";
 import {
   createConnectorRegistrationStore,
   defaultPoolConfig,
+  type ConnectorRegistrationResult,
   type ConnectorRegistrationRows,
   type ConnectorRegistrationStore,
 } from "@oikonomos/db";
@@ -16,8 +17,9 @@ import { registerCapabilities } from "./registerCapabilities.js";
 class RecordingStore implements ConnectorRegistrationStore {
   readonly registrations: ConnectorRegistrationRows[] = [];
 
-  async register(rows: ConnectorRegistrationRows): Promise<void> {
+  async register(rows: ConnectorRegistrationRows): Promise<ConnectorRegistrationResult> {
     this.registrations.push(rows);
+    return { skippedRoleGrants: [] };
   }
 
   async deregister(): Promise<void> {}

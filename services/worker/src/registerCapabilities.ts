@@ -7,6 +7,7 @@ import {
   defaultPoolConfig,
   type ConnectorRegistrationRows,
   type ConnectorRegistrationStore,
+  type SkippedRoleGrant,
 } from "@oikonomos/db";
 import { Pool } from "pg";
 
@@ -60,13 +61,26 @@ export interface RegisterCapabilitiesOptions {
 /**
  * Explicit operator/CI registration step required after declaration changes.
  * It is deliberately not imported by a worker process entrypoint.
+ *
+ * TASK-206: one manifest's role_grants referencing a not-yet-created role
+ * no longer aborts registration for every other manifest — `store.register`
+ * skips just that grant (still committing the manifest's own capabilities
+ * and its other valid grants) and reports it here rather than throwing.
  */
-export async function registerCapabilities(options: RegisterCapabilitiesOptions): Promise<void> {
+export async function registerCapabilities(
+  options: RegisterCapabilitiesOptions,
+): Promise<{ readonly skippedRoleGrants: readonly SkippedRoleGrant[] }> {
   const manifests = await loadManifests(options.manifestsDir ?? defaultManifestsDir());
+  const skippedRoleGrants: SkippedRoleGrant[] = [];
   for (const manifest of manifests) {
-    await options.store.register(rowsFromManifest(manifest));
+    const result = await options.store.register(rowsFromManifest(manifest));
+    skippedRoleGrants.push(...result.skippedRoleGrants);
   }
-  for (const rows of rowsFromBuiltins()) await options.store.register(rows);
+  for (const rows of rowsFromBuiltins()) {
+    const result = await options.store.register(rows);
+    skippedRoleGrants.push(...result.skippedRoleGrants);
+  }
+  return { skippedRoleGrants };
 }
 
 async function main(): Promise<void> {
@@ -77,7 +91,10 @@ async function main(): Promise<void> {
 
   const pool = new Pool({ connectionString, ...defaultPoolConfig });
   try {
-    await registerCapabilities({ store: createConnectorRegistrationStore(pool) });
+    const { skippedRoleGrants } = await registerCapabilities({ store: createConnectorRegistrationStore(pool) });
+    for (const skipped of skippedRoleGrants) {
+      console.warn(`skipped role_grants for capability '${skipped.capabilityId}': ${skipped.reason}`);
+    }
   } finally {
     await pool.end();
   }
