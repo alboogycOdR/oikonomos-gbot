@@ -173,6 +173,21 @@ export interface GeminiComposeOptions {
   }[];
   readonly fetch?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  /**
+   * Highest tool tier this composition may execute (TASK-212's ceiling).
+   *
+   * Without this, that ceiling was unreachable: `createGeminiAdapter` is not
+   * on this package's public surface (the exports map is ".", "./compose",
+   * "./mcp"), so `composeHarness` is the only way to construct the adapter,
+   * and it had no way to pass the option through. A control that cannot be
+   * configured is inert in a different way from one that is misconfigured —
+   * TASK-212's review verified an out-of-range ceiling is REFUSED, but not
+   * that any ceiling could be SET.
+   *
+   * Omitted keeps the adapter's Stage-1 default; the adapter still refuses
+   * anything above its own absolute bound at construction.
+   */
+  readonly maximumToolTier?: number;
 }
 
 export interface ComposeOptions<TDeps = unknown, TCodex = unknown, TGrok = unknown> {

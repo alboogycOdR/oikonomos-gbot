@@ -6359,26 +6359,29 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-215
 **Title:** Wire the Gemini execution lane into a real chat run
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `packages/harness-factory/src/compose.ts`'s `provider?: "claude" | "gemini"`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `packages/broker/src/budgetGate.ts`'s `resolveProviderCapUsd` (TASK-209); ADR-011 §7.
-**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts
+**Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts, packages/harness-factory/src/compose.ts
 **Depends_On:** TASK-210, TASK-211, TASK-212
 **Description:** Gap found while closing TASK-212: nothing in production constructs `createGeminiAdapter`. `composeHarness` accepts `provider: "gemini"` and is passed it only from a test, TASK-211 built sandbox-backed executors nothing mounts, and TASK-212 raised a ceiling no caller configures. This task is the missing caller that turns three merged-but-inert pieces into a lane. It carries the four acceptance criteria moved off TASK-212, all of which describe caller behaviour that could not be asserted against a non-existent caller.
 **Acceptance_Criteria:**
-- [ ] A tool-executing Gemini run whose resolved provider cap is `null` DENIES. ADR-011 §7 forbids an uncapped tool-executing Gemini default; unset-means-uncapped is correct for the pure gate but must not fall through to the platform ceiling here (Fable review of `2a18571`).
-- [ ] The caller computes ONE `since` instant and passes it to both `getPlatformSpendUsd` and `getProviderSpendUsd`; two independent default parameters resolve at two instants and can drift.
-- [ ] `resolveProviderCapUsd` is called INSIDE the existing budget try/catch, so a malformed cap converts to a deny like every other budget read rather than crashing at module load.
+- [x] A tool-executing Gemini run whose resolved provider cap is `null` DENIES. ADR-011 §7 forbids an uncapped tool-executing Gemini default; unset-means-uncapped is correct for the pure gate but must not fall through to the platform ceiling here (Fable review of `2a18571`).
+- [x] The caller computes ONE `since` instant and passes it to both `getPlatformSpendUsd` and `getProviderSpendUsd`; two independent default parameters resolve at two instants and can drift.
+- [x] `resolveProviderCapUsd` is called INSIDE the existing budget try/catch, so a malformed cap converts to a deny like every other budget read rather than crashing at module load.
 - [ ] TASK-209's per-provider cap is demonstrably in force for a real tool-executing Gemini run — observed denying, not merely merged.
+- [x] `GeminiComposeOptions` carries `maximumToolTier`, so TASK-212's ceiling is reachable at all — it currently is NOT: `createGeminiAdapter` is not on the package's public surface and `composeHarness` is the only construction path, so the option TASK-212 added could never be set by any caller.
 - [ ] The lane mounts TASK-211's sandbox executors and passes `STAGE_TWO_MAXIMUM_TOOL_TIER`; spend records under provider `gemini` with non-zero cost (TASK-210's attribution).
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-215-s5
+**Started_At:** 2026-09-07T19:00:00Z
 **Progress_Notes:**
+- [2026-09-07T19:10:00Z] [ORCH] Implemented the governance half: `resolveGeminiBudget` denies a tool-executing Gemini turn outright when no provider cap is configured (ADR-011 §7's actual requirement — the difference between 'nobody set a limit' and 'the limit is the platform ceiling' is the whole amendment), reads platform and provider spend over ONE pinned instant, and converts a malformed cap into a deny inside the same try/catch as every other budget read. `geminiTurnCostUsd` derives billable output from `totalTokenCount` rather than `candidatesTokenCount`, because Gemini bills thinking tokens at the output rate and they appear in neither candidate count — the live 9/4/130 turn measured today would otherwise be under-costed ~30x. REMAINING for this task: the execution half (mounting TASK-211's executors through `composeHarness` and running a real turn) is not yet written; the ACs for it stay unticked rather than being claimed by the gate alone.
+- [2026-09-07T19:00:00Z] [ORCH] Territory widened BEFORE editing to include `packages/harness-factory/src/compose.ts` (protected — this task now needs adversarial review). Reason found while wiring: `GeminiComposeOptions` has no `maximumToolTier`, and `createGeminiAdapter` is not exported from the package (exports map is ".", "./compose", "./mcp" only), so TASK-212's Stage-2 ceiling is currently unreachable by any caller. TASK-212's own review verified the ceiling is REFUSED when out of range, but not that it can be SET at all — a control that cannot be configured is inert in a different way than one that is misconfigured.
 - [2026-09-07T14:45:00Z] [ORCH] Filed on discovering the decomposition gap — Wave 2 had an adapter, executors and a ceiling but no caller, so every piece could go green while the product remained exactly as it was.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts, packages/harness-factory/src/compose.ts
+**Test_Evidence:** geminiChatRun 10/10; worker 181/183 and harness-factory 139/139 (the 2 worker failures are the pre-existing pg-boss flakes; a third, `drives a real chat run end-to-end`, appeared once and passed on re-run — the same flake already verified against master earlier today, not caused here). Lint clean.
+**Review_Findings:** Pending adversarial review — `packages/harness-factory/src/compose.ts` is a protected path.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z
