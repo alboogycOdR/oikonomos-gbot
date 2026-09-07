@@ -6343,7 +6343,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** high
 **Spec_References:** TASK-208 (the Claude-lane proof: a real top-10 US news list from CNN/Fox/USA Today/NYT); ADR-011 §7 (canary before promotion).
 **Owned_Paths:** evals/golden/suites/gemini-browser
-**Depends_On:** TASK-212, TASK-213
+**Depends_On:** TASK-212, TASK-213, TASK-220
 **Description:** TASK-208 proved the browser lane works — on Claude. Nothing about that proof carries to Gemini: different loop, different tool-call shape, different tier enforcement, different cost path. Since the user's decision moves existing bots too, the news-reader bot is the concrete regression case. Run the same task against the same bot on Gemini and require a real, sourced answer — not a plausible-looking one. Treat a fabricated list as a FAILURE, not a pass: the whole point of the browser lane is that the bot reports what it actually read, and a cheaper model is exactly where that discipline is most likely to slip.
 **Acceptance_Criteria:**
 - [ ] A real Gemini-executed run opens a Steel session, navigates, reads, and releases it — verified from the sandbox's own transcript, not from the bot's final reply.
@@ -6497,8 +6497,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-220
 **Title:** Wire the Gemini execution lane into a real chat run — part 2, execution
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** needs_review
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `packages/harness-factory/src/compose.ts`'s `composeHarness({ provider: "gemini" })`; `services/worker/src/geminiToolExecutors.ts` (TASK-211); `services/worker/src/geminiChatRun.ts`'s `resolveGeminiBudget`/`geminiTurnCostUsd` (TASK-215 part 1); `STAGE_TWO_MAXIMUM_TOOL_TIER` (TASK-212).
 **Owned_Paths:** services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts
@@ -6511,12 +6511,12 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Spend records under provider `gemini` with non-zero cost derived from the turn's own token counts, including thinking tokens.
 - [ ] Proven LIVE end to end against the real API and a real sandbox, verified from the sandbox's own transcript rather than from the bot's final reply — the standard TASK-208 was held to.
 - [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-220-s5
+**Started_At:** 2026-09-07T20:45:00Z
 **Progress_Notes:**
 - [2026-09-07T20:40:00Z] [ORCH] Filed as the explicit part 2 Fable's review required, rather than reopening the merged part 1. Note for whoever builds it: the five pieces this composes were each reviewed and merged in isolation, and every one of them was green while the product did nothing — so the only acceptance criterion that actually matters here is the live one.
 **Artifacts:** —
-**Test_Evidence:** —
+**Test_Evidence:** worker 186/188 (the two pre-existing pg-boss timeouts — see TASK-221, not counted against this task); harness-factory 140/140; lint and typecheck clean. Budget gate proven LIVE against the real database (all four directions: no cap, cap with headroom, cap below real recorded spend, malformed cap). NOT covered: no real Gemini turn has executed through the composed lane — that acceptance criterion remains unmet, and Status here reflects 'built and awaiting review', not 'live-proven'.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
