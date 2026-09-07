@@ -130,3 +130,86 @@ async function resolveGrantedManifestConnector(input: {
     connector: { manifest, mcpServers: handle.mcpServers, allowedTools },
   };
 }
+
+export const STEEL_BROWSER_CONNECTOR_ID = "steel-browser";
+
+/**
+ * Steel's local, in-sandbox MCP entrypoint (TASK-186's own constant in
+ * packages/connectors/src/steelSession.ts). Duplicated here — not
+ * imported — because neither @oikonomos/connectors ("." only) nor
+ * @oikonomos/harness-factory (".", "./compose", "./mcp" only) re-export
+ * steelSession.ts/browserLane.ts from their public package surface, and
+ * widening either package's export map is outside this task's Owned_Paths.
+ * Same duplication precedent as chatRunDriver.ts's own SANDBOX_IMAGE
+ * literal for oikonomos-office-base.
+ */
+const STEEL_MCP_ENTRYPOINT = "/opt/oikonomos/steel-mcp/dist/stdio.js";
+
+/**
+ * Steel runs LOCAL, inside the same sandbox container the role's Claude CLI
+ * runs in (unlike Gmail/Calendar/Drive's remote, OAuth-backed sessions) — a
+ * real open design question TASK-186 raised but explicitly left
+ * unresolved. Investigated here: there is no durable, cross-request session
+ * to check out/return (no remote credential, no rate-limited backend to
+ * pool), so `resolveGrantedManifestConnector`'s `pool.acquire()`/`release()`
+ * shape does not fit — a stdio MCP server config is a pure, synchronous
+ * function of the role's grants, closer to `chatRunDriver.ts`'s own
+ * `resolveRoleSandbox` image-selection pattern than to a pooled connector.
+ * No `ConnectorSessionPool` is constructed or required for this connector.
+ *
+ * `McpStdioServerConfig` (packages/harness-factory/src/mcp/types.ts) carries
+ * no `env` field, so the `STEEL_LOCAL`/`STEEL_BASE_URL`/`STEEL_PROFILE`
+ * environment steelSession.ts's own `SteelMcpServerConfig` documents cannot
+ * be threaded through this mount — widening that type is outside this
+ * task's Owned_Paths (packages/harness-factory/src/mcp/**). The mounted
+ * stdio command relies on the MCP server's own defaults, which match the
+ * office-browser image's entrypoint (`infra/sandbox/images/office-browser/
+ * browser-entrypoint.sh` hardcodes `HOST=127.0.0.1 PORT=3000`, the same
+ * loopback default steelSession.ts documents) — a disclosed, real gap, not
+ * a silent one.
+ */
+export async function resolveGrantedBrowserConnector(input: {
+  readonly database: Database;
+  readonly manifests: readonly ConnectorManifest[];
+  readonly roleId: string;
+}): Promise<ConnectorContext | undefined> {
+  const manifest = input.manifests.find((candidate) => candidate.connector_id === STEEL_BROWSER_CONNECTOR_ID);
+  if (manifest === undefined) return undefined;
+
+  const grantedCapabilities = new Set((await input.database.listRoleGrants(input.roleId)).map((grant) => grant.capabilityId));
+  const allowedTools = grantedManifestToolNames(manifest, grantedCapabilities);
+  if (allowedTools.length === 0) return undefined;
+
+  return {
+    manifest,
+    mcpServers: {
+      steel: {
+        transport: "stdio",
+        command: "node",
+        args: [STEEL_MCP_ENTRYPOINT],
+      },
+    },
+    allowedTools,
+  };
+}
+
+/**
+ * Pure grant check shared with `resolveGrantedBrowserConnector` — used by
+ * `chatRunDriver.ts`'s `resolveRoleSandbox` to pick the `office-browser`
+ * image without a second Postgres round trip (it already holds the same
+ * role's `grants` from its own `database.listRoleGrants` call).
+ */
+export function isBrowserLaneGranted(
+  manifests: readonly ConnectorManifest[],
+  grantedCapabilityIds: ReadonlySet<string>,
+): boolean {
+  const manifest = manifests.find((candidate) => candidate.connector_id === STEEL_BROWSER_CONNECTOR_ID);
+  if (manifest === undefined) return false;
+  return grantedManifestToolNames(manifest, grantedCapabilityIds).length > 0;
+}
+
+function grantedManifestToolNames(manifest: ConnectorManifest, grantedCapabilityIds: ReadonlySet<string>): string[] {
+  return manifest.tools
+    .filter((tool) => tool.enabled !== false && grantedCapabilityIds.has(tool.capability_id))
+    .map((tool) => tool.tool_name);
+}

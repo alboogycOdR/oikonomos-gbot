@@ -40,7 +40,7 @@ import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
-import { runWithChatBudget, type BudgetGateCheck, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import { runWithChatBudget, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
 import {
   BUDGET_READ_TIMEOUT_MS,
   DEFAULT_PLATFORM_CEILING_ZAR,
@@ -52,7 +52,9 @@ import { createTierZeroProvider, type CreateTierZeroProviderOptions } from "./ti
 import { createChatRunWorkspace, removeChatRunWorkspace } from "./runWorkspace.js";
 import {
   combineConnectorContexts,
+  isBrowserLaneGranted,
   resolveGmailMcpUrl,
+  resolveGrantedBrowserConnector,
   resolveGrantedGmailConnector,
   resolveGrantedGoogleCalendarConnector,
   resolveGrantedGoogleDriveConnector,
@@ -104,6 +106,16 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
 }
 
 const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
+/**
+ * `OFFICE_BROWSER_IMAGE` (packages/harness-factory/src/browserLane.ts) has
+ * no explicit version tag and is not reachable from this package anyway
+ * (harness-factory's package.json "exports" only lists ".", "./compose",
+ * and "./mcp" — browserLane.ts is not re-exported, and widening that map is
+ * outside this task's Owned_Paths). Tagged here to match `SANDBOX_IMAGE`'s
+ * own immutable-tag precedent (TASK-186's review flagged the untagged
+ * reference; do not select an image by an untagged name in production).
+ */
+const OFFICE_BROWSER_SANDBOX_IMAGE = "oikonomos-office-browser:claude-2.1.263";
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
@@ -206,6 +218,15 @@ async function runChatTask(
       tenantId: request.task.tenantId,
       drivePoolFor: pools.drivePoolFor,
     });
+    // No pool/handle to release for the browser connector (see
+    // resolveGrantedBrowserConnector's own comment on why it is not a
+    // pooled, durable session like Gmail/Calendar/Drive) — it is combined
+    // directly, not tracked alongside the acquired* connectors below.
+    const browserConnector = await resolveGrantedBrowserConnector({
+      database,
+      manifests,
+      roleId: request.task.roleId,
+    });
     let run;
     if (request.resume === undefined) {
       run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
@@ -225,7 +246,7 @@ async function runChatTask(
       connectionString: options.connectionString, runId: run.runId,
     });
     const connector = combineConnectorContexts(
-      acquiredGmailConnector?.connector, workspaceConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector,
+      acquiredGmailConnector?.connector, workspaceConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector, browserConnector,
     );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
@@ -269,7 +290,7 @@ async function runChatTask(
           await removeChatRunWorkspace(workspace);
         }
       } else {
-        result = await executeSandboxChatRun(options, database, manifests, request, run, systemPrompt, budget.tap);
+        result = await executeSandboxChatRun(options, database, manifests, request, run, systemPrompt, budget.tap, connector);
       }
     } finally {
       for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
@@ -280,9 +301,56 @@ async function runChatTask(
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
   } catch (error) {
-    if (runId !== undefined) await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
+    if (runId !== undefined) {
+      if (isHumanTakeoverSignal(error)) {
+        // G-07's own event/park contract (this task's scope, not G-06a's):
+        // a CAPTCHA/2FA/login-wall/payment signal from steelSession.ts is not
+        // an ordinary run failure. Record the real, persisted event the
+        // mobile client (TASK-188) can act on, then park via the same
+        // `waiting_approval` machinery TASK-136/155 already established —
+        // deliberately NOT `completeTaskRun`/`failTaskRun`, so the run stays
+        // parked (zero further browser actions) rather than being reported
+        // complete or failed.
+        await recordAuditEvent(options, {
+          tenantId: request.task.tenantId,
+          runId,
+          actor: "agent:claude",
+          eventType: HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
+          payload: { kind: error.kind, detail: error.detail },
+        });
+        await parkTaskRun(options, runId);
+        return;
+      }
+      await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
+    }
     throw error;
   } finally { await database.close(); }
+}
+
+export const HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE = "run.human_takeover_required";
+const HUMAN_TAKEOVER_ERROR_CODE = "HUMAN_TAKEOVER_REQUIRED";
+
+interface HumanTakeoverSignal {
+  readonly code: typeof HUMAN_TAKEOVER_ERROR_CODE;
+  readonly kind: string;
+  readonly detail: string;
+}
+
+/**
+ * Duck-typed, not `instanceof`: `HumanTakeoverRequiredError`
+ * (packages/connectors/src/steelSession.ts) is not re-exported from
+ * @oikonomos/connectors's public surface (only "." is exported, and
+ * steelSession.ts is not re-exported from its index.ts) — widening that
+ * export map is outside this task's Owned_Paths. The `.code` field is the
+ * stable wire contract TASK-186's own class already commits to (`readonly
+ * code = "HUMAN_TAKEOVER_REQUIRED"`).
+ */
+function isHumanTakeoverSignal(error: unknown): error is HumanTakeoverSignal {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as Partial<HumanTakeoverSignal>;
+  return candidate.code === HUMAN_TAKEOVER_ERROR_CODE
+    && typeof candidate.kind === "string" && candidate.kind.length > 0
+    && typeof candidate.detail === "string";
 }
 
 function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
@@ -303,6 +371,7 @@ async function executeSandboxChatRun(
   run: { readonly runId: string; readonly sessionRef: string | null },
   systemPrompt: string,
   tap: BudgetTapSink,
+  connector: { readonly allowedTools: readonly string[]; readonly mcpServers: McpServers } | undefined,
 ): Promise<{ readonly events: readonly unknown[] }> {
   const client = options.sandboxClient ?? productionSandboxClient();
   const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
@@ -311,7 +380,7 @@ async function executeSandboxChatRun(
   // JSON so the CLI emits the same SDK result envelope `withBudgetTap` already
   // parses (`total_cost_usd` + `modelUsage`). The 3-arg `claudePrintCommand`
   // helper keeps `--output-format text` for its existing unit test.
-  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json");
+  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json", connector);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
   await assertEgressPolicyApplied(client, resolvedSandbox.endpoint);
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
@@ -404,8 +473,16 @@ async function resolveRoleSandbox(
     const grants = await database.listRoleGrants(roleId);
     const egressPolicy = resolveEgressPolicy({ roleId, grants }, manifests);
     const networkPolicy = toOpenSandboxNetworkPolicy(egressPolicy);
+    // AC1: a role granted browser.* capabilities gets the office-browser
+    // image, not office-base, at sandbox creation time. An explicit
+    // OIKONOMOS_SANDBOX_IMAGE override still wins for either case, matching
+    // the pre-existing single-image override behavior exactly.
+    const grantedCapabilityIds = new Set(grants.map((grant) => grant.capabilityId));
+    const defaultImage = isBrowserLaneGranted(manifests, grantedCapabilityIds)
+      ? OFFICE_BROWSER_SANDBOX_IMAGE
+      : SANDBOX_IMAGE;
     const created = await client.createSandbox({
-      image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || SANDBOX_IMAGE },
+      image: { uri: process.env.OIKONOMOS_SANDBOX_IMAGE?.trim() || defaultImage },
       // TASK-185: OpenSandbox's own container entrypoint is ALWAYS its own
       // `/opt/opensandbox/bootstrap.sh`, injected regardless of what the
       // image itself declares as ENTRYPOINT (verified live against clawsrv,
@@ -485,17 +562,29 @@ function shellQuote(value: string): string {
  */
 const DEFAULT_SANDBOX_MODEL = "claude-haiku-4-5-20251001";
 
+/**
+ * `connector` extends the sandboxed CLI's own governed surface (AC2: browser
+ * granted role reaches the CLI's allowed-tools set, not only the local
+ * (non-sandbox) `mountedToolNames`/`PolicyRegistry` path gmail/calendar/
+ * drive already used). Omitting it (the default, and every pre-existing
+ * caller/test) reproduces the prior `Bash Read`-only command byte-for-byte.
+ */
 export function claudePrintCommand(
   prompt: string,
   systemPrompt: string,
   resume?: string,
   outputFormat: "text" | "json" = "text",
+  connector?: { readonly allowedTools: readonly string[]; readonly mcpServers: McpServers },
 ): string {
   const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
   const format = outputFormat === "json" ? "json" : "text";
+  const allowedTools = ["Bash", "Read", ...(connector?.allowedTools ?? [])].join(" ");
+  const mcpConfigFlag = connector === undefined || Object.keys(connector.mcpServers).length === 0
+    ? []
+    : ["--mcp-config", shellQuote(JSON.stringify({ mcpServers: connector.mcpServers }))];
   return [
     "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
-    "--allowedTools", shellQuote("Bash Read"), "--system-prompt", shellQuote(systemPrompt),
+    "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(systemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");
 }
@@ -707,6 +796,16 @@ function completionAuditSink(options: DatabaseOptions, run: { runId: string; ten
   return { writeCompletionEvidence: async (evidence) => { await recordAuditEvent(options, { tenantId: run.tenantId, runId: run.runId, actor: "agent:claude", eventType: "tool.completed", payload: { ...evidence } }); } };
 }
 
+/**
+ * Steel's two observational tools (steel_snapshot/steel_screenshot) act on
+ * whatever page is already open rather than a caller-specified target — no
+ * manifest input field names one. A fixed, non-secret literal still gives
+ * the broker/audit trail a governed destination to key on; it deliberately
+ * never carries real page/URL content (N4-adjacent: nothing browsed is ever
+ * echoed here).
+ */
+const STEEL_CURRENT_PAGE_DESTINATION = "current_page";
+
 /** ADR-013's v1 target extraction. Unknown shapes deliberately fail closed. */
 export function destinationFor(request: PreToolUseRequest): string {
   const input = request.input;
@@ -719,7 +818,11 @@ export function destinationFor(request: PreToolUseRequest): string {
               : request.toolName === "mcp__google-drive__search_files" ? input.query
             : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId
               : request.toolName === WORKSPACE_RENAME_SELF_TOOL ? input.name
-                : request.toolName === WORKSPACE_REQUEST_SECRET_TOOL ? input.label : undefined;
+                : request.toolName === WORKSPACE_REQUEST_SECRET_TOOL ? input.label
+                  : request.toolName === "mcp__steel__steel_navigate" ? input.url
+                    : request.toolName === "mcp__steel__steel_act" ? input.action
+                      : request.toolName === "mcp__steel__steel_snapshot" || request.toolName === "mcp__steel__steel_screenshot"
+                        ? STEEL_CURRENT_PAGE_DESTINATION : undefined;
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
 }

@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   combineConnectorContexts,
+  isBrowserLaneGranted,
+  resolveGrantedBrowserConnector,
   WORKSPACE_REQUEST_SECRET_CAPABILITY_ID,
   WORKSPACE_REQUEST_SECRET_TOOL,
 } from "./connectorResolution.js";
 import type { ConnectorContext } from "./executeRun.js";
+import type { ConnectorManifest } from "@oikonomos/connectors";
+import type { Database } from "@oikonomos/db";
 
 // TASK-175 carve: this file's own source plus chatRunDriver.ts's are both
 // read for the "derives Gmail's mounted surface" liveness assertion below —
@@ -53,5 +57,78 @@ describe("connector resolution", () => {
     expect(connectorResolutionSource).toContain("connector: { manifest, mcpServers: handle.mcpServers, allowedTools }");
     expect(chatRunDriverSource).toContain("mint: createGmailConnectorSessionMinter");
     expect(chatRunDriverSource).toContain("connector?.allowedTools");
+  });
+});
+
+describe("browser lane grant resolution (TASK-204)", () => {
+  const steelManifest: ConnectorManifest = {
+    connector_id: "steel-browser",
+    account_ownership: "basileia",
+    mcp_server: { name: "steel", transport: "remote", url_ref: "secret://mcp/steel-browser/url" },
+    tools: [
+      { tool_name: "mcp__steel__steel_navigate", capability_id: "browser.navigate", default_tier: "T1_draft" },
+      { tool_name: "mcp__steel__steel_snapshot", capability_id: "browser.read", default_tier: "T0_observe" },
+      { tool_name: "mcp__steel__steel_act", capability_id: "browser.interact", default_tier: "T2_internal" },
+      { tool_name: "mcp__steel__steel_screenshot", capability_id: "browser.screenshot", default_tier: "T0_observe", enabled: false },
+    ],
+    role_grants: [],
+    evals: { suite: "evals/golden/suites/steel-browser", min_pass_rate: 0.9 },
+    review: { onboarded_by: "test", date: "2026-09-07", scope_justification: "TASK-204 fixture" },
+  };
+
+  function fakeDatabase(grantedCapabilityIds: readonly string[]): Database {
+    return {
+      listRoleGrants: async () => grantedCapabilityIds.map((capabilityId) => ({
+        roleId: "browser-role", capabilityId, maxTier: "T2_internal", constraints: {},
+      })),
+    } as unknown as Database;
+  }
+
+  it("mounts no browser tools for a role with zero granted browser.* capabilities", async () => {
+    const connector = await resolveGrantedBrowserConnector({
+      database: fakeDatabase([]),
+      manifests: [steelManifest],
+      roleId: "browser-role",
+    });
+    expect(connector).toBeUndefined();
+    expect(isBrowserLaneGranted([steelManifest], new Set())).toBe(false);
+  });
+
+  it("mounts no browser tools when the steel-browser manifest is not loaded", async () => {
+    const connector = await resolveGrantedBrowserConnector({
+      database: fakeDatabase(["browser.navigate"]),
+      manifests: [],
+      roleId: "browser-role",
+    });
+    expect(connector).toBeUndefined();
+    expect(isBrowserLaneGranted([], new Set(["browser.navigate"]))).toBe(false);
+  });
+
+  it("derives only the granted, enabled steel tools as a local stdio MCP mount — no pool/handle (TASK-186's open design question)", async () => {
+    const connector = await resolveGrantedBrowserConnector({
+      database: fakeDatabase(["browser.navigate", "browser.read", "browser.screenshot"]),
+      manifests: [steelManifest],
+      roleId: "browser-role",
+    });
+    // browser.screenshot is granted but its tool is enabled:false — must stay absent.
+    expect(connector).toMatchObject({
+      allowedTools: ["mcp__steel__steel_navigate", "mcp__steel__steel_snapshot"],
+      mcpServers: { steel: { transport: "stdio", command: "node", args: ["/opt/oikonomos/steel-mcp/dist/stdio.js"] } },
+    });
+    expect(connector?.manifest.connector_id).toBe("steel-browser");
+    expect(isBrowserLaneGranted([steelManifest], new Set(["browser.navigate"]))).toBe(true);
+  });
+
+  it("combines the browser connector with the other four into one mounted surface (TASK-139 precedent)", () => {
+    const context = (id: string): ConnectorContext => ({
+      manifest: { connector_id: id, mcp_server: { name: id }, tools: [] },
+      mcpServers: { [id]: { transport: "stdio", command: "node" } },
+      allowedTools: [`mcp__${id}__list`],
+    });
+    const combined = combineConnectorContexts(context("gmail"), context("steel-browser"));
+    expect(combined).toMatchObject({
+      connectorIds: ["gmail", "steel-browser"],
+      allowedTools: ["mcp__gmail__list", "mcp__steel-browser__list"],
+    });
   });
 });
