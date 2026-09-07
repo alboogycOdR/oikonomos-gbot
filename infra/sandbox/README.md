@@ -193,3 +193,113 @@ docker rm -f opensandbox-server
 docker ps -a --filter "ancestor=opensandbox/execd:v1.0.22" -q | xargs -r docker rm -f
 # config and images are left in place; delete ~/opensandbox and the images to fully revert
 ```
+
+## 9. Per-denial egress audit — TASK-202 investigation (2026-09-07), confirms the gap is real and closes it off
+
+TASK-185 descoped the "denial is an audit row" half of its G-08 AC after finding the
+pinned server's stable Diagnostics API returns `501 DIAGNOSTICS_NOT_IMPLEMENTED`.
+TASK-202 was opened to investigate whether a fix exists before accepting that
+permanently. It does not. This section is the complete evidence trail so a future
+session doesn't have to re-run this investigation from scratch.
+
+**Method:** all probing below was done against the pinned production deployment
+(read-only: `GET`/`POST /sandboxes`, `docker logs`, `docker exec`, `nft list ruleset`
+inside a disposable throwaway sandbox, immediately destroyed) plus a **fully
+separate, temporary `opensandbox-server` container** on `100.78.70.2:8082` (a
+port the production server never uses), with its own throwaway API key and its
+own disposable port range (`31000-31199`, outside production's `30000-30999`),
+used only to test config/version combinations the *production* server's own
+config or pin can't safely be flipped to try. The production `opensandbox-server`
+container was never stopped, restarted, or reconfigured; its image digest and
+uptime were confirmed unchanged before and after (`sha256:8f87…`, continuous
+uptime throughout). All temporary containers, volumes, images, and config files
+were destroyed at the end of the session; nothing was left running.
+
+### (a) Does a newer pinned version implement the stable Diagnostics API for real?
+
+Tested three additional versions beyond the pinned `v0.2.2`, against the live
+Docker Hub tag list (`v0.1.0`–`v1.0.1` for `server`, egress already at `v1.1.7`,
+the newest available):
+
+| Version | Stable Diagnostics API (`/v1/.../diagnostics/*`) | Notes |
+|---|---|---|
+| `v0.2.2` (pinned) | `501 DIAGNOSTICS_NOT_IMPLEMENTED` on every endpoint, every `scope` value | Confirmed again, live, this session |
+| `v0.2.3` (latest 0.2.x) | **Implemented** — but only `scope=container\|all` for logs, `scope=runtime\|all` for events. No `network`/`egress` scope exists; `scope=network` returns `400 DIAGNOSTICS_SCOPE_UNSUPPORTED`, not data. Content returned is byte-identical in shape to the deprecated fallback (execd's own startup banner) — still the workload container only. | Upgrading to `v0.2.3` would fix the *501*, but not the actual gap: there is still no route to the egress sidecar's own logs anywhere in this API, stable or deprecated. |
+| `v1.0.1` (latest major) | **Removed entirely.** OpenAPI surface for this version has no `/diagnostics/*` paths at all (`/sandboxes`, `/pause`, `/resume`, `/renew-expiration`, `/endpoints/{port}`, `/health` only — proxy, metadata, snapshots, pools, metrics and diagnostics are all gone). Also drops the `[egress]` config block from `runtime` entirely (moved to `runtime.egress_image`, no `mode` setting survives). | Upgrading here is a straight regression for this task and likely others (TASK-171's PTY viewer story would need re-verification against this API shape too — not evaluated here, out of scope). |
+
+**Conclusion: no available version closes the gap.** `v0.2.3` is the closest fix
+candidate for the 501 itself, but confirms — with a real, live 400 response
+naming the exact supported scopes — that the sidecar was never reachable through
+this API's diagnostics surface at all, in any version. This is a stronger, more
+specific finding than TASK-185's original (which only had the 501 to go on and
+could not tell whether the *stable* API's design even intended to cover the
+sidecar).
+
+### (b) Does the egress sidecar log to a location reachable independently of the workload container?
+
+**The deprecated logs endpoint's own `container` query parameter is dead code
+against this Docker backend.** Its OpenAPI description reads "Container name to
+read logs from. Defaults to the canonical user container … when the runtime
+supports multi-container pods." Tried `container=egress`, `sidecar`,
+`egress-sidecar`, `network`, `mitmproxy`, and the sidecar's real Docker container
+name (`sandbox-egress-<id>`) — **every value returned the identical workload-container
+log content**, byte-for-byte. The parameter is silently ignored by the Docker
+backend (plausibly implemented only for the Kubernetes backend's multi-container
+pods, which this deployment deliberately does not use per R16). This was not
+tested in TASK-185 and closes off a real, previously-open possibility.
+
+**The egress sidecar is a genuinely separate, trustworthy container — this part
+of the trust boundary holds.** `docker inspect` confirms the workload container
+(`sandbox-<id>`) and the egress sidecar (`sandbox-egress-<id>`) are two distinct
+containers with no Docker-socket or privileged access from the workload side;
+the workload cannot read, forge, or suppress the sidecar's own `docker logs`
+output. Its logs ARE structured JSON and ARE reachable — but only via direct
+Docker-host access (`ssh clawsrv && docker logs sandbox-egress-<id>`), not
+through any endpoint `packages/audit`'s writer (which does not and should not
+have host SSH/Docker-socket access) could call.
+
+**And even with that host-level access, the content is useless for a per-denial
+audit.** Live-tested a denied egress attempt (`wget` to both a blocked hostname
+and a blocked IP, from inside a real `allowlist_only`-shaped sandbox, confirmed
+denied — DNS resolution failed for the hostname, the raw IP connection timed
+out) in both of the sidecar's two available enforcement modes:
+
+- **`mode = "dns"` (current production config, per `sandbox.toml` §4):** the
+  sidecar's own log shows only startup/policy-load lines. No line, at any log
+  level, records the denied query or its target host.
+- **`mode = "dns+nft"`** (the only other value the pinned schema accepts —
+  `"proxy"` is rejected outright by `pydantic`'s own `Literal["dns", "dns+nft"]`
+  validation, confirmed live with the exact rejection message): same result.
+  Additionally pulled the live `nft list ruleset` from inside the sidecar
+  container after the denied attempt — the `egress` chain's final `drop` is a
+  bare catch-all with **no per-rule `log` statement**, so even the kernel's own
+  `dmesg`/netfilter log carries no per-IP attribution. A drop event increments
+  an aggregate counter only; there is no way to recover which host was denied
+  from any artifact this sidecar produces, in either mode, at any layer.
+- The `system.py` mitmproxy addon shipped inside the `opensandbox/egress:v1.1.7`
+  image (visible via `docker exec … cat`) does full per-request/per-SNI logging
+  and redaction — but it is **unreachable**: there is no `mode` value in the
+  pinned server's own config schema that ever invokes it. It is present in the
+  image for a code path this server version does not expose.
+
+### Net conclusion — do not implement, per this task's own Description
+
+*"Do not ship a per-denial audit mechanism whose trust boundary can't be
+verified"* — and per-host denial data does not exist anywhere in this
+deployment's reach, trustworthy or not, in any combination of pinned version,
+upgrade candidate, or enforcement mode tried. There is nothing to wire into
+`audit_events`; inventing a value (e.g. logging "some egress was denied" without
+the host) would misrepresent AC2's own literal requirement ("identifying the
+denied host") and is exactly the kind of dishonest-strength claim CLAUDE.md's
+liveness-assertion rule and TASK-185's own prior descoping decision both warn
+against. `packages/audit/src/index.ts` is unchanged by this investigation.
+
+**What would actually close this gap**, for whoever picks it up next: either (1)
+an upstream OpenSandbox feature request/PR adding a `network`/`egress`
+diagnostics scope or a `log` statement to the sidecar's generated nftables rules
+with a source we could reach without host SSH access, or (2) building and
+operating our own log-forwarding sidecar/volume-mount replacing the vendored one
+(a materially bigger investment — real ongoing maintenance of a second sidecar
+image — not a narrow follow-up task). Recommend this stay descoped as TASK-185
+already decided, human-confirmed, rather than either of those being taken on
+speculatively.
