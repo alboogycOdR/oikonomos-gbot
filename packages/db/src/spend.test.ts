@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { defaultPoolConfig } from "./database.js";
-import { getPlatformSpendUsd, getRoutineSpendUsd, recordSpend, startOfCurrentMonthUtc } from "./spend.js";
+import { getPlatformSpendUsd, getProviderSpendUsd, getRoutineSpendUsd, recordSpend, startOfCurrentMonthUtc } from "./spend.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -80,5 +80,30 @@ integration("packages/db spend — recordSpend / getRoutineSpendUsd / getPlatfor
     const future = new Date(Date.now() + 60_000);
     const nothingYet = await getPlatformSpendUsd({ connectionString: connectionString! }, future);
     expect(nothingYet).toBe(0);
+  });
+
+  // TASK-209 — the live figure behind ADR-011 §7's per-provider hard cap.
+  it("sums one provider's own spend, excluding other providers and older rows", async () => {
+    const db = { connectionString: connectionString! };
+    const since = startOfCurrentMonthUtc();
+    const geminiBefore = await getProviderSpendUsd(db, "gemini", since);
+    const platformBefore = await getPlatformSpendUsd(db, since);
+
+    await recordSpend(db, { runId, routineId: null, provider: "gemini", model: "gemini-3.7-flash", costUsd: 7 });
+    await recordSpend(db, { runId, routineId: null, provider: "claude", model: "claude-haiku-4-5", costUsd: 11 });
+
+    // The provider figure moves by its own spend only...
+    expect(await getProviderSpendUsd(db, "gemini", since)).toBeCloseTo(geminiBefore + 7);
+    // ...while the platform figure moves by both. A cap compared against a
+    // total that included other providers would deny the wrong runs.
+    expect(await getPlatformSpendUsd(db, since)).toBeCloseTo(platformBefore + 18);
+
+    const future = new Date(Date.now() + 60_000);
+    expect(await getProviderSpendUsd(db, "gemini", future)).toBe(0);
+    expect(await getProviderSpendUsd(db, "no-such-provider", since)).toBe(0);
+  });
+
+  it("refuses an empty provider rather than silently summing every provider", async () => {
+    await expect(getProviderSpendUsd({ connectionString: connectionString! }, "  ")).rejects.toThrow(/provider/);
   });
 });

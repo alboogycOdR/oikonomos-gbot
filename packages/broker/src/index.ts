@@ -33,10 +33,13 @@ import {
 import { describeRequestSecret, REQUEST_SECRET_TOOL } from "./requestSecret.js";
 
 export {
+  providerCapEnvVar,
   resolveBudgetGate,
+  resolveProviderCapUsd,
   type BudgetGateDecision,
   type BudgetGateDenyReason,
   type BudgetGateInput,
+  type ProviderBudgetInput,
 } from "./budgetGate.js";
 
 export const workspaceName = "broker";
