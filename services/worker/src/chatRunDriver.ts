@@ -1013,23 +1013,86 @@ function completionAuditSink(options: DatabaseOptions, run: { runId: string; ten
 const STEEL_CURRENT_PAGE_DESTINATION = "current_page";
 
 /** ADR-013's v1 target extraction. Unknown shapes deliberately fail closed. */
+/**
+ * Sentinel for a tool whose target is the account's own implicit scope rather
+ * than anything the call names — "the most recent files", not a file. Used
+ * sparingly and only where no input field identifies a target, for the same
+ * reason as {@link STEEL_CURRENT_PAGE_DESTINATION}: an approval render has to
+ * say something true, and inventing a specific-looking target would be worse
+ * than admitting the call names none.
+ */
+const ACCOUNT_SCOPE_DESTINATION = "account_scope";
+
+/** Joins Gmail's array recipient fields; a single string still works. */
+function recipients(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const addresses = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+    return addresses.length === 0 ? undefined : addresses.join(", ");
+  }
+  return undefined;
+}
+
+/**
+ * ADR-013's v1 target extraction, one entry per governed tool.
+ *
+ * TASK-216: this was a nested ternary covering four of the nineteen tools the
+ * connector manifests declare, so `create_draft`, `get_event` and nine live
+ * Drive tools all threw "No governed destination" and were denied — failing
+ * CLOSED, so not a security hole, but a draft-only Gmail bot genuinely could
+ * not draft. Field names for Gmail and Drive are the real ones from those
+ * MCP servers' own schemas, not inferred: note `create_draft`'s `to` is an
+ * ARRAY while `send_message`'s is a string, which a copied branch would have
+ * silently mishandled into an empty destination and another denial.
+ */
+const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unknown>) => unknown>> = {
+  Read: (input) => input.file_path,
+  Edit: (input) => input.file_path,
+  Write: (input) => input.file_path,
+  Glob: (input) => input.path ?? input.pattern,
+  Grep: (input) => input.path ?? input.pattern,
+  Bash: (input) => input.command,
+
+  mcp__gmail__list_messages: (input) => input.q,
+  mcp__gmail__send_message: (input) => recipients(input.to),
+  mcp__gmail__create_draft: (input) => recipients(input.to) ?? input.subject,
+
+  "mcp__google-calendar__list_events": (input) => input.calendarId,
+  // Google Calendar's API names this `eventId`; the project's own MCP server
+  // has not been enumerated for this tool (docs/connectors/google-calendar.md
+  // records tiers only), so `calendarId` is accepted as a fallback. If both
+  // are absent this denies exactly as it does today — no behaviour is lost by
+  // the uncertainty, only regained when the convention holds.
+  "mcp__google-calendar__get_event": (input) => input.eventId ?? input.calendarId,
+
+  "mcp__google-drive__search_files": (input) => input.query,
+  "mcp__google-drive__list_recent_files": () => ACCOUNT_SCOPE_DESTINATION,
+  "mcp__google-drive__get_file_metadata": (input) => input.fileId,
+  "mcp__google-drive__read_file_content": (input) => input.fileId,
+  "mcp__google-drive__download_file_content": (input) => input.fileId,
+  "mcp__google-drive__create_file": (input) => input.title,
+  "mcp__google-drive__update_file": (input) => input.fileId,
+  "mcp__google-drive__copy_file": (input) => input.fileId,
+  "mcp__google-drive__trash_file": (input) => input.fileId,
+  "mcp__google-drive__share_file": (input) => input.fileId,
+  "mcp__google-drive__get_file_permissions": (input) => input.fileId,
+
+  [WORKSPACE_SEND_TO_ROLE_TOOL]: (input) => input.toRoleId,
+  [WORKSPACE_RENAME_SELF_TOOL]: (input) => input.name,
+  [WORKSPACE_REQUEST_SECRET_TOOL]: (input) => input.label,
+
+  mcp__steel__steel_navigate: (input) => input.url,
+  mcp__steel__steel_act: (input) => input.action,
+  mcp__steel__steel_snapshot: () => STEEL_CURRENT_PAGE_DESTINATION,
+  mcp__steel__steel_screenshot: () => STEEL_CURRENT_PAGE_DESTINATION,
+  mcp__steel__steel_session_create: () => STEEL_CURRENT_PAGE_DESTINATION,
+  mcp__steel__steel_session_release: () => STEEL_CURRENT_PAGE_DESTINATION,
+};
+
 export function destinationFor(request: PreToolUseRequest): string {
-  const input = request.input;
-  const destination = request.toolName === "Read" || request.toolName === "Edit" || request.toolName === "Write" ? input.file_path
-    : request.toolName === "Glob" || request.toolName === "Grep" ? input.path ?? input.pattern
-        : request.toolName === "Bash" ? input.command
-          : request.toolName === "mcp__gmail__list_messages" ? input.q
-          : request.toolName === "mcp__gmail__send_message" ? input.to
-            : request.toolName === "mcp__google-calendar__list_events" ? input.calendarId
-              : request.toolName === "mcp__google-drive__search_files" ? input.query
-            : request.toolName === WORKSPACE_SEND_TO_ROLE_TOOL ? input.toRoleId
-              : request.toolName === WORKSPACE_RENAME_SELF_TOOL ? input.name
-                : request.toolName === WORKSPACE_REQUEST_SECRET_TOOL ? input.label
-                  : request.toolName === "mcp__steel__steel_navigate" ? input.url
-                    : request.toolName === "mcp__steel__steel_act" ? input.action
-                      : request.toolName === "mcp__steel__steel_snapshot" || request.toolName === "mcp__steel__steel_screenshot"
-                        || request.toolName === "mcp__steel__steel_session_create" || request.toolName === "mcp__steel__steel_session_release"
-                        ? STEEL_CURRENT_PAGE_DESTINATION : undefined;
+  // An unknown tool has no entry and therefore no destination: unchanged
+  // fail-closed behaviour, which is the whole point of a closed table.
+  const destination = DESTINATION_EXTRACTORS[request.toolName]?.(request.input);
   if (typeof destination !== "string" || destination.trim().length === 0) throw new Error(`No governed destination for tool '${request.toolName}'.`);
   return destination;
 }

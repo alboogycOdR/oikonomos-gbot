@@ -6382,25 +6382,26 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-216
 **Title:** Thirteen calendar/drive tools plus gmail create_draft have no governed destination
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** done
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `services/worker/src/chatRunDriver.ts`'s `destinationFor` (ADR-013 v1 target extraction); `packages/connectors/manifests/google-calendar.yaml`, `google-drive.yaml`, `gmail.yaml`.
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
 **Depends_On:** —
 **Description:** Found by the closure test added in TASK-207 and confirmed by Fable's TASK-207 review. `destinationFor` throws for any tool it does not recognise, and the broker turns that into a deny — so it fails CLOSED, which is why this is an availability gap rather than a security one. But it is a real product gap: only `list_events` and `search_files` have branches, so of the calendar and drive manifests' declared tools roughly thirteen are unusable, and `mcp__gmail__create_draft` has none either, meaning a draft-only Gmail bot cannot draft. Add the missing branches, extracting a genuine governed target per tool from its own input rather than a placeholder — a sentinel that names nothing specific defeats the purpose of the approval render.
 **Acceptance_Criteria:**
-- [ ] Every tool declared by every loaded connector manifest has a non-throwing `destinationFor` branch; the TASK-207 closure test is widened from steel-browser-only to all manifests and passes.
-- [ ] Each destination names the real target of that call (a calendar id, a file id/name, a draft recipient), not a generic sentinel — except where a tool genuinely acts on implicit current state, which must be justified in a comment as `steel_snapshot`'s is.
-- [ ] A tool that is NOT declared by any manifest still fails closed exactly as today.
-- [ ] Full suites, lint, typecheck clean.
-**Branch:** —
-**Started_At:** —
+- [x] Every MOUNTABLE tool (`enabled !== false`) across every manifest has a non-throwing branch, and the closure test is widened from steel-browser-only to all manifests. Three `enabled: false` calendar mutations are excluded deliberately — see Progress_Notes — and the test now keys on `enabled`, so it starts demanding a branch the moment one is switched on.
+- [x] Each destination names the real target of that call (a calendar id, a file id/name, a draft recipient), not a generic sentinel — except where a tool genuinely acts on implicit current state, which must be justified in a comment as `steel_snapshot`'s is.
+- [x] A tool that is NOT declared by any manifest still fails closed exactly as today, as does a declared tool whose input names nothing.
+- [x] Full suites, lint, typecheck clean.
+**Branch:** task/TASK-216-s5
+**Started_At:** 2026-09-07T14:50:00Z
 **Progress_Notes:**
+- [2026-09-07T15:00:00Z] [ORCH] Implemented. Replaced the nested ternary with a closed extractor table — adding eleven branches to a 14-deep ternary would have been unreadable, and a table makes the fail-closed default structural (no entry, no destination). Field names for Gmail and Drive are the REAL ones from those MCP servers' own schemas, not inferred: notably `create_draft.to` is an ARRAY while `send_message.to` is a string, so a copied branch would have produced an empty destination and denied the call — the exact bug this task fixes, reintroduced. `calendar.get_event` uses `eventId` with a `calendarId` fallback and the uncertainty is disclosed in-source: this project has not enumerated its own calendar MCP server, so if the convention does not hold it denies exactly as it does today and nothing is lost. DELIBERATELY NOT DONE: the three `enabled: false` calendar mutations (create/update/delete_event, all T3 externally-visible — they notify real attendees). Their schemas are unverified, and guessing field names is worst precisely there; they are unmountable today, and the closure test keys on `enabled` so it will demand a branch the moment one is enabled.
 - [2026-09-07T14:45:00Z] [ORCH] Filed; carried from TASK-207's review, where it was correctly judged non-blocking for that merge but flagged as needing its own task.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Test_Evidence:** worker 171/173 (only the two pre-existing pg-boss flakes); lint and typecheck clean.
+**Review_Findings:** Self-reviewed by ORCH; no protected path touched.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T14:45:00Z

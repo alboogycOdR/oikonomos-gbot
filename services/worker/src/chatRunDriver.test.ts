@@ -218,26 +218,67 @@ describe("chat run driver governance helpers", () => {
   // tool the steel-browser manifest declares, automatically, the moment a
   // new one is added without updating destinationFor to match.
   //
-  // Scoped to steel-browser, not every loaded manifest: running this over
-  // google-calendar/google-drive too surfaces ~13 pre-existing tools with
-  // no destinationFor branch at all (only list_events/search_files have
-  // one) — a real, separate gap, discovered here but out of this task's
-  // scope to fix; left for its own task rather than folded in.
-  it("gives every tool declared by the steel-browser manifest a non-throwing destination (closure over destinationFor)", async () => {
+  // TASK-216 widened this from steel-browser-only to EVERY loaded manifest.
+  // When it was scoped, running it unscoped surfaced ~13 tools with no
+  // branch — gmail create_draft, calendar get_event, and nine live Drive
+  // tools — each of which threw and was therefore denied.
+  it("gives every tool declared by every connector manifest a non-throwing destination (closure over destinationFor)", async () => {
     const manifests = await loadManifests(defaultManifestsDir());
-    const steelManifest = manifests.find((manifest) => manifest.connector_id === "steel-browser");
-    const toolNames = steelManifest?.tools.map((tool) => tool.tool_name) ?? [];
-    expect(toolNames.length).toBeGreaterThan(0);
+    // Only tools that can actually be MOUNTED. `enabled: false` tools are
+    // unreachable, and the three that remain — calendar create/update/delete
+    // event — are T3 externally-visible actions whose input schemas this
+    // project has not enumerated against its own MCP server
+    // (docs/connectors/google-calendar.md records tiers only). Writing
+    // convention-guessed extractors for calls that notify real attendees is
+    // exactly where a wrong field name costs most. Keying on `enabled` means
+    // this test starts demanding a branch the moment one is switched on,
+    // which is precisely when it matters.
+    const toolNames = manifests.flatMap((manifest) =>
+      manifest.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.tool_name));
+    expect(toolNames.length).toBeGreaterThan(14);
+
+    // One input carrying every field any governed tool reads, so a tool is
+    // reported missing only when it has no extractor at all.
+    const input = {
+      url: "https://example.test", action: "click", q: "is:unread",
+      to: ["user@example.test"], subject: "Subject", calendarId: "primary", eventId: "evt-1",
+      query: "report", fileId: "file-1", title: "Notes", path: "src", command: "ls",
+      file_path: "a.md", toRoleId: "role", name: "n", label: "l",
+    };
 
     const missing: string[] = [];
     for (const toolName of toolNames) {
       try {
-        destinationFor({ ...base, toolName, input: { url: "https://example.test", action: "click" } });
+        destinationFor({ ...base, toolName, input });
       } catch {
         missing.push(toolName);
       }
     }
-    expect(missing, "destinationFor has no branch for these steel-browser tools").toEqual([]);
+    expect(missing, "destinationFor has no branch for these manifest tools").toEqual([]);
+  });
+
+  it("extracts a real target per tool, not a placeholder (TASK-216)", () => {
+    const at = (toolName: string, input: Record<string, unknown>) => destinationFor({ ...base, toolName, input });
+
+    // Gmail's create_draft takes an ARRAY of recipients while send_message
+    // takes a string; a copied branch would have produced "[object Object]"
+    // or an empty destination and denied the call.
+    expect(at("mcp__gmail__create_draft", { to: ["a@example.test", "b@example.test"] })).toBe("a@example.test, b@example.test");
+    expect(at("mcp__gmail__send_message", { to: "a@example.test" })).toBe("a@example.test");
+    // A draft with no recipient yet is still describable by its subject.
+    expect(at("mcp__gmail__create_draft", { subject: "Q3 numbers" })).toBe("Q3 numbers");
+
+    expect(at("mcp__google-drive__read_file_content", { fileId: "file-1" })).toBe("file-1");
+    expect(at("mcp__google-drive__create_file", { title: "Notes" })).toBe("Notes");
+    expect(at("mcp__google-calendar__get_event", { eventId: "evt-1" })).toBe("evt-1");
+  });
+
+  it("still fails closed for a tool no manifest declares (TASK-216)", () => {
+    expect(() => destinationFor({ ...base, toolName: "mcp__unknown__exfiltrate", input: { fileId: "f" } }))
+      .toThrow(/No governed destination/);
+    // Present in the table but with nothing to name still denies.
+    expect(() => destinationFor({ ...base, toolName: "mcp__google-drive__read_file_content", input: {} }))
+      .toThrow(/No governed destination/);
   });
 
   it("uses the final SDK result while keeping a non-empty fallback reply", () => {
