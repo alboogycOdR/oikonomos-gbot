@@ -95,4 +95,33 @@ describe("createTierZeroProvider", () => {
       usdToZarRate: 0,
     })).toThrow(/usdToZarRate/);
   });
+
+  // The production caller (chatRunDriver's resolveTierZeroProviderOptions)
+  // passes only endpoint/model/apiKey, so this default IS the live ceiling
+  // for every context-compaction and group-routing call. It was a second,
+  // duplicated literal that went stale at the pre-2026-09-06 R30,000 figure,
+  // gating real Tier-0 spend at ~86x the actual R350 platform ceiling.
+  it("gates Tier-0 spend against the one canonical platform ceiling, not a stale copy", async () => {
+    const { DEFAULT_PLATFORM_CEILING_ZAR } = await import("./tierZeroProvider.js");
+    const { DEFAULT_PLATFORM_CEILING_ZAR: canonical } = await import("./subprocessProviders.js");
+
+    expect(DEFAULT_PLATFORM_CEILING_ZAR).toBe(canonical);
+    expect(DEFAULT_PLATFORM_CEILING_ZAR).toBe(350);
+  });
+
+  it("denies a Tier-0 call once platform spend passes the real R350 ceiling", async () => {
+    // Just over R350 at the default 18.5 rate: ~US$18.92.
+    configureBudget({ platformSpendUsd: 19 });
+    const fetch = vi.fn();
+    const complete = createTierZeroProvider({
+      db: { connectionString: "postgres://example/db" },
+      runId: "tier-zero-ceiling",
+      endpoint: "http://router/v1/chat/completions",
+      model: "cheap",
+      fetch: fetch as never,
+    });
+
+    await expect(complete("summarise this")).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

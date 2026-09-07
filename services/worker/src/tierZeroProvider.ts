@@ -8,9 +8,19 @@ import {
 } from "@oikonomos/db";
 import { resolveBudgetGate } from "@oikonomos/broker";
 
-/** Kept aligned with the existing subprocess budget composition. */
-export const DEFAULT_USD_TO_ZAR_RATE = 18.5;
-export const DEFAULT_PLATFORM_CEILING_ZAR = 30_000;
+/**
+ * Re-exported from the single canonical definition rather than redeclared.
+ *
+ * These were duplicated literals, and the copy here went stale: it still
+ * said 30_000 after the platform ceiling was reset to R350 on 2026-09-06
+ * (CLAUDE.md § Budget). Because `resolveTierZeroProviderOptions` in
+ * chatRunDriver.ts passes only endpoint/model/apiKey, every production
+ * Tier-0 call — context compaction and unaddressed group-message routing —
+ * fell through to that stale default and was budget-gated at ~86x the real
+ * ceiling. A duplicated constant cannot go stale if there is only one.
+ */
+import { DEFAULT_PLATFORM_CEILING_ZAR, DEFAULT_USD_TO_ZAR_RATE } from "./subprocessProviders.js";
+export { DEFAULT_PLATFORM_CEILING_ZAR, DEFAULT_USD_TO_ZAR_RATE };
 export const BUDGET_READ_TIMEOUT_MS = 9_500;
 
 export interface CreateTierZeroProviderOptions {
