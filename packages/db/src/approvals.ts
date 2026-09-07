@@ -273,6 +273,17 @@ export async function consumeApproval(
 
 export interface PendingApprovalFilter {
   tenantId?: string;
+  /**
+   * Restrict to one run's own approvals (TASK-218).
+   *
+   * Pair with `includeExpired` when the question is "what did this run leave
+   * behind" rather than "what can a person act on now": the default predicate
+   * hides an approval whose TTL has lapsed, and a run can outlive its own
+   * approval's expiry.
+   */
+  runId?: string;
+  /** Include approvals whose TTL has already lapsed. Defaults to false. */
+  includeExpired?: boolean;
 }
 
 /**
@@ -286,12 +297,18 @@ export async function listPendingApprovals(
   options: DatabaseOptions,
   filter: PendingApprovalFilter = {},
 ): Promise<Approval[]> {
-  const conditions = [`status = 'pending'`, `expires_at > now()`];
+  const conditions = [`status = 'pending'`];
+  if (filter.includeExpired !== true) conditions.push(`expires_at > now()`);
   const params: unknown[] = [];
 
   if (filter.tenantId !== undefined) {
     params.push(requireNonEmpty(filter.tenantId, "tenantId"));
     conditions.push(`tenant_id = $${params.length}`);
+  }
+
+  if (filter.runId !== undefined) {
+    params.push(requireNonEmpty(filter.runId, "runId"));
+    conditions.push(`run_id = $${params.length}`);
   }
 
   return withPool(options, async (pool) => {

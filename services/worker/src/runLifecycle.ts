@@ -1,6 +1,9 @@
+import { invalidatePendingApproval } from "@oikonomos/approvals";
+import { recordAuditEvent } from "@oikonomos/audit";
 import {
   cancelRun,
   completeRun,
+  listPendingApprovals,
   failRun,
   getRun,
   listRuns,
@@ -57,7 +60,71 @@ export async function failTaskRun(
   runId: string,
   failureNote: string,
 ): Promise<Run> {
-  return failRun(options, runId, failureNote);
+  const run = await failRun(options, runId, failureNote);
+  await resolveDanglingApprovals(options, run);
+  return run;
+}
+
+/** Audit event recorded when a run's own end voids an approval nobody answered. */
+export const APPROVAL_ABANDONED_EVENT_TYPE = "approval.abandoned_at_run_end";
+
+/**
+ * Void any approval this run left still awaiting an answer (TASK-218).
+ *
+ * Reported by a user 2026-09-07 and confirmed in the database: a sandboxed
+ * run requested an approval at 10:52:52, COMPLETED at 10:57:27, and the
+ * approval was granted at 10:59:57 — two and a half minutes after there was
+ * anything left to resume. The card stayed actionable in the mobile client,
+ * the operator answered it, and nothing happened. Three such approvals were
+ * sitting against already-finished runs.
+ *
+ * Cause (not fixed here): `createRunParkPort` is wired only into the local
+ * execution branch, so a sandboxed run never parks on `approval_pending` and
+ * simply finishes without the tool.
+ *
+ * SCOPE, and it is narrow on purpose: this runs only for `failed` and
+ * `cancelled` runs — the states nothing can resume, where a pending approval
+ * is unambiguously dead. It deliberately does NOT run on completion. A
+ * completed run holding a pending approval might be the reported dead end, or
+ * might be a run awaiting the answer that TASK-155 would resume it with, and
+ * those are indistinguishable here. Deciding between them is the
+ * park-vs-rerun product fork the user has not ruled on, so it is left
+ * undecided rather than settled by implication.
+ *
+ * `invalidated` is used rather than `rejected` precisely because the audit
+ * trail must never suggest the operator turned something down: nobody
+ * decided this, the run ended underneath it.
+ *
+ * Never throws. A run that has genuinely finished must not be reported as
+ * failed because its tidy-up could not complete.
+ */
+export async function resolveDanglingApprovals(
+  options: DatabaseOptions,
+  run: Run,
+): Promise<number> {
+  try {
+    const pending = await listPendingApprovals(options, { runId: run.runId, includeExpired: true });
+    let resolved = 0;
+    for (const approval of pending) {
+      const result = await invalidatePendingApproval(approval.nonce, { database: options });
+      if (!result.invalidated) continue;
+      resolved += 1;
+      await recordAuditEvent(options, {
+        tenantId: approval.tenantId,
+        runId: run.runId,
+        actor: "system:run-lifecycle",
+        eventType: APPROVAL_ABANDONED_EVENT_TYPE,
+        payload: {
+          approvalId: approval.approvalId,
+          capabilityId: approval.capabilityId,
+          runStatus: run.status,
+        },
+      });
+    }
+    return resolved;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -72,6 +139,18 @@ export async function parkTaskRun(
   return parkRun(options, runId);
 }
 
+/**
+ * Deliberately does NOT resolve pending approvals (TASK-218).
+ *
+ * A completed run holding a pending approval is the ambiguous case: it may be
+ * a run that finished without the tool (the user-reported dead end), or a run
+ * parked at `waiting_approval` that the operator is still expected to answer
+ * so TASK-155 can resume it. Those are indistinguishable at this point, and
+ * choosing between them IS the park-vs-rerun product decision this task
+ * explicitly left to the user. Voiding here would decide it by implication —
+ * and would break the working approval flow, which is how the existing
+ * TASK-136 test caught this.
+ */
 export async function completeTaskRun(
   options: DatabaseOptions,
   runId: string,
@@ -83,7 +162,9 @@ export async function cancelTaskRun(
   options: DatabaseOptions,
   runId: string,
 ): Promise<Run> {
-  return cancelRun(options, runId);
+  const run = await cancelRun(options, runId);
+  await resolveDanglingApprovals(options, run);
+  return run;
 }
 
 /**
