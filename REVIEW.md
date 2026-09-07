@@ -603,3 +603,19 @@ Four blocked rounds, every one real: a manifest-format/spec-vs-implementation co
 Independently re-verified via subagent: connectors 138/140 (2 skipped), harness-factory 122/122, build/lint/typecheck/banned-mode all clean, both on the branch and re-confirmed on master after merge. The full recursive suite's remaining failures are both already-explained (the documented pg-boss timing flake, and TASK-205's pre-existing bug) — neither related to this task.
 
 Merged --no-ff.
+
+## TASK-204 | S5 | approved | first-pass: yes
+
+G-06b, the live-wiring half of the browser lane G-06 (split from TASK-186): mounts `browser.*` capabilities into real chat execution and builds the `human_takeover_required` event/park contract. Genuinely excellent first submission on a task carrying a real, unresolved architecture question.
+
+**The open design question is resolved, not assumed.** TASK-186's own investigation left open whether Steel's local, in-sandbox session fits `connectorResolution.ts`'s durable-pool `acquire()`/`release()` shape (the gmail/calendar/drive pattern) or `chatRunDriver.ts`'s own image-selection pattern. S5's new doc comment investigates directly: Steel has no durable cross-request state to pool (no remote credential, no rate-limited backend) — it's a pure function of the role's grants, correctly modeled as image-selection-shaped. No `ConnectorSessionPool` is constructed for it. `OFFICE_BROWSER_SANDBOX_IMAGE` correctly carries an explicit version tag, matching `office-base`'s own precedent (a gap TASK-186's review flagged and asked this task to close).
+
+The `human_takeover_required` contract reuses the EXISTING `parkTaskRun`/`waiting_approval` machinery rather than inventing a new mechanism, exactly as G-07 specifies, and its test proves "zero further browser actions after" by construction — the fixture's async generator ends at the throw, not merely asserted via a call count. `destinationFor` is extended for all four real `mcp__steel__*` tool names, cross-checked directly against `steel-browser.yaml`'s own declared names — no invented tool names.
+
+Two disclosed compromises (a duplicated `STEEL_MCP_ENTRYPOINT` literal since neither package's public export surface re-exports the source module; Steel's MCP env vars not threaded through because `McpStdioServerConfig` has no `env` field, relying instead on the office-browser image's own hardcoded matching defaults) — both independently verified accurate by reading the actual files, not taken on trust.
+
+**AC3 (sealed-profile denial + audit event) is the property TASK-186 explicitly could not prove without this wiring** — proven here with a real governed tool call through the actual broker/policy decision path, asserting a genuine `policy.decision` deny event, not a local/fake guard.
+
+Independently re-verified via subagent: `connectorResolution.test.ts` 7/7, `chatRunDriver.test.ts` 25/25 including every TASK-204/AC-named case and the pre-existing TASK-116 cases unmodified; `connectors`/`harness-factory` unmodified and still fully green; full recursive suite showed only the two already-known pre-existing failure classes (pg-boss timing flake, TASK-205's exact bug) and nothing new; build/lint/typecheck/banned-mode all clean, both on the branch and re-confirmed on master after merge.
+
+Merged --no-ff.
