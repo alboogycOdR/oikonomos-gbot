@@ -36,12 +36,12 @@ connector_id: broken-connector
 `;
 
 describe("loadManifests (ADR-013 §2)", () => {
-  it("returns 3 validated ConnectorManifest objects for the real manifests directory", async () => {
+  it("returns 4 validated ConnectorManifest objects for the real manifests directory", async () => {
     const manifests = await loadManifests(defaultManifestsDir());
 
-    expect(manifests).toHaveLength(3);
+    expect(manifests).toHaveLength(4);
     const ids = manifests.map((manifest) => manifest.connector_id).sort();
-    expect(ids).toEqual(["gmail", "google-calendar", "google-drive"]);
+    expect(ids).toEqual(["gmail", "google-calendar", "google-drive", "steel-browser"]);
     for (const manifest of manifests) {
       expect(manifest.account_ownership).toBe("basileia");
       expect(Array.isArray(manifest.tools)).toBe(true);
