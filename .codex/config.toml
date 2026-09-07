@@ -37,5 +37,18 @@ approval_policy = "never"
 
 # --- Environment ------------------------------------------------------------------
 # DEVTEAM_UNIT identifies this harness to any hook-capable tooling and scripts.
-[shell_environment_policy]
-set = { DEVTEAM_UNIT = "CX" }
+# [ORCH 2026-09-07] This file is shared by BOTH Codex identities (CX and CX9 —
+# same underlying CLI/template, per autopilot.json's builder registry), but a
+# `[shell_environment_policy] set = {...}` entry unconditionally OVERWRITES
+# whatever dispatch.ps1 already correctly set in the parent process
+# ($env:DEVTEAM_UNIT = $Id) for every subprocess Codex spawns — it does not
+# merely fill in a default. With DEVTEAM_UNIT hardcoded to "CX" here, CX9's own
+# dispatched sessions had every commit rejected by hooks/territory-precommit.js
+# ("DEVTEAM_UNIT='CX' but this worktree belongs to CX9"), confirmed live on
+# TASK-186 (and suspected but not root-caused on two earlier occasions this
+# session). Deliberately NOT set here: Codex's default shell_environment_policy
+# inherits the parent process's environment, which is exactly what correctly
+# carries dispatch.ps1's per-launch value through for CX, CX9, and any future
+# Codex-family identity added to the registry — a static per-identity value
+# cannot live in this single shared file without breaking whichever identity
+# it doesn't name.
