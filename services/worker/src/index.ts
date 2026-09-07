@@ -8,6 +8,7 @@ export {
   cancelTaskRun,
   completeTaskRun,
   failTaskRun,
+  parkTaskRun,
   resumeInterruptedRun,
   startTaskRun,
 } from "./runLifecycle.js";

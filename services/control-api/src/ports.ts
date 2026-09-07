@@ -93,6 +93,7 @@ import {
   createTierZeroProvider,
   deliverBotToBotMessage,
   failTaskRun,
+  parkTaskRun,
   route,
   startTaskRun,
   type ChatRunDriver,
@@ -427,7 +428,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     runChatTask: notify,
     requestGroupFanout: async ({ task, memberRoleIds, body }) => {
       const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group" });
-      await deliverBotToBotMessage(options, {
+      const result = await deliverBotToBotMessage(options, {
         // The fan-out gate's sender label is audit data, not a role FK. The
         // persisted group-thread message remains correctly unattributed
         // (`senderRoleId: null`) because its author is the human user.
@@ -437,6 +438,13 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         runId: run.runId,
         tenantId: task.tenantId,
       });
+      // TASK-205: a fan-out (2+ recipients) issues a real pending approval
+      // via `deliverBotToBotMessage` but never parked the run — the caller
+      // never checked `result.delivered`, so `runs.status` stayed `started`
+      // forever even though a real `approvals` row existed. `parkTaskRun`
+      // is what every other approval-gated path (TASK-136) already calls;
+      // this call site was simply missing it.
+      if (!result.delivered) await parkTaskRun(options, run.runId);
       return { runId: run.runId };
     },
     routeGroupMessage: async ({ tenantId, threadId, memberRoleIds, body, title, goal }) => {
