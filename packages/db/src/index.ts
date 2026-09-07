@@ -187,6 +187,7 @@ export {
 } from "./requireApprovalRules.js";
 export {
   getPlatformSpendUsd,
+  getProviderSpendUsd,
   getRoutineSpendUsd,
   recordSpend,
   startOfCurrentMonthUtc,

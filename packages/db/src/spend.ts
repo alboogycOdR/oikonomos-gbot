@@ -192,6 +192,42 @@ export async function getPlatformSpendUsd(
   });
 }
 
+/**
+ * One provider's own spend over the same monthly window as
+ * {@link getPlatformSpendUsd} — the live figure behind ADR-011 §7's
+ * per-provider hard cap (TASK-209).
+ *
+ * The window MUST match the platform figure's: a cap compared against a
+ * differently-scoped total is not a cap, it is a coincidence. Both default
+ * to the current UTC calendar month.
+ *
+ * Matches whatever `recordSpend` wrote in the `provider` column, so this is
+ * only as truthful as that attribution. Runs recorded under a hardcoded
+ * provider literal, or recorded at zero cost because their provider's usage
+ * shape was not understood, are invisible here — which is why TASK-210
+ * (main-chat attribution) is a sibling of this task rather than a follow-on.
+ *
+ * Fail-closed is the caller's responsibility, exactly as documented on
+ * `resolveBudgetGate`: a read that throws must deny, never pass a
+ * fabricated zero into the gate.
+ */
+export async function getProviderSpendUsd(
+  options: DatabaseOptions,
+  provider: string,
+  since: Date = startOfCurrentMonthUtc(),
+): Promise<number> {
+  if (typeof provider !== "string" || provider.trim().length === 0) {
+    throw new Error("getProviderSpendUsd requires a non-empty provider.");
+  }
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ total: string | null }>(
+      `SELECT COALESCE(SUM(cost_usd), 0)::text AS total FROM spend_records WHERE provider = $1 AND occurred_at >= $2`,
+      [provider, since],
+    );
+    return Number.parseFloat(result.rows[0]?.total ?? "0");
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
