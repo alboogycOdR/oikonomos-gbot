@@ -1,6 +1,6 @@
 ---
-plan_version: 28.64
-last_updated: 2026-09-07T12:15:00Z
+plan_version: 28.70
+last_updated: 2026-09-07T13:10:00Z
 overall_status: in_progress
 orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. TWO credential-exposure incidents this session, both self-caught, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. Both credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\") is unconditional and was still violated; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's two recorded incidents both prove is easy to get wrong even when actively trying to be careful."
 ---
@@ -6160,3 +6160,185 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-07T12:15:00Z
+
+### TASK-208
+**Title:** The governed browser lane never completed a real turn — four stacked defects
+**Status:** done
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `services/worker/src/chatRunDriver.ts`'s `resolveRoleSandbox` (TASK-185's hardcoded `entrypoint`); `infra/sandbox/images/office-browser/browser-entrypoint.sh` (TASK-186).
+**Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, infra/sandbox/images/office-browser/browser-entrypoint.sh
+**Depends_On:** TASK-207
+**Description:** Filed retroactively — the work landed on master as `7bb9f07` referencing this id before the block existed; recorded here so the commit trail resolves. After TASK-207 closed the manifest/capability gap, a live end-to-end run still could not complete, and four further defects were found live, each hidden behind the previous: (1) `createSandbox`'s `entrypoint` was hardcoded to office-base's wrapper regardless of image, so office-browser's `browser-entrypoint.sh` — the only thing that starts Steel Browser — had never run in a real sandbox (`ps aux` showed no Steel process); (2) that script polled `/health`, which the pinned steel-browser image 404s (`/v1/health` is correct), so its `--fail` wait loop could never succeed; (3) `assertEgressPolicyApplied` checked its marker once, immediately after OpenSandbox reports `Running`, which on office-browser is ~30s before its entrypoint writes that marker; (4) `resourceLimits` were 500m/512Mi for every image, and Chromium cannot start in that — Steel's API came up healthy but every `steel_session_create` failed with "Browser launch timeout after 60000ms". Also: only the sandboxed CLI's FINAL message is persisted as the bot's reply, so a bot that narrated its findings mid-run and signed off delivered only the sign-off.
+**Acceptance_Criteria:**
+- [x] `entrypoint` follows the resolved image (`sandboxEntrypointFor`), with an unrecognized override falling back to the base wrapper — every office-* image carries `egress-entrypoint.mjs`, only office-browser carries `browser-entrypoint.sh`, so the fallback is the fail-safe direction.
+- [x] `browser-entrypoint.sh` polls `/v1/health` and allows 90 attempts, not 30 — Chromium is not up in 30s on a constrained box.
+- [x] The egress-marker check polls (120s) for the browser image only; office-base keeps the instant single check, so a genuinely absent marker there still fails closed immediately rather than hanging.
+- [x] `resourceLimits` are image-aware: office-browser gets 2000m/2Gi, office-base unchanged, so only browser-granted roles cost more against the R350 ceiling.
+- [x] Proven live, not inferred: the news-reader bot opened a Steel session, browsed CNN/Fox/USA Today/NYT, compiled a real top-10 US news list and released the session — the first genuine end-to-end completion of this lane.
+- [x] worker 153/155 (the two pre-existing pg-boss flakes); lint, typecheck and banned-modes clean.
+**Branch:** — (committed directly on master; non-protected paths, self-verified)
+**Started_At:** 2026-09-07T12:30:00Z
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Landed as `7bb9f07`. Each defect was found only by running the real thing: the suite was green throughout, because every one of these lives in the gap between "the code is correct" and "the deployment actually runs it". The regression test added for (1) asserts the entrypoint actually sent to `createSandbox`, which is the thing that was wrong for the entire life of the feature.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, infra/sandbox/images/office-browser/browser-entrypoint.sh
+**Test_Evidence:** See Acceptance_Criteria; live transcript captured from the sandbox's own session jsonl, not from the bot's final reply alone.
+**Review_Findings:** Self-reviewed by ORCH; no protected paths touched. The approval-card dead end found afterwards (a sandboxed run never parks on `approval_pending`, so approving a finished run does nothing) is NOT covered here — needs its own task.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-209
+**Title:** Per-provider hard spend cap — ADR-011 §7's precondition for any tool-executing Gemini run
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `docs/decisions/ADR-011-multi-provider-llm-support.md` §7 addendum (2026-09-06): after the R30,000 to R350 reset, `gemini-3.7-flash` must not become an uncapped default for tool-executing runs; Stage 2 promotion is blocked on a documented per-provider hard cap, not just the liveness canary. `packages/broker/src/budgetGate.ts`'s `resolveBudgetGate`; `packages/db/src/spend.ts`.
+**Owned_Paths:** packages/broker/src/budgetGate.ts, packages/broker/src/budgetGate.test.ts, packages/db/src/spend.ts, packages/db/src/spend.test.ts
+**Depends_On:** —
+**Description:** Today's budget gate knows a per-routine budget and one platform ceiling; it has no per-provider dimension, so "Gemini may spend at most X" cannot be expressed or enforced. ADR-011 §7 makes exactly that the gate on Stage 2, so this blocks TASK-212/213. Add a per-provider cap to `resolveBudgetGate` and a `getProviderSpendUsd` accessor, both fail-closed on a read error like the existing gate. Decide and record: is the cap absolute (provider spend halts at X) or a share of the platform ceiling? Recommend absolute — a share silently rises when the ceiling does, which is the failure mode §7 was written against. The cap must be configuration, not a literal, so it can be tuned without a deploy.
+**Acceptance_Criteria:**
+- [ ] `resolveBudgetGate` denies when a named provider's own spend has passed its configured cap, independently of routine budget and platform ceiling, and the deny reason names the provider.
+- [ ] `getProviderSpendUsd(db, provider)` reads real `spend_records` rows; a read failure fails closed exactly as the existing budget reads do.
+- [ ] The cap's shape (absolute vs share-of-ceiling) is decided with recorded reasoning, not picked silently.
+- [ ] An ADR-005 liveness assertion: a test that fails when the cap is inert, keyed on a real deny the gate emits — not on the config value being present.
+- [ ] `pnpm --filter @oikonomos/broker test`, `@oikonomos/db test`, lint, typecheck all clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed as the literal gate on Wave 2. `packages/broker/**` is a protected path: adversarial review by a different model is required before merge.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-210
+**Title:** Main-chat spend is hardcoded to Anthropic and would record a Gemini run as free
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `services/worker/src/chatRunDriver.ts`'s `createChatRunBudget` (hardcodes `provider: "claude"` and the sandbox model string); `packages/harness-factory/src/budgetTap.ts`'s `withBudgetTap` (only reports on an event with `type === "result"` and a numeric `total_cost_usd`, i.e. the Anthropic SDK envelope).
+**Owned_Paths:** packages/harness-factory/src/budgetTap.ts, packages/harness-factory/src/budgetTap.test.ts
+**Depends_On:** —
+**Description:** The main chat path attributes every run to `provider: "claude"` with the sandbox model string, and `withBudgetTap` extracts cost only from the Anthropic result envelope. A Gemini-executed run would therefore be recorded under the wrong provider AND at zero cost — it fails open on accounting (the pre-run gate still fires, but nothing accumulates, so TASK-209's cap would never trip). Same defect class already fixed for Tier-0 in `e4b8289`, on the path that carries far more spend. Provider and model must be derived from what actually executed the run, and cost extraction must handle a non-Anthropic turn — Gemini's token counts must be priced including thinking tokens, which are billed at the output rate and are excluded from a naive completion-token reading.
+**Acceptance_Criteria:**
+- [ ] `recordSpend` receives the provider and model that actually ran the turn, not a literal.
+- [ ] A Gemini-executed run records non-zero cost from real token counts, with thinking tokens billed at the output rate (see `e4b8289` for the measured 9/4/130 case that proved the naive reading ~30x low).
+- [ ] A run whose provider reports no usable cost is visibly recorded as such rather than silently recorded as 0 — an uncosted run must be detectable.
+- [ ] Regression test proving a Claude run's existing attribution is byte-identical to today's.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed. `packages/harness-factory/**` is a protected path: adversarial review required before merge. Owned_Paths deliberately exclude chatRunDriver.ts to stay disjoint from TASK-211; the caller-side change lands with whichever of the two runs second.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-211
+**Title:** Sandbox-backed tool executors for the Gemini lane
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `packages/harness-factory/src/providers/gemini.ts`'s `GeminiTool.execute()`; `packages/sandbox-client`'s `runCommand`; `services/worker/src/chatRunDriver.ts`'s `executeSandboxChatRun`.
+**Owned_Paths:** services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts
+**Depends_On:** —
+**Description:** `createGeminiAdapter` calls `tool.execute()` for each allowed function call, and the CALLER supplies those implementations — so where a Gemini bot's tools run is entirely our choice, and nothing forces it to be the worker process. It must not be: Claude bots execute tools inside the egress-controlled OpenSandbox container, and a Gemini bot executing `Bash` in the worker process would run model-directed commands on the control-plane host itself, discarding the isolation TASK-185/208 built. Supply `GeminiTool` implementations whose `execute()` dispatches through the same execd `runCommand` path the Claude lane uses, against the role's own sandbox. Preserve the ordering guarantee: the adapter awaits `l1.handle()` immediately before `execute()` (ADR-011 §2.2), so an executor must never pre-warm or side-effect before that decision returns.
+**Acceptance_Criteria:**
+- [ ] Every Gemini tool executes inside the role's sandbox via execd, never in the worker process.
+- [ ] A liveness assertion proving it: a test that fails if execution silently falls back to local, keyed on evidence only sandboxed execution produces.
+- [ ] The broker decision still strictly precedes execution; a denied call performs no side effect at all.
+- [ ] Sandbox failures surface as a tool error to the model, not as a crashed run.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed. Owned_Paths are new files only, so this is territorially disjoint from TASK-209/210 and can run alongside them.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-212
+**Title:** Lift the Gemini adapter's Stage-1 Tier-0 tool cap to governed parity
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** `packages/harness-factory/src/providers/gemini.ts`'s `STAGE_ONE_MAXIMUM_TOOL_TIER = 0` and its strict `tool.tier !== STAGE_ONE_MAXIMUM_TOOL_TIER` check; ADR-011 §3 (Stage 2 explicitly not cut) and §7 (promotion gated on the cap and a canary).
+**Owned_Paths:** packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts
+**Depends_On:** TASK-209, TASK-211
+**Description:** The adapter permits Tier-0 tools ONLY — a strict equality check, so a T1 browser navigate or a T2 interact is refused with "Gemini Stage 1 permits Tier-0 tools only" no matter what the role is granted. That is ADR-011 §3's deliberate Stage-1 boundary, and lifting it IS the Stage-2 promotion, so it may not land before TASK-209's cap exists. Replace the equality check with a bounded maximum tier, keeping the broker decision as the real authority (the tier check is defence in depth, not the gate). Do not simply remove the check: an unbounded adapter would permit T3/T4 external-irreversible calls on the cheapest model in the fleet, which is the opposite of what §7 was protecting.
+**Acceptance_Criteria:**
+- [ ] The cap becomes a bounded maximum rather than an equality test, and its ceiling is justified in writing against ADR-011 §3.
+- [ ] A tool above the ceiling is still refused, with a test proving it.
+- [ ] The ADR-011 liveness canary exists and fails when the tier check is inert.
+- [ ] TASK-209's per-provider cap is demonstrably in force for a tool-executing Gemini run — not merely merged.
+- [ ] Adversarial review by a different model (protected path) before merge.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed. This is the actual Stage-1 to Stage-2 promotion and is the most security-sensitive task in the wave.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-213
+**Title:** Per-bot provider/model selection, defaulting every bot to gemini-3.7-flash
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** ADR-011 (accepted; `ComposeOptions.provider` defaults to `"gemini"` in its text); `packages/harness-factory/src/compose.ts`'s existing `provider?: "claude" | "gemini"`; user decision 2026-09-07 — default applies to ALL bots, existing included.
+**Owned_Paths:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, services/control-api/src/roles.routes.ts, apps/mobile/lib
+**Depends_On:** TASK-210, TASK-212
+**Description:** `composeHarness` already accepts a provider, but production never passes one and a role has nowhere to record its choice. Add provider/model to the role record, surface it in the API and the mobile client, and default it to `gemini-3.7-flash`. The user's explicit decision is that this applies to existing bots too, not only new ones — so this includes a migration that moves live bots, and that is the riskiest single step in the wave: every working bot changes model at once, including the news-reader browser lane proven on Claude in TASK-208. Sequence the switch so it is reversible per bot without a deploy, and do not flip the default until TASK-214 has actually proven a tool-using bot works on Gemini.
+**Acceptance_Criteria:**
+- [ ] A role records its provider and model; absent values resolve to the configured default rather than to a hardcoded literal.
+- [ ] The default is `gemini-3.7-flash` and is configuration, not a literal.
+- [ ] A per-bot override is settable from the mobile client and takes effect on the next turn.
+- [ ] The migration moving existing bots is separately revertible from the code change, and reverting restores prior behaviour exactly.
+- [ ] Full suites, lint, typecheck clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed. Deliberately depends on TASK-212 so the default cannot flip before tool-executing parity exists — otherwise every tool-using bot silently degrades to Tier-0-only the moment the default lands.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
+
+### TASK-214
+**Title:** Re-prove the governed browser lane end to end on Gemini
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** TASK-208 (the Claude-lane proof: a real top-10 US news list from CNN/Fox/USA Today/NYT); ADR-011 §7 (canary before promotion).
+**Owned_Paths:** evals/golden/suites/gemini-browser
+**Depends_On:** TASK-212, TASK-213
+**Description:** TASK-208 proved the browser lane works — on Claude. Nothing about that proof carries to Gemini: different loop, different tool-call shape, different tier enforcement, different cost path. Since the user's decision moves existing bots too, the news-reader bot is the concrete regression case. Run the same task against the same bot on Gemini and require a real, sourced answer — not a plausible-looking one. Treat a fabricated list as a FAILURE, not a pass: the whole point of the browser lane is that the bot reports what it actually read, and a cheaper model is exactly where that discipline is most likely to slip.
+**Acceptance_Criteria:**
+- [ ] A real Gemini-executed run opens a Steel session, navigates, reads, and releases it — verified from the sandbox's own transcript, not from the bot's final reply.
+- [ ] The answer's claims are spot-checked against the live sources; fabrication fails the task.
+- [ ] Spend for that run is recorded against provider `gemini` with non-zero cost (TASK-210).
+- [ ] The per-provider cap (TASK-209) is observed in force during the run.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-07T13:10:00Z] [ORCH] Filed as the wave's real exit criterion. Every earlier task in this wave can be green while the product is still broken; this is the one that says otherwise.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-07T13:10:00Z
