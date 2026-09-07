@@ -52,7 +52,7 @@ function createDeps(overrides: Partial<ControlApiDeps> = {}) {
       enabled: true, lastFireAt: null, nextFireAt: null, lastFireStatus: null, ...input,
     }),
     createRole: async (input) => ({
-      tenantId: "basileia", description: "d", instructions: null, status: "active",
+      tenantId: "basileia", description: "d", instructions: null, provider: null, model: null, status: "active",
       createdAt: new Date(), updatedAt: new Date(), ...input,
     }),
     listCapabilities: async () => [],
