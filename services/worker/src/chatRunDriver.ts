@@ -16,27 +16,36 @@ import {
 } from "@oikonomos/connectors";
 import {
   Database,
+  getPlatformSpendUsd,
   getRoleSandbox,
   getLatestThreadSummary,
   getOrInitThreadContext,
   getRole,
+  getRoutine,
+  getRoutineSpendUsd,
   insertMessage,
   insertThreadSummary,
   listMessages,
+  recordSpend,
   updateThreadContext,
   updateRoleSandboxState,
   upsertRoleSandbox,
   type DatabaseOptions,
   type Task,
 } from "@oikonomos/db";
-import { mintBrokerToken } from "@oikonomos/broker";
+import { mintBrokerToken, resolveBudgetGate } from "@oikonomos/broker";
 import { resolveEgressPolicy } from "@oikonomos/policy";
 import { createSandboxClient, toOpenSandboxNetworkPolicy, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
-import { sandboxHookEnvironment, type AgentSdkQueryFn } from "@oikonomos/harness-factory";
-import type { RunParkPort } from "@oikonomos/harness-factory/compose";
+import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
+import { runWithChatBudget, type BudgetGateCheck, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import {
+  BUDGET_READ_TIMEOUT_MS,
+  DEFAULT_PLATFORM_CEILING_ZAR,
+  DEFAULT_USD_TO_ZAR_RATE,
+} from "./subprocessProviders.js";
 import { buildRoleSystemPrompt } from "./promptAssembly.js";
 import { maybeCompact } from "./contextCompaction.js";
 import { createTierZeroProvider, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
@@ -88,6 +97,10 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly driveSessionMinter?: Omit<CreateGoogleDriveConnectorSessionMinterOptions, "manifest">;
   /** Injectable OpenSandbox seam; production constructs the authenticated client from SANDBOX_INTEGRATION_URL. */
   readonly sandboxClient?: SandboxClient;
+  /** Overrides `DEFAULT_USD_TO_ZAR_RATE`; defaults to `process.env.USD_TO_ZAR_RATE`. */
+  readonly usdToZarRate?: number;
+  /** Overrides `DEFAULT_PLATFORM_CEILING_ZAR`. */
+  readonly platformCeilingZar?: number;
 }
 
 const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
@@ -216,6 +229,10 @@ async function runChatTask(
     );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
+    const budget = createChatRunBudget(options, request, run.runId);
+    // Fail closed before any Claude tokens are spent: a ceiling already at
+    // capacity must deny the turn, not allow one more unmetered query.
+    await assertChatBudgetAllows(budget.check);
     let result;
     try {
       const systemPrompt = buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId);
@@ -225,7 +242,11 @@ async function runChatTask(
       if (!shouldUseSandbox(options)) {
         const workspace = await createChatRunWorkspace(run.runId);
         try {
-          result = await executeTaskRun({
+          // ALS binds the tap/check for composeHarness inside executeTaskRun
+          // (that file is outside this task's territory and cannot grow a
+          // budgetTap option). composeHarness reads the store at composition
+          // time and wraps the final harness.query + L1 PreToolUse gate.
+          result = await runWithChatBudget(budget, () => executeTaskRun({
             prompt: request.task.goal,
             run: { runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef: { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false } },
             // L2 requires the scoped form; PolicyRegistry receives its bare name.
@@ -243,12 +264,12 @@ async function runChatTask(
             brokerDependencies: createBrokerDependencies(options, database, registry, policy),
             auditSink: completionAuditSink(options, run),
             park: createRunParkPort(options, run.runId),
-          });
+          }));
         } finally {
           await removeChatRunWorkspace(workspace);
         }
       } else {
-        result = await executeSandboxChatRun(options, database, manifests, request, run, systemPrompt);
+        result = await executeSandboxChatRun(options, database, manifests, request, run, systemPrompt, budget.tap);
       }
     } finally {
       for (const acquiredConnector of [acquiredGmailConnector, acquiredCalendarConnector, acquiredDriveConnector]) {
@@ -281,12 +302,16 @@ async function executeSandboxChatRun(
   request: ChatRunRequest,
   run: { readonly runId: string; readonly sessionRef: string | null },
   systemPrompt: string,
+  tap: BudgetTapSink,
 ): Promise<{ readonly events: readonly unknown[] }> {
   const client = options.sandboxClient ?? productionSandboxClient();
   const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
   const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
-  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef);
+  // JSON so the CLI emits the same SDK result envelope `withBudgetTap` already
+  // parses (`total_cost_usd` + `modelUsage`). The 3-arg `claudePrintCommand`
+  // helper keeps `--output-format text` for its existing unit test.
+  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json");
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
   await assertEgressPolicyApplied(client, resolvedSandbox.endpoint);
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
@@ -316,7 +341,11 @@ async function executeSandboxChatRun(
   // fresh execd endpoint rather than reusing a stale pre-pause URL.
   await client.pauseSandbox(resolvedSandbox.sandboxId);
   await updateRoleSandboxState(options, request.task.roleId, "Paused");
-  return { events: [{ type: "result", result: response.stdout.trim() }] };
+  const event = eventFromSandboxStdout(response.stdout);
+  const events: unknown[] = [];
+  const tapped = withBudgetTap(async function* () { yield event; }, tap);
+  for await (const tappedEvent of tapped({ prompt: request.task.goal })) events.push(tappedEvent);
+  return { events };
 }
 
 /** Managed settings are an immutable security boundary for a persistent office. */
@@ -456,13 +485,143 @@ function shellQuote(value: string): string {
  */
 const DEFAULT_SANDBOX_MODEL = "claude-haiku-4-5-20251001";
 
-export function claudePrintCommand(prompt: string, systemPrompt: string, resume?: string): string {
+export function claudePrintCommand(
+  prompt: string,
+  systemPrompt: string,
+  resume?: string,
+  outputFormat: "text" | "json" = "text",
+): string {
   const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
+  const format = outputFormat === "json" ? "json" : "text";
   return [
-    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", "text", "--model", shellQuote(model),
+    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
     "--allowedTools", shellQuote("Bash Read"), "--system-prompt", shellQuote(systemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");
+}
+
+/**
+ * Map sandbox CLI stdout onto the SDK result envelope `withBudgetTap` reads.
+ * Plain text (test fakes, `--output-format text`) is a cost-less result —
+ * the tap leaves the sink uncalled, matching TASK-150's cost-less stream.
+ */
+export function eventFromSandboxStdout(stdout: string): Record<string, unknown> {
+  const trimmed = stdout.trim();
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      if (record.type === "result" || typeof record.result === "string") {
+        return { ...record, type: "result" };
+      }
+    }
+  } catch {
+    // Not JSON: the historical text CLI format, or a test fake's stdout.
+  }
+  return { type: "result", result: trimmed };
+}
+
+function createChatRunBudget(
+  options: CreateChatRunDriverOptions,
+  request: ChatRunRequest,
+  runId: string,
+): { tap: BudgetTapSink; check: BudgetGateCheck } {
+  const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
+  const routineId = request.task.routineId;
+  return {
+    tap: {
+      async report(entry: { costUsd: number; tokens?: number }): Promise<void> {
+        await recordSpend(options, {
+          runId,
+          tenantId: request.task.tenantId,
+          routineId,
+          provider: "claude",
+          model,
+          costUsd: entry.costUsd,
+          tokens: entry.tokens ?? null,
+        });
+      },
+    },
+    check: () => evaluateChatBudget(options, routineId),
+  };
+}
+
+async function assertChatBudgetAllows(check: BudgetGateCheck): Promise<void> {
+  let decision;
+  try {
+    decision = await check();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`budget.check_failed: ${message}`);
+  }
+  if (decision.decision === "deny") throw new Error(decision.reason);
+}
+
+/**
+ * Live, fail-closed budget decision reused from TASK-143's broker gate
+ * (`resolveBudgetGate`) rather than a second decision function. Same
+ * dangling-routine / timeout / malformed-config posture as
+ * `wrapGateWithBudget`.
+ */
+async function evaluateChatBudget(
+  options: CreateChatRunDriverOptions,
+  routineId: string | null,
+): Promise<{ readonly decision: "allow" } | { readonly decision: "deny"; readonly reason: string }> {
+  const rate = resolveUsdToZarRate(options);
+  if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
+    throw new Error("USD_TO_ZAR_RATE must be a finite number > 0");
+  }
+  const platformCeilingZar = options.platformCeilingZar ?? DEFAULT_PLATFORM_CEILING_ZAR;
+  if (typeof platformCeilingZar !== "number" || !Number.isFinite(platformCeilingZar) || platformCeilingZar < 0) {
+    throw new Error("platformCeilingZar must be a finite number >= 0");
+  }
+  const [routineSpendUsd, routineBudgetUsd, platformSpendUsd] = await withBudgetReadTimeout(
+    Promise.all([
+      routineId === null ? Promise.resolve(null) : getRoutineSpendUsd(options, routineId),
+      routineId === null ? Promise.resolve(null) : getRoutineBudgetUsd(options, routineId),
+      getPlatformSpendUsd(options),
+    ]),
+  );
+  return resolveBudgetGate({
+    routineSpendUsd,
+    routineBudgetUsd,
+    platformSpendUsd,
+    platformCeilingUsd: platformCeilingZar / rate,
+  });
+}
+
+async function getRoutineBudgetUsd(db: DatabaseOptions, routineId: string): Promise<number | null> {
+  const routine = await getRoutine(db, routineId);
+  if (routine === null) {
+    throw new Error(`budget.dangling_routine: routine ${routineId} not found`);
+  }
+  const value = (routine.definition as Record<string, unknown> | null)?.budgetUsd;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function resolveUsdToZarRate(options: CreateChatRunDriverOptions): number {
+  if (options.usdToZarRate !== undefined) return options.usdToZarRate;
+  const raw = process.env.USD_TO_ZAR_RATE?.trim();
+  if (raw !== undefined && raw.length > 0) return Number(raw);
+  return DEFAULT_USD_TO_ZAR_RATE;
+}
+
+function withBudgetReadTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`budget.read_timeout: exceeded ${BUDGET_READ_TIMEOUT_MS}ms`));
+    }, BUDGET_READ_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error as Error);
+      },
+    );
+  });
 }
 
 /** Runs TASK-179's real Postgres compaction ports after every completed chat response. */
@@ -578,4 +737,221 @@ function assertRequest(request: ChatRunRequest): void {
   if (request.resume !== undefined && (typeof request.resume.runId !== "string" || request.resume.runId.trim().length === 0 || typeof request.resume.sessionRef !== "string")) {
     throw new Error("chat run resume requires a runId and sessionRef.");
   }
+}
+
+if (import.meta.vitest) {
+  const { afterAll, beforeAll, describe, expect, it } = import.meta.vitest;
+
+  describe("chat run driver — TASK-163 budget helpers (no DB)", () => {
+    it("keeps the 3-arg CLI helper on text output (existing unit-test contract) and emits json when asked", () => {
+      expect(claudePrintCommand("hi", "sp")).toContain("--output-format text");
+      expect(claudePrintCommand("hi", "sp", undefined, "json")).toContain("--output-format json");
+      expect(claudePrintCommand("hi", "sp", undefined, "json")).not.toContain("--output-format text");
+    });
+
+    it("maps a genuine SDK result envelope from sandbox JSON, and treats plain text as cost-less", () => {
+      const json = eventFromSandboxStdout(JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "hello from json",
+        total_cost_usd: 0.042,
+        modelUsage: {
+          "claude-haiku-4-5-20251001": {
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        },
+      }));
+      expect(json).toMatchObject({ type: "result", result: "hello from json", total_cost_usd: 0.042 });
+      expect(eventFromSandboxStdout("Sandbox turn complete")).toEqual({
+        type: "result",
+        result: "Sandbox turn complete",
+      });
+    });
+  });
+
+  const connectionString = process.env.DATABASE_URL;
+  const integration = connectionString === undefined ? describe.skip : describe;
+
+  integration("createChatRunDriver — Claude SDK spend + budget gate (TASK-163)", () => {
+    const roleId = "task-163-chat-budget";
+    const db: DatabaseOptions = { connectionString: connectionString! };
+    let pool: { query: (sql: string, params?: unknown[]) => Promise<unknown>; end: () => Promise<void> };
+    let routineId: string;
+    let threadId: string;
+
+    async function cleanup(): Promise<void> {
+      await pool.query(`DELETE FROM spend_records WHERE run_id IN (SELECT run_id::text FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`, [roleId]);
+      await pool.query(`DELETE FROM spend_records WHERE run_id LIKE 'task-163-%'`);
+      await pool.query(`DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))`, [roleId]);
+      await pool.query(`DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)`, [roleId]);
+      await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`, [roleId]);
+      await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM thread_members WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM threads WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM role_sandboxes WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM role_routines WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
+    }
+
+    beforeAll(async () => {
+      const pg = await import("pg");
+      const { createRole, createRoutine, getOrCreateThreadForRole } = await import("@oikonomos/db");
+      pool = new pg.Pool({ connectionString: connectionString! });
+      await cleanup();
+      await createRole(db, { roleId, name: roleId, title: "TASK-163 budget fixture" });
+      const routine = await createRoutine(db, { roleId, name: "task-163-routine", definition: { budgetUsd: 5 } });
+      routineId = routine.routineId;
+      const thread = await getOrCreateThreadForRole(db, { roleId });
+      threadId = thread.id;
+    });
+
+    afterAll(async () => {
+      await cleanup();
+      await pool.end();
+    });
+
+    it("records spend from a genuine-shaped SDK result on the local queryFn path", async () => {
+      const { createTask, getRoutineSpendUsd } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-163 sdk spend",
+        goal: "Reply once.",
+        requestedBy: "task-163-suite",
+        routineId,
+      });
+      const queryFn: AgentSdkQueryFn = async function* () {
+        yield {
+          type: "result",
+          subtype: "success",
+          result: "sdk spend recorded",
+          total_cost_usd: 0.25,
+          modelUsage: {
+            "claude-haiku-4-5-20251001": {
+              inputTokens: 80,
+              outputTokens: 20,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          },
+        };
+      };
+      await createChatRunDriver({
+        ...db,
+        queryFn,
+        manifests: [],
+        platformCeilingZar: 1_000_000,
+      }).run({ task, threadId });
+      expect(await getRoutineSpendUsd(db, routineId)).toBeCloseTo(0.25);
+    });
+
+    it("denies the turn when the platform ceiling is already at capacity (hard ceiling)", async () => {
+      const { createTask, listRuns } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-163 ceiling deny",
+        goal: "Must not spend.",
+        requestedBy: "task-163-suite",
+      });
+      let queried = false;
+      const queryFn: AgentSdkQueryFn = async function* () {
+        queried = true;
+        yield { type: "result", result: "should not run" };
+      };
+      await expect(
+        createChatRunDriver({
+          ...db,
+          queryFn,
+          manifests: [],
+          usdToZarRate: 1,
+          platformCeilingZar: 0,
+        }).run({ task, threadId }),
+      ).rejects.toThrow(/budget\.platform_exceeded/);
+      expect(queried).toBe(false);
+      const run = (await listRuns(db, { taskId: task.taskId })).runs[0]!;
+      expect(run.status).toBe("failed");
+    });
+
+    it("records spend from a sandbox CLI JSON result of the same SDK shape", async () => {
+      const { createTask, getRoutineSpendUsd } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-163 sandbox spend",
+        goal: "Sandbox turn.",
+        requestedBy: "task-163-suite",
+        routineId,
+      });
+      const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+      const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+      const anthropicVar = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+      const previousAnthropic = process.env[anthropicVar];
+      process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+      process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-163-test-signing-key";
+      process.env[anthropicVar] = "task-163-test-anthropic-credential";
+      let state: "Running" | "Paused" = "Running";
+      const fakeSandbox = {
+        health: async () => ({ status: "ok" as const }),
+        createSandbox: async () => ({ id: "task-163-office", createdAt: "2026-09-07T00:00:00Z", status: { state } }),
+        getSandbox: async () => ({ id: "task-163-office", createdAt: "2026-09-07T00:00:00Z", status: { state } }),
+        destroySandbox: async () => undefined,
+        pauseSandbox: async () => { state = "Paused"; },
+        resumeSandbox: async () => { state = "Running"; },
+        getEndpoint: async () => ({ endpoint: "http://execd.test/163" }),
+        ping: async () => undefined,
+        runCommand: async (_endpoint: unknown, command: { command: string }) => {
+          if (command.command.startsWith("/usr/bin/sha256sum")) {
+            return {
+              stdout: "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854  /etc/claude-code/managed-settings.json\n",
+              stderr: "",
+              exitCode: 0,
+            };
+          }
+          if (command.command === "test -f /run/oikonomos/egress-policy-applied") {
+            return { stdout: "", stderr: "", exitCode: 0 };
+          }
+          if (command.command.startsWith("mkdir")) {
+            return { stdout: "", stderr: "", exitCode: 0 };
+          }
+          return {
+            stdout: JSON.stringify({
+              type: "result",
+              subtype: "success",
+              result: "sandbox spend recorded",
+              total_cost_usd: 0.15,
+              modelUsage: {
+                "claude-haiku-4-5-20251001": {
+                  inputTokens: 40,
+                  outputTokens: 10,
+                  cacheReadInputTokens: 0,
+                  cacheCreationInputTokens: 0,
+                },
+              },
+            }),
+            stderr: "",
+            exitCode: 0,
+          };
+        },
+      };
+      try {
+        await createChatRunDriver({
+          ...db,
+          manifests: [],
+          sandboxClient: fakeSandbox as SandboxClient,
+          platformCeilingZar: 1_000_000,
+        }).run({ task, threadId });
+        // 0.25 from the local-path test + 0.15 from this sandbox turn.
+        expect(await getRoutineSpendUsd(db, routineId)).toBeCloseTo(0.4);
+      } finally {
+        if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
+        else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+        if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+        else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+        if (previousAnthropic === undefined) delete process.env[anthropicVar];
+        else process.env[anthropicVar] = previousAnthropic;
+      }
+    });
+  });
 }
