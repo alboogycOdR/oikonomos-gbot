@@ -1,0 +1,25 @@
+connector_id: steel-browser
+account_ownership: basileia
+# The worker resolves this local in-sandbox endpoint at run creation.  The
+# secret reference prevents a deployment-specific endpoint from living in git.
+mcp_server: { name: steel, transport: remote, url_ref: secret://mcp/steel-browser/url }
+network_hosts: []
+tools:
+  - tool_name: mcp__steel__steel_navigate
+    capability_id: browser.navigate
+    default_tier: T1_draft
+  - tool_name: mcp__steel__steel_snapshot
+    capability_id: browser.read
+    default_tier: T0_observe
+  - tool_name: mcp__steel__steel_act
+    # Steel's single act tool performs click/type/fill.  Keeping it one
+    # manifest tool avoids falsely declaring a server operation that does not
+    # exist; its T2 tier governs every mutating browser interaction.
+    capability_id: browser.interact
+    default_tier: T2_internal
+  - tool_name: mcp__steel__steel_screenshot
+    capability_id: browser.screenshot
+    default_tier: T0_observe
+role_grants: []
+evals: { suite: evals/golden/suites/steel-browser, min_pass_rate: 0.90 }
+review: { onboarded_by: "", date: "", scope_justification: "Steel Browser local sandbox connector; adversarial review required." }
