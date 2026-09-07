@@ -99,6 +99,27 @@ describe("chat run driver governance helpers", () => {
     expect(command).toContain("safely");
   });
 
+  it("extends the CLI's allowed-tools set and mounts an --mcp-config only when a connector is supplied (TASK-204 AC2)", () => {
+    const withoutConnector = claudePrintCommand("hi", "sp");
+    expect(withoutConnector).toContain("--allowedTools 'Bash Read'");
+    expect(withoutConnector).not.toContain("--mcp-config");
+
+    const withConnector = claudePrintCommand("hi", "sp", undefined, "text", {
+      allowedTools: ["mcp__steel__steel_navigate", "mcp__steel__steel_snapshot"],
+      mcpServers: { steel: { transport: "stdio", command: "node", args: ["/opt/oikonomos/steel-mcp/dist/stdio.js"] } },
+    });
+    expect(withConnector).toContain("--allowedTools 'Bash Read mcp__steel__steel_navigate mcp__steel__steel_snapshot'");
+    expect(withConnector).toContain("--mcp-config");
+    // The config JSON contains no single quotes, so shellQuote wraps it
+    // verbatim (its escaping only fires on an embedded `'`).
+    expect(withConnector).toContain(`'${JSON.stringify({ mcpServers: { steel: { transport: "stdio", command: "node", args: ["/opt/oikonomos/steel-mcp/dist/stdio.js"] } } })}'`);
+
+    // A connector with no mounted servers (shouldn't happen in practice —
+    // resolveGrantedBrowserConnector only returns one with granted tools —
+    // but must not emit an empty/broken --mcp-config flag regardless).
+    expect(claudePrintCommand("hi", "sp", undefined, "text", { allowedTools: [], mcpServers: {} })).not.toContain("--mcp-config");
+  });
+
   it("honors an OIKONOMOS_SANDBOX_MODEL override instead of the cheap default", () => {
     const previous = process.env.OIKONOMOS_SANDBOX_MODEL;
     process.env.OIKONOMOS_SANDBOX_MODEL = "claude-opus-5";
@@ -1077,6 +1098,177 @@ integration("createChatRunDriver — live context compaction (TASK-193)", () => 
     ]);
     expect((await listMessages(options, threadId)).some((message) => message.role === "system" && message.body.startsWith("Context compacted ("))).toBe(true);
     expect((await pool.query("SELECT count(*) FROM spend_records WHERE run_id IN (SELECT run_id::text FROM runs WHERE task_id = $1)", [task.taskId])).rows[0]?.count).toBe("1");
+  });
+});
+
+// TASK-204 — G-06b browser lane live-wiring. TASK-186 (G-06a) proved
+// steelSession.ts/browserLane.ts standalone; this suite proves the four
+// live-execution properties that connector-layer-only task explicitly could
+// not: AC1 (office-browser image selection), AC2 (browser.* tools reach the
+// real mounted/allowed-tools surface), AC3 (a real governed Read of the
+// sealed profile directory is denied and audited — the D3 guard TASK-186
+// deferred), and AC4 (a human_takeover_required signal parks the run via a
+// real, persisted event instead of failing it).
+const steelBrowserManifest: ConnectorManifest = {
+  connector_id: "steel-browser",
+  account_ownership: "basileia",
+  mcp_server: { name: "steel", transport: "remote", url_ref: "secret://mcp/steel-browser/url" },
+  tools: [
+    { tool_name: "mcp__steel__steel_navigate", capability_id: "browser.navigate", default_tier: "T1_draft" },
+    { tool_name: "mcp__steel__steel_snapshot", capability_id: "browser.read", default_tier: "T0_observe" },
+    { tool_name: "mcp__steel__steel_act", capability_id: "browser.interact", default_tier: "T2_internal" },
+    { tool_name: "mcp__steel__steel_screenshot", capability_id: "browser.screenshot", default_tier: "T0_observe" },
+  ],
+  role_grants: [],
+  evals: { suite: "evals/golden/suites/steel-browser", min_pass_rate: 0.9 },
+  review: { onboarded_by: "test", date: "2026-09-07", scope_justification: "TASK-204 fixture" },
+};
+
+integration("createChatRunDriver — browser lane live-wiring (TASK-204)", () => {
+  const roleId = "task-204-browser-lane";
+  let pool: Pool;
+  let options: DatabaseOptions;
+  let threadId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  }
+
+  beforeAll(async () => {
+    process.env.OIKONOMOS_CAPABILITIES_ENABLED = "true";
+    options = { connectionString: connectionString! };
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(options, { roleId, name: roleId, title: "TASK-204 browser lane fixture", description: "TASK-204 browser lane live-wiring fixture." });
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({ capabilityId: "browser.navigate", description: "Navigate the browser.", defaultTier: "T1_draft", adapter: "mcp:steel-browser", enabled: true });
+      await database.upsertCapability({ capabilityId: "browser.read", description: "Read the current browser page.", defaultTier: "T0_observe", adapter: "mcp:steel-browser", enabled: true });
+      await database.upsertRoleGrant({ roleId, capabilityId: "browser.navigate", maxTier: "T1_draft", constraints: {} });
+      await database.upsertRoleGrant({ roleId, capabilityId: "browser.read", maxTier: "T0_observe", constraints: {} });
+    } finally { await database.close(); }
+    threadId = (await getOrCreateThreadForRole(options, { roleId })).id;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+    delete process.env.OIKONOMOS_CAPABILITIES_ENABLED;
+  });
+
+  it("selects the office-browser sandbox image (not office-base) for a role granted browser.* capabilities (AC1)", async () => {
+    let requestedImageUri: string | undefined;
+    let state: "Running" | "Paused" = "Running";
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async (spec: { image: { uri: string } }) => {
+        requestedImageUri = spec.image.uri;
+        return { id: "task-204-office", createdAt: "2026-09-07T00:00:00Z", status: { state } };
+      },
+      getSandbox: async () => ({ id: "task-204-office", createdAt: "2026-09-07T00:00:00Z", status: { state } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => { state = "Paused"; },
+      resumeSandbox: async () => { state = "Running"; },
+      getEndpoint: async () => ({ endpoint: "http://execd.test/204" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint: SandboxEndpoint, command: { command: string }) => {
+        if (command.command.startsWith("/usr/bin/sha256sum")) {
+          return { stdout: "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854  /etc/claude-code/managed-settings.json\n", stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command.startsWith("mkdir")) return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: JSON.stringify({ type: "result", result: "sandboxed browser turn" }), stderr: "", exitCode: 0 };
+      },
+    } as unknown as SandboxClient;
+
+    const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+    const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    const anthropicVar = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+    const previousAnthropic = process.env[anthropicVar];
+    process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+    process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-204-test-signing-key";
+    process.env[anthropicVar] = "task-204-test-anthropic-credential";
+    try {
+      const task = await createTask(options, { roleId, title: "TASK-204 sandbox image fixture", goal: "Open a page.", requestedBy: "task-204-suite" });
+      await createChatRunDriver({
+        ...options,
+        manifests: [steelBrowserManifest],
+        sandboxClient: fakeSandbox,
+        platformCeilingZar: 1_000_000,
+      }).run({ task, threadId });
+      expect(requestedImageUri).toBe("oikonomos-office-browser:claude-2.1.263");
+    } finally {
+      if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL; else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+      if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY; else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+      if (previousAnthropic === undefined) delete process.env[anthropicVar]; else process.env[anthropicVar] = previousAnthropic;
+    }
+  }, 30_000);
+
+  it("mounts only the role's granted, enabled steel tools onto the real governed local surface (AC2)", async () => {
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+      if (sdkOptions.mcpServers?.steel === undefined) throw new Error("TASK-204 fixture expected steel to be mounted");
+      expect(sdkOptions.allowedTools).toContain("mcp__steel__steel_navigate(*)");
+      expect(sdkOptions.allowedTools).not.toContain("mcp__steel__steel_act(*)");
+      expect(await callMountedTool(input, "mcp__steel__steel_navigate", "task-204-navigate", { url: "https://example.test" })).toBe(true);
+      yield { type: "tool_result", toolName: "mcp__steel__steel_navigate", result: "navigated" };
+    };
+    const task = await createTask(options, { roleId, title: "TASK-204 mount fixture", goal: "Navigate to example.test.", requestedBy: "task-204-suite" });
+    await createChatRunDriver({ ...options, manifests: [steelBrowserManifest], queryFn }).run({ task, threadId });
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    expect(run.status).toBe("completed");
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "browser.navigate"))
+      .toMatchObject({ tier: "T1_draft", payload: { verdict: "allow", toolName: "mcp__steel__steel_navigate" } });
+  });
+
+  it("denies a real governed Read of the sealed browser profile directory and records the denial (AC3)", async () => {
+    const sealedProfilePath = `/oikonomos/secrets/browser-profiles/${roleId}`;
+    const queryFn: AgentSdkQueryFn = async function* (input) {
+      expect(await callMountedTool(input, "Read", "task-204-read-sealed", { file_path: sealedProfilePath })).toBe(false);
+      yield { type: "tool_result", toolName: "Read", result: "denied" };
+    };
+    const task = await createTask(options, { roleId, title: "TASK-204 sealed profile fixture", goal: "Read the browser profile.", requestedBy: "task-204-suite" });
+    await createChatRunDriver({ ...options, manifests: [steelBrowserManifest], queryFn }).run({ task, threadId });
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "policy.decision" && event.payload?.toolName === "Read"))
+      .toMatchObject({ payload: { verdict: "deny", reason: "secret_path.sealed", toolName: "Read" } });
+  });
+
+  it("parks (not fails) on a human_takeover_required signal and records a real, persisted event (AC4)", async () => {
+    class FixtureHumanTakeoverRequiredError extends Error {
+      readonly code = "HUMAN_TAKEOVER_REQUIRED";
+      constructor(readonly kind: string, readonly detail: string) {
+        super(`human takeover required: ${kind}`);
+        this.name = "HumanTakeoverRequiredError";
+      }
+    }
+    // A single navigate result, then the typed signal — no second query/tool
+    // attempt follows it (the generator ends via throw), matching "zero
+    // further browser actions after" directly, by construction.
+    const queryFn: AgentSdkQueryFn = async function* () {
+      yield { type: "tool_result", toolName: "mcp__steel__steel_navigate", result: "hit a login wall" };
+      throw new FixtureHumanTakeoverRequiredError("login_wall", "detected login wall page");
+    };
+    const task = await createTask(options, { roleId, title: "TASK-204 human takeover fixture", goal: "Log in to the portal.", requestedBy: "task-204-suite" });
+    await createChatRunDriver({ ...options, manifests: [steelBrowserManifest], queryFn }).run({ task, threadId });
+
+    const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+    expect(run.status).toBe("waiting_approval");
+    expect(run.endedAt).toBeNull();
+    const events = await getAuditEventsForRun(options, run.runId);
+    expect(events.find((event) => event.eventType === "run.human_takeover_required"))
+      .toMatchObject({ payload: { kind: "login_wall", detail: "detected login wall page" } });
   });
 });
 
