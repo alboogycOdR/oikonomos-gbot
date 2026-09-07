@@ -619,3 +619,11 @@ Two disclosed compromises (a duplicated `STEEL_MCP_ENTRYPOINT` literal since nei
 Independently re-verified via subagent: `connectorResolution.test.ts` 7/7, `chatRunDriver.test.ts` 25/25 including every TASK-204/AC-named case and the pre-existing TASK-116 cases unmodified; `connectors`/`harness-factory` unmodified and still fully green; full recursive suite showed only the two already-known pre-existing failure classes (pg-boss timing flake, TASK-205's exact bug) and nothing new; build/lint/typecheck/banned-mode all clean, both on the branch and re-confirmed on master after merge.
 
 Merged --no-ff.
+
+## TASK-205 | ORCH-executed | approved | first-pass: yes
+
+Investigated directly (no builder work was dispatched, and the root cause was well-bounded enough to trace personally): a real, deterministic product bug, not a test-timing issue as originally suspected. `requestGroupFanout` correctly issues a pending approval for a group-thread fan-out via `deliverBotToBotMessage`/`issueApproval`, but never checked the `delivered: false` result and never parked the run — `issueApproval` only ever touches the `approvals` table, never `runs.status`. Compounding cause: `parkTaskRun` was the one run-lifecycle transition function not re-exported from `@oikonomos/worker`'s public index, unlike its `completeTaskRun`/`failTaskRun`/`startTaskRun` siblings — `services/control-api` literally had no way to call it.
+
+Fix is exactly as narrow as the root cause: re-export `parkTaskRun`, call it when the fan-out result is `delivered: false`. No new test needed — the existing test's own `waiting_approval` assertion is the regression guard, now passing reliably (verified 3x). Full `@oikonomos/control-api` suite is 240/240, the first fully-green run of this file all session. Neither touched file is a protected path; self-reviewed to the same standard as builder work (root cause traced through every layer by reading the actual code, broader build/lint/typecheck all re-confirmed clean).
+
+Committed directly to master.
