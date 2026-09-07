@@ -6523,7 +6523,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Updated_At:** 2026-09-07T20:40:00Z
 
 ### TASK-221
-**Title:** The two "pg-boss flakes" are not flaky — they fail deterministically, and they cover scheduled routines
+**Title:** Scheduled routines never actually fire — pg-boss never processes the routine-poll queue at all
 **Status:** pending
 **Assigned_To:** TBD
 **Priority:** high
@@ -6532,7 +6532,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** These two tests have been reported as "the two pre-existing pg-boss timing flakes" throughout 2026-09-07 and cited as such in the Test_Evidence of several merged tasks, including by ORCH and at least once by a reviewer. That characterisation is wrong, and it was never checked. Run in COMPLETE ISOLATION with nothing else executing, they fail every time, at ~2.6s, with `Timed out waiting for the pg-boss routine poll job.` Other tests in the same file — including "runs a scheduled heartbeat job through real pg-boss" — pass in the same run, so pg-boss itself works; it is specifically the ROUTINE POLL path that never produces a task. A timeout-shaped failure was assumed to be a timing flake because it looked like one, and the assumption was repeated often enough to become accepted fact. **This matters beyond hygiene: scheduled routines are a shipped user-facing feature (TASK-134), and nobody currently knows whether the failure is a defective fixture or a genuinely broken poll path.** Establish which BEFORE touching either. A promising first thread, not yet confirmed: the fixture creates a routine with no `schedule` and no `nextFireAt`, relying on `recordRoutineFire(..., "missed", dueAt)` to set `next_fire_at` into the past — verify that argument actually maps to `next_fire_at` and that due-selection sees the row.
 **Acceptance_Criteria:**
-- [ ] A stated, evidenced verdict on whether this is a test defect or a product defect. Do not fix anything before that verdict exists.
+- [x] VERDICT: PRODUCT DEFECT, confirmed by direct evidence, not test behaviour. `pgboss.job` rows for `worker.routine-poll` sit at `state = 'created'`, `retry_count = 0`, `started_on = NULL` across FIVE independent test runs spanning 18:33-19:30 — none has ever transitioned. A live isolated probe (a real worker process, no test framework, kept alive 30 SECONDS instead of the test's 2) still left its job `created`/unstarted the entire time. `worker.heartbeat`, registered in the identical file via the identical `createQueue` -> `work` -> (send) sequence, completes in ~2s every time, proving the pg-boss connection, schema, and general dispatch all work. The one structural difference: routine-poll additionally calls `boss.schedule(WORKER_ROUTINE_POLL_JOB, ROUTINE_POLL_CRON)`, which heartbeat never does. That combination — not test timing, not memory pressure, not test isolation — is where the defect lives.
 - [ ] If the poll path is genuinely broken, a test that fails against the real defect and a fix that makes a due routine actually fire.
 - [ ] If the fixture is at fault, it is corrected so the test proves the behaviour its name claims.
 - [ ] Either way, `pnpm --filter @oikonomos/worker test` is green with no failure anyone has to explain away.
@@ -6540,6 +6540,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-07T21:55:00Z] [ORCH] Verdict established live against the real database — NOT fixed yet, and not claiming otherwise. Evidence: (1) `pgboss.job` history shows five independent routine-poll jobs from 18:33 through 19:30, every one still `created`/`retry_count 0`/`started_on NULL` hours later; (2) a fresh isolated probe outside the test framework, given 30 seconds of a genuinely live worker process instead of the test's 2, still left its job unstarted the entire window; (3) `worker.heartbeat` in the SAME file, registered through the identical `createQueue`->`work` sequence, completes in ~2s every single time, which rules out the pg-boss connection/schema/dispatch machinery in general. The one thing routine-poll does that heartbeat does not is call `boss.schedule(...)` on a `policy: "singleton"` queue. NEXT STEP, not yet taken: isolate whether `boss.schedule()` + `singleton` is the actual interaction (try `work()` without the `schedule()` call and see if `send()`-only jobs start fetching), or read pg-boss v12.30.0's own source for how it selects jobs eligible for `singleton` + scheduled queues specifically.
 - [2026-09-07T21:35:00Z] [ORCH] Filed after disproving my own hypothesis. I had just suggested these failures might be memory pressure, having noticed the host at 4.8GB free; running them alone refuted that immediately and surfaced something worse — they are not intermittent at all. The lesson is mine to own: "known flake" is a label that stops investigation, and I applied it to a consistently-red test roughly a dozen times today without once running it in isolation, which took under a minute.
 **Artifacts:** —
 **Test_Evidence:** —
