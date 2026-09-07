@@ -28,6 +28,7 @@ import {
   insertThreadSummary,
   listMessages,
   recordSpend,
+  resolveRoleRuntime,
   updateThreadContext,
   updateRoleSandboxState,
   upsertRoleSandbox,
