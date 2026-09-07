@@ -567,3 +567,15 @@ Correctly reported `blocked` rather than fabricating a "closing" commit: the tas
 No code changed, correctly — the task's own instruction was explicit that an audit mechanism whose trust boundary can't be verified is worse than an honestly-absent one. Full evidence trail recorded in `infra/sandbox/README.md` §9 so this investigation never needs re-running from scratch. All temporary infrastructure (server, volumes, images, config) confirmed torn down.
 
 Merged --no-ff (docs-only).
+
+## TASK-203 | GB | approved | first-pass: yes
+
+Turns TASK-171's already-correct `LiveAgentPort` route logic into an actually-working production feature: `createDatabaseBackedLiveAgent` resolves a role's active sandbox via `@oikonomos/db`'s `role_sandboxes` and the PTY-viewer endpoint via `@oikonomos/sandbox-client`'s `getEndpoint(sandboxId, 44772, true)`, wired into `index.ts`'s `start()` the same way `ThreadContextPort` was for TASK-193.
+
+Both ACs are enforced mechanically, not just by convention: `getActiveSandbox` checks `role.tenantId !== tenantId` before returning anything (the same IDOR discipline established in TASK-190/191), and `requireLifecycleProxyUrl` actually throws if the resolved endpoint's path doesn't match `/proxy/\d+/?$` — a real sandbox-published port passed through by a misbehaving client gets rejected, proven directly with a unit test asserting exactly that (`:30017` rejected even though the fake client returned it). A second test confirms the real sandbox-client request shape (`use_server_proxy=true`, port `44772`). The liveness assertion (`start()` genuinely constructs the production port, proven by scanning `index.ts`'s own source) matches this project's ADR-005 discipline directly — a future accidental revert to the stub wiring would be caught, not just style-reviewed.
+
+Correctly stopped once before (holding the `pnpm-lock.yaml` widen until TASK-185 merged, to avoid a real two-unit collision) rather than forcing a hand-rolled workaround — first real submission after that wait was clean.
+
+**Independently re-verified, not trusted**: `liveAgent.routes.test.ts` 19/19 including the `DATABASE_URL`-gated real-Postgres integration cases (confirmed running, not skipped — a real `role_sandboxes` row resolves correctly, a cross-tenant role does not leak as available); full `pnpm -r --no-bail test` across 18 packages showed exactly 3 failures, all outside this task's diff and each a distinct non-deterministic timing/race assertion already documented elsewhere this session (`chat.routes.test.ts` group-thread status, `evals/harness`'s OME-handoff race, `workerJobQueue.test.ts`'s pg-boss timing race); `pnpm -r build`/`pnpm lint`/`pnpm -r typecheck` all clean, both on the branch and re-confirmed on master after merge (one transient stale-dist type error on master immediately resolved by rebuilding `packages/sandbox-client` — not a code defect, the same worktree-freshness class seen repeatedly this session); banned-permission-mode grep clean.
+
+Merged --no-ff.
