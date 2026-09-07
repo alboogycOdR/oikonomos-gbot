@@ -252,3 +252,43 @@ describe("N12 — roles.description is never read in an authorization path (sour
     });
   }
 });
+
+// TASK-213 — per-bot provider/model. The default is configuration, never a
+// literal copied onto a row: that is what makes switching every bot (and
+// switching back) an operational change rather than a migration.
+integration("packages/db roles — provider/model selection (TASK-213)", () => {
+  it("defaults to Claude when neither the role nor the platform has chosen", async () => {
+    const { resolveRoleRuntime } = await import("./roles.js");
+    expect(resolveRoleRuntime({ provider: null, model: null }, {})).toEqual({ provider: "claude", model: null });
+  });
+
+  it("lets the platform default move every unpinned bot at once", async () => {
+    const { resolveRoleRuntime, DEFAULT_ROLE_PROVIDER_ENV, DEFAULT_ROLE_MODEL_ENV } = await import("./roles.js");
+    const env = { [DEFAULT_ROLE_PROVIDER_ENV]: "gemini", [DEFAULT_ROLE_MODEL_ENV]: "gemini-3.7-flash" };
+    expect(resolveRoleRuntime({ provider: null, model: null }, env)).toEqual({
+      provider: "gemini",
+      model: "gemini-3.7-flash",
+    });
+  });
+
+  it("lets one bot opt out of the platform default without a deploy", async () => {
+    const { resolveRoleRuntime, DEFAULT_ROLE_PROVIDER_ENV } = await import("./roles.js");
+    const env = { [DEFAULT_ROLE_PROVIDER_ENV]: "gemini" };
+    // The reversibility the user's "all bots, existing included" decision
+    // needs: one bot can be pinned back without moving anything else.
+    expect(resolveRoleRuntime({ provider: "claude", model: null }, env).provider).toBe("claude");
+  });
+
+  it("persists and reads back a role's own provider/model", async () => {
+    const db = { connectionString: connectionString! };
+    const { createRole, getRole } = await import("./index.js");
+    const roleId = `task-213-${Date.now()}`;
+    await createRole(db, { roleId, name: roleId, title: "TASK-213 fixture", description: "" });
+
+    const fresh = await getRole(db, roleId);
+    // A brand-new bot is unpinned, so it follows the default rather than
+    // carrying a copy of it.
+    expect(fresh?.provider).toBeNull();
+    expect(fresh?.model).toBeNull();
+  });
+});

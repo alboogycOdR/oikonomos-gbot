@@ -66,7 +66,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
 
 function makeRole(overrides: Partial<Role> = {}): Role {
   return {
-    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", instructions: null, status: "active",
+    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", instructions: null, provider: null, model: null, status: "active",
     createdAt: new Date(), updatedAt: new Date(), ...overrides,
   };
 }
@@ -244,6 +244,8 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       avatarSeed: expect.any(String),
       title: "Bot",
       instructions: null,
+      provider: null,
+      model: null,
     });
     expect(calls).toEqual(["createRole", "listCapabilities", "upsertRoleGrant:fs.read:T0_observe"]);
     const listed = await app.inject({ method: "GET", url: "/roles", headers: authHeaders() });
@@ -253,6 +255,8 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       name: "Chat bot",
       title: "Chat bot",
       instructions: null,
+      provider: null,
+      model: null,
     });
     await app.close();
   });
@@ -295,6 +299,8 @@ describe("Chat-1b control-api routes (TASK-106)", () => {
       id: roleId,
       title: "Chat bot",
       instructions: "Answer as a calm research assistant.",
+      provider: null,
+      model: null,
     });
     expect(persisted).toEqual([[roleId, "Answer as a calm research assistant."]]);
     await app.close();
@@ -907,6 +913,8 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
         id: body.id,
         title: persisted?.title,
         instructions: null,
+        provider: null,
+        model: null,
       }));
     } finally {
       await app.close();

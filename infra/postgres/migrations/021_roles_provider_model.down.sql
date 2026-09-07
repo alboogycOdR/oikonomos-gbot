@@ -1,0 +1,3 @@
+-- TASK-213 rollback.
+ALTER TABLE roles DROP COLUMN IF EXISTS model;
+ALTER TABLE roles DROP COLUMN IF EXISTS provider;

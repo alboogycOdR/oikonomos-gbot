@@ -40,7 +40,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 
 function makeRole(overrides: Partial<Role> = {}): Role {
   return {
-    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", instructions: null,
+    roleId, tenantId: "basileia", name: "Chat bot", title: "Chat bot", description: "Helpful", instructions: null, provider: null, model: null,
     status: "active", createdAt: new Date(), updatedAt: new Date(), ...overrides,
   };
 }
