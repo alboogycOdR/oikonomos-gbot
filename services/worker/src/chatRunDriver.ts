@@ -468,6 +468,58 @@ function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
   return process.env.NODE_ENV !== "test";
 }
 
+/**
+ * Threads a Gemini turn's prior conversation into its prompt (TASK-220 AC,
+ * Fable review R5).
+ *
+ * Gemini has no resumable-session equivalent to the Claude Agent SDK's
+ * `--resume`, so context has to be reconstructed from the persisted
+ * transcript on every turn. Deliberately reuses TASK-193's own compaction
+ * state (`thread_context`'s `epoch`/`compactedThroughMessageId`,
+ * `thread_summaries`) rather than inventing a second history mechanism —
+ * a Gemini turn respects the same "start fresh" epoch boundary and the same
+ * summary-then-verbatim-tail shape `promptAssembly.ts`'s `assembleChatPrompt`
+ * already formats for the (currently unwired) skills path, using the same
+ * `[role] body` / `## Earlier in this conversation` conventions for
+ * consistency rather than reusing that function directly — pulling it in
+ * would also pull in its `resolveEnabledSkill` dependency, which has no
+ * real implementation wired anywhere yet (a separate, pre-existing gap,
+ * filed as TASK-224, not fixed here).
+ *
+ * `goal` is excluded from `history` when it already appears as history's
+ * own last message: the chat route inserts the user's message into
+ * `messages` BEFORE calling `runChatTask`, so by the time this runs, the
+ * current turn is already persisted and would otherwise be duplicated.
+ * A routine-triggered run has no such message, so nothing is excluded
+ * there and `goal` is simply appended as the newest turn.
+ */
+async function buildGeminiTurnPrompt(
+  options: CreateChatRunDriverOptions,
+  threadId: string,
+  systemPrompt: string,
+  goal: string,
+): Promise<string> {
+  const context = await getOrInitThreadContext(options, threadId);
+  const summary = await getLatestThreadSummary(options, threadId, context.epoch);
+  const allHistory = await listMessages(
+    options,
+    threadId,
+    context.compactedThroughMessageId === null ? {} : { after: context.compactedThroughMessageId },
+  );
+  const last = allHistory.at(-1);
+  const history = last !== undefined && last.role === "user" && last.body === goal
+    ? allHistory.slice(0, -1)
+    : allHistory;
+
+  const sections = [systemPrompt];
+  if (summary !== null && summary.body.trim().length > 0) {
+    sections.push(`## Earlier in this conversation\n\n${summary.body.trim()}`);
+  }
+  for (const message of history) sections.push(`[${message.role}] ${message.body}`);
+  sections.push(goal);
+  return sections.join("\n\n");
+}
+
 /** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
 /**
  * Run one chat turn on Gemini (TASK-220).
@@ -537,18 +589,8 @@ export async function executeGeminiChatRun(
 
   const adapter = composed.gemini;
   if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
-  // KNOWN LIMITATION (Fable review R5, tracked in TASK-220's own record, not
-  // fixed here): every Gemini turn is context-free. The Claude lane carries
-  // conversation history via the Agent SDK's own resumable session
-  // (`--resume`); Gemini has no equivalent, and this prompt is only
-  // `systemPrompt + goal` — no prior thread messages. The second message in
-  // a Gemini conversation loses the first. A real fix means threading
-  // `listMessages` history into the prompt (and interacting correctly with
-  // TASK-193's compaction), which is real feature scope, not a rework fix —
-  // deliberately left as a documented gap rather than a rushed half-measure.
-  const result = await adapter.run(`${systemPrompt}
-
-${request.task.goal}`);
+  const prompt = await buildGeminiTurnPrompt(options, request.threadId, systemPrompt, request.task.goal);
+  const result = await adapter.run(prompt);
   if (result.denied) throw new Error("Gemini run was denied before it could answer.");
 
   // Cost is unavailable from the adapter's current result shape, so this

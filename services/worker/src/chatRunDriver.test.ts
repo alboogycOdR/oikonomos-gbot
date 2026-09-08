@@ -891,6 +891,92 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     }
   });
 
+  it("threads prior conversation into a Gemini turn's prompt instead of sending only the goal (TASK-220 AC, Fable review R5)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const historyRoleId = "task-220-gemini-history";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [historyRoleId]);
+    await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [historyRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [historyRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [historyRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [historyRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [historyRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [historyRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [historyRoleId]);
+    await createRole(options, { roleId: historyRoleId, name: historyRoleId, title: "TASK-220 history fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [historyRoleId]);
+    const historyThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [historyRoleId])).rows[0]!.id;
+
+    // Two earlier turns, already in the transcript before this run starts —
+    // mirrors what a real second-and-third chat message looks like.
+    await insertMessage(options, { threadId: historyThreadId, role: "user", body: "What's our refund window?" });
+    await insertMessage(options, { threadId: historyThreadId, role: "bot", body: "Thirty days from purchase." });
+    // The chat route inserts the user's message BEFORE calling runChatTask —
+    // reproduced here so the goal-deduplication behavior is exercised for
+    // real, not assumed.
+    const goal = "And does that apply to sale items too?";
+    await insertMessage(options, { threadId: historyThreadId, role: "user", body: goal });
+
+    const historyTask = await createTask(options, { roleId: historyRoleId, title: "TASK-220 history", goal, requestedBy: "task-220-suite" });
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-220-history-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-220-history-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-220-history" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command === `mkdir -p -- '/workspace/${historyRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: "", stderr: "unexpected command", exitCode: 1 };
+      },
+    };
+
+    let sentPromptText: string | undefined;
+    const fakeGeminiFetch: typeof globalThis.fetch = (async (_url, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { contents?: Array<{ parts?: Array<{ text?: string }> }> };
+      sentPromptText = body.contents?.[0]?.parts?.[0]?.text;
+      return geminiTextResponse("Yes, the same thirty-day window applies to sale items.");
+    }) as typeof globalThis.fetch;
+
+    try {
+      await createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: historyTask, threadId: historyThreadId });
+
+      expect(sentPromptText).toBeDefined();
+      // Prior turns are present, in order.
+      expect(sentPromptText).toContain("[user] What's our refund window?");
+      expect(sentPromptText).toContain("[bot] Thirty days from purchase.");
+      // The current turn's goal is present exactly once, not duplicated
+      // even though it was already persisted as a message before the run.
+      const occurrences = sentPromptText!.split(goal).length - 1;
+      expect(occurrences).toBe(1);
+      // History appears before the current turn, not after.
+      expect(sentPromptText!.indexOf("[user] What's our refund window?")).toBeLessThan(sentPromptText!.indexOf(goal));
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [historyRoleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [historyRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [historyRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [historyRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [historyRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [historyRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [historyRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [historyRoleId]);
+    }
+  });
+
   it("continues a real parked run with its persisted SDK session and appends the continuation on the same thread (TASK-155)", async () => {
     const resumeTask = await createTask(options, {
       roleId,
