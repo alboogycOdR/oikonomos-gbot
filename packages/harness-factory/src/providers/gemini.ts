@@ -120,14 +120,14 @@ function usageFrom(value: unknown): GeminiUsage {
   if (!isRecord(value) || !isRecord(value.usageMetadata)) return ZERO_USAGE;
   const m = value.usageMetadata;
   return {
-    promptTokenCount: nonNegativeInteger(m.promptTokenCount),
-    candidatesTokenCount: nonNegativeInteger(m.candidatesTokenCount),
-    thoughtsTokenCount: nonNegativeInteger(m.thoughtsTokenCount),
-    totalTokenCount: nonNegativeInteger(m.totalTokenCount),
+    promptTokenCount: nonNegativeCount(m.promptTokenCount),
+    candidatesTokenCount: nonNegativeCount(m.candidatesTokenCount),
+    thoughtsTokenCount: nonNegativeCount(m.thoughtsTokenCount),
+    totalTokenCount: nonNegativeCount(m.totalTokenCount),
   };
 }
 
-function nonNegativeInteger(value: unknown): number {
+function nonNegativeCount(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 

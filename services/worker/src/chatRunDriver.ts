@@ -591,22 +591,39 @@ export async function executeGeminiChatRun(
   if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
   const prompt = await buildGeminiTurnPrompt(options, request.threadId, systemPrompt, request.task.goal);
   const result = await adapter.run(prompt);
-  if (result.denied) throw new Error("Gemini run was denied before it could answer.");
 
-  // The adapter now returns real usageMetadata, summed across every API
-  // call the run actually made (TASK-220 AC: non-zero cost from real token
-  // counts, including thinking tokens — geminiTurnCostUsd already knows how
-  // to price this shape correctly, per TASK-215's own thinking-token fix).
+  // Record spend BEFORE the denied check below (Fable review U1). A run
+  // can make up to 11 real billed API calls and then exhaust the 12-turn
+  // limit, hit a mid-loop deny, or get a safety-blocked 200 — every one of
+  // those sets `denied: true` with real usage already spent. Throwing
+  // before this point (the original order) meant that spend was recorded
+  // nowhere: not here, and not via the success path's `noteUnrecordedSpend`
+  // either, since that line is unreachable once an exception propagates
+  // past the outer catch. `resolveGeminiBudget` computes the provider cap
+  // from `spend_records`, so unrecorded spend from repeatedly-failing runs
+  // could exceed `OIK_PROVIDER_CAP_USD_GEMINI` without bound — the adapter
+  // fix made this spend visible; the driver was throwing it away.
+  //
+  // A successful run always records a row, even a genuinely zero-cost one
+  // (matches the pre-existing invariant `geminiSpendRecorded` relies on to
+  // suppress `spend.unrecorded`). A DENIED run records one only when real
+  // tokens were actually billed (`totalTokenCount > 0`) — an immediate
+  // structural denial (missing API key, empty prompt) truly cost nothing
+  // and recording a noisy zero row for it would misrepresent the run as
+  // having reached the API at all.
   const costUsd = geminiTurnCostUsd(result.usage);
-  await recordSpend(options, {
-    runId: run.runId,
-    tenantId: request.task.tenantId,
-    routineId: request.task.routineId,
-    provider: GEMINI_PROVIDER_ID,
-    model: "gemini-3.7-flash",
-    costUsd,
-    tokens: null,
-  });
+  if (!result.denied || result.usage.totalTokenCount > 0) {
+    await recordSpend(options, {
+      runId: run.runId,
+      tenantId: request.task.tenantId,
+      routineId: request.task.routineId,
+      provider: GEMINI_PROVIDER_ID,
+      model: "gemini-3.7-flash",
+      costUsd,
+      tokens: result.usage.totalTokenCount,
+    });
+  }
+  if (result.denied) throw new Error("Gemini run was denied before it could answer.");
   return { text: result.text, costUsd };
 }
 

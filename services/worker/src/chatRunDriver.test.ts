@@ -37,6 +37,7 @@ import {
 } from "./chatRunDriver.js";
 import { parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { handleWorkspaceMcpRequest } from "./workspaceMcpServer.js";
+import { geminiTurnCostUsd } from "./geminiChatRun.js";
 
 const chatRunDriverSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./chatRunDriver.ts", import.meta.url), "utf8"),
@@ -709,9 +710,14 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
   // review. These exercise it through the real `driver.run()` call site,
   // not in isolation, with a fake Gemini transport (`geminiFetch`) standing
   // in for the real API and the same fake SandboxClient seam TASK-170 uses.
-  function geminiFunctionCallResponse(name: string, args: Record<string, unknown>): Response {
+  function geminiFunctionCallResponse(
+    name: string,
+    args: Record<string, unknown>,
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; totalTokenCount?: number },
+  ): Response {
     return new Response(JSON.stringify({
       candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args } }] } }],
+      ...(usageMetadata === undefined ? {} : { usageMetadata }),
     }));
   }
   function geminiTextResponse(
@@ -924,8 +930,8 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const run = runsPage.runs[0]!;
       expect(run.status).toBe("completed");
 
-      const spendRows = await pool.query<{ provider: string; cost_usd: string }>(
-        "SELECT provider, cost_usd FROM spend_records WHERE run_id = $1",
+      const spendRows = await pool.query<{ provider: string; cost_usd: string; tokens: string | null }>(
+        "SELECT provider, cost_usd, tokens FROM spend_records WHERE run_id = $1",
         [run.runId],
       );
       expect(spendRows.rows).toHaveLength(1);
@@ -934,7 +940,16 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // this session measured live was ~30x more than counting candidates
       // alone would give, so a regression back to under-counting or to a
       // flat zero both fail this the same way a correct fix would catch.
-      expect(Number(spendRows.rows[0]?.cost_usd)).toBeGreaterThan(0);
+      // Asserts the value (Fable review U4), catching a pricing-table
+      // regression that a bare ">0" check would miss. `cost_usd` is
+      // `numeric(14,6)` in Postgres, so the stored value is rounded to 6
+      // decimal places — compare at that precision, not bit-for-bit.
+      expect(Number(spendRows.rows[0]?.cost_usd)).toBeCloseTo(
+        geminiTurnCostUsd({ promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 }),
+        6,
+      );
+      // The real token total is now persisted (Fable review U2), not null.
+      expect(Number(spendRows.rows[0]?.tokens)).toBe(143);
     } finally {
       if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
       else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
@@ -947,6 +962,93 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [costRoleId]);
       await pool.query("DELETE FROM threads WHERE role_id = $1", [costRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
+    }
+  });
+
+  it("records real spend even when the run ultimately fails — turn-limit exhaustion (Fable review U1)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const exhaustRoleId = "task-220-gemini-exhaust";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [exhaustRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [exhaustRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
+    await createRole(options, { roleId: exhaustRoleId, name: exhaustRoleId, title: "TASK-220 exhaust fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [exhaustRoleId]);
+    const database = new Database(options);
+    try {
+      await database.upsertRoleGrant({ roleId: exhaustRoleId, capabilityId: "fs.read", maxTier: "T0_observe", constraints: {} });
+    } finally {
+      await database.close();
+    }
+    const exhaustTask = await createTask(options, { roleId: exhaustRoleId, title: "TASK-220 exhaust", goal: "Keep reading.", requestedBy: "task-220-suite" });
+    const exhaustThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [exhaustRoleId])).rows[0]!.id;
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-220-exhaust-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-220-exhaust-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-220-exhaust" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command === `mkdir -p -- '/workspace/${exhaustRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command.startsWith("cat --")) return { stdout: "still more to read", stderr: "", exitCode: 0 };
+        return { stdout: "", stderr: "unexpected command", exitCode: 1 };
+      },
+    };
+
+    // Never returns a final text answer — every call is another granted,
+    // billed Read function call, forcing the adapter's own 12-turn cap to
+    // exhaust. Each call bills real (if small) usage.
+    const fakeGeminiFetch: typeof globalThis.fetch = (async () =>
+      geminiFunctionCallResponse("Read", { file_path: "notes.txt" }, { promptTokenCount: 5, candidatesTokenCount: 2, thoughtsTokenCount: 0, totalTokenCount: 7 })) as typeof globalThis.fetch;
+
+    try {
+      await expect(
+        createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: exhaustTask, threadId: exhaustThreadId }),
+      ).rejects.toThrow("Gemini run was denied before it could answer.");
+
+      const runsPage = await listRuns(options, { taskId: exhaustTask.taskId });
+      const run = runsPage.runs[0]!;
+      expect(run.status).toBe("failed");
+
+      const spendRows = await pool.query<{ provider: string; cost_usd: string; tokens: string | null }>(
+        "SELECT provider, cost_usd, tokens FROM spend_records WHERE run_id = $1",
+        [run.runId],
+      );
+      expect(spendRows.rows).toHaveLength(1);
+      expect(spendRows.rows[0]?.provider).toBe("gemini");
+      // 12 real calls at 7 tokens each were actually billed before the loop
+      // gave up — before the fix, this row simply didn't exist.
+      expect(Number(spendRows.rows[0]?.cost_usd)).toBeGreaterThan(0);
+      expect(Number(spendRows.rows[0]?.tokens)).toBe(12 * 7);
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [exhaustRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [exhaustRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
     }
   });
 
