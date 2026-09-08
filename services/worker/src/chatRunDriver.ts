@@ -107,6 +107,13 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly usdToZarRate?: number;
   /** Overrides `DEFAULT_PLATFORM_CEILING_ZAR`. */
   readonly platformCeilingZar?: number;
+  /**
+   * Test-only Gemini transport seam (Fable review R2): production always
+   * uses the adapter's real `fetch`; a test injects a fake one to prove
+   * `executeGeminiChatRun`'s wiring — broker enforcement, the tier ceiling,
+   * the budget gate, and spend attribution — without a live API call.
+   */
+  readonly geminiFetch?: typeof globalThis.fetch;
 }
 
 const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
@@ -175,7 +182,9 @@ const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_MANAGED_SETTINGS_PATH = "/etc/claude-code/managed-settings.json";
 // SHA-256 of infra/sandbox/images/office-base/managed-settings.json. Keep this
 // paired with the image asset: stale or altered managed settings fail closed.
-const SANDBOX_MANAGED_SETTINGS_SHA256 = "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854";
+// Exported (not a secret — a public checksum of a settings file) so test
+// fixtures can reference it instead of retyping the literal.
+export const SANDBOX_MANAGED_SETTINGS_SHA256 = "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854";
 
 /**
  * Local mode is deliberately opt-in. An unset or misspelled value must never
@@ -311,6 +320,17 @@ async function runChatTask(
     // Claude session to Gemini (or vice versa), which has no session to
     // resume there at all.
     const effectiveProvider = request.resume === undefined ? runtime.provider : run.provider;
+    // Fail closed on an unrecognized provider (Fable review R3):
+    // `resolveRoleRuntime` returns whatever string a role/env var holds, no
+    // validation — a typo, an unimplemented provider name, or a misconfigured
+    // `OIK_DEFAULT_ROLE_PROVIDER` would otherwise fall through to the `else`
+    // branch below and silently run the Claude lane while `run.provider` and
+    // every audit trail said something else. That split-brain is worse than
+    // a loud failure: an operator reading spend/audit records would believe
+    // a run used a provider it never touched.
+    if (effectiveProvider !== "claude" && effectiveProvider !== GEMINI_PROVIDER_ID) {
+      throw new Error(`Unrecognized provider "${effectiveProvider}" for role ${request.task.roleId}: no execution lane exists for it.`);
+    }
     const workspaceConnector = await resolveGrantedWorkspaceConnector({
       database, roleId: request.task.roleId, tenantId: request.task.tenantId,
       connectionString: options.connectionString, runId: run.runId,
@@ -488,7 +508,7 @@ export async function executeGeminiChatRun(
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
 
-  const composed = composeHarness({
+  const composed = composeHarness<BrokerDependencies>({
     run: {
       runId: run.runId,
       roleId: request.task.roleId,
@@ -500,17 +520,32 @@ export async function executeGeminiChatRun(
       // Tools execute inside the role's sandbox, never in this process.
       tools: createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }),
       maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+      ...(options.geminiFetch === undefined ? {} : { fetch: options.geminiFetch }),
     },
     allowedTools: [],
     auditSink: completionAuditSink(options, { runId: run.runId, tenantId: request.task.tenantId }),
     pretooluse: {
-      handlePreToolUse: handlePreToolUse as never,
-      dependencies: createBrokerDependencies(options, database, registry, policy) as never,
+      // No cast (Fable review R1): `as never` on the broker handler/deps
+      // erased the compiler's check on exactly the enforcement wiring
+      // non-negotiable #1 protects. executeRun.ts's own composeHarness call
+      // passes the same two values uncast via the explicit `TDeps` generic;
+      // this does the same.
+      handlePreToolUse,
+      dependencies: createBrokerDependencies(options, database, registry, policy),
     },
   });
 
   const adapter = composed.gemini;
   if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
+  // KNOWN LIMITATION (Fable review R5, tracked in TASK-220's own record, not
+  // fixed here): every Gemini turn is context-free. The Claude lane carries
+  // conversation history via the Agent SDK's own resumable session
+  // (`--resume`); Gemini has no equivalent, and this prompt is only
+  // `systemPrompt + goal` — no prior thread messages. The second message in
+  // a Gemini conversation loses the first. A real fix means threading
+  // `listMessages` history into the prompt (and interacting correctly with
+  // TASK-193's compaction), which is real feature scope, not a rework fix —
+  // deliberately left as a documented gap rather than a rushed half-measure.
   const result = await adapter.run(`${systemPrompt}
 
 ${request.task.goal}`);
