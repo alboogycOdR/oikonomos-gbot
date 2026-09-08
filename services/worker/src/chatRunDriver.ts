@@ -1,4 +1,5 @@
 import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
+import { handlePreToolUse } from "@oikonomos/broker";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
   createConnectorSessionPool,
@@ -27,6 +28,7 @@ import {
   insertThreadSummary,
   listMessages,
   recordSpend,
+  resolveRoleRuntime,
   updateThreadContext,
   updateRoleSandboxState,
   upsertRoleSandbox,
@@ -40,7 +42,9 @@ import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
-import { runWithChatBudget, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
+import { createSandboxGeminiTools } from "./geminiToolExecutors.js";
+import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
   BUDGET_READ_TIMEOUT_MS,
   DEFAULT_PLATFORM_CEILING_ZAR,
@@ -103,6 +107,13 @@ export interface CreateChatRunDriverOptions extends DatabaseOptions {
   readonly usdToZarRate?: number;
   /** Overrides `DEFAULT_PLATFORM_CEILING_ZAR`. */
   readonly platformCeilingZar?: number;
+  /**
+   * Test-only Gemini transport seam (Fable review R2): production always
+   * uses the adapter's real `fetch`; a test injects a fake one to prove
+   * `executeGeminiChatRun`'s wiring — broker enforcement, the tier ceiling,
+   * the budget gate, and spend attribution — without a live API call.
+   */
+  readonly geminiFetch?: typeof globalThis.fetch;
 }
 
 const SANDBOX_IMAGE = "oikonomos-office-base:claude-2.1.263";
@@ -171,7 +182,9 @@ const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_MANAGED_SETTINGS_PATH = "/etc/claude-code/managed-settings.json";
 // SHA-256 of infra/sandbox/images/office-base/managed-settings.json. Keep this
 // paired with the image asset: stale or altered managed settings fail closed.
-const SANDBOX_MANAGED_SETTINGS_SHA256 = "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854";
+// Exported (not a secret — a public checksum of a settings file) so test
+// fixtures can reference it instead of retyping the literal.
+export const SANDBOX_MANAGED_SETTINGS_SHA256 = "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854";
 
 /**
  * Local mode is deliberately opt-in. An unset or misspelled value must never
@@ -276,9 +289,19 @@ async function runChatTask(
       manifests,
       roleId: request.task.roleId,
     });
+    // Resolved once, here, and reused for both dispatch and the system
+    // prompt below — avoids a second getRole round-trip and, more
+    // importantly, is what actually makes a role's provider choice
+    // (TASK-213) reach production execution at all (TASK-220): nothing
+    // previously consulted it, so a role's `provider` column had zero
+    // effect on which lane a chat run actually took.
+    const role = await getRole(options, request.task.roleId);
+    if (role === null) throw new Error(`Cannot run chat task: role ${request.task.roleId} not found.`);
+    const runtime = resolveRoleRuntime(role);
     let run;
     if (request.resume === undefined) {
-      run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
+      // A NEW run adopts the role's CURRENT resolved provider.
+      run = await startTaskRun(options, { taskId: request.task.taskId, provider: runtime.provider, tenantId: request.task.tenantId });
       runId = run.runId;
     } else {
       runId = request.resume.runId;
@@ -289,6 +312,24 @@ async function runChatTask(
       if (run.sessionRef === null) {
         throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
       }
+    }
+    // A RESUMED run stays on the provider it actually started on
+    // (`run.provider`, persisted at creation) rather than re-resolving from
+    // the role's CURRENT setting — a role's provider can change between
+    // turns, and a mid-conversation switch would silently hand a resumed
+    // Claude session to Gemini (or vice versa), which has no session to
+    // resume there at all.
+    const effectiveProvider = request.resume === undefined ? runtime.provider : run.provider;
+    // Fail closed on an unrecognized provider (Fable review R3):
+    // `resolveRoleRuntime` returns whatever string a role/env var holds, no
+    // validation — a typo, an unimplemented provider name, or a misconfigured
+    // `OIK_DEFAULT_ROLE_PROVIDER` would otherwise fall through to the `else`
+    // branch below and silently run the Claude lane while `run.provider` and
+    // every audit trail said something else. That split-brain is worse than
+    // a loud failure: an operator reading spend/audit records would believe
+    // a run used a provider it never touched.
+    if (effectiveProvider !== "claude" && effectiveProvider !== GEMINI_PROVIDER_ID) {
+      throw new Error(`Unrecognized provider "${effectiveProvider}" for role ${request.task.roleId}: no execution lane exists for it.`);
     }
     const workspaceConnector = await resolveGrantedWorkspaceConnector({
       database, roleId: request.task.roleId, tenantId: request.task.tenantId,
@@ -305,12 +346,24 @@ async function runChatTask(
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
     let result;
+    let botText: string | undefined;
+    // Gemini records its own spend directly inside executeGeminiChatRun
+    // (provider-specific: TASK-215's gate, TASK-210's `gemini` vocabulary),
+    // never through `budget.tap`, so the generic `budget.reported()` check
+    // below would misread a real (if zero) Gemini spend record as
+    // unrecorded. Tracked separately rather than forcing Gemini through the
+    // Claude-shaped tap.
+    let geminiSpendRecorded = false;
     try {
-      const systemPrompt = buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId);
-      // An injected query function is an established test-only SDK seam. Keep
-      // it local so all existing TASK-116/153/154 tests remain meaningful;
-      // real production runs (no queryFn) default to the sandbox.
-      if (!shouldUseSandbox(options)) {
+      const systemPrompt = buildRoleSystemPrompt(role, request.task.roleId);
+      if (effectiveProvider === GEMINI_PROVIDER_ID) {
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy);
+        botText = geminiResult.text;
+        geminiSpendRecorded = true;
+      } else if (!shouldUseSandbox(options)) {
+        // An injected query function is an established test-only SDK seam. Keep
+        // it local so all existing TASK-116/153/154 tests remain meaningful;
+        // real production runs (no queryFn) default to the sandbox.
         const workspace = await createChatRunWorkspace(run.runId);
         try {
           // ALS binds the tap/check for composeHarness inside executeTaskRun
@@ -347,10 +400,10 @@ async function runChatTask(
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
     }
-    await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
+    await insertMessage(options, { threadId: request.threadId, role: "bot", body: botText ?? finalText(result?.events ?? []), runId: run.runId });
     // A run that reached here having accounted for nothing is unrecorded, not
     // free. Say so explicitly rather than leaving an absence to be misread.
-    if (!budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
+    if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
   } catch (error) {
@@ -416,6 +469,104 @@ function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
 }
 
 /** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
+/**
+ * Run one chat turn on Gemini (TASK-220).
+ *
+ * The caller that makes five separately-merged, individually-inert pieces
+ * into a lane: the adapter, TASK-211's sandbox executors, TASK-212's tool
+ * ceiling, TASK-215's budget gate and TASK-210's spend attribution. Every one
+ * of those was green in isolation while no bot could run on Gemini at all.
+ *
+ * Deliberately mirrors `executeSandboxChatRun`'s shape: same sandbox, same
+ * workspace, same egress-controlled container. The provider changes; the
+ * isolation does not.
+ */
+export async function executeGeminiChatRun(
+  options: CreateChatRunDriverOptions,
+  database: Database,
+  manifests: readonly ConnectorManifest[],
+  request: ChatRunRequest,
+  run: { readonly runId: string; readonly sessionRef: string | null },
+  systemPrompt: string,
+  registry: CapabilityRegistry,
+  policy: PolicyRegistry,
+): Promise<{ readonly text: string; readonly costUsd: number }> {
+  // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
+  // tool-executing Gemini run, and a denial must cost no tokens.
+  const budget = await resolveGeminiBudget({
+    db: options,
+    routineId: request.task.routineId,
+    routineBudgetUsd: null,
+    platformCeilingUsd: (options.platformCeilingZar ?? DEFAULT_PLATFORM_CEILING_ZAR) / resolveUsdToZarRate(options),
+  });
+  if (budget.decision === "deny") throw new Error(budget.reason);
+
+  const client = options.sandboxClient ?? productionSandboxClient();
+  const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
+  await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
+  await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
+  const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
+  await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
+
+  const composed = composeHarness<BrokerDependencies>({
+    run: {
+      runId: run.runId,
+      roleId: request.task.roleId,
+      tenantId: request.task.tenantId,
+      agentRef: { provider: GEMINI_PROVIDER_ID, sessionRef: run.sessionRef ?? run.runId, isSubagent: false },
+    },
+    provider: "gemini",
+    gemini: {
+      // Tools execute inside the role's sandbox, never in this process.
+      tools: createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }),
+      maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
+      ...(options.geminiFetch === undefined ? {} : { fetch: options.geminiFetch }),
+    },
+    allowedTools: [],
+    auditSink: completionAuditSink(options, { runId: run.runId, tenantId: request.task.tenantId }),
+    pretooluse: {
+      // No cast (Fable review R1): `as never` on the broker handler/deps
+      // erased the compiler's check on exactly the enforcement wiring
+      // non-negotiable #1 protects. executeRun.ts's own composeHarness call
+      // passes the same two values uncast via the explicit `TDeps` generic;
+      // this does the same.
+      handlePreToolUse,
+      dependencies: createBrokerDependencies(options, database, registry, policy),
+    },
+  });
+
+  const adapter = composed.gemini;
+  if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
+  // KNOWN LIMITATION (Fable review R5, tracked in TASK-220's own record, not
+  // fixed here): every Gemini turn is context-free. The Claude lane carries
+  // conversation history via the Agent SDK's own resumable session
+  // (`--resume`); Gemini has no equivalent, and this prompt is only
+  // `systemPrompt + goal` — no prior thread messages. The second message in
+  // a Gemini conversation loses the first. A real fix means threading
+  // `listMessages` history into the prompt (and interacting correctly with
+  // TASK-193's compaction), which is real feature scope, not a rework fix —
+  // deliberately left as a documented gap rather than a rushed half-measure.
+  const result = await adapter.run(`${systemPrompt}
+
+${request.task.goal}`);
+  if (result.denied) throw new Error("Gemini run was denied before it could answer.");
+
+  // Cost is unavailable from the adapter's current result shape, so this
+  // records a real turn at zero rather than inventing a figure. TASK-210's
+  // spend.unrecorded signal is what makes that visible instead of silent.
+  const costUsd = geminiTurnCostUsd(null);
+  await recordSpend(options, {
+    runId: run.runId,
+    tenantId: request.task.tenantId,
+    routineId: request.task.routineId,
+    provider: GEMINI_PROVIDER_ID,
+    model: "gemini-3.7-flash",
+    costUsd,
+    tokens: null,
+  });
+  return { text: result.text, costUsd };
+}
+
 async function executeSandboxChatRun(
   options: CreateChatRunDriverOptions,
   database: Database,
