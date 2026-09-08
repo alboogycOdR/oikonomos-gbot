@@ -2002,7 +2002,25 @@ async function resumeApprovedChatRun(
   log: { error(error: unknown, message: string): void },
 ): Promise<void> {
   const run = await deps.getRun(approval.runId);
-  if (run?.status !== "waiting_approval" || run.sessionRef === null) return;
+  if (run?.status !== "waiting_approval") return;
+  if (run.sessionRef === null) {
+    // TASK-220 rework (Fable review R4): a Gemini run never persists a
+    // sessionRef (it has no Agent-SDK-style resumable session), so this is
+    // no longer a rare/impossible case for a parked run — it is the
+    // NORMAL, EXPECTED state of every Gemini run that hits an approval
+    // gate. Previously this silently `return`ed here, abandoning the run
+    // with no error, no log, and no visible trace: the person who approved
+    // it would see nothing happen, ever. Gemini's lack of resume support is
+    // a real, disclosed product gap (see TASK-220's own record), not
+    // something this fix pretends to solve — but abandoning a run silently
+    // is strictly worse than surfacing that gap loudly where an operator
+    // can see it.
+    log.error(
+      new Error(`Cannot resume run ${run.runId} after approval: no persisted session_ref (provider "${run.provider}" may not support resume).`),
+      "chat run cannot be resumed after approval — no session to continue from",
+    );
+    return;
+  }
   const task = await deps.getTask(run.taskId);
   const threadId = task === null ? undefined : chatThreadId(task.requestedBy);
   if (task === null || threadId === undefined) return;
