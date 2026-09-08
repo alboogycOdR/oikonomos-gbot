@@ -943,11 +943,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // Asserts the value (Fable review U4), catching a pricing-table
       // regression that a bare ">0" check would miss. `cost_usd` is
       // `numeric(14,6)` in Postgres, so the stored value is rounded to 6
-      // decimal places — compare at that precision, not bit-for-bit.
-      expect(Number(spendRows.rows[0]?.cost_usd)).toBeCloseTo(
-        geminiTurnCostUsd({ promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 }),
-        6,
-      );
+      // decimal places, so allow exactly that rounding (inclusive). Not
+      // `toBeCloseTo(_, 6)`: that requires |diff| < 5e-7 strictly, and a
+      // value on a rounding tie (the 2027 rate step prices this fixture at
+      // 0.0010185) differs from its stored form by exactly 5e-7 and would
+      // have failed on that date (Fable review of 4c74c09).
+      const expectedCostUsd = geminiTurnCostUsd({ promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 });
+      expect(Math.abs(Number(spendRows.rows[0]?.cost_usd) - expectedCostUsd)).toBeLessThanOrEqual(0.5e-6 + 1e-12);
       // The real token total is now persisted (Fable review U2), not null.
       expect(Number(spendRows.rows[0]?.tokens)).toBe(143);
     } finally {
