@@ -593,10 +593,11 @@ export async function executeGeminiChatRun(
   const result = await adapter.run(prompt);
   if (result.denied) throw new Error("Gemini run was denied before it could answer.");
 
-  // Cost is unavailable from the adapter's current result shape, so this
-  // records a real turn at zero rather than inventing a figure. TASK-210's
-  // spend.unrecorded signal is what makes that visible instead of silent.
-  const costUsd = geminiTurnCostUsd(null);
+  // The adapter now returns real usageMetadata, summed across every API
+  // call the run actually made (TASK-220 AC: non-zero cost from real token
+  // counts, including thinking tokens — geminiTurnCostUsd already knows how
+  // to price this shape correctly, per TASK-215's own thinking-token fix).
+  const costUsd = geminiTurnCostUsd(result.usage);
   await recordSpend(options, {
     runId: run.runId,
     tenantId: request.task.tenantId,

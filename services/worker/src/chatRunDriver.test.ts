@@ -714,9 +714,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args } }] } }],
     }));
   }
-  function geminiTextResponse(text: string): Response {
+  function geminiTextResponse(
+    text: string,
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; totalTokenCount?: number },
+  ): Response {
     return new Response(JSON.stringify({
       candidates: [{ content: { role: "model", parts: [{ text }] } }],
+      ...(usageMetadata === undefined ? {} : { usageMetadata }),
     }));
   }
 
@@ -865,6 +869,84 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiRoleId]);
+    }
+  });
+
+  it("records a real non-zero cost derived from the turn's own reported token usage (TASK-220 AC)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const costRoleId = "task-220-gemini-cost";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [costRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [costRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [costRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [costRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [costRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [costRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
+    await createRole(options, { roleId: costRoleId, name: costRoleId, title: "TASK-220 cost fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [costRoleId]);
+    const costTask = await createTask(options, { roleId: costRoleId, title: "TASK-220 cost", goal: "Say hello.", requestedBy: "task-220-suite" });
+    const costThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [costRoleId])).rows[0]!.id;
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-220-cost-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-220-cost-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-220-cost" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command === `mkdir -p -- '/workspace/${costRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: "", stderr: "unexpected command", exitCode: 1 };
+      },
+    };
+
+    // Real-shaped usage — a live turn measured this session reported
+    // 9/4/130 (prompt/candidates/thoughts), which is exactly what motivated
+    // TASK-215's own thinking-token pricing fix; reused here as a realistic
+    // fixture rather than round numbers that wouldn't catch a units bug.
+    const fakeGeminiFetch: typeof globalThis.fetch = (async () =>
+      geminiTextResponse("Hello!", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 })) as typeof globalThis.fetch;
+
+    try {
+      await createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: costTask, threadId: costThreadId });
+
+      const runsPage = await listRuns(options, { taskId: costTask.taskId });
+      const run = runsPage.runs[0]!;
+      expect(run.status).toBe("completed");
+
+      const spendRows = await pool.query<{ provider: string; cost_usd: string }>(
+        "SELECT provider, cost_usd FROM spend_records WHERE run_id = $1",
+        [run.runId],
+      );
+      expect(spendRows.rows).toHaveLength(1);
+      expect(spendRows.rows[0]?.provider).toBe("gemini");
+      // Not merely non-zero — actually derived from real usage: the record
+      // this session measured live was ~30x more than counting candidates
+      // alone would give, so a regression back to under-counting or to a
+      // flat zero both fail this the same way a correct fix would catch.
+      expect(Number(spendRows.rows[0]?.cost_usd)).toBeGreaterThan(0);
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [costRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [costRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [costRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [costRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [costRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [costRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
     }
   });
 

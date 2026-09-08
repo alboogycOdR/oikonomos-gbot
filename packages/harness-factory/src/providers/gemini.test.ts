@@ -27,15 +27,19 @@ function withNonSecretTestValue(): void {
   process.env.GEMINI_API_KEY = "unit-test-not-a-credential";
 }
 
-function functionCall(name = "observe", args: Record<string, unknown> = { path: "inbox" }): Response {
+type Usage = { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; totalTokenCount?: number };
+
+function functionCall(name = "observe", args: Record<string, unknown> = { path: "inbox" }, usageMetadata?: Usage): Response {
   return new Response(JSON.stringify({
     candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args } }] } }],
+    ...(usageMetadata === undefined ? {} : { usageMetadata }),
   }));
 }
 
-function text(textValue = "observed"): Response {
+function text(textValue = "observed", usageMetadata?: Usage): Response {
   return new Response(JSON.stringify({
     candidates: [{ content: { role: "model", parts: [{ text: textValue }] } }],
+    ...(usageMetadata === undefined ? {} : { usageMetadata }),
   }));
 }
 
@@ -338,6 +342,72 @@ describe("Gemini adapter — governed Stage-1 function loop", () => {
     withNonSecretTestValue();
     const adapter = createGeminiAdapter({ l1: { async handle() { return { decision: "allow" }; } }, fetch });
     await expect(adapter.run("observe")).resolves.toMatchObject({ denied: true, text: "" });
+  });
+
+  // TASK-220 — GeminiRunResult previously discarded the real API's
+  // `usageMetadata`, so every recorded Gemini spend was a hardcoded zero
+  // regardless of what a run actually cost.
+  it("captures real usageMetadata from a single-turn response (TASK-220)", async () => {
+    withNonSecretTestValue();
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      fetch: async () => text("observed", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 }),
+    });
+
+    const result = await adapter.run("observe");
+    expect(result.usage).toEqual({ promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 });
+  });
+
+  it("sums usage across every real API call in a multi-turn tool-calling run, not just the last one (TASK-220)", async () => {
+    withNonSecretTestValue();
+    const execute = vi.fn(async () => ({ ok: true }));
+    let requests = 0;
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [tool(execute, 0)],
+      fetch: async () => {
+        requests += 1;
+        // Turn 1: a function call, its own real usage. Turn 2: the final
+        // answer, its own separate real usage. A real conversation is
+        // billed per call, not once for the whole exchange.
+        return requests === 1
+          ? functionCall("observe", { path: "inbox" }, { promptTokenCount: 10, candidatesTokenCount: 5, thoughtsTokenCount: 0, totalTokenCount: 15 })
+          : text("done", { promptTokenCount: 20, candidatesTokenCount: 8, thoughtsTokenCount: 2, totalTokenCount: 30 });
+      },
+    });
+
+    const result = await adapter.run("observe");
+    expect(requests).toBe(2);
+    expect(result.usage).toEqual({ promptTokenCount: 30, candidatesTokenCount: 13, thoughtsTokenCount: 2, totalTokenCount: 45 });
+  });
+
+  it("reports zero usage, not a crash, for a malformed or missing usageMetadata block", async () => {
+    withNonSecretTestValue();
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      // No usageMetadata at all — matches the OpenAI-compatible surface,
+      // which is the exact shape that under-billed by ~30x before TASK-215's
+      // own thinking-token fix; this adapter must not crash on its absence.
+      fetch: async () => text("observed"),
+    });
+
+    const result = await adapter.run("observe");
+    expect(result.usage).toEqual({ promptTokenCount: 0, candidatesTokenCount: 0, thoughtsTokenCount: 0, totalTokenCount: 0 });
+  });
+
+  it("LIVENESS: usage capture is detectable — a stripped usageMetadata block collapses real usage to zero", async () => {
+    withNonSecretTestValue();
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      fetch: async () => text("observed", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 }),
+    });
+    const result = await adapter.run("observe");
+    expect(result.usage.totalTokenCount).toBe(143);
+
+    // Mutation: source-level guard confirming `usageFrom` genuinely reads
+    // `usageMetadata` rather than being dead code the compiler happens to
+    // accept — mirrors this file's other LIVENESS assertions.
+    expect(source).toContain("usageFrom(parsed)");
   });
 
   it("fails closed on a request timeout without an unhandled rejection", async () => {
