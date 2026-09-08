@@ -25,3 +25,5 @@ board/*
 !board/index.html
 backups/
 .source-import/
+
+desktop.ini

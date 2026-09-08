@@ -280,9 +280,19 @@ async function runChatTask(
       manifests,
       roleId: request.task.roleId,
     });
+    // Resolved once, here, and reused for both dispatch and the system
+    // prompt below — avoids a second getRole round-trip and, more
+    // importantly, is what actually makes a role's provider choice
+    // (TASK-213) reach production execution at all (TASK-220): nothing
+    // previously consulted it, so a role's `provider` column had zero
+    // effect on which lane a chat run actually took.
+    const role = await getRole(options, request.task.roleId);
+    if (role === null) throw new Error(`Cannot run chat task: role ${request.task.roleId} not found.`);
+    const runtime = resolveRoleRuntime(role);
     let run;
     if (request.resume === undefined) {
-      run = await startTaskRun(options, { taskId: request.task.taskId, provider: "claude", tenantId: request.task.tenantId });
+      // A NEW run adopts the role's CURRENT resolved provider.
+      run = await startTaskRun(options, { taskId: request.task.taskId, provider: runtime.provider, tenantId: request.task.tenantId });
       runId = run.runId;
     } else {
       runId = request.resume.runId;
@@ -294,6 +304,13 @@ async function runChatTask(
         throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
       }
     }
+    // A RESUMED run stays on the provider it actually started on
+    // (`run.provider`, persisted at creation) rather than re-resolving from
+    // the role's CURRENT setting — a role's provider can change between
+    // turns, and a mid-conversation switch would silently hand a resumed
+    // Claude session to Gemini (or vice versa), which has no session to
+    // resume there at all.
+    const effectiveProvider = request.resume === undefined ? runtime.provider : run.provider;
     const workspaceConnector = await resolveGrantedWorkspaceConnector({
       database, roleId: request.task.roleId, tenantId: request.task.tenantId,
       connectionString: options.connectionString, runId: run.runId,
@@ -309,12 +326,24 @@ async function runChatTask(
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
     let result;
+    let botText: string | undefined;
+    // Gemini records its own spend directly inside executeGeminiChatRun
+    // (provider-specific: TASK-215's gate, TASK-210's `gemini` vocabulary),
+    // never through `budget.tap`, so the generic `budget.reported()` check
+    // below would misread a real (if zero) Gemini spend record as
+    // unrecorded. Tracked separately rather than forcing Gemini through the
+    // Claude-shaped tap.
+    let geminiSpendRecorded = false;
     try {
-      const systemPrompt = buildRoleSystemPrompt(await getRole(options, request.task.roleId), request.task.roleId);
-      // An injected query function is an established test-only SDK seam. Keep
-      // it local so all existing TASK-116/153/154 tests remain meaningful;
-      // real production runs (no queryFn) default to the sandbox.
-      if (!shouldUseSandbox(options)) {
+      const systemPrompt = buildRoleSystemPrompt(role, request.task.roleId);
+      if (effectiveProvider === GEMINI_PROVIDER_ID) {
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy);
+        botText = geminiResult.text;
+        geminiSpendRecorded = true;
+      } else if (!shouldUseSandbox(options)) {
+        // An injected query function is an established test-only SDK seam. Keep
+        // it local so all existing TASK-116/153/154 tests remain meaningful;
+        // real production runs (no queryFn) default to the sandbox.
         const workspace = await createChatRunWorkspace(run.runId);
         try {
           // ALS binds the tap/check for composeHarness inside executeTaskRun
@@ -351,10 +380,10 @@ async function runChatTask(
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
     }
-    await insertMessage(options, { threadId: request.threadId, role: "bot", body: finalText(result.events), runId: run.runId });
+    await insertMessage(options, { threadId: request.threadId, role: "bot", body: botText ?? finalText(result?.events ?? []), runId: run.runId });
     // A run that reached here having accounted for nothing is unrecorded, not
     // free. Say so explicitly rather than leaving an absence to be misread.
-    if (!budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
+    if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
   } catch (error) {
