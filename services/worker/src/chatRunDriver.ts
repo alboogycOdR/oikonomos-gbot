@@ -468,6 +468,58 @@ function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
   return process.env.NODE_ENV !== "test";
 }
 
+/**
+ * Threads a Gemini turn's prior conversation into its prompt (TASK-220 AC,
+ * Fable review R5).
+ *
+ * Gemini has no resumable-session equivalent to the Claude Agent SDK's
+ * `--resume`, so context has to be reconstructed from the persisted
+ * transcript on every turn. Deliberately reuses TASK-193's own compaction
+ * state (`thread_context`'s `epoch`/`compactedThroughMessageId`,
+ * `thread_summaries`) rather than inventing a second history mechanism —
+ * a Gemini turn respects the same "start fresh" epoch boundary and the same
+ * summary-then-verbatim-tail shape `promptAssembly.ts`'s `assembleChatPrompt`
+ * already formats for the (currently unwired) skills path, using the same
+ * `[role] body` / `## Earlier in this conversation` conventions for
+ * consistency rather than reusing that function directly — pulling it in
+ * would also pull in its `resolveEnabledSkill` dependency, which has no
+ * real implementation wired anywhere yet (a separate, pre-existing gap,
+ * filed as TASK-224, not fixed here).
+ *
+ * `goal` is excluded from `history` when it already appears as history's
+ * own last message: the chat route inserts the user's message into
+ * `messages` BEFORE calling `runChatTask`, so by the time this runs, the
+ * current turn is already persisted and would otherwise be duplicated.
+ * A routine-triggered run has no such message, so nothing is excluded
+ * there and `goal` is simply appended as the newest turn.
+ */
+async function buildGeminiTurnPrompt(
+  options: CreateChatRunDriverOptions,
+  threadId: string,
+  systemPrompt: string,
+  goal: string,
+): Promise<string> {
+  const context = await getOrInitThreadContext(options, threadId);
+  const summary = await getLatestThreadSummary(options, threadId, context.epoch);
+  const allHistory = await listMessages(
+    options,
+    threadId,
+    context.compactedThroughMessageId === null ? {} : { after: context.compactedThroughMessageId },
+  );
+  const last = allHistory.at(-1);
+  const history = last !== undefined && last.role === "user" && last.body === goal
+    ? allHistory.slice(0, -1)
+    : allHistory;
+
+  const sections = [systemPrompt];
+  if (summary !== null && summary.body.trim().length > 0) {
+    sections.push(`## Earlier in this conversation\n\n${summary.body.trim()}`);
+  }
+  for (const message of history) sections.push(`[${message.role}] ${message.body}`);
+  sections.push(goal);
+  return sections.join("\n\n");
+}
+
 /** Execute a governed CLI turn in the persistent per-role OpenSandbox office. */
 /**
  * Run one chat turn on Gemini (TASK-220).
@@ -537,33 +589,41 @@ export async function executeGeminiChatRun(
 
   const adapter = composed.gemini;
   if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
-  // KNOWN LIMITATION (Fable review R5, tracked in TASK-220's own record, not
-  // fixed here): every Gemini turn is context-free. The Claude lane carries
-  // conversation history via the Agent SDK's own resumable session
-  // (`--resume`); Gemini has no equivalent, and this prompt is only
-  // `systemPrompt + goal` — no prior thread messages. The second message in
-  // a Gemini conversation loses the first. A real fix means threading
-  // `listMessages` history into the prompt (and interacting correctly with
-  // TASK-193's compaction), which is real feature scope, not a rework fix —
-  // deliberately left as a documented gap rather than a rushed half-measure.
-  const result = await adapter.run(`${systemPrompt}
+  const prompt = await buildGeminiTurnPrompt(options, request.threadId, systemPrompt, request.task.goal);
+  const result = await adapter.run(prompt);
 
-${request.task.goal}`);
+  // Record spend BEFORE the denied check below (Fable review U1). A run
+  // can make up to 11 real billed API calls and then exhaust the 12-turn
+  // limit, hit a mid-loop deny, or get a safety-blocked 200 — every one of
+  // those sets `denied: true` with real usage already spent. Throwing
+  // before this point (the original order) meant that spend was recorded
+  // nowhere: not here, and not via the success path's `noteUnrecordedSpend`
+  // either, since that line is unreachable once an exception propagates
+  // past the outer catch. `resolveGeminiBudget` computes the provider cap
+  // from `spend_records`, so unrecorded spend from repeatedly-failing runs
+  // could exceed `OIK_PROVIDER_CAP_USD_GEMINI` without bound — the adapter
+  // fix made this spend visible; the driver was throwing it away.
+  //
+  // A successful run always records a row, even a genuinely zero-cost one
+  // (matches the pre-existing invariant `geminiSpendRecorded` relies on to
+  // suppress `spend.unrecorded`). A DENIED run records one only when real
+  // tokens were actually billed (`totalTokenCount > 0`) — an immediate
+  // structural denial (missing API key, empty prompt) truly cost nothing
+  // and recording a noisy zero row for it would misrepresent the run as
+  // having reached the API at all.
+  const costUsd = geminiTurnCostUsd(result.usage);
+  if (!result.denied || result.usage.totalTokenCount > 0) {
+    await recordSpend(options, {
+      runId: run.runId,
+      tenantId: request.task.tenantId,
+      routineId: request.task.routineId,
+      provider: GEMINI_PROVIDER_ID,
+      model: "gemini-3.7-flash",
+      costUsd,
+      tokens: result.usage.totalTokenCount,
+    });
+  }
   if (result.denied) throw new Error("Gemini run was denied before it could answer.");
-
-  // Cost is unavailable from the adapter's current result shape, so this
-  // records a real turn at zero rather than inventing a figure. TASK-210's
-  // spend.unrecorded signal is what makes that visible instead of silent.
-  const costUsd = geminiTurnCostUsd(null);
-  await recordSpend(options, {
-    runId: run.runId,
-    tenantId: request.task.tenantId,
-    routineId: request.task.routineId,
-    provider: GEMINI_PROVIDER_ID,
-    model: "gemini-3.7-flash",
-    costUsd,
-    tokens: null,
-  });
   return { text: result.text, costUsd };
 }
 

@@ -87,10 +87,56 @@ export interface GeminiFunctionResponse {
   readonly response: Record<string, unknown>;
 }
 
+/**
+ * Token usage, summed across every real API call this run made.
+ *
+ * A tool-executing turn is one CONVERSATION but several HTTP calls — the
+ * loop below resubmits the growing `contents` array once per function-call
+ * round trip, and each one is a separately billed request. Gemini's own
+ * `usageMetadata` reports only that single call's counts, so the caller
+ * (`geminiTurnCostUsd`) needs the sum across the whole run, not just the
+ * final call's figure — summing per-call totals is correct because each
+ * call really was billed independently.
+ */
+export interface GeminiUsage {
+  readonly promptTokenCount: number;
+  readonly candidatesTokenCount: number;
+  readonly thoughtsTokenCount: number;
+  readonly totalTokenCount: number;
+}
+
+const ZERO_USAGE: GeminiUsage = { promptTokenCount: 0, candidatesTokenCount: 0, thoughtsTokenCount: 0, totalTokenCount: 0 };
+
+function addUsage(a: GeminiUsage, b: GeminiUsage): GeminiUsage {
+  return {
+    promptTokenCount: a.promptTokenCount + b.promptTokenCount,
+    candidatesTokenCount: a.candidatesTokenCount + b.candidatesTokenCount,
+    thoughtsTokenCount: a.thoughtsTokenCount + b.thoughtsTokenCount,
+    totalTokenCount: a.totalTokenCount + b.totalTokenCount,
+  };
+}
+
+function usageFrom(value: unknown): GeminiUsage {
+  if (!isRecord(value) || !isRecord(value.usageMetadata)) return ZERO_USAGE;
+  const m = value.usageMetadata;
+  return {
+    promptTokenCount: nonNegativeCount(m.promptTokenCount),
+    candidatesTokenCount: nonNegativeCount(m.candidatesTokenCount),
+    thoughtsTokenCount: nonNegativeCount(m.thoughtsTokenCount),
+    totalTokenCount: nonNegativeCount(m.totalTokenCount),
+  };
+}
+
+function nonNegativeCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 export interface GeminiRunResult {
   readonly text: string;
   readonly functionResponses: readonly GeminiFunctionResponse[];
   readonly denied: boolean;
+  /** Summed across every real API call this run made; all-zero if none were. */
+  readonly usage: GeminiUsage;
 }
 
 /**
@@ -121,16 +167,23 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
         { role: "user", parts: [{ text: prompt }] },
       ];
       const functionResponses: GeminiFunctionResponse[] = [];
+      let usage = ZERO_USAGE;
 
       for (let turn = 0; turn < 12; turn += 1) {
         const response = await requestGemini(fetchFn, apiKey, contents, options.tools ?? [], timeoutMs);
+        // A real call was made either way (a deny here means the response
+        // was unusable, e.g. a non-2xx or a malformed body — never that no
+        // request happened), so its usage — likely ZERO_USAGE, since a
+        // denied call rarely parses a usageMetadata block, but reported
+        // honestly either way — is still folded in.
+        usage = addUsage(usage, response.usage);
         if (response.kind === "deny") {
-          return { text: "", functionResponses, denied: true };
+          return { text: "", functionResponses, denied: true, usage };
         }
 
         const functionCalls = functionCallsFrom(response.content);
         if (functionCalls.length === 0) {
-          return { text: textFrom(response.content), functionResponses, denied: false };
+          return { text: textFrom(response.content), functionResponses, denied: false, usage };
         }
 
         const responseParts: Array<Record<string, unknown>> = [];
@@ -145,7 +198,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
         contents.push(response.content, { role: "user", parts: responseParts });
       }
 
-      return { text: "", functionResponses, denied: true };
+      return { text: "", functionResponses, denied: true, usage };
     },
   };
 }
@@ -215,7 +268,9 @@ async function functionResponseFor(
   }
 }
 
-type GeminiResponse = { kind: "content"; content: Record<string, unknown> } | { kind: "deny" };
+type GeminiResponse =
+  | { kind: "content"; content: Record<string, unknown>; usage: GeminiUsage }
+  | { kind: "deny"; usage: GeminiUsage };
 
 async function requestGemini(
   fetchFn: typeof globalThis.fetch,
@@ -239,13 +294,14 @@ async function requestGemini(
       signal: controller.signal,
     });
     if (!response.ok) {
-      return { kind: "deny" };
+      return { kind: "deny", usage: ZERO_USAGE };
     }
     const parsed: unknown = await response.json();
+    const usage = usageFrom(parsed);
     const content = contentFrom(parsed);
-    return content === undefined ? { kind: "deny" } : { kind: "content", content };
+    return content === undefined ? { kind: "deny", usage } : { kind: "content", content, usage };
   } catch {
-    return { kind: "deny" };
+    return { kind: "deny", usage: ZERO_USAGE };
   } finally {
     clearTimeout(timer);
   }
@@ -297,6 +353,7 @@ function deniedResult(message: string): GeminiRunResult {
     text: "",
     functionResponses: [{ name: "gemini", response: { error: message } }],
     denied: true,
+    usage: ZERO_USAGE,
   };
 }
 
