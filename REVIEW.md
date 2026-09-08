@@ -794,3 +794,20 @@ LOW / non-gating
 - R9 Human-takeover audit `actor: "agent:claude"` is hardcoded; unreachable on Gemini today (no browser connector mounted), note only.
 
 Independent re-run (Fable, worktree wt-220): worker 186/188 (the two failures are the tracked TASK-221 pg-boss poll timeouts, reproducible on two runs, unrelated to this diff); harness-factory 140/140; broker 166/166; db 194/194 +2 skipped; control-api 240/240; all other packages green; `pnpm typecheck` 18/18 clean; `pnpm lint` clean. Matches Test_Evidence. Verdict is REWORK on R1–R3 despite the green suite: the green suite contains no test of the code under review.
+
+## TASK-220 rework (merge) | S5-authored, reviewed by Fable 5.1 | approved (code) — live AC still open | first-pass: no (rework round 1)
+
+Scope: delta `git diff 5360edb f37549e` — chatRunDriver.ts (+43), chatRunDriver.test.ts (+188), control-api app.ts (+20). Owned_Paths had already been widened by ORCH to cover the test file and app.ts; TASK-222 (same test file) is merge-ordered behind this task; TASK-188 (app.ts) is pending, not active. R6 confirmed absent from the branch diff (`.gitignore` landed separately as 56ad578).
+
+Reviewer-caveat answer accepted: the dispatch wiring was authored on Sonnet 5, so Fable re-reviewing its own REWORK verdict is a different-model review of every line on the branch.
+
+- R1 fixed. Casts gone; `composeHarness<BrokerDependencies>` mirrors executeRun.ts. Independently mutation-tested: `dependencies: { bogus: true }` → `TS2353 'bogus' does not exist in type 'BrokerDependencies'`. The generic really constrains the literal.
+- R2 fixed. Read all three tests: they drive `createChatRunDriver(...).run()` against real Postgres, the real broker (asserted via persisted `policy.decision` audit rows), a fake SandboxClient and a fake Gemini `fetch`. The T3/T0 test proves ordering by absence — no `policy.decision` for `runtime.bash` while `fs.read` has an allow row — which is the right evidence for "ceiling before broker". `geminiFetch` is only spread when defined; production path unchanged. Sub-question (3): `resolveGeminiBudget` already converts any thrown error into a `budget.check_failed` deny (geminiChatRun.ts:94), so no unexpected-shape path exists. Coverage judged sufficient for the wiring; the live AC remains the real proof.
+- R3 fixed. Check sits immediately after `effectiveProvider`; nothing between depends on its validity. `"claude"` literal: cosmetic, leave.
+- R4 accepted as a log. Push-back noted for later, not blocking: the run stays `waiting_approval` forever and the single-use approval is consumed with nothing running. Today unreachable for Gemini (no `park` port is composed, so approval-required decisions surface as denials), so a log is proportionate. When Gemini gains parking, this branch must `failTaskRun` rather than log. No test covers the branch — acceptable for a log line.
+- R5 accepted as documented-not-fixed, on condition it is a tracked AC on the task, not just a comment. Added to TASK-220's Acceptance_Criteria by ORCH.
+- R7–R9 stay non-blocking.
+
+Independent re-run (Fable, worktree at f37549e): 3/3 TASK-220 tests pass; worker 178/180 (the two tracked TASK-221 pg-boss timeouts); control-api 230/230; harness-factory/broker/db/all others green; one `evals/harness` timeout under parallel load passed in isolation; typecheck 18/18; lint clean. Merged --no-ff 2b669c1. Task stays `in_progress`: ACs 2–5 (live proof, real cost) are unmet and gate `done`.
+
+Environment note for the user: to make the DB-backed tests execute, the verification subagent reset the `oikonomos` role password inside the local `oikonomos-postgres-local` Docker container (the documented password no longer authenticated). Dev-only container, but it is a state change made without asking.
