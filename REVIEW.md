@@ -833,3 +833,14 @@ LOW / non-gating
 - U4 The driver cost test asserts only `> 0`; asserting the exact `geminiTurnCostUsd({9,4,130,143})` value would also catch a pricing-table regression. Optional.
 
 Independent re-run (Fable, worktree at 2502e77): gemini.test.ts 22/22; chatRunDriver TASK-220 tests 5/5 against real Postgres; mutation `usage = response.usage` fails exactly the multi-turn summing test and nothing else; harness-factory 144/144, broker 166/166, control-api and approvals transient timeouts pass in isolation; worker: only the two tracked TASK-221 pg-boss timeouts, now reproducing in full isolation; typecheck clean; lint clean. Not merged.
+
+## TASK-220 U1 fix (4c74c09, merge) | S5/ORCH-authored, reviewed by Fable 5.1 | approved | first-pass: no (rework round 2 on the usage-capture commit)
+
+Scope: `git diff 2502e77 4c74c09` — chatRunDriver.ts (record-before-throw), chatRunDriver.test.ts (+1 exhaustion test, U2/U4 assertions), gemini.ts (U3 rename only).
+
+- U1 fixed. `recordSpend` now precedes the denied throw. The `!result.denied ||` guard is RIGHT, not a paper-over: a successful run always has real usage in production, so "always record on success" is the correct invariant (and what `geminiSpendRecorded` relies on); a denied run with zero tokens is a structural denial (no key, empty prompt) that never reached the API, and recording a zero row for it would misrepresent that. The R2 test's zero-usage success is a fixture artefact, not a real case. Independently mutation-tested: restoring throw-before-record fails exactly the exhaustion test (`expected [] to have a length of 1`).
+- Exhaustion-test realism: a real exhaustion is precisely "function call every turn, never text" — text exits the loop; the only other denied shape is a mid-loop deny, which accumulates the same way. Numbers are irrelevant to what is tested. Fine.
+- `toBeCloseTo(_, 6)` vs `numeric(14,6)`: OFF BY A TIE. `toBeCloseTo(x, 6)` requires |diff| < 5e-7 strictly; numeric rounding can differ from the true value by exactly 5e-7 on a tie. Today's rates price the fixture at 0.00050925 (diff 2.5e-7, passes), but the 2027-01-01 rate step prices it at 0.0010185, an exact tie, so the test would have gone red on that date. Fixed by ORCH on master after merge (79cebe8): inclusive half-unit tolerance. Test re-run green against real Postgres; worker tsc + eslint clean.
+- U2/U3 fixed as described.
+
+Independent re-run (Fable, worktree at 4c74c09): gemini.test.ts 22/22; TASK-220/Fable driver tests 6/6 on real Postgres; typecheck 18/18; lint clean; full suite: every parallel-load failure passed standalone except the two tracked TASK-221 pg-boss timeouts. Merged --no-ff; TASK-220 → done.
