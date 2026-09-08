@@ -811,3 +811,25 @@ Reviewer-caveat answer accepted: the dispatch wiring was authored on Sonnet 5, s
 Independent re-run (Fable, worktree at f37549e): 3/3 TASK-220 tests pass; worker 178/180 (the two tracked TASK-221 pg-boss timeouts); control-api 230/230; harness-factory/broker/db/all others green; one `evals/harness` timeout under parallel load passed in isolation; typecheck 18/18; lint clean. Merged --no-ff 2b669c1. Task stays `in_progress`: ACs 2–5 (live proof, real cost) are unmet and gate `done`.
 
 Environment note for the user: to make the DB-backed tests execute, the verification subagent reset the `oikonomos` role password inside the local `oikonomos-postgres-local` Docker container (the documented password no longer authenticated). Dev-only container, but it is a state change made without asking.
+
+## TASK-220 usage-capture (2502e77) | ORCH/S5-authored, reviewed by Fable 5.1 | rework (1 blocking, in chatRunDriver.ts — the protected gemini.ts change itself is approved) | first-pass: no
+
+Scope: `git diff 0a3568d 2502e77` — gemini.ts (+71), gemini.test.ts (+74), chatRunDriver.ts (1 line), chatRunDriver.test.ts (+1 test). Owned_Paths already widened (3a6e68b) to cover gemini.ts/.test.ts; territory legal. Also skimmed 0a3568d (thread history, non-protected): reuses TASK-193's compaction state, dedups the already-persisted current user message; no concerns.
+
+Pressure points answered:
+1. Summing is correct. `generateContent` is stateless; each round trip resends the whole `contents` array and is billed as an independent request, which is exactly why `promptTokenCount` grows per call. Summing per-call `usageMetadata` is the only model consistent with that; taking the last call would under-count every earlier call. No citation needed beyond the endpoint's statelessness. Two minor consequences, both safe or negligible: cached input (`cachedContentTokenCount`, a subset of prompt) is priced at full input rate (over-bills, safe direction); `toolUsePromptTokenCount` (Gemini 2.5+) is inside `totalTokenCount` but outside prompt/candidates/thoughts and is dropped when thoughts>0 — input-priced tokens, small, not blocking.
+2. Deny-path usage: threading real usage through a `deny` is RIGHT (a 200 with a safety-blocked candidate is billed for its prompt), and `ZERO_USAGE` for non-2xx/unparseable is right too. But see the blocking finding: the driver throws that usage away.
+3. Early returns: single `usage` local, each return path returns it once, never reset. Clean.
+4. `ZERO_USAGE` is never mutated: `addUsage`/`usageFrom` return fresh objects; the interface is readonly. `usageFrom` returning the shared reference is fine for the same reason.
+5. `nonNegativeInteger` accepts 9.5. Naming bug, not a behaviour bug — it mirrors `nonNegative` in geminiChatRun.ts. Rename to `nonNegativeCount` or enforce `Number.isInteger`; low.
+6. Arithmetic checked: 10+20=30, 5+8=13, 0+2=2, 15+30=45; fixture totals are internally consistent (15=10+5+0, 30=20+8+2, 143=9+4+130).
+
+BLOCKING
+- U1 `services/worker/src/chatRunDriver.ts` `executeGeminiChatRun`: `if (result.denied) throw` sits BEFORE `recordSpend`. A run that makes up to 11 real billed calls and then exhausts the 12-turn limit, hits a mid-loop deny, or gets a safety-blocked 200, throws with `result.usage` populated and records nothing; the outer catch calls `failTaskRun` and the success-path `noteUnrecordedSpend` is never reached either. `resolveGeminiBudget` computes the provider cap from `spend_records`, so this spend is invisible to the cap: a role whose turns keep failing late can exceed `OIK_PROVIDER_CAP_USD_GEMINI` without bound. The adapter change made this recordable; the driver must record it. Fix: compute cost and `recordSpend` whenever `result.usage.totalTokenCount > 0`, BEFORE the denied check (or in a `finally`), then throw. Add a driver test: fake fetch returns a function call with usage on every call so the loop exhausts, assert the run is `failed` AND a `spend_records` row with cost > 0 exists.
+
+LOW / non-gating
+- U2 `recordSpend(... tokens: null)` — `result.usage.totalTokenCount` is now known; persist it.
+- U3 `nonNegativeInteger` name (item 5).
+- U4 The driver cost test asserts only `> 0`; asserting the exact `geminiTurnCostUsd({9,4,130,143})` value would also catch a pricing-table regression. Optional.
+
+Independent re-run (Fable, worktree at 2502e77): gemini.test.ts 22/22; chatRunDriver TASK-220 tests 5/5 against real Postgres; mutation `usage = response.usage` fails exactly the multi-turn summing test and nothing else; harness-factory 144/144, broker 166/166, control-api and approvals transient timeouts pass in isolation; worker: only the two tracked TASK-221 pg-boss timeouts, now reproducing in full isolation; typecheck clean; lint clean. Not merged.
