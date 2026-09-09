@@ -1,8 +1,8 @@
 ---
-plan_version: 29.23
-last_updated: 2026-09-07T19:30:00Z
+plan_version: 29.24
+last_updated: 2026-09-09T17:21:00Z
 overall_status: in_progress
-orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. THREE credential-drift/exposure incidents this session, all self-caught or user-reported, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. (3) 2026-09-08 a Fable verification subagent reset the local dev Postgres `oikonomos` role's password (to make DB-backed tests connect — the documented one had stopped authenticating, cause not established) without asking, leaving the persisted User-scope `DATABASE_URL` env var stale; user flagged it, ORCH re-rotated the password directly (`ALTER ROLE`, dev container, no value ever printed), updated the persisted env var to match, and verified a genuinely fresh connection succeeds. Not a credential-exposure incident like (1)/(2) — no value was ever printed — but a real unannounced state change against a shared local resource, recorded for the same reason. All three credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\", and now also: no unannounced state changes to shared local infra) is unconditional and was still touched; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's recorded incidents prove is easy to get wrong even when actively trying to be careful; (8) 2026-09-08, refining (5): even within one genuinely fresh `powershell.exe -NoProfile` invocation, `$env:DATABASE_URL` returned a STALE value immediately after `[Environment]::SetEnvironmentVariable(..., 'User')` had just written a new one, while `[Environment]::GetEnvironmentVariable('DATABASE_URL', 'User')` in an equally fresh process correctly read the new value straight after — confirmed by a live connection test that failed against the `$env:`-sourced value and succeeded against the registry-direct one. `$env:X` reads whatever environment block the process was handed at spawn, which can apparently still be stale even for a brand-new process on this machine; `[Environment]::GetEnvironmentVariable(name, 'User')` reads the registry directly and was reliable both times it mattered. Prefer the explicit registry-read form for anything just rotated."
+orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. THREE credential-drift/exposure incidents this session, all self-caught or user-reported, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. (3) 2026-09-08 a Fable verification subagent reset the local dev Postgres `oikonomos` role's password (to make DB-backed tests connect — the documented one had stopped authenticating, cause not established) without asking, leaving the persisted User-scope `DATABASE_URL` env var stale; user flagged it, ORCH re-rotated the password directly (`ALTER ROLE`, dev container, no value ever printed), updated the persisted env var to match, and verified a genuinely fresh connection succeeds. Not a credential-exposure incident like (1)/(2) — no value was ever printed — but a real unannounced state change against a shared local resource, recorded for the same reason. All three credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\", and now also: no unannounced state changes to shared local infra) is unconditional and was still touched; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's recorded incidents prove is easy to get wrong even when actively trying to be careful; (8) 2026-09-08, refining (5): even within one genuinely fresh `powershell.exe -NoProfile` invocation, `$env:DATABASE_URL` returned a STALE value immediately after `[Environment]::SetEnvironmentVariable(..., 'User')` had just written a new one, while `[Environment]::GetEnvironmentVariable('DATABASE_URL', 'User')` in an equally fresh process correctly read the new value straight after — confirmed by a live connection test that failed against the `$env:`-sourced value and succeeded against the registry-direct one. `$env:X` reads whatever environment block the process was handed at spawn, which can apparently still be stale even for a brand-new process on this machine; `[Environment]::GetEnvironmentVariable(name, 'User')` reads the registry directly and was reliable both times it mattered. Prefer the explicit registry-read form for anything just rotated. NEW 2026-09-09T17:21Z: TASK-229/230/231/232/233/234 filed — infrastructure and mobile follow-up gaps surfaced while diagnosing a live outage (control-api stale build + worker never started; root broker fail-closed cause was this session's own uncommitted capability-registration miss, fixed same session) and while answering a direct user request for a full untracked-work inventory. TASK-229 (no process supervision) and TASK-230 (no latency monitoring) are the two most consequential — both are the kind of gap that looks fine until it silently is not."
 ---
 
 # Project Plan
@@ -6826,3 +6826,152 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-09T07:10:00Z
+
+### TASK-229
+**Title:** control-api and worker have zero process supervision — both die on machine restart/logout/crash with no auto-recovery
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** critical
+**Spec_References:** `services/worker/src/main.ts`'s own header comment ("There is, as of this file, still no container/compose entry that runs this — that is a deployment/ops concern this task deliberately leaves open"); live incident 2026-09-09 (this session): a user-reported bot ("jeff") sat unanswered because `control-api` was running a stale build and `worker` had never been started in this environment at all — confirmed directly via `tasklist`/process inspection, not inferred.
+**Owned_Paths:** infra/compose/**, docs/runbooks/service-supervision.md (new)
+**Depends_On:** —
+**Description:** Both `services/control-api` and `services/worker` currently exist only as bare foreground processes (`node dist/index.js` / `node dist/main.js`) started by hand in a terminal on a personal Windows dev workstation (Tailscale host `studyworkstation`). Neither has any supervisor: no auto-restart on crash, no start-on-boot, no health check, nothing. If the machine sleeps, restarts, the terminal closes, or nobody remembers to start them, the product is silently down until someone notices — exactly what happened this session. `worker` specifically has never had a real deployment path at all; it was built (TASK-226) with the entrypoint but nothing that keeps it running. Given the existing shared infra box (`clawsrv`, already hosting ~20 unrelated containers) and the R350/month budget ceiling, the likely right shape is real service management — either `pm2`/systemd on `clawsrv` or a docker-compose entry alongside the existing `infra/compose/office/**` pattern — rather than continuing to run production-facing processes as manually-launched terminal jobs on a personal workstation.
+**Acceptance_Criteria:**
+- [ ] Decide and record the target deployment shape (pm2 vs systemd vs docker-compose, and which host) — a real product-scope/ops decision, not purely mechanical.
+- [ ] Both `control-api` and `worker` restart automatically on crash and on host reboot, with no manual step.
+- [ ] A documented runbook (`docs/runbooks/service-supervision.md`) covering start/stop/status/logs for both services under the chosen supervisor.
+- [ ] A liveness assertion per CLAUDE.md's control-liveness rule — a check that actually fails if supervision is inert (e.g., kill the process and assert it comes back within N seconds), not just a check that config exists.
+- [ ] The existing manual runbook (`docs/runbooks/apk-telegram-delivery.md`-style docs, and the mobile handover's "must be started manually" note) updated to reflect the new reality once this lands.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed after a live incident this session: user reported a bot not replying; root cause traced to `control-api` running a stale build and `worker` never having been started in this environment at all (confirmed via direct process inspection). Both were manually rebuilt and restarted as a same-session fix, but that fix does not survive the next restart/logout — this task is the real one.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
+
+### TASK-230
+**Title:** No latency/performance monitoring exists for chat runs — user-reported slowness cannot currently be measured or diagnosed
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** `packages/db/src/runs.ts` (`runs` table already has `started_at`/`ended_at` per row — the raw data exists, nothing reads it for this purpose); user report 2026-09-09 ("when this thing eventually comes up and I ask a question, it usually takes a long time for it to come back with an answer").
+**Owned_Paths:** services/control-api/src/metrics.routes.ts (new), packages/db/src/runMetrics.ts (new), apps/dashboard/src/pages/ (metrics view, if in scope)
+**Depends_On:** —
+**Description:** There is currently no visibility into how long a real chat run takes end to end — no logging, no dashboard, no alerting. Investigated 2026-09-09 while diagnosing an unrelated outage: every `runs` row currently in the database is a sub-second test-fixture double from automated test suites, not real LLM traffic, so there is no existing data to even retroactively analyze. Candidate contributors identified by reading the code (not yet measured): the default provider lane is FreeLLMAPI (cost-driven, likely slower/rate-limited than a paid lane), `CapabilityRegistry.build()` reloads connector manifests and re-reads the capability registry from the database on every single run with no caching, and the mobile client polls for new messages rather than receiving a live token stream, which can make a genuinely fast reply feel slow. This task is to instrument first, then optimize against real numbers rather than guesses.
+**Acceptance_Criteria:**
+- [ ] Every run records enough to compute wall-clock latency broken down by phase (manifest/registry load, connector resolution, model call itself, DB writes) — not just total `started_at`→`ended_at`.
+- [ ] A queryable surface (API endpoint and/or dashboard view) showing recent run latencies, p50/p95, and by-provider breakdown.
+- [ ] At least one real measurement of a genuine end-to-end chat run's latency, broken down by phase, recorded in this task's Progress_Notes as a baseline.
+- [ ] A liveness assertion proving the instrumentation itself is live (e.g., a test that a deliberately slow phase shows up in the recorded breakdown), not just present in code.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed from a direct user report of slow responses. No real latency data exists yet to ground the report in numbers — this task's first acceptance criterion exists specifically to produce that baseline before anyone optimizes against a guess.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
+
+### TASK-231
+**Title:** Shared dev Postgres has ~6,100 accumulated test-fixture rows in open run statuses — clean up and prevent recurrence
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** live evidence 2026-09-09: `runWorker`'s boot-time `reconcileInterruptedRuns` reported "reconciled 6124 interrupted run(s) at boot" against the shared dev database on first-ever real boot in this environment; role rows with names like `task-213-1788967693512`, `task-131-workspace-mcp-receiver` confirm these are test-suite fixtures (created by `pnpm -r test` runs against a live, non-isolated dev Postgres), not real product usage. Related to TASK-162 (flaky/order-dependent real-Postgres tests), same root cause of a shared, never-cleaned dev database.
+**Owned_Paths:** infra/postgres/**, scripts/db-cleanup.* (new)
+**Depends_On:** —
+**Description:** This session's own `pnpm -r test` run, like apparently many before it, created real rows (roles, threads, tasks, runs) in the shared dev Postgres instance rather than an isolated/transactional test database, and nothing ever cleans them up. Confirmed harmless today — nothing currently consumes runs sitting in `resumed` status automatically — but it pollutes query results (as seen investigating TASK-229/this session), makes manual DB inspection harder, and is the same underlying condition implicated in TASK-162's flaky-test investigation. Two halves: (1) a one-time cleanup of the current backlog, (2) a structural fix so test runs stop writing permanent rows into a database anyone can query — either a dedicated test-tenant convention with a scheduled purge, or moving DB-backed tests to a genuinely ephemeral database per run.
+**Acceptance_Criteria:**
+- [ ] Confirm no cleanup touches genuinely real (non-test-fixture) rows — a clear, defensible rule for identifying test fixtures (e.g., tenant_id, naming convention, or a dedicated test schema) before deleting anything.
+- [ ] One-time cleanup of the current backlog, with a before/after row count recorded in Progress_Notes.
+- [ ] A structural fix so `pnpm -r test` stops accumulating permanent rows in the shared dev database going forward.
+- [ ] Cross-reference with TASK-162 — if this fix resolves or changes that task's flakiness, update TASK-162's own record rather than leaving two tasks with stale, possibly-contradictory notes.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed after discovering the 6,124-row backlog while diagnosing TASK-229's outage. Deliberately not attempted as a quick fix in that session — deleting rows from a shared database without a verified selection rule is exactly the kind of state change CLAUDE.md's incident-disclosure history in this file's own orchestrator_notes warns against doing unannounced.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
+
+### TASK-232
+**Title:** Mobile system settings — Notifications toggle is local-only, not persisted, and not wired to the push registrar
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** `apps/mobile/lib/screens/settings_screen.dart`'s own doc comment ("Notifications is a local preference only for now — nothing persists it across launches and the push registrar does not yet consult it."); `apps/mobile/lib/push/push_registrar.dart` (the real registration path this should gate).
+**Owned_Paths:** apps/mobile/lib/screens/settings_screen.dart, apps/mobile/lib/push/**, apps/mobile/test/screens/settings_screen_test.dart, apps/mobile/test/push/**
+**Depends_On:** —
+**Description:** TASK-B (system settings screen, this session) shipped the toggle's UI deliberately scoped to local state only, flagged honestly in-code as a known gap rather than silently pretending it works. It resets on every app restart and has no effect on whether push notifications actually arrive. Needs: real persistence (SharedPreferences or equivalent), and the push registrar consulting that preference before registering/keeping a device token active.
+**Acceptance_Criteria:**
+- [ ] Toggle state persists across app restarts.
+- [ ] Turning it off actually stops push notifications from being registered/delivered; turning it on re-enables them.
+- [ ] A widget test proving persistence (toggle, restart the widget tree, assert state survives).
+- [ ] `flutter analyze` and `flutter test` clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed from a gap self-flagged in TASK-B's own code comment this session — tracking it as real work rather than leaving it as an undiscoverable inline note.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
+
+### TASK-233
+**Title:** Mobile app version is hardcoded (`kAppVersion`) instead of read from the real build via package_info_plus
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** `apps/mobile/lib/screens/settings_screen.dart`'s own doc comment on `kAppVersion` ("`package_info_plus` would read it at runtime but adds a platform channel the widget tests can't reach; revisit when a release pipeline starts stamping builds.").
+**Owned_Paths:** apps/mobile/lib/screens/settings_screen.dart, apps/mobile/pubspec.yaml, apps/mobile/test/screens/settings_screen_test.dart
+**Depends_On:** TASK-232
+**Description:** The version shown on the system settings screen is a manually-maintained constant, not the real build version — it will silently drift from `pubspec.yaml`/the actual APK the first time someone forgets to update it by hand. Low severity today (no release pipeline exists yet to make this matter in practice), but cheap to fix correctly once addressed, and was deliberately deferred rather than done properly in TASK-B given the added platform-channel complexity for widget tests.
+**Acceptance_Criteria:**
+- [ ] `package_info_plus` (or equivalent) wired in, reading the real build's version/build number at runtime.
+- [ ] A test double/fake for the platform channel so widget tests stay hermetic (no real platform channel touched in `flutter test`).
+- [ ] `flutter analyze` and `flutter test` clean.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed from a gap self-flagged in TASK-B's own code comment this session. Deliberately low priority — no release pipeline exists yet to make the drift risk concrete.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
+
+### TASK-234
+**Title:** Android build warns that plugins applying Kotlin Gradle Plugin (KGP) will break future Flutter builds — migrate before it becomes a hard failure
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** live `flutter build apk --release` output, 2026-09-09: "Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): file_picker, firebase_auth, firebase_core. Future versions of Flutter will fail to build if your app uses plugins that apply KGP." with a link to Flutter's own migration guide (`https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers`).
+**Owned_Paths:** apps/mobile/android/**, apps/mobile/pubspec.yaml
+**Depends_On:** TASK-233
+**Description:** Not breaking the build today, but Flutter's own release notes say a future version will refuse to build at all while `file_picker`, `firebase_auth`, or `firebase_core` keep applying their own Kotlin Gradle Plugin. Needs tracking against each plugin's own changelog for a version that supports Flutter's Built-in Kotlin, and an upgrade before a routine `flutter upgrade` silently turns this into a release-blocking failure.
+**Acceptance_Criteria:**
+- [ ] Confirmed current pinned versions of `file_picker`, `firebase_auth`, `firebase_core` against their changelogs for Built-in-Kotlin support; upgraded where available.
+- [ ] `flutter build apk --release` produces no KGP warning.
+- [ ] If no compatible version exists yet for one or more plugins, documented here with the specific tracking issue/changelog entry to watch, not left silently unresolved.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-09T17:21:00Z] [ORCH] Filed from a build warning observed while producing a test APK this session. Low priority — not yet build-breaking — but cheap to lose track of until it suddenly is.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-09T17:21:00Z
