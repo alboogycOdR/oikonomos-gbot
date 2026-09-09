@@ -39,11 +39,11 @@ import { mintBrokerToken, resolveBudgetGate } from "@oikonomos/broker";
 import { resolveEgressPolicy } from "@oikonomos/policy";
 import { createSandboxClient, toOpenSandboxNetworkPolicy, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
-import { executeTaskRun } from "./executeRun.js";
+import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
 import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
-import { createSandboxGeminiTools } from "./geminiToolExecutors.js";
+import { createSandboxGeminiTools, createSteelGeminiTools } from "./geminiToolExecutors.js";
 import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
   BUDGET_READ_TIMEOUT_MS,
@@ -256,6 +256,11 @@ async function runChatTask(
   assertRequest(request);
   const database = new Database(options);
   let runId: string | undefined;
+  // TASK-225: hoisted above the try so the catch block below (a separate
+  // lexical scope from a `const` declared inside try {}) can read whichever
+  // provider actually ran, for the human-takeover audit event's `actor`.
+  // Stays "claude" if the run never gets far enough to resolve a role.
+  let effectiveProvider: string = "claude";
   try {
     const manifests = options.manifests ?? await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
@@ -319,7 +324,7 @@ async function runChatTask(
     // turns, and a mid-conversation switch would silently hand a resumed
     // Claude session to Gemini (or vice versa), which has no session to
     // resume there at all.
-    const effectiveProvider = request.resume === undefined ? runtime.provider : run.provider;
+    effectiveProvider = request.resume === undefined ? runtime.provider : run.provider;
     // Fail closed on an unrecognized provider (Fable review R3):
     // `resolveRoleRuntime` returns whatever string a role/env var holds, no
     // validation — a typo, an unimplemented provider name, or a misconfigured
@@ -357,7 +362,7 @@ async function runChatTask(
     try {
       const systemPrompt = buildRoleSystemPrompt(role, request.task.roleId);
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
-        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy);
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector);
         botText = geminiResult.text;
         geminiSpendRecorded = true;
       } else if (!shouldUseSandbox(options)) {
@@ -417,10 +422,19 @@ async function runChatTask(
         // deliberately NOT `completeTaskRun`/`failTaskRun`, so the run stays
         // parked (zero further browser actions) rather than being reported
         // complete or failed.
+        //
+        // TASK-225: this catch is now reachable from BOTH lanes — a real
+        // `HumanTakeoverRequiredError` from the Claude/MCP path, or a
+        // `GeminiHumanTakeoverSignal` this driver throws itself once a Steel
+        // Gemini tool's `onHumanTakeover` has fired. `actor` is therefore the
+        // ACTUAL effective provider, not a Claude-only literal — mislabelling
+        // a Gemini-triggered takeover as `agent:claude` would misattribute a
+        // real audit record precisely where TASK-188's mobile client and any
+        // future review of this event would trust it least.
         await recordAuditEvent(options, {
           tenantId: request.task.tenantId,
           runId,
-          actor: "agent:claude",
+          actor: `agent:${effectiveProvider}`,
           eventType: HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
           payload: { kind: error.kind, detail: error.detail },
         });
@@ -457,6 +471,26 @@ function isHumanTakeoverSignal(error: unknown): error is HumanTakeoverSignal {
   return candidate.code === HUMAN_TAKEOVER_ERROR_CODE
     && typeof candidate.kind === "string" && candidate.kind.length > 0
     && typeof candidate.detail === "string";
+}
+
+/**
+ * TASK-225's own equivalent of `HumanTakeoverRequiredError` — duck-typed to
+ * `HumanTakeoverSignal` for the exact same reason `isHumanTakeoverSignal`'s
+ * own comment gives (the real class isn't re-exported from
+ * `@oikonomos/connectors`'s public surface): thrown from
+ * `executeGeminiChatRun` once `createSteelGeminiTools`'s `onHumanTakeover`
+ * has fired, so it reaches this SAME outer catch and gets the identical
+ * park/audit-event treatment the Claude lane already has.
+ */
+class GeminiHumanTakeoverSignal extends Error implements HumanTakeoverSignal {
+  readonly code = HUMAN_TAKEOVER_ERROR_CODE;
+  constructor(
+    readonly kind: string,
+    readonly detail: string,
+  ) {
+    super(`human takeover required: ${kind}`);
+    this.name = "GeminiHumanTakeoverSignal";
+  }
 }
 
 function shouldUseSandbox(options: CreateChatRunDriverOptions): boolean {
@@ -542,6 +576,7 @@ export async function executeGeminiChatRun(
   systemPrompt: string,
   registry: CapabilityRegistry,
   policy: PolicyRegistry,
+  browserConnector?: ConnectorContext,
 ): Promise<{ readonly text: string; readonly costUsd: number }> {
   // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
   // tool-executing Gemini run, and a denial must cost no tokens.
@@ -560,6 +595,29 @@ export async function executeGeminiChatRun(
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
 
+  // TASK-225: set synchronously by a Steel tool's own onHumanTakeover, the
+  // instant it detects a challenge page — checked the moment adapter.run()
+  // returns below (see this variable's read site for the honest gap that
+  // remains between detection and the model's next turn). The actual audit
+  // event is recorded once, by runChatTask's own outer catch, once this
+  // signal has propagated there via GeminiHumanTakeoverSignal below — not
+  // here, to avoid a second, differently-labelled event for the same
+  // detection (see that catch's own comment).
+  let takeoverSignal: { readonly kind: string; readonly detail: string } | undefined;
+  const steelTools = browserConnector === undefined
+    ? []
+    : createSteelGeminiTools(
+        {
+          client,
+          endpoint: resolvedSandbox.endpoint,
+          workspace,
+          onHumanTakeover: (kind, detail) => {
+            takeoverSignal = { kind, detail };
+          },
+        },
+        browserConnector.allowedTools,
+      );
+
   const composed = composeHarness<BrokerDependencies>({
     run: {
       runId: run.runId,
@@ -570,7 +628,7 @@ export async function executeGeminiChatRun(
     provider: "gemini",
     gemini: {
       // Tools execute inside the role's sandbox, never in this process.
-      tools: createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }),
+      tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools],
       maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
       ...(options.geminiFetch === undefined ? {} : { fetch: options.geminiFetch }),
     },
@@ -623,6 +681,12 @@ export async function executeGeminiChatRun(
       tokens: result.usage.totalTokenCount,
     });
   }
+  // TASK-225: checked AFTER spend is recorded above (same reasoning as the
+  // denied-check below it replaces in priority — real tokens were spent
+  // either way) but BEFORE returning success, so a takeover mid-run reaches
+  // the outer catch's park/audit-event path rather than being reported as
+  // an ordinary completed turn.
+  if (takeoverSignal !== undefined) throw new GeminiHumanTakeoverSignal(takeoverSignal.kind, takeoverSignal.detail);
   if (result.denied) throw new Error("Gemini run was denied before it could answer.");
   return { text: result.text, costUsd };
 }
