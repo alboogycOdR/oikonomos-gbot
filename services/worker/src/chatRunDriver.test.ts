@@ -29,6 +29,7 @@ import {
   claudePrintCommand,
   destinationFor,
   finalText,
+  HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
   LOCAL_LANE_MODEL,
   resolveChatRunExecution,
   SANDBOX_MANAGED_SETTINGS_SHA256,
@@ -875,6 +876,225 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiRoleId]);
+    }
+  });
+
+  // TASK-225 — before this, executeGeminiChatRun never received browserConnector
+  // at all, so a role granted every browser.* capability still had zero Steel
+  // tools on the Gemini lane. These exercise the real driver.run() call site,
+  // same fake-transport pattern TASK-220's own tests use above.
+  it("mounts and executes Steel Browser tools for a role granted browser.* capabilities, governed by the real broker (TASK-225)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const browserRoleId = "task-225-gemini-browser";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [browserRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [browserRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [browserRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [browserRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [browserRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [browserRoleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [browserRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [browserRoleId]);
+    await createRole(options, { roleId: browserRoleId, name: browserRoleId, title: "TASK-225 browser fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [browserRoleId]);
+    const database = new Database(options);
+    try {
+      await database.upsertRoleGrant({ roleId: browserRoleId, capabilityId: "browser.session", maxTier: "T1_draft", constraints: {} });
+      await database.upsertRoleGrant({ roleId: browserRoleId, capabilityId: "browser.navigate", maxTier: "T1_draft", constraints: {} });
+    } finally {
+      await database.close();
+    }
+    const browserTask = await createTask(options, { roleId: browserRoleId, title: "TASK-225 browse", goal: "Check the site's status.", requestedBy: "task-225-suite" });
+    const browserThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [browserRoleId])).rows[0]!.id;
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-225-office", createdAt: "2026-09-09T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-225-office", createdAt: "2026-09-09T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-225" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        const cmd = command.command;
+        if (cmd === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (cmd === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (cmd === `mkdir -p -- '/workspace/${browserRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        // steel_session_create: POST /v1/sessions (no id suffix).
+        if (cmd.includes("-X POST") && cmd.includes("http://127.0.0.1:3000/v1/sessions") && !cmd.includes("/v1/sessions/")) {
+          return { stdout: `${JSON.stringify({ id: "sess-225", status: "live" })}\n200`, stderr: "", exitCode: 0 };
+        }
+        // steel_navigate's fetchFreshWebsocketUrl: GET /v1/sessions/sess-225.
+        if (cmd.includes("-X GET") && cmd.includes("http://127.0.0.1:3000/v1/sessions/sess-225")) {
+          return { stdout: `${JSON.stringify({ id: "sess-225", websocketUrl: "ws://127.0.0.1:3000/devtools/1" })}\n200`, stderr: "", exitCode: 0 };
+        }
+        // The CDP runner script.
+        if (cmd.startsWith("node -e")) {
+          return {
+            stdout: JSON.stringify({
+              results: [
+                { method: "Page.enable", result: {} },
+                { method: "Page.navigate", result: {} },
+                { event: "Page.loadEventFired", params: {} },
+                { method: "Runtime.evaluate", result: { result: { value: { title: "Example Status", text: "All systems operational." } } } },
+              ],
+            }),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: `unexpected command in TASK-225 test: ${cmd}`, exitCode: 1 };
+      },
+    };
+
+    let requests = 0;
+    const fakeGeminiFetch: typeof globalThis.fetch = (async () => {
+      requests += 1;
+      if (requests === 1) return geminiFunctionCallResponse("mcp__steel__steel_session_create", {});
+      if (requests === 2) return geminiFunctionCallResponse("mcp__steel__steel_navigate", { session_id: "sess-225", url: "https://example.com/status" });
+      return geminiTextResponse("The status page says all systems are operational.");
+    }) as typeof globalThis.fetch;
+
+    try {
+      await createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: browserTask, threadId: browserThreadId });
+
+      const runsPage = await listRuns(options, { taskId: browserTask.taskId });
+      const run = runsPage.runs[0]!;
+      expect(run.status).toBe("completed");
+
+      const events = await getAuditEventsForRun(options, run.runId);
+      // Both granted Steel tools reached the real broker and were allowed —
+      // proving this is real enforcement, not the tools running unchecked.
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "browser.session"))
+        .toMatchObject({ tier: "T1_draft", payload: { toolName: "mcp__steel__steel_session_create", verdict: "allow" } });
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "browser.navigate"))
+        .toMatchObject({ tier: "T1_draft", payload: { toolName: "mcp__steel__steel_navigate", verdict: "allow" } });
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [browserRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [browserRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [browserRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [browserRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [browserRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [browserRoleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [browserRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [browserRoleId]);
+    }
+  });
+
+  it("parks (not fails or completes) the run when Steel detects a human-takeover page, with the correct agent:gemini actor (TASK-225)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const takeoverRoleId = "task-225-gemini-takeover";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [takeoverRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [takeoverRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [takeoverRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [takeoverRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [takeoverRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [takeoverRoleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [takeoverRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [takeoverRoleId]);
+    await createRole(options, { roleId: takeoverRoleId, name: takeoverRoleId, title: "TASK-225 takeover fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [takeoverRoleId]);
+    const database = new Database(options);
+    try {
+      await database.upsertRoleGrant({ roleId: takeoverRoleId, capabilityId: "browser.session", maxTier: "T1_draft", constraints: {} });
+      await database.upsertRoleGrant({ roleId: takeoverRoleId, capabilityId: "browser.navigate", maxTier: "T1_draft", constraints: {} });
+    } finally {
+      await database.close();
+    }
+    const takeoverTask = await createTask(options, { roleId: takeoverRoleId, title: "TASK-225 takeover", goal: "Log in and check the account.", requestedBy: "task-225-suite" });
+    const takeoverThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [takeoverRoleId])).rows[0]!.id;
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-225-takeover-office", createdAt: "2026-09-09T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-225-takeover-office", createdAt: "2026-09-09T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-225-takeover" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        const cmd = command.command;
+        if (cmd === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (cmd === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (cmd === `mkdir -p -- '/workspace/${takeoverRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        if (cmd.includes("-X POST") && cmd.includes("http://127.0.0.1:3000/v1/sessions") && !cmd.includes("/v1/sessions/")) {
+          return { stdout: `${JSON.stringify({ id: "sess-225t", status: "live" })}\n200`, stderr: "", exitCode: 0 };
+        }
+        if (cmd.includes("-X GET") && cmd.includes("http://127.0.0.1:3000/v1/sessions/sess-225t")) {
+          return { stdout: `${JSON.stringify({ id: "sess-225t", websocketUrl: "ws://127.0.0.1:3000/devtools/2" })}\n200`, stderr: "", exitCode: 0 };
+        }
+        if (cmd.startsWith("node -e")) {
+          // The page navigate lands on requires a CAPTCHA — the exact signal
+          // detectTakeover exists to catch.
+          return {
+            stdout: JSON.stringify({
+              results: [
+                { method: "Page.enable", result: {} },
+                { method: "Page.navigate", result: {} },
+                { event: "Page.loadEventFired", params: {} },
+                { method: "Runtime.evaluate", result: { result: { value: { title: "Verify you are human", text: "Please complete the CAPTCHA to continue." } } } },
+              ],
+            }),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: `unexpected command in TASK-225 takeover test: ${cmd}`, exitCode: 1 };
+      },
+    };
+
+    let requests = 0;
+    const fakeGeminiFetch: typeof globalThis.fetch = (async () => {
+      requests += 1;
+      if (requests === 1) return geminiFunctionCallResponse("mcp__steel__steel_session_create", {});
+      return geminiFunctionCallResponse("mcp__steel__steel_navigate", { session_id: "sess-225t", url: "https://example.com/login" });
+    }) as typeof globalThis.fetch;
+
+    try {
+      await createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: takeoverTask, threadId: takeoverThreadId });
+
+      const runsPage = await listRuns(options, { taskId: takeoverTask.taskId });
+      const run = runsPage.runs[0]!;
+      // NOT completed, NOT failed — parked, the same contract TASK-204 built
+      // for the Claude lane (waiting_approval is parkTaskRun's real status).
+      expect(run.status).toBe("waiting_approval");
+
+      const events = await getAuditEventsForRun(options, run.runId);
+      const takeoverEvent = events.find((event) => event.eventType === HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE);
+      expect(takeoverEvent).toMatchObject({ actor: "agent:gemini", payload: { kind: "captcha" } });
+      // Exactly one — proving the fix that moved recording into the shared
+      // outer catch didn't leave a second, differently-labelled event behind.
+      expect(events.filter((event) => event.eventType === HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE)).toHaveLength(1);
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [takeoverRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [takeoverRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [takeoverRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [takeoverRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [takeoverRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [takeoverRoleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [takeoverRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [takeoverRoleId]);
     }
   });
 
