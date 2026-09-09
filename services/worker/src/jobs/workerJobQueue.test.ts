@@ -11,7 +11,8 @@ import {
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { createWorkerJobQueue, WORKER_ROUTINE_POLL_JOB, type WorkerJobQueue } from "./workerJobQueue.js";
+import { purgePgBossQueue, withPgBossQueueLock } from "./pgBossTestCleanup.js";
+import { createWorkerJobQueue, WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, type WorkerJobQueue } from "./workerJobQueue.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -21,37 +22,15 @@ const integration = connectionString === undefined ? describe.skip : describe;
  * per-test identifiers (tenantId/roleId/applicationName, all randomized). This is
  * what actually produced the "flaky" timeouts this task was filed to investigate —
  * NOT a defect in the poll path itself (proven live: a real pg-boss instance left
- * running self-heals and drains normally with zero code changes). Two DISTINCT,
- * confirmed layers of cross-run contamination on this one shared queue name:
- *
- * 1. `pgboss.job` rows. Under `singleton` policy the queue name is the dedup key,
- *    so a single leftover `active` row from any prior ungracefully-killed process
- *    (a crash, a `Ctrl+C`, a power loss — anything that skips `queue.stop()`)
- *    occupies the singleton slot for every future run, until pg-boss's own
- *    supervise/monitor cycle (60s default) expires it.
- * 2. `pgboss.queue.singletons_active` — a SEPARATE, queue-level cache of which
- *    singleton keys were active as of the last monitor pass, refreshed on the same
- *    60s-gated cycle. Confirmed by direct experiment: even after (1) is purged and
- *    even after manually forcing `boss.supervise()`, a job can still go unfetched
- *    in that same process, because `getQueueCache()` reads this cached queue row
- *    once per process and does not re-read after a same-process supervise() call.
- *    A genuinely fresh process reads it cleanly the instant the DB-side row itself
- *    is clean — proven by direct fetch() experiment. Deleting the queue row (not
- *    just its jobs) forces `createQueue()` to reinsert clean defaults, which is the
- *    only reset that is reliable from inside a single short-lived test process.
- *
- * Purge both before every test that touches this queue so neither layer of state
- * from any external process — this suite's own prior runs included — can leak in.
+ * running self-heals and drains normally with zero code changes). See
+ * `pgBossTestCleanup.ts` for the two confirmed, distinct layers of cross-run
+ * contamination this purges. TASK-226 confirmed a THIRD source now exists too:
+ * `main.test.ts` starts a real `WorkerJobQueue` (via `runWorker`) using the same
+ * shared literal queue names, so this is no longer only about this file's own
+ * prior runs — purge before every test that touches either queue, full stop.
  */
 async function purgeRoutinePollJobs(pool: Pool): Promise<void> {
-  try {
-    await pool.query("DELETE FROM pgboss.job WHERE name = $1", [WORKER_ROUTINE_POLL_JOB]);
-    await pool.query("DELETE FROM pgboss.queue WHERE name = $1", [WORKER_ROUTINE_POLL_JOB]);
-  } catch (error) {
-    // pgboss.job/.queue do not exist yet on a genuinely fresh database — pg-boss
-    // creates its schema on first boss.start(), which has not necessarily run yet.
-    if ((error as { code?: string }).code !== "42P01") throw error;
-  }
+  await purgePgBossQueue(pool, WORKER_ROUTINE_POLL_JOB);
 }
 
 async function waitForNoConnections(pool: Pool, applicationName: string): Promise<void> {
@@ -113,132 +92,147 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
   });
 
   it("runs a scheduled heartbeat job through real pg-boss", async () => {
-    let resolveObserved: (requestedAt: string) => void;
-    const observed = new Promise<string>((resolve) => {
-      resolveObserved = resolve;
-    });
-    applicationName = `oikonomos-worker-jobs-${crypto.randomUUID()}`;
-    queue = createWorkerJobQueue({
-      connectionString: connectionString!,
-      applicationName,
-      onHeartbeat: (job) => resolveObserved(job.data.requestedAt),
-    });
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
+      let resolveObserved: (requestedAt: string) => void;
+      const observed = new Promise<string>((resolve) => {
+        resolveObserved = resolve;
+      });
+      applicationName = `oikonomos-worker-jobs-${crypto.randomUUID()}`;
+      queue = createWorkerJobQueue({
+        connectionString: connectionString!,
+        applicationName,
+        onHeartbeat: (job) => resolveObserved(job.data.requestedAt),
+      });
 
-    await queue.start();
-    const requestedAt = new Date().toISOString();
-    await expect(queue.enqueueHeartbeat(requestedAt)).resolves.toMatch(/^[0-9a-f-]{36}$/i);
-    await expect(observed).resolves.toBe(requestedAt);
+      await queue.start();
+      const requestedAt = new Date().toISOString();
+      await expect(queue.enqueueHeartbeat(requestedAt)).resolves.toMatch(/^[0-9a-f-]{36}$/i);
+      await expect(observed).resolves.toBe(requestedAt);
+      await queue.stop();
+      queue = undefined;
+    });
   });
 
   it("closes every pg-boss connection on shutdown", async () => {
-    applicationName = `oikonomos-worker-jobs-${crypto.randomUUID()}`;
-    queue = createWorkerJobQueue({ connectionString: connectionString!, applicationName });
+    await withPgBossQueueLock(pool, async () => {
+      applicationName = `oikonomos-worker-jobs-${crypto.randomUUID()}`;
+      queue = createWorkerJobQueue({ connectionString: connectionString!, applicationName });
 
-    await queue.start();
-    await queue.stop();
-    queue = undefined;
-    await waitForNoConnections(pool, applicationName);
+      await queue.start();
+      await queue.stop();
+      queue = undefined;
+      await waitForNoConnections(pool, applicationName);
+    });
   });
 
   // Explicit timeout: must comfortably clear waitFor's own budget (see its comment) —
   // Vitest's 5000ms default would otherwise kill the test before waitFor gets to try.
   it("uses a real pg-boss poll job to queue each due routine and persist its fire outcome", async () => {
-    await purgeRoutinePollJobs(pool);
-    const tenantId = `task-132-queued-${crypto.randomUUID()}`;
-    const roleId = `task-132-queued-role-${crypto.randomUUID()}`;
-    await createRole(
-      { connectionString: connectionString! },
-      { roleId, tenantId, name: "Routine queue role", title: "Routine queue role" },
-    );
-    const routine = await createRoutine(
-      { connectionString: connectionString! },
-      {
+    await withPgBossQueueLock(pool, async () => {
+      await purgeRoutinePollJobs(pool);
+      const tenantId = `task-132-queued-${crypto.randomUUID()}`;
+      const roleId = `task-132-queued-role-${crypto.randomUUID()}`;
+      await createRole(
+        { connectionString: connectionString! },
+        { roleId, tenantId, name: "Routine queue role", title: "Routine queue role" },
+      );
+      const routine = await createRoutine(
+        { connectionString: connectionString! },
+        {
+          roleId,
+          tenantId,
+          name: "Prepare daily digest",
+          definition: { goal: "Compile the daily digest" },
+        },
+      );
+      const dueAt = new Date(Date.now() - 1_000);
+      await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "missed", dueAt);
+
+      // TASK-221: captures anything WorkerJobQueue's onError reports, so a poll job
+      // that throws (e.g. a transient DB error under parallel-suite load) shows up
+      // here with a real stack instead of surfacing only as "the status didn't
+      // change" with no explanation.
+      const pollErrors: unknown[] = [];
+      applicationName = `oikonomos-worker-routines-${crypto.randomUUID()}`;
+      queue = createWorkerJobQueue({
+        connectionString: connectionString!,
+        applicationName,
+        routinePolling: { connectionString: connectionString!, tenantId },
+        onError: (error) => { pollErrors.push(error); },
+      });
+      await queue.start();
+      await expect(queue.enqueueRoutinePoll()).resolves.toMatch(/^[0-9a-f-]{36}$/i);
+
+      const task = await waitFor(async () => {
+        if (pollErrors.length > 0) throw new Error(`routine poll errored: ${String(pollErrors[0])}`);
+        const page = await listTasks({ connectionString: connectionString! }, { tenantId });
+        return page.tasks.find((candidate) => candidate.routineId === routine.routineId);
+      });
+      expect(task).toMatchObject({
         roleId,
-        tenantId,
-        name: "Prepare daily digest",
-        definition: { goal: "Compile the daily digest" },
-      },
-    );
-    const dueAt = new Date(Date.now() - 1_000);
-    await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "missed", dueAt);
-
-    // TASK-221: captures anything WorkerJobQueue's onError reports, so a poll job
-    // that throws (e.g. a transient DB error under parallel-suite load) shows up
-    // here with a real stack instead of surfacing only as "the status didn't
-    // change" with no explanation.
-    const pollErrors: unknown[] = [];
-    applicationName = `oikonomos-worker-routines-${crypto.randomUUID()}`;
-    queue = createWorkerJobQueue({
-      connectionString: connectionString!,
-      applicationName,
-      routinePolling: { connectionString: connectionString!, tenantId },
-      onError: (error) => { pollErrors.push(error); },
+        title: "Prepare daily digest",
+        goal: "Compile the daily digest",
+        requestedBy: `routine:${routine.routineId}`,
+      });
+      const persisted = await getRoutine({ connectionString: connectionString! }, routine.routineId);
+      expect(persisted).toMatchObject({
+        lastFireStatus: "queued",
+        nextFireAt: dueAt,
+      });
+      expect(persisted?.lastFireAt).not.toBeNull();
+      await queue.stop();
+      queue = undefined;
     });
-    await queue.start();
-    await expect(queue.enqueueRoutinePoll()).resolves.toMatch(/^[0-9a-f-]{36}$/i);
-
-    const task = await waitFor(async () => {
-      if (pollErrors.length > 0) throw new Error(`routine poll errored: ${String(pollErrors[0])}`);
-      const page = await listTasks({ connectionString: connectionString! }, { tenantId });
-      return page.tasks.find((candidate) => candidate.routineId === routine.routineId);
-    });
-    expect(task).toMatchObject({
-      roleId,
-      title: "Prepare daily digest",
-      goal: "Compile the daily digest",
-      requestedBy: `routine:${routine.routineId}`,
-    });
-    const persisted = await getRoutine({ connectionString: connectionString! }, routine.routineId);
-    expect(persisted).toMatchObject({
-      lastFireStatus: "queued",
-      nextFireAt: dueAt,
-    });
-    expect(persisted?.lastFireAt).not.toBeNull();
-  }, 15_000);
+  }, 20_000);
 
   it("records a due routine as missed without queueing work when its role is not active", async () => {
-    await purgeRoutinePollJobs(pool);
-    const tenantId = `task-132-missed-${crypto.randomUUID()}`;
-    const roleId = `task-132-missed-role-${crypto.randomUUID()}`;
-    await createRole(
-      { connectionString: connectionString! },
-      { roleId, tenantId, name: "Hidden routine role", title: "Hidden routine role", status: "hidden" },
-    );
-    const routine = await createRoutine(
-      { connectionString: connectionString! },
-      { roleId, tenantId, name: "Do not run", definition: {} },
-    );
-    const dueAt = new Date(Date.now() - 1_000);
-    const beforePoll = await recordRoutineFire(
-      { connectionString: connectionString! },
-      routine.routineId,
-      "queued",
-      dueAt,
-    );
-    expect(beforePoll.lastFireStatus).toBe("queued");
+    await withPgBossQueueLock(pool, async () => {
+      await purgeRoutinePollJobs(pool);
+      const tenantId = `task-132-missed-${crypto.randomUUID()}`;
+      const roleId = `task-132-missed-role-${crypto.randomUUID()}`;
+      await createRole(
+        { connectionString: connectionString! },
+        { roleId, tenantId, name: "Hidden routine role", title: "Hidden routine role", status: "hidden" },
+      );
+      const routine = await createRoutine(
+        { connectionString: connectionString! },
+        { roleId, tenantId, name: "Do not run", definition: {} },
+      );
+      const dueAt = new Date(Date.now() - 1_000);
+      const beforePoll = await recordRoutineFire(
+        { connectionString: connectionString! },
+        routine.routineId,
+        "queued",
+        dueAt,
+      );
+      expect(beforePoll.lastFireStatus).toBe("queued");
 
-    const pollErrors: unknown[] = [];
-    applicationName = `oikonomos-worker-routines-${crypto.randomUUID()}`;
-    queue = createWorkerJobQueue({
-      connectionString: connectionString!,
-      applicationName,
-      routinePolling: { connectionString: connectionString!, tenantId },
-      onError: (error) => { pollErrors.push(error); },
-    });
-    await queue.start();
-    await queue.enqueueRoutinePoll();
+      const pollErrors: unknown[] = [];
+      applicationName = `oikonomos-worker-routines-${crypto.randomUUID()}`;
+      queue = createWorkerJobQueue({
+        connectionString: connectionString!,
+        applicationName,
+        routinePolling: { connectionString: connectionString!, tenantId },
+        onError: (error) => { pollErrors.push(error); },
+      });
+      await queue.start();
+      await queue.enqueueRoutinePoll();
 
-    const persisted = await waitFor(async () => {
-      if (pollErrors.length > 0) throw new Error(`routine poll errored: ${String(pollErrors[0])}`);
-      const candidate = await getRoutine({ connectionString: connectionString! }, routine.routineId);
-      return candidate?.lastFireStatus === "missed" ? candidate : undefined;
+      const persisted = await waitFor(async () => {
+        if (pollErrors.length > 0) throw new Error(`routine poll errored: ${String(pollErrors[0])}`);
+        const candidate = await getRoutine({ connectionString: connectionString! }, routine.routineId);
+        return candidate?.lastFireStatus === "missed" ? candidate : undefined;
+      });
+      expect(persisted).toMatchObject({
+        lastFireStatus: "missed",
+        nextFireAt: dueAt,
+      });
+      expect(persisted.lastFireAt).toEqual(beforePoll.lastFireAt);
+      const tasks = await listTasks({ connectionString: connectionString! }, { tenantId });
+      expect(tasks.tasks).toHaveLength(0);
+      await queue.stop();
+      queue = undefined;
     });
-    expect(persisted).toMatchObject({
-      lastFireStatus: "missed",
-      nextFireAt: dueAt,
-    });
-    expect(persisted.lastFireAt).toEqual(beforePoll.lastFireAt);
-    const tasks = await listTasks({ connectionString: connectionString! }, { tenantId });
-    expect(tasks.tasks).toHaveLength(0);
-  }, 15_000);
+  }, 20_000);
 });

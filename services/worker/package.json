@@ -33,7 +33,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "vitest run --config ../../packages/shared/vitest.config.ts --root .",
-    "register-capabilities": "node dist/registerCapabilities.js"
+    "register-capabilities": "node dist/registerCapabilities.js",
+    "start": "node dist/main.js"
   },
   "devDependencies": {
     "@types/node": "^22.17.0",

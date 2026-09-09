@@ -9,8 +9,10 @@ export {
   completeTaskRun,
   failTaskRun,
   parkTaskRun,
+  reconcileInterruptedRuns,
   resumeInterruptedRun,
   startTaskRun,
+  type ReconcileOutcome,
 } from "./runLifecycle.js";
 
 export {
