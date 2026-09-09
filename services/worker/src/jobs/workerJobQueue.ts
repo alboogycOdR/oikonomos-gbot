@@ -17,6 +17,16 @@ export interface CreateWorkerJobQueueOptions {
   onHeartbeat?(job: Job<WorkerHeartbeatJob>): Promise<void> | void;
   /** Enables the durable routine poller when its tenant configuration is supplied. */
   routinePolling?: RoutinePollingOptions;
+  /**
+   * TASK-221: pg-boss's own 'error' event, and any error thrown inside a
+   * `work()` handler, is otherwise completely silent — a job just fails (or
+   * retries) with nothing logged anywhere. That turned a transient failure
+   * (e.g. connection-pool pressure during `runDueRoutinePoll`) into an
+   * unexplained "the routine's fire outcome just didn't update" symptom
+   * with no diagnostic trail. Defaults to `console.error`, matching this
+   * package's existing convention (see registerCapabilities.ts).
+   */
+  onError?(error: unknown, context: { job: string }): Promise<void> | void;
 }
 
 const heartbeatQueueOptions = {
@@ -66,6 +76,9 @@ export class WorkerJobQueue {
       application_name: this.options.applicationName ?? "oikonomos-worker-jobs",
     });
 
+    const onError = this.options.onError ?? ((error: unknown) => console.error(error));
+    boss.on("error", (error) => void onError(error, { job: "pg-boss" }));
+
     try {
       await boss.start();
       await boss.createQueue(WORKER_HEARTBEAT_JOB, heartbeatQueueOptions);
@@ -75,7 +88,12 @@ export class WorkerJobQueue {
       if (this.options.routinePolling !== undefined) {
         await boss.createQueue(WORKER_ROUTINE_POLL_JOB, routinePollQueueOptions);
         await boss.work(WORKER_ROUTINE_POLL_JOB, async () => {
-          await runDueRoutinePoll(this.options.routinePolling!);
+          try {
+            await runDueRoutinePoll(this.options.routinePolling!);
+          } catch (error) {
+            await onError(error, { job: WORKER_ROUTINE_POLL_JOB });
+            throw error; // still fails/retries the job the same as before — this only adds visibility.
+          }
         });
         // pg-boss owns this durable repeating schedule, so a worker restart
         // neither loses nor duplicates the next routine sweep.
