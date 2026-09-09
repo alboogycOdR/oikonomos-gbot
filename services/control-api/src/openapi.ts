@@ -344,6 +344,34 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/runs/{id}/takeover": {
+        get: {
+          summary: "Whether this run is parked awaiting a human take-over, and why (TASK-188, G-07)",
+          operationId: "getRunTakeover",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "Take-over state — kind/detail present only when pending",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/TakeoverStatus" } } },
+            },
+            "404": { description: "No run with that id (or owned by a different tenant)" },
+            "501": { description: "Take-over is not configured on this deployment" },
+          },
+        },
+      },
+      "/runs/{id}/takeover/complete": {
+        post: {
+          summary: "Hand back: the human has completed the required step (TASK-188, G-07)",
+          operationId: "completeRunTakeover",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": { description: "Completed; the run resumes through the existing continue-after-approval path" },
+            "404": { description: "No run with that id (or owned by a different tenant)" },
+            "409": { description: "Not genuinely pending, or the run has no persisted session to resume — see 'reason'" },
+            "501": { description: "Take-over is not configured on this deployment" },
+          },
+        },
+      },
     },
     components: {
       schemas: {
@@ -357,6 +385,15 @@ export function getOpenApiDocument(): Record<string, unknown> {
             label: { type: "string" },
             purpose: { type: "string" },
             createdAt: { type: "string", format: "date-time" },
+          },
+        },
+        TakeoverStatus: {
+          type: "object",
+          required: ["pending"],
+          properties: {
+            pending: { type: "boolean" },
+            kind: { type: "string", enum: ["captcha", "two_factor", "login_wall", "payment"] },
+            detail: { type: "string" },
           },
         },
         FulfilSecretRequest: {
