@@ -393,3 +393,4 @@ Stopping the loop here. No further wakeup scheduled.
 - [2026-09-05T00:30:00Z] [ORCH] MOBILE WAVE 1+2 COMPLETE. TASK-149 merged, closing the program: TASK-144/145/147/148/149 all done. Mobile client now has roster, live SSE chat, create-bot, approval cards, routines, settings and env-gated push on a real device-token backend; 59 tests, analyze clean. Seven merges this shift incl. TASK-146 (unfroze a stuck thread), TASK-150 (re-scopes the frozen budget work) and TASK-151 (killed the flake that had muddied four tasks' evidence). Fixed two pack defects at root - both prompt-wording faults, not builder faults. All three builders idle; next program unscoped.
 - [2026-09-05T09:05:30Z] SESSION_END unit=ORCH plan={done:151 pending:1 blocked:1}
 - [2026-09-08T09:04:45Z] SESSION_END unit=ORCH plan={done:214 blocked:1 pending:3 needs_review:2 in_progress:1}
+- [2026-09-09T09:52:47Z] SESSION_END unit=ORCH plan={done:219 blocked:2 pending:7}

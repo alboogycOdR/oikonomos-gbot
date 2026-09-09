@@ -1,16 +1,21 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { defaultPoolConfig, listMessages, type DatabaseOptions } from "@oikonomos/db";
+import { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
 
 import {
   createSandboxGeminiTools,
   createSteelGeminiTools,
+  createWorkspaceGeminiTools,
   SANDBOX_TOOL_TIMEOUT_MS,
   tierNumber,
   type SandboxToolResult,
 } from "./geminiToolExecutors.js";
+
+const connectionString = process.env.DATABASE_URL;
 
 const ALL_STEEL_TOOL_NAMES = [
   "mcp__steel__steel_session_create",
@@ -331,4 +336,67 @@ describe("createSteelGeminiTools — Steel Browser tools for the Gemini lane (TA
       expect(result.ok).toBe(false);
     }
   });
+});
+
+describe("createWorkspaceGeminiTools — deliberately NOT sandboxed, unlike every tool above", () => {
+  it("mounts create_routine only when granted", () => {
+    const granted = createWorkspaceGeminiTools(
+      { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },
+      ["mcp__workspace__create_routine"],
+    );
+    expect(granted.map((tool) => tool.name)).toEqual(["mcp__workspace__create_routine"]);
+
+    const ungranted = createWorkspaceGeminiTools(
+      { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },
+      [],
+    );
+    expect(ungranted).toEqual([]);
+  });
+
+  it("tiers create_routine honestly (T1_draft, matching packages/broker/src/builtinTools.ts)", () => {
+    const [tool] = createWorkspaceGeminiTools(
+      { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },
+      ["mcp__workspace__create_routine"],
+    );
+    expect(tool?.tier).toBe(tierNumber("T1_draft"));
+  });
+
+  (connectionString === undefined ? it.skip : it)(
+    "creates a real routine and a real system confirmation message — same underlying write as the Claude/MCP path (real Postgres)",
+    async () => {
+      const options: DatabaseOptions = { connectionString: connectionString! };
+      const pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+      const roleId = "gemini-create-routine-fixture";
+      try {
+        await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+        await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+        await pool.query("DELETE FROM role_routines WHERE role_id = $1", [roleId]);
+        await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+        await pool.query(
+          "INSERT INTO roles (role_id, tenant_id, name, title, description, status) VALUES ($1, 'basileia', $1, 'fixture', '', 'active')",
+          [roleId],
+        );
+        const thread = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId]);
+        const threadId = thread.rows[0]!.id;
+
+        const [tool] = createWorkspaceGeminiTools(
+          { connectionString: connectionString!, tenantId: "basileia", roleId, threadId },
+          ["mcp__workspace__create_routine"],
+        );
+        const result = (await tool!.execute({ name: "Gemini routine", schedule: "0 9 * * 1" })) as { name: string; description: string };
+        expect(result).toMatchObject({ name: "Gemini routine", description: "every Monday at 9:00 AM" });
+
+        const routine = await pool.query("SELECT 1 FROM role_routines WHERE role_id = $1 AND name = $2", [roleId, "Gemini routine"]);
+        expect(routine.rowCount).toBe(1);
+        const messages = await listMessages(options, threadId);
+        expect(messages).toMatchObject([{ role: "system", body: 'New routine "Gemini routine" — every Monday at 9:00 AM' }]);
+      } finally {
+        await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+        await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+        await pool.query("DELETE FROM role_routines WHERE role_id = $1", [roleId]);
+        await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+        await pool.end();
+      }
+    },
+  );
 });

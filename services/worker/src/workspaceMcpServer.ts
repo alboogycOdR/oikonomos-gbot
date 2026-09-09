@@ -6,6 +6,7 @@ import { sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { parkTaskRun } from "./runLifecycle.js";
 import { parseRequestSecretInput } from "@oikonomos/broker";
+import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
 
 export interface WorkspaceMcpServerIdentity {
   readonly connectionString: string;
@@ -13,6 +14,8 @@ export interface WorkspaceMcpServerIdentity {
   readonly fromRoleId: string;
   /** The worker, not model input, binds a secret request to its live run. */
   readonly runId?: string;
+  /** The worker, not model input, binds create_routine's confirmation message to the real thread. */
+  readonly threadId?: string;
 }
 
 interface JsonRpcRequest {
@@ -25,6 +28,7 @@ interface JsonRpcRequest {
 const SEND_TO_ROLE_TOOL_NAME = "send_to_role";
 const RENAME_SELF_TOOL_NAME = "rename_self";
 const REQUEST_SECRET_TOOL_NAME = "request_secret";
+const CREATE_ROUTINE_TOOL_NAME = "create_routine";
 
 /**
  * Narrow stdio MCP bridge for the existing mailbox implementation. Identity
@@ -68,6 +72,7 @@ export async function handleWorkspaceMcpRequest(
       { name: SEND_TO_ROLE_TOOL_NAME, description: "Send an asynchronous role-to-role handoff.", inputSchema: sendToRoleInputSchema },
       { name: RENAME_SELF_TOOL_NAME, description: "Rename the calling bot's own display name.", inputSchema: renameSelfInputSchema },
       { name: REQUEST_SECRET_TOOL_NAME, description: "Ask a human to provide a secret without placing its value in the transcript.", inputSchema: requestSecretInputSchema },
+      { name: CREATE_ROUTINE_TOOL_NAME, description: CREATE_ROUTINE_TOOL_DESCRIPTION, inputSchema: createRoutineInputSchema },
     ] });
   }
   if (request.method !== "tools/call") {
@@ -94,6 +99,14 @@ export async function handleWorkspaceMcpRequest(
       await parkTaskRun({ connectionString: identity.connectionString }, identity.runId);
       return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ status: "pending", requestId: secretRequest.requestId }) }] });
     }
+    if (call.name === CREATE_ROUTINE_TOOL_NAME) {
+      const input = parseCreateRoutineInput(call.arguments);
+      const result = await createRoutineFromToolInput(
+        { connectionString: identity.connectionString, tenantId: identity.tenantId, roleId: identity.fromRoleId, threadId: identity.threadId },
+        input,
+      );
+      return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(result) }] });
+    }
     const role = await updateRoleName({ connectionString: identity.connectionString }, identity.fromRoleId, toRenameInput(call.arguments));
     if (role === null) throw new Error("Calling role was not found.");
     return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, name: role.name }) }] });
@@ -102,11 +115,16 @@ export async function handleWorkspaceMcpRequest(
   }
 }
 
-function parseToolCall(params: unknown): { name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME; arguments: Record<string, unknown> } {
+function parseToolCall(params: unknown): {
+  name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME | typeof CREATE_ROUTINE_TOOL_NAME;
+  arguments: Record<string, unknown>;
+} {
   if (typeof params !== "object" || params === null || Array.isArray(params)) throw new Error("tools/call requires params.");
   const call = params as { name?: unknown; arguments?: unknown };
-  if ((call.name !== SEND_TO_ROLE_TOOL_NAME && call.name !== RENAME_SELF_TOOL_NAME && call.name !== REQUEST_SECRET_TOOL_NAME) || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
-  return { name: call.name, arguments: call.arguments as Record<string, unknown> };
+  const knownName = call.name === SEND_TO_ROLE_TOOL_NAME || call.name === RENAME_SELF_TOOL_NAME
+    || call.name === REQUEST_SECRET_TOOL_NAME || call.name === CREATE_ROUTINE_TOOL_NAME;
+  if (!knownName || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
+  return { name: call.name as typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME | typeof CREATE_ROUTINE_TOOL_NAME, arguments: call.arguments as Record<string, unknown> };
 }
 
 function toSendInput(args: Record<string, unknown>, identity: WorkspaceMcpServerIdentity): {
@@ -162,9 +180,12 @@ const requestSecretInputSchema = {
 };
 
 function readIdentity(argv: readonly string[]): WorkspaceMcpServerIdentity {
-  const [connectionString, tenantId, fromRoleId, runId] = argv;
+  const [connectionString, tenantId, fromRoleId, runId, threadId] = argv;
   if ([connectionString, tenantId, fromRoleId, runId].some((value) => typeof value !== "string" || value.trim().length === 0)) throw new Error("workspace MCP requires connection string, tenant ID, sender role ID, and run ID.");
-  return { connectionString, tenantId, fromRoleId, runId };
+  return {
+    connectionString, tenantId, fromRoleId, runId,
+    ...(typeof threadId === "string" && threadId.trim().length > 0 ? { threadId } : {}),
+  };
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) startWorkspaceMcpServer(readIdentity(process.argv.slice(2)));

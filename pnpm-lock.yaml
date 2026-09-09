@@ -446,6 +446,9 @@ importers:
       '@oikonomos/workspace':
         specifier: workspace:*
         version: link:../workspace
+      cron-parser:
+        specifier: ^5.10.0
+        version: 5.10.0
       pg:
         specifier: ^8.23.0
         version: 8.23.0

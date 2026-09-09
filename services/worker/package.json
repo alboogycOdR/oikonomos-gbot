@@ -22,6 +22,7 @@
     "@oikonomos/broker": "workspace:*",
     "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
+    "cron-parser": "^5.10.0",
     "@oikonomos/harness-factory": "workspace:*",
     "@oikonomos/policy": "workspace:*",
     "@oikonomos/sandbox-client": "workspace:*",

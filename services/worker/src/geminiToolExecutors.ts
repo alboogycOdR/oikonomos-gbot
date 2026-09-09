@@ -1,5 +1,6 @@
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
+import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
 
 /**
  * Sandbox-backed `GeminiTool` implementations (TASK-211).
@@ -550,4 +551,45 @@ export function createSteelGeminiTools(
     },
   ];
   return tools.filter((tool) => granted.has(tool.name));
+}
+
+/**
+ * `create_routine` for the Gemini lane — deliberately NOT sandboxed, unlike
+ * every tool above. This module's own top-of-file comment explains why the
+ * Steel/Read/Bash tools MUST run inside the sandbox (never touch the
+ * control-plane host); `create_routine` is a different class of action
+ * entirely — a governed Postgres write, exactly like the Claude lane's
+ * `workspaceMcpServer.ts` stdio bridge (which ALSO runs directly in the
+ * worker process, not the sandbox, for the same reason). Shares its actual
+ * implementation (`createRoutineFromToolInput`, `routineTool.ts`) with that
+ * bridge so the DB write, cron validation, and confirmation-message logic
+ * exist exactly once for both lanes.
+ */
+export interface WorkspaceGeminiContext {
+  readonly connectionString: string;
+  readonly tenantId: string;
+  readonly roleId: string;
+  readonly threadId?: string;
+}
+
+export function createWorkspaceGeminiTools(
+  context: WorkspaceGeminiContext,
+  grantedToolNames: readonly string[],
+): readonly SandboxGeminiTool[] {
+  if (!grantedToolNames.includes("mcp__workspace__create_routine")) return [];
+  return [
+    {
+      name: "mcp__workspace__create_routine",
+      description: CREATE_ROUTINE_TOOL_DESCRIPTION,
+      parameters: createRoutineInputSchema,
+      tier: tierNumber("T1_draft"),
+      execute: async (arguments_) => {
+        const input = parseCreateRoutineInput(arguments_);
+        return createRoutineFromToolInput(
+          { connectionString: context.connectionString, tenantId: context.tenantId, roleId: context.roleId, threadId: context.threadId },
+          input,
+        );
+      },
+    },
+  ];
 }

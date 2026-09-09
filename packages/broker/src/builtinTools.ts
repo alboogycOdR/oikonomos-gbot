@@ -37,4 +37,18 @@ export const BUILTIN_TOOLS = Object.freeze([
     mcpServerName: "workspace",
     enabled: true,
   },
+  {
+    toolName: "mcp__workspace__create_routine",
+    capabilityId: "workspace.create_routine",
+    // A routine creates no immediate side effect — it schedules FUTURE
+    // work, and that work's own tool calls are re-gated by this same
+    // broker when the routine actually fires (routineJob.ts's own poll
+    // path is a normal task run). Draft-tier here, same as
+    // send_to_role/rename_self: self-contained, no third-party or
+    // external effect at creation time.
+    defaultTier: "T1_draft",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
 ] as const satisfies readonly DeclaredTool[]);

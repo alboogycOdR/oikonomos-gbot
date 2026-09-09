@@ -213,6 +213,7 @@ describe("chat run driver governance helpers", () => {
     expect(destinationFor({ ...base, toolName: "mcp__gmail__send_message", input: { to: "user@example.test" } })).toBe("user@example.test");
     expect(destinationFor({ ...base, toolName: "mcp__steel__steel_session_create", input: {} })).toBe("current_page");
     expect(destinationFor({ ...base, toolName: "mcp__steel__steel_session_release", input: {} })).toBe("current_page");
+    expect(destinationFor({ ...base, toolName: "mcp__workspace__create_routine", input: { name: "Daily weather" } })).toBe("Daily weather");
     expect(() => destinationFor({ ...base, toolName: "WebFetch", input: { url: "https://example.test" } })).toThrow(/No governed destination/);
   });
 
@@ -2008,6 +2009,110 @@ integration("createChatRunDriver — self-rename governed MCP run (TASK-167)", (
     const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
     const events = await getAuditEventsForRun(options, run.runId);
     expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.rename_self")).toMatchObject({ payload: { verdict: "allow", toolName: "mcp__workspace__rename_self" } });
+  });
+});
+
+integration("createChatRunDriver — create_routine governed MCP run (natural-language routine creation)", () => {
+  const roleId = "task-routines-chat-create-routine";
+  let pool: Pool;
+  let options: DatabaseOptions;
+  let threadId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM role_routines WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  }
+
+  beforeAll(async () => {
+    process.env.OIKONOMOS_CAPABILITIES_ENABLED = "true";
+    options = { connectionString: connectionString! };
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(options, { roleId, name: "Routine bot", title: "routines fixture", description: "real governed create_routine fixture." });
+    const database = new Database(options);
+    try {
+      await database.upsertCapability({ capabilityId: "workspace.create_routine", description: "Schedule a recurring routine.", defaultTier: "T1_draft", adapter: "mcp:workspace", enabled: true });
+      await database.upsertRoleGrant({ roleId, capabilityId: "workspace.create_routine", maxTier: "T1_draft", constraints: {} });
+    } finally { await database.close(); }
+    threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
+  });
+
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  it(
+    "lets a granted agent translate 'every day at 2pm' into a real cron routine, and posts a real system confirmation to the thread",
+    async () => {
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+        expect(sdkOptions.mcpServers?.workspace).toBeDefined();
+        expect(sdkOptions.allowedTools).toContain("mcp__workspace__create_routine(*)");
+        expect(await callMountedTool(input, "mcp__workspace__create_routine", "routines-granted", { name: "Daily weather check", schedule: "0 14 * * *" })).toBe(true);
+        // The model itself is the "cron parser" — this call mirrors exactly
+        // what the real Claude Agent SDK would send to the real MCP stdio
+        // process, without spawning that real subprocess (same established
+        // shape as the rename_self test above).
+        const response = await handleWorkspaceMcpRequest(JSON.stringify({
+          jsonrpc: "2.0", id: "routines-create", method: "tools/call",
+          params: { name: "create_routine", arguments: { name: "Daily weather check", schedule: "0 14 * * *", goal: "Check the weather" } },
+        }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: roleId, threadId });
+        expect(response).toMatchObject({ result: { content: [{ text: expect.stringContaining("every day at 2:00 PM") }] } });
+        yield { type: "result", result: "On it — daily weather check at 2pm." };
+      };
+      const task = await createTask(options, { roleId, title: "Set up a routine", goal: "Set up a routine to check weather every day at 2pm", requestedBy: "routines-suite" });
+      await createChatRunDriver({ ...options, queryFn }).run({ task, threadId });
+
+      const routine = await pool.query<{ name: string; schedule: string }>("SELECT name, schedule FROM role_routines WHERE role_id = $1", [roleId]);
+      expect(routine.rows).toEqual([{ name: "Daily weather check", schedule: "0 14 * * *" }]);
+
+      const run = (await listRuns(options, { taskId: task.taskId })).runs[0]!;
+      const events = await getAuditEventsForRun(options, run.runId);
+      expect(events.find((event) => event.eventType === "policy.decision" && event.capability === "workspace.create_routine"))
+        .toMatchObject({ payload: { verdict: "allow", toolName: "mcp__workspace__create_routine" } });
+
+      // The confirmation message is real and persisted — not just returned
+      // to the model — so the mobile client renders it the same way it
+      // already renders TASK-193's "Context compacted" system line.
+      const messages = await listMessages(options, threadId);
+      expect(messages.some((message) => message.role === "system" && message.body === 'New routine "Daily weather check" — every day at 2:00 PM')).toBe(true);
+    },
+  );
+
+  it("denies create_routine for a role with no grant, and creates nothing", async () => {
+    const ungrantedRoleId = "task-routines-ungranted";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [ungrantedRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [ungrantedRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [ungrantedRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [ungrantedRoleId]);
+    await pool.query("DELETE FROM threads WHERE role_id = $1", [ungrantedRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [ungrantedRoleId]);
+    await createRole(options, { roleId: ungrantedRoleId, name: "No grant", title: "no grant fixture", description: "" });
+    const ungrantedThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [ungrantedRoleId])).rows[0]!.id;
+    try {
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        const sdkOptions = input.options as { allowedTools?: readonly string[]; mcpServers?: Record<string, unknown> };
+        expect(sdkOptions.mcpServers?.workspace).toBeUndefined();
+        expect(sdkOptions.allowedTools).not.toContain("mcp__workspace__create_routine(*)");
+        yield { type: "result", result: "I don't have permission to create routines." };
+      };
+      const task = await createTask(options, { roleId: ungrantedRoleId, title: "Try a routine", goal: "Set up a routine anyway", requestedBy: "routines-suite" });
+      await createChatRunDriver({ ...options, queryFn }).run({ task, threadId: ungrantedThreadId });
+      const routine = await pool.query("SELECT 1 FROM role_routines WHERE role_id = $1", [ungrantedRoleId]);
+      expect(routine.rowCount).toBe(0);
+    } finally {
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [ungrantedRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [ungrantedRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [ungrantedRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [ungrantedRoleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [ungrantedRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [ungrantedRoleId]);
+    }
   });
 });
 

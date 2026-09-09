@@ -190,6 +190,7 @@ export const builtinDescribers: Readonly<Record<string, Describer>> = Object.fre
   Bash: describeAs("run command", "command"),
   mcp__workspace__send_to_role: describeAs("send to role", "toRoleId"),
   mcp__workspace__rename_self: describeAs("rename self", "name"),
+  mcp__workspace__create_routine: describeAs("create routine", "name"),
   // This parser rejects malformed and oversized payloads before L1 can issue
   // an approval, keeping secret-request card text derived from bounded input.
   mcp__workspace__request_secret: describeRequestSecret,

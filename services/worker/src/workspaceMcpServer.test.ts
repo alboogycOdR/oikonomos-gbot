@@ -1,4 +1,4 @@
-import { createRole, defaultPoolConfig, getRole, type DatabaseOptions } from "@oikonomos/db";
+import { createRole, defaultPoolConfig, getRole, listMessages, type DatabaseOptions } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -14,6 +14,12 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
   let options: DatabaseOptions;
 
   async function cleanup(): Promise<void> {
+    await pool.query(
+      "DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
+      [[senderRoleId, receiverRoleId]],
+    );
+    await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await pool.query("DELETE FROM role_routines WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
     await pool.query(
       "DELETE FROM role_messages WHERE from_role_id = ANY($1::text[]) OR to_role_id = ANY($1::text[])",
       [[senderRoleId, receiverRoleId]],
@@ -105,5 +111,55 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
       }), identity);
       expect(response).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining(error) }] } });
     }
+  });
+
+  it("create_routine writes a real routine, computes next_fire_at from the cron, and posts a system confirmation to the thread", async () => {
+    const thread = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [senderRoleId]);
+    const threadId = thread.rows[0]!.id;
+    const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId, threadId };
+
+    const response = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "create-routine", method: "tools/call",
+      params: { name: "create_routine", arguments: { name: "Daily weather", schedule: "0 14 * * *", goal: "Check the weather" } },
+    }), identity);
+
+    expect(response).toMatchObject({
+      result: { content: [{ type: "text", text: expect.stringContaining("\"description\":\"every day at 2:00 PM\"") }] },
+    });
+
+    const routine = await pool.query<{ name: string; schedule: string; next_fire_at: Date; definition: { goal?: string } }>(
+      "SELECT name, schedule, next_fire_at, definition FROM role_routines WHERE role_id = $1",
+      [senderRoleId],
+    );
+    expect(routine.rows).toHaveLength(1);
+    expect(routine.rows[0]).toMatchObject({ name: "Daily weather", schedule: "0 14 * * *", definition: { goal: "Check the weather" } });
+    expect(routine.rows[0]?.next_fire_at).toBeInstanceOf(Date);
+
+    const messages = await listMessages(options, threadId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ role: "system", body: 'New routine "Daily weather" — every day at 2:00 PM' });
+  });
+
+  it("create_routine rejects a malformed cron expression before writing anything", async () => {
+    const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId };
+    const response = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "bad-cron", method: "tools/call",
+      params: { name: "create_routine", arguments: { name: "Bad schedule", schedule: "not a cron" } },
+    }), identity);
+    expect(response).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining("cron") }] } });
+
+    const routine = await pool.query("SELECT 1 FROM role_routines WHERE role_id = $1 AND name = $2", [senderRoleId, "Bad schedule"]);
+    expect(routine.rowCount).toBe(0);
+  });
+
+  it("create_routine still works with no threadId (a routine-triggered run, not a live chat) — just skips the confirmation message", async () => {
+    const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId };
+    const response = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "no-thread", method: "tools/call",
+      params: { name: "create_routine", arguments: { name: "No thread routine", schedule: "0 9 * * 1" } },
+    }), identity);
+    expect(response).toMatchObject({ result: { content: [{ type: "text" }] } });
+    const routine = await pool.query("SELECT 1 FROM role_routines WHERE role_id = $1 AND name = $2", [senderRoleId, "No thread routine"]);
+    expect(routine.rowCount).toBe(1);
   });
 });

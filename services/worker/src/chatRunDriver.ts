@@ -43,7 +43,7 @@ import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
 import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
-import { createSandboxGeminiTools, createSteelGeminiTools } from "./geminiToolExecutors.js";
+import { createSandboxGeminiTools, createSteelGeminiTools, createWorkspaceGeminiTools } from "./geminiToolExecutors.js";
 import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
   BUDGET_READ_TIMEOUT_MS,
@@ -63,6 +63,7 @@ import {
   resolveGrantedGoogleCalendarConnector,
   resolveGrantedGoogleDriveConnector,
   resolveGrantedWorkspaceConnector,
+  WORKSPACE_CREATE_ROUTINE_TOOL,
   WORKSPACE_RENAME_SELF_TOOL,
   WORKSPACE_REQUEST_SECRET_TOOL,
   WORKSPACE_SEND_TO_ROLE_TOOL,
@@ -338,7 +339,7 @@ async function runChatTask(
     }
     const workspaceConnector = await resolveGrantedWorkspaceConnector({
       database, roleId: request.task.roleId, tenantId: request.task.tenantId,
-      connectionString: options.connectionString, runId: run.runId,
+      connectionString: options.connectionString, runId: run.runId, threadId: request.threadId,
     });
     const connector = combineConnectorContexts(
       acquiredGmailConnector?.connector, workspaceConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector, browserConnector,
@@ -362,7 +363,7 @@ async function runChatTask(
     try {
       const systemPrompt = buildRoleSystemPrompt(role, request.task.roleId);
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
-        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector);
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector);
         botText = geminiResult.text;
         geminiSpendRecorded = true;
       } else if (!shouldUseSandbox(options)) {
@@ -577,6 +578,7 @@ export async function executeGeminiChatRun(
   registry: CapabilityRegistry,
   policy: PolicyRegistry,
   browserConnector?: ConnectorContext,
+  workspaceConnector?: ConnectorContext,
 ): Promise<{ readonly text: string; readonly costUsd: number }> {
   // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
   // tool-executing Gemini run, and a denial must cost no tokens.
@@ -617,6 +619,12 @@ export async function executeGeminiChatRun(
         },
         browserConnector.allowedTools,
       );
+  const workspaceTools = workspaceConnector === undefined
+    ? []
+    : createWorkspaceGeminiTools(
+        { connectionString: options.connectionString, tenantId: request.task.tenantId, roleId: request.task.roleId, threadId: request.threadId },
+        workspaceConnector.allowedTools,
+      );
 
   const composed = composeHarness<BrokerDependencies>({
     run: {
@@ -628,7 +636,7 @@ export async function executeGeminiChatRun(
     provider: "gemini",
     gemini: {
       // Tools execute inside the role's sandbox, never in this process.
-      tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools],
+      tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools, ...workspaceTools],
       maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
       ...(options.geminiFetch === undefined ? {} : { fetch: options.geminiFetch }),
     },
@@ -1372,6 +1380,7 @@ const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unk
   [WORKSPACE_SEND_TO_ROLE_TOOL]: (input) => input.toRoleId,
   [WORKSPACE_RENAME_SELF_TOOL]: (input) => input.name,
   [WORKSPACE_REQUEST_SECRET_TOOL]: (input) => input.label,
+  [WORKSPACE_CREATE_ROUTINE_TOOL]: (input) => input.name,
 
   mcp__steel__steel_navigate: (input) => input.url,
   mcp__steel__steel_act: (input) => input.action,

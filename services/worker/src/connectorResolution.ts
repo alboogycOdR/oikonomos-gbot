@@ -17,6 +17,8 @@ export const WORKSPACE_RENAME_SELF_CAPABILITY_ID = "workspace.rename_self";
 export const WORKSPACE_RENAME_SELF_TOOL = "mcp__workspace__rename_self";
 export const WORKSPACE_REQUEST_SECRET_CAPABILITY_ID = "workspace.request_secret";
 export const WORKSPACE_REQUEST_SECRET_TOOL = "mcp__workspace__request_secret";
+export const WORKSPACE_CREATE_ROUTINE_CAPABILITY_ID = "workspace.create_routine";
+export const WORKSPACE_CREATE_ROUTINE_TOOL = "mcp__workspace__create_routine";
 
 /** Mount the internal stdio bridge only when its persisted role grant exists. */
 export async function resolveGrantedWorkspaceConnector(input: {
@@ -25,6 +27,8 @@ export async function resolveGrantedWorkspaceConnector(input: {
   readonly roleId: string;
   readonly tenantId: string;
   readonly runId: string;
+  /** Threaded through to create_routine's confirmation-message insert. */
+  readonly threadId?: string;
 }): Promise<ConnectorContext | undefined> {
   const grants = await input.database.listRoleGrants(input.roleId);
   const grantedCapabilities = new Set(grants.map((grant) => grant.capabilityId));
@@ -32,6 +36,7 @@ export async function resolveGrantedWorkspaceConnector(input: {
     ...(grantedCapabilities.has(WORKSPACE_SEND_TO_ROLE_CAPABILITY_ID) ? [WORKSPACE_SEND_TO_ROLE_TOOL] : []),
     ...(grantedCapabilities.has(WORKSPACE_RENAME_SELF_CAPABILITY_ID) ? [WORKSPACE_RENAME_SELF_TOOL] : []),
     ...(grantedCapabilities.has(WORKSPACE_REQUEST_SECRET_CAPABILITY_ID) ? [WORKSPACE_REQUEST_SECRET_TOOL] : []),
+    ...(grantedCapabilities.has(WORKSPACE_CREATE_ROUTINE_CAPABILITY_ID) ? [WORKSPACE_CREATE_ROUTINE_TOOL] : []),
   ];
   if (allowedTools.length === 0) return undefined;
   return {
@@ -40,7 +45,11 @@ export async function resolveGrantedWorkspaceConnector(input: {
       workspace: {
         transport: "stdio",
         command: process.execPath,
-        args: [fileURLToPath(new URL("./workspaceMcpServer.js", import.meta.url)), input.connectionString, input.tenantId, input.roleId, input.runId],
+        args: [
+          fileURLToPath(new URL("./workspaceMcpServer.js", import.meta.url)),
+          input.connectionString, input.tenantId, input.roleId, input.runId,
+          ...(input.threadId === undefined ? [] : [input.threadId]),
+        ],
       },
     },
     allowedTools,
