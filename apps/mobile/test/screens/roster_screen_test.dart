@@ -6,6 +6,7 @@ import 'package:oikonomos_mobile/screens/chat_screen.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
 import 'package:oikonomos_mobile/screens/login_screen.dart';
 import 'package:oikonomos_mobile/screens/roster_screen.dart';
+import 'package:oikonomos_mobile/screens/settings_screen.dart';
 
 import '../support/fake_http_client.dart';
 import '../support/fake_push_port.dart';
@@ -21,6 +22,9 @@ class _FakeGoogleAuthPort implements GoogleAuthPort {
   @override
   Future<String> signIn() async =>
       throw UnimplementedError('not exercised from RosterScreen');
+
+  @override
+  AuthProfile? get currentProfile => null;
 
   @override
   Future<void> signOut() async {
@@ -359,6 +363,12 @@ void main() {
 
         expect(client.isAuthenticated, isTrue);
 
+        // Sign-out now lives on the system settings screen behind the
+        // AppBar gear, not as a bare logout icon in the roster header.
+        expect(find.byKey(const Key('sign-out-button')), findsNothing);
+        await tester.tap(find.byKey(const Key('settings-button')));
+        await tester.pumpAndSettle();
+        expect(find.byType(SystemSettingsScreen), findsOneWidget);
         await tester.tap(find.byKey(const Key('sign-out-button')));
         await tester.pumpAndSettle();
 

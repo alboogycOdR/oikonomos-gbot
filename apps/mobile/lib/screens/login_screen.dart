@@ -48,6 +48,20 @@ abstract class GoogleAuthPort {
   /// so the next [signIn] shows the account picker again rather than
   /// auto-relogging the same account in silently.
   Future<void> signOut();
+
+  /// The signed-in account's display details for the system settings
+  /// profile header, or null when nobody is signed in (or the port has no
+  /// identity to offer, e.g. a test fake).
+  AuthProfile? get currentProfile;
+}
+
+/// Display details of the signed-in account — no tokens, no credentials.
+class AuthProfile {
+  const AuthProfile({this.displayName, this.email, this.photoUrl});
+
+  final String? displayName;
+  final String? email;
+  final String? photoUrl;
 }
 
 /// Real implementation: `google_sign_in` drives the interactive account
@@ -114,6 +128,17 @@ class FirebaseGoogleAuthPort implements GoogleAuthPort {
     // un-cleared and causing a silent auto-relogin on next sign-in.
     await _ensureInitialized();
     await GoogleSignIn.instance.signOut();
+  }
+
+  @override
+  AuthProfile? get currentProfile {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    return AuthProfile(
+      displayName: user.displayName,
+      email: user.email,
+      photoUrl: user.photoURL,
+    );
   }
 }
 
@@ -189,6 +214,9 @@ class _DefaultAuthPort implements GoogleAuthPort {
 
   @override
   Future<void> signOut() => _real.signOut();
+
+  @override
+  AuthProfile? get currentProfile => _real.currentProfile;
 }
 
 class _LoginScreenState extends State<LoginScreen> {

@@ -12,6 +12,7 @@ import '../widgets/avatar.dart';
 import 'chat_screen.dart';
 import 'create_bot_screen.dart';
 import 'login_screen.dart';
+import 'settings_screen.dart';
 
 /// TASK-147 (Mobile Wave 1b) — bot roster, the landing screen after login.
 /// Mirrors `apps/dashboard/src/components/chat/BotSidebar.tsx` /
@@ -163,19 +164,18 @@ class _RosterScreenState extends State<RosterScreen> {
     );
   }
 
-  /// TASK-174 — real sign-out entry point. Calls the real
-  /// [LoginScreen.signOut] (clears the in-memory session cookie and the
-  /// real Firebase/Google session), then replaces the entire navigation
-  /// stack with a fresh [LoginScreen] so the back button cannot return to
-  /// a roster whose session has just been cleared.
-  Future<void> _signOut() async {
-    await LoginScreen.signOut(widget.apiClient, widget._resolvedAuthPort());
-    if (!mounted) return;
-    await Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(apiClient: widget.apiClient),
+  /// Opens the system-wide settings screen (profile, sign out,
+  /// notifications, version). Sign-out used to be a bare logout icon in
+  /// this AppBar; it now lives inside that screen behind a proper
+  /// profile header, as a settings screen is where users look for it.
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SystemSettingsScreen(
+          apiClient: widget.apiClient,
+          authPort: widget._resolvedAuthPort(),
+        ),
       ),
-      (route) => false,
     );
   }
 
@@ -192,10 +192,10 @@ class _RosterScreenState extends State<RosterScreen> {
             onPressed: _openCreateBot,
           ),
           IconButton(
-            key: const Key('sign-out-button'),
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-            onPressed: _signOut,
+            key: const Key('settings-button'),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: _openSettings,
           ),
         ],
       ),

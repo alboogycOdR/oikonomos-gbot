@@ -8,6 +8,7 @@ import 'package:oikonomos_mobile/api/api_client.dart';
 import 'package:oikonomos_mobile/api/models.dart';
 import 'package:oikonomos_mobile/attach/file_picker_port.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
+import 'package:oikonomos_mobile/screens/create_routine_screen.dart';
 
 import '../support/fake_file_picker.dart';
 import '../support/fake_http_client.dart';
@@ -616,14 +617,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('loads read-only routines when the routines tab opens', (
+  // Routines live on the bot settings screen now (no more Routines tab).
+  Future<void> openSettings(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('bot-settings-button')));
+    await tester.pumpAndSettle();
+  }
+
+  // The settings ListView is lazy, so anything below the fold is not built
+  // until scrolled to — ensureVisible cannot find it, this can.
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    await tester.scrollUntilVisible(
+      finder,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('chat screen no longer has a Routines tab', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.byKey(const Key('create-routine-fab')), findsNothing);
+    expect(
+      fake.requests.any((r) => r.url.path == '/roles/role-1/routines'),
+      isFalse,
+    );
+  });
+
+  testWidgets(
+      'bot settings lists routines with a human-readable schedule', (
     tester,
   ) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
-    fake.queueJson(200, [
+    fake.queueJsonFor('GET', '/roles/role-1/routines', 200, [
       {
         'routineId': 'routine-1',
         'name': 'Daily briefing',
@@ -631,28 +669,60 @@ void main() {
         'lastFireAt': '2026-09-04T08:00:00Z',
         'nextFireAt': '2026-09-05T08:00:00Z',
       },
+      {
+        'routineId': 'routine-2',
+        'name': 'Weekly report',
+        'schedule': '30 14 * * 5',
+        'lastFireAt': null,
+        'nextFireAt': null,
+        'paused': true,
+      },
     ]);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: ChatScreen(apiClient: client, bot: _bot),
-      ),
+      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Routines'));
-    await tester.pumpAndSettle();
+    await openSettings(tester);
 
+    await reveal(tester, find.text('Routines'));
+    await tester.pumpAndSettle();
     expect(find.text('Daily briefing'), findsOneWidget);
-    expect(find.textContaining('Schedule: 0 8 * * *'), findsOneWidget);
-    expect(fake.requests.last.url.path, '/roles/role-1/routines');
+    expect(find.text('Every day at 8:00 AM'), findsOneWidget);
+    expect(find.text('Weekly report'), findsOneWidget);
+    expect(find.text('Paused · Every Friday at 2:30 PM'), findsOneWidget);
+    expect(find.textContaining('0 8 * * *'), findsNothing);
+    expect(
+      fake.requests.any(
+        (r) => r.method == 'GET' && r.url.path == '/roles/role-1/routines',
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('bot settings shows a routines load error', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJsonFor(
+        'GET', '/roles/role-1/routines', 500, {'error': 'boom'});
+
+    await tester.pumpWidget(
+      MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+    );
+    await tester.pumpAndSettle();
+    await openSettings(tester);
+    await reveal(tester, find.byKey(const Key('routines-error')));
+    expect(find.text('Could not load routines.'), findsOneWidget);
   });
 
   testWidgets(
-    'creating a routine refreshes the routines tab without leaving the screen',
+    'adding a routine from bot settings refreshes the list in place',
     (tester) async {
       final fake = FakeHttpClient();
       final client = await _loggedIn(fake);
-      fake.queueJsonFor('GET', '/roles/role-1/skills', 200, [
+      final skillsJson = [
         {
           'skillId': 'skill-enabled',
           'name': 'summarize',
@@ -661,28 +731,30 @@ void main() {
           'approvals': <String>[],
           'status': 'active',
         },
-      ]);
+      ];
+      // Once for the settings screen's own skill toggles, once for the
+      // create-routine screen's skill picker.
+      fake.queueJsonFor('GET', '/roles/role-1/skills', 200, skillsJson);
+      fake.queueJsonFor('GET', '/roles/role-1/skills', 200, skillsJson);
       fake.queueJson(200, <Object?>[]);
       fake.queueHangingStream(200);
-      fake.queueJson(200, <Object?>[]); // initial (empty) routines load
+      fake.queueJsonFor('GET', '/roles/role-1/routines', 200, <Object?>[]);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ChatScreen(apiClient: client, bot: _bot),
-        ),
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Routines'));
-      await tester.pumpAndSettle();
+      await openSettings(tester);
 
+      await reveal(tester, find.byKey(const Key('routines-empty')));
       expect(find.byKey(const Key('routines-empty')), findsOneWidget);
-      expect(find.byKey(const Key('create-routine-fab')), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('create-routine-fab')));
+      await reveal(tester, find.byKey(const Key('add-routine-button')));
+      await tester.tap(find.byKey(const Key('add-routine-button')));
       await tester.pumpAndSettle();
 
+      expect(find.byType(CreateRoutineScreen), findsOneWidget);
       expect(find.byKey(const Key('routine-name-field')), findsOneWidget);
-      expect(find.byKey(const Key('routine-skill-selector')), findsOneWidget);
       await tester.tap(find.byKey(const Key('routine-skill-selector')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('/summarize').last);
@@ -697,28 +769,23 @@ void main() {
         '0 8 * * *',
       );
 
-      fake.queueJson(201, {
+      final created = {
         'routineId': 'routine-new',
         'name': 'Morning digest',
         'schedule': '0 8 * * *',
         'lastFireAt': null,
         'nextFireAt': '2026-09-06T08:00:00Z',
-      });
-      fake.queueJson(200, [
-        {
-          'routineId': 'routine-new',
-          'name': 'Morning digest',
-          'schedule': '0 8 * * *',
-          'lastFireAt': null,
-          'nextFireAt': '2026-09-06T08:00:00Z',
-        },
-      ]);
+      };
+      fake.queueJsonFor('POST', '/roles/role-1/routines', 201, created);
+      fake.queueJsonFor('GET', '/roles/role-1/routines', 200, [created]);
 
       await tester.tap(find.byKey(const Key('create-routine-submit')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('routine-name-field')), findsNothing);
+      expect(find.byType(CreateRoutineScreen), findsNothing);
+      await reveal(tester, find.text('Morning digest'));
       expect(find.text('Morning digest'), findsOneWidget);
+      expect(find.byKey(const Key('routines-empty')), findsNothing);
       final createRequest = fake.requests.lastWhere(
         (request) =>
             request.method == 'POST' &&
@@ -734,7 +801,7 @@ void main() {
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
-    fake.queueJson(200, [
+    fake.queueJsonFor('GET', '/roles/role-1/routines', 200, [
       {
         'routineId': 'routine-1',
         'name': 'Daily briefing',
@@ -747,16 +814,15 @@ void main() {
     await tester.pumpWidget(
         MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Routines'));
-    await tester.pumpAndSettle();
+    await openSettings(tester);
 
-    fake.queueJson(200, {
+    fake.queueJsonFor('GET', '/tasks', 200, {
       'tasks': [
         {'taskId': 'task-1'},
       ],
       'nextCursor': null,
     });
-    fake.queueJson(200, {
+    fake.queueJsonFor('GET', '/runs', 200, {
       'runs': [
         {
           'runId': 'run-1',
@@ -767,6 +833,7 @@ void main() {
       ],
       'nextCursor': null,
     });
+    await reveal(tester, find.byKey(const Key('routine-routine-1')));
     await tester.tap(find.byKey(const Key('routine-routine-1')));
     await tester.pumpAndSettle();
 
@@ -788,7 +855,7 @@ void main() {
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
-    fake.queueJson(200, [
+    fake.queueJsonFor('GET', '/roles/role-1/routines', 200, [
       {
         'routineId': 'routine-empty',
         'name': 'New routine',
@@ -801,9 +868,10 @@ void main() {
     await tester.pumpWidget(
         MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Routines'));
-    await tester.pumpAndSettle();
-    fake.queueJson(200, {'tasks': <Object?>[], 'nextCursor': null});
+    await openSettings(tester);
+    fake.queueJsonFor(
+        'GET', '/tasks', 200, {'tasks': <Object?>[], 'nextCursor': null});
+    await reveal(tester, find.byKey(const Key('routine-routine-empty')));
     await tester.tap(find.byKey(const Key('routine-routine-empty')));
     await tester.pumpAndSettle();
 

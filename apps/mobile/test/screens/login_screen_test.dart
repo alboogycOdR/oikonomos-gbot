@@ -31,6 +31,9 @@ class FakeGoogleAuthPort implements GoogleAuthPort {
   }
 
   @override
+  AuthProfile? get currentProfile => null;
+
+  @override
   Future<void> signOut() async {
     signOutCallCount++;
   }

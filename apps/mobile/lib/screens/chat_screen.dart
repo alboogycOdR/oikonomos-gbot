@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../attach/channel_file_picker.dart';
 import '../attach/file_picker_port.dart';
 import '../realtime/sse_client.dart';
+import '../util/schedule.dart';
 import '../widgets/avatar.dart';
 import '../widgets/context_meter.dart';
 import '../widgets/live_agent_button.dart';
@@ -42,8 +43,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => ChatScreenState();
 }
 
-class ChatScreenState extends State<ChatScreen>
-    with SingleTickerProviderStateMixin {
+class ChatScreenState extends State<ChatScreen> {
   final _composeController = TextEditingController();
   final List<ThreadMessage> _messages = [];
   final Set<String> _seenMessageIds = {};
@@ -51,10 +51,6 @@ class ChatScreenState extends State<ChatScreen>
   bool _sending = false;
   String? _error;
   SseSubscription? _subscription;
-  late final TabController _tabController;
-  List<Routine>? _routines;
-  String? _routinesError;
-  bool _loadingRoutines = false;
   List<RoleHandoff> _handoffs = const [];
   Map<String, Role> _rolesById = const {};
   final Map<String, String> _approvalStatuses = {};
@@ -73,8 +69,6 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
-      ..addListener(_onTabChanged);
     _load();
     _loadHandoffs();
   }
@@ -125,67 +119,8 @@ class ChatScreenState extends State<ChatScreen>
   void dispose() {
     _subscription?.close();
     _subscription = null;
-    _tabController
-      ..removeListener(_onTabChanged)
-      ..dispose();
     _composeController.dispose();
     super.dispose();
-  }
-
-  void _onTabChanged() {
-    if (!_tabController.indexIsChanging) {
-      setState(() {}); // rebuilds the FAB visibility for the new tab
-      if (_tabController.index == 1) {
-        _loadRoutines();
-      }
-    }
-  }
-
-  /// [force] re-fetches even if routines were already loaded — used after
-  /// a successful creation so the tab reflects the new routine without the
-  /// user leaving and re-entering the screen.
-  Future<void> _loadRoutines({bool force = false}) async {
-    if (_loadingRoutines || (_routines != null && !force)) return;
-    setState(() {
-      _loadingRoutines = true;
-      _routinesError = null;
-    });
-    try {
-      final routines = await widget.apiClient.listRoutines(widget.bot.roleId);
-      if (!mounted) return;
-      setState(() => _routines = routines);
-    } on UnauthorizedError {
-      if (mounted) Navigator.of(context).pop();
-    } catch (_) {
-      if (mounted) setState(() => _routinesError = 'Could not load routines.');
-    } finally {
-      if (mounted) setState(() => _loadingRoutines = false);
-    }
-  }
-
-  Future<void> _openCreateRoutine() async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => CreateRoutineScreen(
-          apiClient: widget.apiClient,
-          roleId: widget.bot.roleId,
-        ),
-      ),
-    );
-    if (created == true) {
-      await _loadRoutines(force: true);
-    }
-  }
-
-  Future<void> _openRoutineDetail(Routine routine) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => RoutineDetailScreen(
-          apiClient: widget.apiClient,
-          routine: routine,
-        ),
-      ),
-    );
   }
 
   Future<void> _decideApproval(ThreadMessage message, String decision) async {
@@ -512,33 +447,16 @@ class ChatScreenState extends State<ChatScreen>
             ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Chat'),
-            Tab(text: 'Routines'),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      // Routines used to be a second tab here; they now live in the bot
+      // settings screen (_SettingsScreen) alongside skills, so a bot's
+      // configuration is in one place and the chat surface is chat only.
+      body: Column(
         children: [
-          Column(
-            children: [
-              Expanded(child: _buildBody()),
-              _buildComposeBox(),
-            ],
-          ),
-          _buildRoutines(),
+          Expanded(child: _buildBody()),
+          _buildComposeBox(),
         ],
       ),
-      floatingActionButton: _tabController.index == 1
-          ? FloatingActionButton(
-              key: const Key('create-routine-fab'),
-              onPressed: _openCreateRoutine,
-              child: const Icon(Icons.add),
-            )
-          : null,
     );
   }
 
@@ -822,40 +740,6 @@ class ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  Widget _buildRoutines() {
-    if (_loadingRoutines) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_routinesError != null) {
-      return Center(
-        child: Text(_routinesError!, key: const Key('routines-error')),
-      );
-    }
-    if (_routines == null || _routines!.isEmpty) {
-      return const Center(
-        key: Key('routines-empty'),
-        child: Text('No routines configured for this bot.'),
-      );
-    }
-    return ListView.builder(
-      key: const Key('routines-list'),
-      itemCount: _routines!.length,
-      itemBuilder: (context, index) {
-        final routine = _routines![index];
-        return ListTile(
-          key: Key('routine-${routine.id}'),
-          title: Text(routine.name),
-          subtitle: Text(
-            'Schedule: ${routine.schedule ?? 'Not scheduled'}\n'
-            'Last: ${routine.lastFireAt ?? 'Never'} · Next: ${routine.nextFireAt ?? 'Not scheduled'}',
-          ),
-          isThreeLine: true,
-          onTap: () => _openRoutineDetail(routine),
-        );
-      },
-    );
-  }
 }
 
 /// TASK-168: small centered label inserted between message clusters that
@@ -1026,6 +910,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   String? _skillsError;
   final Set<String> _savingSkillIds = {};
   ThreadContext? _threadContext;
+  List<Routine>? _routines;
+  String? _routinesError;
 
   @override
   void initState() {
@@ -1033,6 +919,51 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     _loadRole();
     _loadSkills();
     _loadThreadContext();
+    _loadRoutines();
+  }
+
+  /// Routines moved here from a dedicated tab on the chat screen so they
+  /// sit with the rest of the bot's configuration (skills, instructions).
+  Future<void> _loadRoutines() async {
+    try {
+      final routines = await widget.apiClient.listRoutines(widget.bot.roleId);
+      if (!mounted) return;
+      setState(() {
+        _routines = routines;
+        _routinesError = null;
+      });
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) setState(() => _routinesError = 'Could not load routines.');
+    }
+  }
+
+  Future<void> _openCreateRoutine() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => CreateRoutineScreen(
+          apiClient: widget.apiClient,
+          roleId: widget.bot.roleId,
+        ),
+      ),
+    );
+    if (created == true) {
+      await _loadRoutines();
+    }
+  }
+
+  Future<void> _openRoutineDetail(Routine routine) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoutineDetailScreen(
+          apiClient: widget.apiClient,
+          routine: routine,
+        ),
+      ),
+    );
+    // Pause/resume on the detail screen changes what the list shows.
+    await _loadRoutines();
   }
 
   /// Moved here from the chat header (see chat_screen's own AppBar comment)
@@ -1282,6 +1213,55 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 onChanged: _savingSkillIds.contains(skill.id)
                     ? null
                     : (enabled) => _setSkillEnabled(skill, enabled),
+              ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Routines',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton.icon(
+                key: const Key('add-routine-button'),
+                onPressed: _openCreateRoutine,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add routine'),
+              ),
+            ],
+          ),
+          if (_routinesError != null)
+            Text(_routinesError!, key: const Key('routines-error'))
+          else if (_routines == null)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(),
+            )
+          else if (_routines!.isEmpty)
+            const Text(
+              'No routines yet. Add one here, or just ask the bot to '
+              'set one up in chat.',
+              key: Key('routines-empty'),
+            )
+          else
+            for (final routine in _routines!)
+              ListTile(
+                key: Key('routine-${routine.id}'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  routine.paused
+                      ? Icons.pause_circle_outline
+                      : Icons.schedule_outlined,
+                ),
+                title: Text(routine.name),
+                subtitle: Text(
+                  routine.paused
+                      ? 'Paused · ${describeSchedule(routine.schedule)}'
+                      : describeSchedule(routine.schedule),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openRoutineDetail(routine),
               ),
           const SizedBox(height: 20),
           const Text(
