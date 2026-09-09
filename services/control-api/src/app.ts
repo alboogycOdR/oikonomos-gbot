@@ -141,6 +141,21 @@ export interface BuildAppOptions {
    * TASK-179's `ThreadContextPort` and TASK-171's `LiveAgentPort` above.
    */
   secretRequests?: SecretRequestsPort;
+  /**
+   * TASK-188 (G-07) — human take-over: `GET /runs/:id/takeover`,
+   * `POST /runs/:id/takeover/complete`. A plain port here, not a
+   * `ControlApiDeps` method, for the same reason as `secretRequests`
+   * above: `services/worker/src/takeover.ts` (this task's own real,
+   * tested implementation — `getTakeoverState`/`completeTakeover`) lives
+   * outside `services/control-api`'s package boundary entirely, and
+   * wiring it in needs `ports.ts`'s `ControlApiDeps` to gain a method (or
+   * this file's bootstrap in `index.ts` to import `@oikonomos/worker`
+   * directly) — both outside this task's `Owned_Paths`. Left `undefined`
+   * in production until that follow-up task exists; both routes answer
+   * `501` rather than fabricating state, same shape as `threadContext`/
+   * `liveAgent`/`secretRequests`.
+   */
+  takeover?: TakeoverPort;
 }
 
 /** One secret request awaiting a human's decision — the `GET /secret-requests` list shape. */
@@ -172,6 +187,25 @@ export interface SecretRequestsPort {
   fulfil(requestId: string, tenantId: string, value: string): Promise<FulfilSecretRequestResult>;
   /** Marks the request declined and resumes the parked run with a model-directed refusal message. */
   decline(requestId: string, tenantId: string): Promise<DeclineSecretRequestResult>;
+}
+
+/** A run's current take-over state — the `GET /runs/:id/takeover` response shape. Mirrors `services/worker/src/takeover.ts`'s `TakeoverState`. */
+export interface TakeoverStatus {
+  readonly pending: boolean;
+  readonly kind?: string;
+  readonly detail?: string;
+}
+
+export type CompleteTakeoverOutcome =
+  | { readonly completed: true }
+  | { readonly completed: false; readonly reason: "not_pending" | "cannot_resume" };
+
+/** Injected port for TASK-188's take-over routes — see `BuildAppOptions.takeover`. */
+export interface TakeoverPort {
+  /** `null` when the run doesn't exist (the tenant check happens here, above the port, matching every other run-scoped route). */
+  getStatus(runId: string): Promise<TakeoverStatus | null>;
+  /** Records the hand-back and resumes the parked run. */
+  complete(runId: string): Promise<CompleteTakeoverOutcome>;
 }
 
 /** A thread's context-meter snapshot, per migration 015's `thread_context` row shape. */
@@ -1975,6 +2009,60 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         return;
       }
       await reply.code(200).send({ requestId: request.params.id, declined: true });
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  /**
+   * TASK-188 (G-07) — human take-over: the human half of TASK-204/225's
+   * `human_takeover_required` event/park contract. `501` when no
+   * `TakeoverPort` is configured — see `BuildAppOptions.takeover`'s doc
+   * comment for why real wiring is deferred follow-up work. The
+   * ownership check happens HERE, via `deps.getRun`, exactly like
+   * `GET /runs/:id`/`GET /runs/:id/evidence` above — the port itself is
+   * not tenant-aware (mirrors those two routes' own established reason:
+   * `getRun` isn't tenant-aware at the SQL level either).
+   */
+  app.get<{ Params: { id: string } }>("/runs/:id/takeover", async (request, reply) => {
+    try {
+      const run = await deps.getRun(request.params.id);
+      if (run === null || run.tenantId !== request.tenantId) {
+        await reply.code(404).send({ error: "run not found" });
+        return;
+      }
+      if (options.takeover === undefined) {
+        await reply.code(501).send({ error: "take-over is not configured" });
+        return;
+      }
+      const status = await options.takeover.getStatus(request.params.id);
+      if (status === null) {
+        await reply.code(404).send({ error: "run not found" });
+        return;
+      }
+      await reply.code(200).send(status);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string } }>("/runs/:id/takeover/complete", async (request, reply) => {
+    try {
+      const run = await deps.getRun(request.params.id);
+      if (run === null || run.tenantId !== request.tenantId) {
+        await reply.code(404).send({ error: "run not found" });
+        return;
+      }
+      if (options.takeover === undefined) {
+        await reply.code(501).send({ error: "take-over is not configured" });
+        return;
+      }
+      const result = await options.takeover.complete(request.params.id);
+      if (!result.completed) {
+        await reply.code(409).send({ completed: false, reason: result.reason });
+        return;
+      }
+      await reply.code(200).send({ completed: true });
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
     }
