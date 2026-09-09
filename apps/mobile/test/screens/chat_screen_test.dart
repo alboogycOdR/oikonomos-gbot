@@ -70,17 +70,13 @@ Map<String, dynamic> _approvalMessage(String id) => {
     };
 
 void main() {
-  testWidgets(
-      'context meter uses the real thread payload and fresh keeps earlier messages',
-      (tester) async {
+  testWidgets('start fresh keeps earlier messages visible', (tester) async {
+    // Note: the context meter this test used to also assert on lived here
+    // (a GET /threads/thread-1 fetch feeding a header widget) until it was
+    // moved to the settings screen — see context_meter_test.dart and
+    // the new settings-screen coverage for its own assertions now.
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
-    fake.queueJsonFor('GET', '/threads/thread-1', 200, {
-      'id': 'thread-1',
-      'contextTokens': 80,
-      'contextLimit': 100,
-      'epoch': 2,
-    });
     fake.queueJsonFor('GET', '/threads/thread-1/messages', 200,
         [_messageJson('1', body: 'Earlier turn')]);
     fake.queueJsonFor('POST', '/threads/thread-1/fresh', 200, {
@@ -94,7 +90,6 @@ void main() {
     await tester.pumpWidget(
         MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('context-meter')), findsOneWidget);
     expect(find.text('Earlier turn'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('chat-overflow-menu')));
@@ -963,6 +958,46 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets(
+    'settings screen shows the context meter, expanded, with a label — '
+    'moved here from the chat header, which never had room for it',
+    (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [
+        {
+          'id': 'role-1',
+          'name': 'Concierge',
+          'description': 'Front desk',
+          'avatarSeed': 'seed-1',
+          'title': 'Front Desk Lead',
+          'instructions': null,
+        },
+      ]);
+      // Not queueing a /threads/thread-1 response here: _loggedIn already
+      // queues one default (contextTokens: 12, contextLimit: 100) for
+      // exactly this purpose, and queueJsonFor appends per path rather than
+      // overriding — a second entry here would just queue behind it.
+
+      await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+      );
+      await tester.pumpAndSettle();
+      // Not in the chat header any more — the header's own title Row has
+      // nothing but the avatar and the bot's name now.
+      expect(find.byKey(const Key('context-meter')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('bot-settings-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('context-meter')), findsOneWidget);
+      expect(find.text('Context usage'), findsOneWidget);
+      expect(find.text('12/100 tokens'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'settings screen shows "No title set" only when title is genuinely null',

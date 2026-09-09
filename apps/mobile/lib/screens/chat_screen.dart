@@ -65,7 +65,6 @@ class ChatScreenState extends State<ChatScreen>
   bool _uploading = false;
   String? _uploadError;
   bool _skillPickerOpen = false;
-  ThreadContext? _threadContext;
 
   /// Exposed for tests: true once the SSE subscription has been opened
   /// (and not yet closed) for this screen instance.
@@ -77,19 +76,7 @@ class ChatScreenState extends State<ChatScreen>
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(_onTabChanged);
     _load();
-    _loadThreadContext();
     _loadHandoffs();
-  }
-
-  Future<void> _loadThreadContext() async {
-    try {
-      final context = await widget.apiClient.getThreadContext(widget.bot.id);
-      if (mounted) {
-        setState(() => _threadContext = context);
-      }
-    } catch (_) {
-      // Metering is supplemental: a failure must not hide a transcript.
-    }
   }
 
   Future<void> _confirmStartFresh() async {
@@ -122,10 +109,10 @@ class ChatScreenState extends State<ChatScreen>
       return;
     }
     try {
-      final context = await widget.apiClient.startFresh(widget.bot.id);
-      if (mounted) {
-        setState(() => _threadContext = context);
-      }
+      // The result itself no longer needs to be held here — the context
+      // meter this fed lives on the settings screen now (see
+      // _SettingsScreen), which re-fetches its own copy on open.
+      await widget.apiClient.startFresh(widget.bot.id);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -476,6 +463,12 @@ class ChatScreenState extends State<ChatScreen>
             child: const SizedBox.expand(),
           ),
         ),
+        // The context meter used to live here, squeezed between the avatar
+        // and the action icons — on a real phone width that left so little
+        // room for the bot's own name that it collapsed to an ellipsis.
+        // Moved to the settings screen (see _SettingsScreen), which has a
+        // full-width row to give it, rather than fighting a header that
+        // was never going to have enough space for both.
         title: Row(
           children: [
             BotAvatar(
@@ -487,14 +480,6 @@ class ChatScreenState extends State<ChatScreen>
             Expanded(
               child: Text(widget.bot.botName, overflow: TextOverflow.ellipsis),
             ),
-            if (_threadContext case final threadContext?)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: ContextMeter(
-                  used: threadContext.contextTokens,
-                  limit: threadContext.contextLimit,
-                ),
-              ),
           ],
         ),
         actions: [
@@ -1040,12 +1025,28 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   Set<String> _enabledSkillIds = {};
   String? _skillsError;
   final Set<String> _savingSkillIds = {};
+  ThreadContext? _threadContext;
 
   @override
   void initState() {
     super.initState();
     _loadRole();
     _loadSkills();
+    _loadThreadContext();
+  }
+
+  /// Moved here from the chat header (see chat_screen's own AppBar comment)
+  /// — a full-width row has room for a label this widget's original
+  /// 92dp-in-a-crowded-header placement never did.
+  Future<void> _loadThreadContext() async {
+    try {
+      final context = await widget.apiClient.getThreadContext(widget.bot.id);
+      if (mounted) {
+        setState(() => _threadContext = context);
+      }
+    } catch (_) {
+      // Metering is supplemental: a failure must not hide the rest of settings.
+    }
   }
 
   Future<void> _loadSkills() async {
@@ -1169,6 +1170,14 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_threadContext case final threadContext?) ...[
+            ContextMeter(
+              used: threadContext.contextTokens,
+              limit: threadContext.contextLimit,
+              expanded: true,
+            ),
+            const SizedBox(height: 20),
+          ],
           const Text(
             'Auto-review',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
