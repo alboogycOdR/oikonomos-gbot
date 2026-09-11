@@ -218,3 +218,9 @@ export {
   type SecretRequest,
   type SecretRequestStatus,
 } from "./secretRequests.js";
+export {
+  recordRunPhaseTiming,
+  queryRunLatencyStats,
+  type RunPhaseTiming,
+  type PhaseLatencyStats,
+} from "./runPhaseTimings.js";

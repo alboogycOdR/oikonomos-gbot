@@ -18,6 +18,16 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
       "DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
       [[senderRoleId, receiverRoleId]],
     );
+    // thread_members must go before threads (FK) — this cleanup didn't
+    // delete thread_members at all before this fix, so a second run in
+    // the same database (e.g. a re-run after a failure, or this exact
+    // test file running twice in one session) hit
+    // thread_members_thread_id_fkey trying to delete a threads row a
+    // still-present thread_members row referenced.
+    await pool.query(
+      "DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
+      [[senderRoleId, receiverRoleId]],
+    );
     await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
     await pool.query("DELETE FROM role_routines WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
     await pool.query(

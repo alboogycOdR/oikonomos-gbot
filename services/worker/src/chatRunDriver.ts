@@ -27,6 +27,7 @@ import {
   insertMessage,
   insertThreadSummary,
   listMessages,
+  recordRunPhaseTiming,
   recordSpend,
   resolveRoleRuntime,
   updateThreadContext,
@@ -262,6 +263,16 @@ async function runChatTask(
   // provider actually ran, for the human-takeover audit event's `actor`.
   // Stays "claude" if the run never gets far enough to resolve a role.
   let effectiveProvider: string = "claude";
+  // TASK-230 — per-phase latency instrumentation. Best-effort only: a
+  // timing-record failure must never fail the actual run (same principle
+  // as "push is additive, never load-bearing" elsewhere in this codebase).
+  const phaseStart = performance.now();
+  const recordTimingSafe = (targetRunId: string | undefined, phase: string, durationMs: number): void => {
+    if (targetRunId === undefined) return;
+    void recordRunPhaseTiming(options, { runId: targetRunId, phase, durationMs }).catch((error: unknown) => {
+      console.error(`failed to record run phase timing (${phase}):`, error);
+    });
+  };
   try {
     const manifests = options.manifests ?? await loadManifests(options.manifestsDir ?? defaultManifestsDir());
     const registry = await CapabilityRegistry.build({ declared: [...BUILTIN_TOOLS, ...manifests.flatMap(declaredToolsFromManifest)], persisted: database });
@@ -351,6 +362,8 @@ async function runChatTask(
     // Fail closed before any Claude tokens are spent: a ceiling already at
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
+    recordTimingSafe(runId, "setup", performance.now() - phaseStart);
+    const modelStart = performance.now();
     let result;
     let botText: string | undefined;
     // Gemini records its own spend directly inside executeGeminiChatRun
@@ -406,12 +419,15 @@ async function runChatTask(
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
     }
+    recordTimingSafe(runId, "model_execution", performance.now() - modelStart);
+    const finalizeStart = performance.now();
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: botText ?? finalText(result?.events ?? []), runId: run.runId });
     // A run that reached here having accounted for nothing is unrecorded, not
     // free. Say so explicitly rather than leaving an absence to be misread.
     if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
+    recordTimingSafe(runId, "finalize", performance.now() - finalizeStart);
   } catch (error) {
     if (runId !== undefined) {
       if (isHumanTakeoverSignal(error)) {
@@ -1520,6 +1536,48 @@ if (import.meta.vitest) {
         platformCeilingZar: 1_000_000,
       }).run({ task, threadId });
       expect(await getRoutineSpendUsd(db, routineId)).toBeCloseTo(0.25);
+    });
+
+    // TASK-230 — control-liveness assertion for the per-phase latency
+    // instrumentation: proves real rows land in `run_phase_timings` for a
+    // real run, not just that the recording code exists and compiles. If
+    // this instrumentation ever goes inert (e.g. a future refactor drops
+    // the `recordTimingSafe` calls), this test fails; a test asserting
+    // only that `queryRunLatencyStats` returns the right *shape* would not
+    // have caught that.
+    it("records real per-phase timing rows for a completed run (control-liveness)", async () => {
+      const { createTask, listRuns } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-230 latency liveness",
+        goal: "Reply once.",
+        requestedBy: "task-230-suite",
+        routineId,
+      });
+      const queryFn: AgentSdkQueryFn = async function* () {
+        yield { type: "result", subtype: "success", result: "timed run" };
+      };
+      await createChatRunDriver({
+        ...db,
+        queryFn,
+        manifests: [],
+        platformCeilingZar: 1_000_000,
+      }).run({ task, threadId });
+
+      const { runs } = await listRuns(db, { taskId: task.taskId, limit: 1 });
+      expect(runs).toHaveLength(1);
+      const runId = runs[0]!.runId;
+
+      const rows = await pool.query(
+        `SELECT phase, duration_ms FROM run_phase_timings WHERE run_id = $1 ORDER BY phase`,
+        [runId],
+      ) as { rows: Array<{ phase: string; duration_ms: number }> };
+
+      const phases = rows.rows.map((r) => r.phase).sort();
+      expect(phases).toEqual(["finalize", "model_execution", "setup"]);
+      for (const row of rows.rows) {
+        expect(row.duration_ms).toBeGreaterThanOrEqual(0);
+      }
     });
 
     it("denies the turn when the platform ceiling is already at capacity (hard ceiling)", async () => {

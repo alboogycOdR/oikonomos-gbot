@@ -1807,6 +1807,22 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     }
   });
 
+  // TASK-230 — per-phase run latency (p50/p95/max), over the most recent
+  // runs (default 500). No auth-scoping beyond the existing session gate:
+  // this is operational telemetry, not tenant data.
+  app.get<{ Querystring: { limit?: number } }>("/internal/run-latency", async (request, reply) => {
+    if (deps.getRunLatencyStats === undefined) {
+      await reply.code(501).send({ error: "getRunLatencyStats not implemented" });
+      return;
+    }
+    try {
+      const stats = await deps.getRunLatencyStats(request.query.limit);
+      await reply.code(200).send({ stats });
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
   app.get<{ Params: { id: string } }>("/runs/:id", async (request, reply) => {
     try {
       const run = await deps.getRun(request.params.id);
@@ -2248,6 +2264,7 @@ if (import.meta.vitest) {
       listTasks: async () => ({ tasks: [], nextCursor: null }),
       getTask: async () => null,
       listRuns: async () => ({ runs: [], nextCursor: null }),
+      getRunLatencyStats: async () => [],
       getRun: async () => makeRun(),
       listPendingApprovals: async () => [],
       decideApproval: async () => ({ decided: false, rowCount: 0 }),

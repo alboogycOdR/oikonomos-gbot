@@ -28,6 +28,7 @@ import {
   updateRoleInstructions as dbUpdateRoleInstructions,
   listRoutines as dbListRoutines,
   listRuns as dbListRuns,
+  queryRunLatencyStats as dbQueryRunLatencyStats,
   listTasks as dbListTasks,
   listThreads as dbListThreads,
   listAllThreadsWithMembers as dbListAllThreadsWithMembers,
@@ -58,6 +59,7 @@ import {
   type NewMessage,
   type PendingApprovalFilter,
   type Approval,
+  type PhaseLatencyStats,
   type Run,
   type RunListFilter,
   type RunListPage,
@@ -150,6 +152,13 @@ export interface ControlApiDeps {
   getTask(taskId: string): Promise<Task | null>;
   listRuns(filter?: RunListFilter): Promise<RunListPage>;
   getRun(runId: string): Promise<Run | null>;
+  /**
+   * TASK-230 — per-phase latency stats (p50/p95/max) over the most recent
+   * runs. Optional (like `listEnabledSkillsForRole` below) so the many
+   * test-fixture `ControlApiDeps` objects that predate this route don't
+   * all need updating; the route itself 501s when it's absent.
+   */
+  getRunLatencyStats?(limit?: number): Promise<PhaseLatencyStats[]>;
   listPendingApprovals(filter?: PendingApprovalFilter): Promise<Approval[]>;
   decideApproval(
     nonce: string,
@@ -418,6 +427,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     getTask: (taskId) => dbGetTask(options, taskId),
     listRuns: (filter) => dbListRuns(options, filter),
     getRun: (runId) => dbGetRun(options, runId),
+    getRunLatencyStats: (limit) => dbQueryRunLatencyStats(options, { ...(limit === undefined ? {} : { limit }) }),
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),
     decideApproval: (nonce, decision, decidedBy) =>
       approvalsDecideApproval(nonce, decision, decidedBy, { database: options }),
