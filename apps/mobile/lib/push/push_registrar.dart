@@ -66,9 +66,15 @@ class PushRegistrar {
     }
   }
 
+  /// TASK-232 — resets [_initialized] so a caller can [initialize] again
+  /// after this (e.g. the user turns notifications off, then back on,
+  /// within the same session) rather than being permanently latched off
+  /// by the single-shot guard `initialize` uses on first call.
   void dispose() {
     _tokenSub?.cancel();
     _messageSub?.cancel();
     _port.dispose();
+    _initialized = false;
+    _hasRegistered = false;
   }
 }

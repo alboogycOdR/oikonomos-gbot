@@ -5,6 +5,7 @@ import '../api/exceptions.dart';
 import '../api/models.dart';
 import '../push/device_platform.dart';
 import '../push/noop_push_port.dart';
+import '../push/notification_preference.dart';
 import '../push/push_message.dart';
 import '../push/push_port.dart';
 import '../push/push_registrar.dart';
@@ -27,6 +28,7 @@ class RosterScreen extends StatefulWidget {
     super.key,
     required this.apiClient,
     this.pushPort = const NoopPushPort(),
+    this.notificationPreference = const NotificationPreference(),
     this.authPort,
   });
 
@@ -37,6 +39,12 @@ class RosterScreen extends StatefulWidget {
   /// argument) is unaffected: registration never fires and no additional
   /// HTTP request is ever queued/expected.
   final PushPort pushPort;
+
+  /// TASK-232 — persisted opt-out gate checked before the initial
+  /// registration and updated live from the system settings screen.
+  /// Defaults to the real `shared_preferences`-backed implementation;
+  /// tests inject a fake.
+  final NotificationPreference notificationPreference;
 
   /// TASK-174 — real Google/Firebase sign-out port used by the sign-out
   /// action below. `RosterScreen` does not hold a reference to the port
@@ -80,8 +88,31 @@ class _RosterScreenState extends State<RosterScreen> {
       devicePlatform: currentDevicePlatform,
       onMessage: _showPushMessage,
     );
-    _pushRegistrar.initialize();
+    _initPushIfEnabled();
     _load();
+  }
+
+  /// TASK-232 — only registers for push if the persisted preference
+  /// allows it. Checked at startup; [setNotificationsEnabled] below is
+  /// the live-toggle counterpart called from the system settings screen.
+  Future<void> _initPushIfEnabled() async {
+    final enabled = await widget.notificationPreference.isEnabled();
+    if (enabled) {
+      await _pushRegistrar.initialize();
+    }
+  }
+
+  /// TASK-232 — live counterpart to the startup gate above: turning
+  /// notifications off immediately stops this session's foreground
+  /// message handling and future token registration; turning them back
+  /// on re-initializes registration without needing an app restart.
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await widget.notificationPreference.setEnabled(enabled);
+    if (enabled) {
+      await _pushRegistrar.initialize();
+    } else {
+      _pushRegistrar.dispose();
+    }
   }
 
   @override
@@ -174,6 +205,8 @@ class _RosterScreenState extends State<RosterScreen> {
         builder: (_) => SystemSettingsScreen(
           apiClient: widget.apiClient,
           authPort: widget._resolvedAuthPort(),
+          notificationPreference: widget.notificationPreference,
+          onNotificationsChanged: setNotificationsEnabled,
         ),
       ),
     );

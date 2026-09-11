@@ -1,32 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../api/api_client.dart';
+import '../push/notification_preference.dart';
 import 'login_screen.dart';
-
-/// App version shown at the foot of the settings screen. Kept in step with
-/// `pubspec.yaml`'s `version:` by hand for now — `package_info_plus` would
-/// read it at runtime but adds a platform channel the widget tests can't
-/// reach; revisit when a release pipeline starts stamping builds.
-const kAppVersion = '0.1.0';
 
 /// System-wide settings: the account that is signed in, sign out,
 /// notification preference, and app version. Per-bot configuration
 /// (instructions, skills, routines) stays on the bot's own settings
 /// screen reached from the chat header.
-///
-/// Notifications is a local preference only for now — nothing persists it
-/// across launches and the push registrar does not yet consult it. It is
-/// here so the screen has the shape the rest of the settings will grow
-/// into, not because the switch already gates anything.
 class SystemSettingsScreen extends StatefulWidget {
   const SystemSettingsScreen({
     super.key,
     required this.apiClient,
     required this.authPort,
+    this.notificationPreference = const NotificationPreference(),
+    this.onNotificationsChanged,
   });
 
   final ApiClient apiClient;
   final GoogleAuthPort authPort;
+
+  /// TASK-232 — persisted store for the toggle below. Read on open and
+  /// written on every change, independent of [onNotificationsChanged], so
+  /// this screen is fully testable/usable on its own (e.g. constructed
+  /// directly in a test) without a live [RosterScreen] parent.
+  final NotificationPreference notificationPreference;
+
+  /// TASK-232 — optional live counterpart: when this screen is opened
+  /// from [RosterScreen], this applies the change immediately to the
+  /// running session's push registration (rather than only taking effect
+  /// on next app start). Left null when this screen is exercised on its
+  /// own, e.g. in tests.
+  final Future<void> Function(bool enabled)? onNotificationsChanged;
 
   @override
   State<SystemSettingsScreen> createState() => _SystemSettingsScreenState();
@@ -35,6 +41,38 @@ class SystemSettingsScreen extends StatefulWidget {
 class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
   bool _notificationsEnabled = true;
   bool _signingOut = false;
+  String? _version;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPreference();
+    _loadVersion();
+  }
+
+  Future<void> _loadNotificationPreference() async {
+    final enabled = await widget.notificationPreference.isEnabled();
+    if (mounted) setState(() => _notificationsEnabled = enabled);
+  }
+
+  /// TASK-233 — reads the real build's version/build number rather than a
+  /// hand-maintained constant. `package_info_plus` ships
+  /// `PackageInfo.setMockInitialValues` for exactly this: widget tests
+  /// never touch the real platform channel.
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    final build = info.buildNumber.trim();
+    setState(() {
+      _version = build.isEmpty ? info.version : '${info.version} ($build)';
+    });
+  }
+
+  Future<void> _setNotificationsEnabled(bool enabled) async {
+    setState(() => _notificationsEnabled = enabled);
+    await widget.notificationPreference.setEnabled(enabled);
+    await widget.onNotificationsChanged?.call(enabled);
+  }
 
   /// Clears the in-memory session cookie and the real Firebase/Google
   /// session, then replaces the whole navigation stack with a fresh
@@ -106,7 +144,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
             title: const Text('Notifications'),
             subtitle: const Text('Approvals, take-over requests, and replies'),
             value: _notificationsEnabled,
-            onChanged: (value) => setState(() => _notificationsEnabled = value),
+            onChanged: (value) => _setNotificationsEnabled(value),
           ),
           const Divider(),
           ListTile(
@@ -119,7 +157,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
           const SizedBox(height: 32),
           Center(
             child: Text(
-              'OIKONOMOS $kAppVersion',
+              _version == null ? 'OIKONOMOS' : 'OIKONOMOS $_version',
               key: const Key('settings-version'),
               style: Theme.of(context)
                   .textTheme

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oikonomos_mobile/api/api_client.dart';
+import 'package:oikonomos_mobile/push/notification_preference.dart';
 import 'package:oikonomos_mobile/screens/login_screen.dart';
 import 'package:oikonomos_mobile/screens/settings_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_http_client.dart';
 
@@ -39,6 +42,20 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
 }
 
 void main() {
+  setUp(() {
+    // TASK-232/233 — neither `shared_preferences` nor `package_info_plus`
+    // should ever touch a real platform channel in a widget test; both
+    // packages ship exactly this in-memory mock for that purpose.
+    SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'OIKONOMOS',
+      packageName: 'com.basileia.oikonomos',
+      version: '0.1.0',
+      buildNumber: '7',
+      buildSignature: '',
+    );
+  });
+
   testWidgets('profile header shows the signed-in name, email, and initial',
       (tester) async {
     final client = await _loggedIn(FakeHttpClient());
@@ -109,7 +126,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('shows the app version', (tester) async {
+  testWidgets('shows the real build version, not a hardcoded constant',
+      (tester) async {
     final client = await _loggedIn(FakeHttpClient());
 
     await tester.pumpWidget(
@@ -123,17 +141,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('settings-version')), findsOneWidget);
-    expect(find.text('OIKONOMOS $kAppVersion'), findsOneWidget);
+    expect(find.text('OIKONOMOS 0.1.0 (7)'), findsOneWidget);
   });
 
-  testWidgets('notifications toggle flips', (tester) async {
+  testWidgets('notifications toggle flips and persists', (tester) async {
     final client = await _loggedIn(FakeHttpClient());
+    const preference = NotificationPreference();
 
     await tester.pumpWidget(
       MaterialApp(
         home: SystemSettingsScreen(
           apiClient: client,
           authPort: _FakeGoogleAuthPort(),
+          notificationPreference: preference,
         ),
       ),
     );
@@ -144,6 +164,62 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+
+    // TASK-232 AC: persists across a restart — reading straight from the
+    // store (rather than remounting the widget) proves the write actually
+    // landed, independent of how the next screen happens to read it back.
+    expect(await preference.isEnabled(), isFalse);
+  });
+
+  testWidgets(
+      'a persisted "off" preference is reflected when the screen opens',
+      (tester) async {
+    final client = await _loggedIn(FakeHttpClient());
+    const preference = NotificationPreference();
+    await preference.setEnabled(false);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SystemSettingsScreen(
+          apiClient: client,
+          authPort: _FakeGoogleAuthPort(),
+          notificationPreference: preference,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('settings-notifications')))
+          .value,
+      isFalse,
+    );
+  });
+
+  testWidgets(
+      'toggling notifications calls the live onNotificationsChanged callback',
+      (tester) async {
+    final client = await _loggedIn(FakeHttpClient());
+    final calls = <bool>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SystemSettingsScreen(
+          apiClient: client,
+          authPort: _FakeGoogleAuthPort(),
+          onNotificationsChanged: (enabled) async {
+            calls.add(enabled);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('settings-notifications')));
+    await tester.pumpAndSettle();
+
+    expect(calls, [false]);
   });
 
   testWidgets(

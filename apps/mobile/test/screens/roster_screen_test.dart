@@ -7,6 +7,8 @@ import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
 import 'package:oikonomos_mobile/screens/login_screen.dart';
 import 'package:oikonomos_mobile/screens/roster_screen.dart';
 import 'package:oikonomos_mobile/screens/settings_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_http_client.dart';
 import '../support/fake_push_port.dart';
@@ -44,6 +46,21 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
 }
 
 void main() {
+  setUp(() {
+    // TASK-232 — RosterScreen now reads the persisted notifications
+    // preference in initState; never touch the real platform channel.
+    SharedPreferences.setMockInitialValues({});
+    // TASK-233 — the settings screen reached via 'settings-button' reads
+    // the real build version; never touch the real platform channel.
+    PackageInfo.setMockInitialValues(
+      appName: 'OIKONOMOS',
+      packageName: 'com.basileia.oikonomos',
+      version: '0.1.0',
+      buildNumber: '7',
+      buildSignature: '',
+    );
+  });
+
   testWidgets('renders real bots with avatar/name/preview/timestamp', (
     tester,
   ) async {
