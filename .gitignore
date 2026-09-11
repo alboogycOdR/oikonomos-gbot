@@ -27,3 +27,6 @@ backups/
 .source-import/
 
 desktop.ini
+
+# TASK-229: runtime output from infra/compose/service-watchdog.ps1
+infra/compose/logs/
