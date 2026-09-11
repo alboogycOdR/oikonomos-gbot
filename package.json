@@ -12,12 +12,14 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "posttest": "node scripts/db-cleanup.mjs --execute || true",
     "canaries": "pnpm --filter @oikonomos/evals-harness test"
   },
   "devDependencies": {
     "@types/node": "^22.17.0",
     "@typescript-eslint/parser": "^8.67.0",
     "eslint": "^10.8.1",
+    "pg": "^8.23.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
