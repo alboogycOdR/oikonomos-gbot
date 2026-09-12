@@ -29,6 +29,7 @@ import {
   buildExpiredSessionCookie,
   buildSessionCookie,
   authenticate,
+  createSessionRevocationStore,
   createFirebaseIdTokenVerifier,
   createSessionToken,
   SESSION_COOKIE_NAME,
@@ -786,7 +787,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   const verifyFirebaseIdToken = options.verifyFirebaseIdToken ?? createFirebaseIdTokenVerifier(firebaseProjectId);
   const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
   const buildSha = resolveBuildSha();
-  const revokedSessionTokens = new Set<string>();
+  const revokedSessionTokens = createSessionRevocationStore(authToken);
 
   const app = Fastify({
     logger:
@@ -1010,10 +1011,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
 
   app.post("/auth/logout", async (request, reply) => {
     const token = parseCookieHeader(request.headers.cookie)[SESSION_COOKIE_NAME];
-    if (token !== undefined) revokedSessionTokens.add(token);
+    if (token !== undefined) revokedSessionTokens.revoke(token);
     await reply.header("set-cookie", buildExpiredSessionCookie()).code(204).send();
   });
 
+  // Deliberately public: liveness probes cannot carry an operator credential.
   app.get("/health", { config: { public: true } }, async (_request, reply) => {
     await reply.code(200).send({ status: "ok", buildSha });
   });

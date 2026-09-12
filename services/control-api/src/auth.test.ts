@@ -9,6 +9,7 @@ import { defaultPoolConfig, type DatabaseOptions } from "@oikonomos/db";
 import {
   buildExpiredSessionCookie,
   buildSessionCookie,
+  createSessionRevocationStore,
   createSessionToken,
   isAuthorized,
   isValidLoginToken,
@@ -71,6 +72,26 @@ describe("createSessionToken / verifySessionToken", () => {
   it("carries a Firebase UID as the session tenant", () => {
     const token = createSessionToken(SECRET, "firebase-uid-42");
     expect(verifySessionToken(SECRET, token)).toEqual({ tenantId: "firebase-uid-42", credential: "session" });
+  });
+});
+
+describe("createSessionRevocationStore", () => {
+  it("revokes a valid token only until its signed expiry, pruning it on the next access", () => {
+    let now = 1_000_000;
+    const token = createSessionToken(SECRET, now);
+    const store = createSessionRevocationStore(SECRET, () => now);
+    store.revoke(token);
+    expect(store.has(token)).toBe(true);
+    now += 24 * 60 * 60 * 1000;
+    expect(store.has(token)).toBe(false);
+  });
+
+  it("does not retain malformed or expired tokens", () => {
+    const now = 1_000_000;
+    const store = createSessionRevocationStore(SECRET, () => now);
+    store.revoke("tampered");
+    store.revoke(createSessionToken(SECRET, 0));
+    expect(store.has("tampered")).toBe(false);
   });
 });
 

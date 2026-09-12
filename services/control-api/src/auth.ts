@@ -24,6 +24,11 @@ export interface SessionPrincipal {
   expiresAt: Date;
 }
 
+export interface SessionRevocationStore {
+  revoke(token: string): void;
+  has(token: string): boolean;
+}
+
 export type FirebaseIdTokenVerifier = (idToken: string) => Promise<{ uid: string }>;
 
 function safeEqual(a: string, b: string): boolean {
@@ -68,6 +73,38 @@ export function verifySessionPrincipal(secret: string, token: string, now: numbe
   const { exp, tenantId } = parsed as { exp?: unknown; tenantId?: unknown };
   if (typeof exp !== "number" || exp <= now || typeof tenantId !== "string" || tenantId.trim().length === 0) return undefined;
   return { tenantId, expiresAt: new Date(exp) };
+}
+
+/**
+ * In-memory session revocation for one control-api process. Deployments with
+ * more than one process need a shared revocation store; this intentionally
+ * does not claim cross-process logout. Entries are pruned against their signed
+ * expiry each time the store is used, bounding memory by the session TTL.
+ */
+export function createSessionRevocationStore(
+  secret: string,
+  now: () => number = Date.now,
+): SessionRevocationStore {
+  const revoked = new Map<string, number>();
+
+  function prune(): void {
+    const current = now();
+    for (const [token, expiresAt] of revoked) {
+      if (expiresAt <= current) revoked.delete(token);
+    }
+  }
+
+  return {
+    revoke(token: string): void {
+      prune();
+      const session = verifySessionPrincipal(secret, token, now());
+      if (session !== undefined) revoked.set(token, session.expiresAt.getTime());
+    },
+    has(token: string): boolean {
+      prune();
+      return revoked.has(token);
+    },
+  };
 }
 
 /** Parse a raw Cookie header into a name -> value map. */

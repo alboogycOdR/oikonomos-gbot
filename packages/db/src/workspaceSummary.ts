@@ -55,13 +55,14 @@ export async function listWorkspaceSummary(options: DatabaseOptions, tenantId: s
                  SELECT 1 FROM roles
                   WHERE roles.role_id = threads.role_id
                     AND roles.tenant_id = $1
+                    AND roles.status = 'active'
               ))
            OR (threads.role_id IS NULL AND NOT EXISTS (
                  SELECT 1
                    FROM thread_members
                    LEFT JOIN roles ON roles.role_id = thread_members.role_id
                   WHERE thread_members.thread_id = threads.id
-                    AND roles.tenant_id IS DISTINCT FROM $1
+                    AND (roles.tenant_id IS DISTINCT FROM $1 OR roles.status IS DISTINCT FROM 'active')
               ))
         ORDER BY threads.updated_at DESC, threads.id DESC`,
       [ownerTenantId],
