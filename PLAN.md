@@ -7199,7 +7199,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-241
 **Title:** Workspace-1 — dashboard Google sign-in via Firebase web SDK against POST /auth/google (shared web/mobile identity)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.3; TASK-172 and TASK-173 Progress_Notes; docs/runbooks/firebase-android-setup.md
@@ -7216,12 +7216,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T11:55:23Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T12:28:35Z] [SV:S5] Firebase web SDK Google sign-in implemented against POST /auth/google. lib/firebase.ts (lazy init from VITE_FIREBASE_* env, signInWithGooglePopup), api.ts loginWithGoogle(idToken), AuthContext gains loginWithGoogle, LoginPage shows a 'Continue with Google' button plus the pre-existing operator-token form behind a real show/hide toggle (starts open, deliberately, to avoid breaking App.test.tsx/ChatPage.test.tsx which are outside Owned_Paths and assert the token field's default visibility -- see dossier for full rationale and a recommended tiny follow-up task to flip that default once those two files are updated). firebase pinned exact 12.19.0; pnpm-lock.yaml diff is additive-only. Full dashboard suite 21/21 files, 124/124 tests green; typecheck/build clean. Full recursive suite pnpm --filter '!@oikonomos/control-api' -r test green (18/18 workspaces) -- the one exclusion is a pre-existing, unrelated typecheck failure in services/control-api (ports.ts/ports.test.ts referencing not-yet-existing @oikonomos/worker and @oikonomos/db exports), confirmed pre-existing by stashing this task's changes and reproducing identically on a clean tree, and very likely CX9's in-flight TASK-242 (which owns ports.ts) mid-implementation on master. AC1-3 (real cross-device tenant match) honestly unverified -- no live Firebase web credentials or paired Android device this session; AC4/AC5 met. Two gaps flagged for ORCH in the dossier, not fixed (out of territory): docs/runbooks/firebase-android-setup.md doesn't yet name the VITE_FIREBASE_* vars (docs/** protected; .env.example documents them instead), and real Firebase Console web-app registration wasn't performed.
+**Artifacts:** apps/dashboard/src/lib/firebase.ts, apps/dashboard/src/lib/firebase.test.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/AuthContext.tsx, apps/dashboard/src/pages/LoginPage.tsx, apps/dashboard/src/pages/LoginPage.test.tsx, apps/dashboard/package.json, apps/dashboard/.env.example, pnpm-lock.yaml, dossiers/TASK-241.md
+**Test_Evidence:** pnpm --filter @oikonomos/dashboard typecheck: exit 0. pnpm --filter @oikonomos/dashboard build: exit 0 (tsc && vite build). pnpm --filter @oikonomos/dashboard test: 21/21 files, 124/124 tests passed. pnpm --filter '!@oikonomos/control-api' -r test: exit 0, all 18 filtered workspaces green (services/worker 245/245, evals/harness 19/19, etc.). pnpm -r typecheck (unfiltered) fails only in services/control-api with 8 pre-existing errors, reproduced identically on master with this task's changes stashed out -- unrelated to this task, confirmed not a regression.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T11:55:23Z
+**Updated_At:** 2026-09-12T12:28:35Z
 
 ### TASK-242
 **Title:** Workspace-1 — run completion receipt API: GET /runs/:id/receipt
