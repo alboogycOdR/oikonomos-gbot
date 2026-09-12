@@ -26,6 +26,7 @@ import {
   getRoutineSpendUsd,
   insertMessage,
   insertThreadSummary,
+  listEnabledForRole,
   listMessages,
   recordRunPhaseTiming,
   recordSpend,
@@ -51,7 +52,7 @@ import {
   DEFAULT_PLATFORM_CEILING_ZAR,
   DEFAULT_USD_TO_ZAR_RATE,
 } from "./subprocessProviders.js";
-import { buildRoleSystemPrompt } from "./promptAssembly.js";
+import { assembleSystemPrompt, buildRoleSystemPrompt, type SkillResolver } from "./promptAssembly.js";
 import { maybeCompact } from "./contextCompaction.js";
 import { createTierZeroProvider, resolveTierZeroEnvConfig, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
 import { createChatRunWorkspace, removeChatRunWorkspace } from "./runWorkspace.js";
@@ -246,6 +247,24 @@ export function createChatRunDriver(options: CreateChatRunDriverOptions): ChatRu
   };
 }
 
+/**
+ * TASK-224 — real `SkillResolver` backing `assembleSystemPrompt`'s `/name`
+ * token expansion. Fetches a role's enabled skills ONCE per run (not once
+ * per token — a message referencing three skills should cost one DB round
+ * trip, not three) and resolves by name from that in-memory list. A
+ * `/name` matching no enabled skill correctly resolves to `null` here —
+ * `assembleSystemPrompt` itself turns that into a system-visible "not
+ * enabled for this bot" note rather than silently dropping it.
+ */
+function createSkillResolver(options: DatabaseOptions, roleId: string): SkillResolver {
+  let enabledSkills: ReturnType<typeof listEnabledForRole> | undefined;
+  return async (name: string) => {
+    enabledSkills ??= listEnabledForRole(options, roleId);
+    const skills = await enabledSkills;
+    return skills.find((skill) => skill.name === name) ?? null;
+  };
+}
+
 async function runChatTask(
   options: CreateChatRunDriverOptions,
   request: ChatRunRequest,
@@ -374,7 +393,19 @@ async function runChatTask(
     // Claude-shaped tap.
     let geminiSpendRecorded = false;
     try {
-      const systemPrompt = buildRoleSystemPrompt(role, request.task.roleId);
+      // TASK-224 — a user's `/skill-name` token (inserted verbatim by the
+      // mobile composer's skill picker, apps/mobile/lib/screens/chat_screen.dart)
+      // previously did nothing: buildRoleSystemPrompt alone never expanded
+      // it, so the token sat as inert plain text in the prompt. Both the
+      // Claude and Gemini lanes read this ONE systemPrompt value below, so
+      // wiring it here reaches both without touching either lane
+      // separately.
+      const systemPrompt = await assembleSystemPrompt({
+        role,
+        fallbackRoleId: request.task.roleId,
+        message: request.task.goal,
+        resolveEnabledSkill: createSkillResolver(options, request.task.roleId),
+      });
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
         const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector);
         botText = geminiResult.text;
@@ -1484,6 +1515,11 @@ if (import.meta.vitest) {
       await pool.query(`DELETE FROM role_sandboxes WHERE role_id = $1`, [roleId]);
       await pool.query(`DELETE FROM role_routines WHERE role_id = $1`, [roleId]);
       await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
+      // TASK-224's own skill-wiring test: role_skills before roles (FK) AND
+      // before skills (FK) — skills has no role_id of its own, scoped by
+      // name instead.
+      await pool.query(`DELETE FROM role_skills WHERE role_id = $1`, [roleId]);
+      await pool.query(`DELETE FROM skills WHERE name LIKE 'task-224-%'`);
       await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
     }
 
@@ -1578,6 +1614,75 @@ if (import.meta.vitest) {
       for (const row of rows.rows) {
         expect(row.duration_ms).toBeGreaterThanOrEqual(0);
       }
+    });
+
+    // TASK-224 — control-liveness for skill-block wiring: a real
+    // `/skill-name` token, exactly as the mobile composer's skill picker
+    // inserts it (apps/mobile/lib/screens/chat_screen.dart:219,
+    // `_composeController.text = '/${skill.name} '`), must produce a real
+    // `## Skill: <name>` block inside the ACTUAL prompt the model receives
+    // — captured from the real queryFn call, not inferred from
+    // promptAssembly.ts's own already-passing unit tests, which prove
+    // nothing about whether any execution lane actually calls it.
+    it("expands a real /skill-name token into a skill block in the actual model prompt (control-liveness)", async () => {
+      const { createTask, createSkill, setEnabledForRole } = await import("@oikonomos/db");
+      const skill = await createSkill(db, {
+        name: "task-224-standup",
+        description: "Posts a daily standup summary.",
+        whenToUse: "When asked for a status update.",
+        body: "1. Summarize yesterday.\n2. List blockers.",
+      });
+      await setEnabledForRole(db, roleId, skill.skillId, true);
+
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-224 skill wiring",
+        goal: "/task-224-standup please",
+        requestedBy: "task-224-suite",
+        routineId,
+      });
+      let capturedSystemPrompt: unknown;
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        capturedSystemPrompt = (input.options as { systemPrompt?: unknown } | undefined)?.systemPrompt;
+        yield { type: "result", subtype: "success", result: "standup posted" };
+      };
+      await createChatRunDriver({
+        ...db,
+        queryFn,
+        manifests: [],
+        platformCeilingZar: 1_000_000,
+      }).run({ task, threadId });
+
+      expect(typeof capturedSystemPrompt).toBe("string");
+      const prompt = capturedSystemPrompt as string;
+      expect(prompt).toContain("## Skill: task-224-standup");
+      expect(prompt).toContain("When to use: When asked for a status update.");
+      expect(prompt).toContain("List blockers.");
+    });
+
+    it("leaves a /name token referencing no enabled skill as a system-visible note, not silently dropped (control-liveness)", async () => {
+      const { createTask } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-224 unknown skill token",
+        goal: "/does-not-exist please",
+        requestedBy: "task-224-suite",
+        routineId,
+      });
+      let capturedSystemPrompt: unknown;
+      const queryFn: AgentSdkQueryFn = async function* (input) {
+        capturedSystemPrompt = (input.options as { systemPrompt?: unknown } | undefined)?.systemPrompt;
+        yield { type: "result", subtype: "success", result: "ok" };
+      };
+      await createChatRunDriver({
+        ...db,
+        queryFn,
+        manifests: [],
+        platformCeilingZar: 1_000_000,
+      }).run({ task, threadId });
+
+      const prompt = capturedSystemPrompt as string;
+      expect(prompt).toContain("skill 'does-not-exist' is not enabled for this bot");
     });
 
     it("denies the turn when the platform ceiling is already at capacity (hard ceiling)", async () => {
