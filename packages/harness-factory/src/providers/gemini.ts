@@ -137,6 +137,8 @@ export interface GeminiRunResult {
   readonly denied: boolean;
   /** Summed across every real API call this run made; all-zero if none were. */
   readonly usage: GeminiUsage;
+  /** A terminal executor signal ended this turn before another tool or retry. */
+  readonly stopped: boolean;
 }
 
 /**
@@ -178,12 +180,12 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
         // honestly either way — is still folded in.
         usage = addUsage(usage, response.usage);
         if (response.kind === "deny") {
-          return { text: "", functionResponses, denied: true, usage };
+          return { text: "", functionResponses, denied: true, usage, stopped: false };
         }
 
         const functionCalls = functionCallsFrom(response.content);
         if (functionCalls.length === 0) {
-          return { text: textFrom(response.content), functionResponses, denied: false, usage };
+          return { text: textFrom(response.content), functionResponses, denied: false, usage, stopped: false };
         }
 
         const responseParts: Array<Record<string, unknown>> = [];
@@ -191,14 +193,19 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
           // This await is deliberately adjacent to execution: ADR-011 §2.2.
           const decision = await decideFunctionCall(options.l1, call, toolByName, maximumToolTier);
           const functionResponse = await functionResponseFor(call, decision, toolByName);
-          functionResponses.push(functionResponse);
-          responseParts.push({ functionResponse });
+          const { stopped: _stopped, ...protocolResponse } = functionResponse;
+          functionResponses.push(protocolResponse);
+          if (functionResponse.stopped) {
+            // Do not dispatch another call from this batch or send a retry.
+            return { text: "", functionResponses, denied: false, usage, stopped: true };
+          }
+          responseParts.push({ functionResponse: protocolResponse });
         }
 
         contents.push(response.content, { role: "user", parts: responseParts });
       }
 
-      return { text: "", functionResponses, denied: true, usage };
+      return { text: "", functionResponses, denied: true, usage, stopped: false };
     },
   };
 }
@@ -255,16 +262,20 @@ async function functionResponseFor(
   call: GeminiFunctionCall,
   decision: { allow: true; input: Record<string, unknown> } | { allow: false; message: string },
   toolByName: ReadonlyMap<string, GeminiTool>,
-): Promise<GeminiFunctionResponse> {
+): Promise<GeminiFunctionResponse & { readonly stopped: boolean }> {
   if (!decision.allow) {
-    return { name: call.name, response: { error: decision.message } };
+    return { name: call.name, response: { error: decision.message }, stopped: false };
   }
 
   try {
     const result = await toolByName.get(call.name)!.execute(decision.input);
-    return { name: call.name, response: { result } };
+    return {
+      name: call.name,
+      response: { result },
+      stopped: isRecord(result) && result.human_takeover_required === true,
+    };
   } catch {
-    return { name: call.name, response: { error: "Gemini tool execution failed" } };
+    return { name: call.name, response: { error: "Gemini tool execution failed" }, stopped: false };
   }
 }
 
@@ -354,6 +365,7 @@ function deniedResult(message: string): GeminiRunResult {
     functionResponses: [{ name: "gemini", response: { error: message } }],
     denied: true,
     usage: ZERO_USAGE,
+    stopped: false,
   };
 }
 

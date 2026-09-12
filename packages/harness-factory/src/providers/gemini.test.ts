@@ -36,6 +36,12 @@ function functionCall(name = "observe", args: Record<string, unknown> = { path: 
   }));
 }
 
+function functionCalls(calls: readonly { readonly name: string; readonly args: Record<string, unknown> }[]): Response {
+  return new Response(JSON.stringify({
+    candidates: [{ content: { role: "model", parts: calls.map(({ name, args }) => ({ functionCall: { name, args } })) } }],
+  }));
+}
+
 function text(textValue = "observed", usageMetadata?: Usage): Response {
   return new Response(JSON.stringify({
     candidates: [{ content: { role: "model", parts: [{ text: textValue }] } }],
@@ -148,6 +154,34 @@ describe("Gemini adapter — governed Stage-1 function loop", () => {
 
     await expect(adapter.run("observe the inbox")).resolves.toMatchObject({ text: "observed", denied: false });
     expect(order).toEqual(["request", "l1:observe", "execute:true", "functionResponse"]);
+  });
+
+  it("stops a batch immediately when an executor returns human_takeover_required", async () => {
+    withNonSecretTestValue();
+    const first = vi.fn(async () => ({ human_takeover_required: true }));
+    const second = vi.fn(async () => ({ shouldNot: "run" }));
+    const third = vi.fn(async () => ({ shouldNot: "run" }));
+    const fetch = vi.fn(async () => functionCalls([
+      { name: "first", args: {} },
+      { name: "second", args: {} },
+      { name: "third", args: {} },
+    ]));
+    const adapter = createGeminiAdapter({
+      l1: { async handle() { return { decision: "allow" }; } },
+      tools: [
+        { name: "first", tier: 0, execute: first },
+        { name: "second", tier: 0, execute: second },
+        { name: "third", tier: 0, execute: third },
+      ],
+      fetch,
+    });
+
+    await expect(adapter.run("browse")).resolves.toMatchObject({ stopped: true, denied: false });
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+    expect(third).not.toHaveBeenCalled();
+    // Returning immediately also proves no provider retry was sent.
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("returns L1's denial to Gemini and never invokes the tool", async () => {

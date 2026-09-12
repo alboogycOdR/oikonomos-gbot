@@ -722,6 +722,11 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       ...(usageMetadata === undefined ? {} : { usageMetadata }),
     }));
   }
+  function geminiFunctionCallsResponse(calls: readonly { readonly name: string; readonly args: Record<string, unknown> }[]): Response {
+    return new Response(JSON.stringify({
+      candidates: [{ content: { role: "model", parts: calls.map(({ name, args }) => ({ functionCall: { name, args } })) } }],
+    }));
+  }
   function geminiTextResponse(
     text: string,
     usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; totalTokenCount?: number },
@@ -1019,6 +1024,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     const takeoverTask = await createTask(options, { roleId: takeoverRoleId, title: "TASK-225 takeover", goal: "Log in and check the account.", requestedBy: "task-225-suite" });
     const takeoverThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [takeoverRoleId])).rows[0]!.id;
 
+    let releasedAfterTakeover = false;
     const fakeSandbox: SandboxClient = {
       health: async () => ({ status: "ok" }),
       createSandbox: async () => ({ id: "task-225-takeover-office", createdAt: "2026-09-09T00:00:00Z", status: { state: "Running" } }),
@@ -1040,6 +1046,10 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         }
         if (cmd.includes("-X GET") && cmd.includes("http://127.0.0.1:3000/v1/sessions/sess-225t")) {
           return { stdout: `${JSON.stringify({ id: "sess-225t", websocketUrl: "ws://127.0.0.1:3000/devtools/2" })}\n200`, stderr: "", exitCode: 0 };
+        }
+        if (cmd.includes("/v1/sessions/sess-225t/release")) {
+          releasedAfterTakeover = true;
+          return { stdout: "{}\n200", stderr: "", exitCode: 0 };
         }
         if (cmd.startsWith("node -e")) {
           // The page navigate lands on requires a CAPTCHA — the exact signal
@@ -1065,7 +1075,10 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     const fakeGeminiFetch: typeof globalThis.fetch = (async () => {
       requests += 1;
       if (requests === 1) return geminiFunctionCallResponse("mcp__steel__steel_session_create", {});
-      return geminiFunctionCallResponse("mcp__steel__steel_navigate", { session_id: "sess-225t", url: "https://example.com/login" });
+      return geminiFunctionCallsResponse([
+        { name: "mcp__steel__steel_navigate", args: { session_id: "sess-225t", url: "https://example.com/login" } },
+        { name: "mcp__steel__steel_session_release", args: { session_id: "sess-225t" } },
+      ]);
     }) as typeof globalThis.fetch;
 
     try {
@@ -1083,6 +1096,9 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // Exactly one — proving the fix that moved recording into the shared
       // outer catch didn't leave a second, differently-labelled event behind.
       expect(events.filter((event) => event.eventType === HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE)).toHaveLength(1);
+      // The second call was present in the SAME provider batch, but never
+      // reached its executor after navigate detected the CAPTCHA.
+      expect(releasedAfterTakeover).toBe(false);
     } finally {
       if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
       else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
@@ -1485,6 +1501,9 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     const run = (await listRuns(options, { taskId: resumeTask.taskId })).runs[0]!;
     expect(run).toMatchObject({ runId: parked.runId, status: "failed", failureNote: "SDK session expired" });
     expect((await listMessages(options, threadId)).some((message) => message.runId === parked.runId)).toBe(false);
+    const events = await getAuditEventsForRun(options, parked.runId);
+    expect(events.find((event) => event.eventType === SPEND_UNRECORDED_EVENT_TYPE))
+      .toMatchObject({ payload: { provider: "claude" } });
   });
 
   it(
