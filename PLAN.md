@@ -7278,7 +7278,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-244
 **Title:** Workspace-1 — Gemini lane: terminate the turn immediately on human_takeover_required, incl. batched tools and retries; spend.unrecorded on failure path (protected path)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.1, §7.4; ADR-010 §6 enforced set; CLAUDE.md protected paths and different-model review; ADR-005
@@ -7296,12 +7296,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T12:13:18Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T12:28:35Z] [SV:CX9] Gemini takeover now stops same-batch tools/retries, writes takeover audit at detection, and marks pre-spend failures unrecorded; protected-path adversarial review remains for ORCH.
+**Artifacts:** packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Test_Evidence:** PASS: harness-factory 145 tests; worker chatRunDriver 44 tests; geminiToolExecutors 24 tests; worker build. pnpm -r test attempted but unrelated @oikonomos/memory DB-heavy tests timed out.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T12:13:18Z
+**Updated_At:** 2026-09-12T12:28:35Z
 
 ### TASK-245
 **Title:** Workspace-1 — acceptance execution on the integrated candidate, REVIEW.md backfill for TASK-214/224/227–235, decision sheet
