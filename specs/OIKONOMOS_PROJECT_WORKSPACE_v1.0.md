@@ -1,5 +1,7 @@
 # OIKONOMOS Project Workspace v1.0 — the Project primitive and the manager-bot pattern
 
+> **Changelog:** v1.1 (2026-09-12, ORCH) — §6, §7.3, §10 and §11 amended to apply the three required changes from the CX9 adversarial review of ADR-019 (`docs/decisions/ADR-019-review-cx9-2026-09.md`): declared-disabled enforced at registry build and L1 with its own deny reason (new task P-0, protected); the manager mount's no-role/no-grant invariant with a real-composition liveness test; an atomic budget reservation protocol for the project and role axes.
+
 Written 2026-09-12 (Fable 5.1 design session from
 `docs/research/fable-brief-templates-project-manager-bot-2026-09-12.md`). Hard-to-reverse
 decisions live in `docs/decisions/ADR-019-project-entity-and-manager-role.md`. Line
@@ -159,11 +161,19 @@ handoff never grants anything.
 6.1 `spend_records` gains `project_id text NULL` (text, like `run_id`/`routine_id`, no
 FK). Every run started from a project thread or from a `task.assigned` handoff is
 attributed to the project.
-6.2 `budgetGate` gains `{projectSpendUsd, projectBudgetUsd}` and
-`{roleSpendUsd, roleBudgetUsd}` with deny reasons `budget.project_exceeded` and
-`budget.role_exceeded`. Per-role budget is a new `roles.budget_usd numeric NULL`
-(NULL = no role ceiling). Platform ceiling and per-routine budget are unchanged and
-still evaluated first.
+6.2 **Atomic admission (v1.1, ADR-019 §5).** The project and role axes are admitted by
+a reservation protocol, not a read-then-spawn check: tables `spend_reservations`
+(`reservation_id, tenant_id, axis ∈ {project, role}, axis_id, run_id, reserved_usd,
+created_at, released_at NULL`) and `budget_ledgers` (`axis, axis_id, month` — rows that
+exist to be locked). In one transaction: `SELECT … FOR UPDATE` the run's project and role
+ledger rows; compute recorded spend + open reservations per axis; deny before spawn with
+`budget.project_exceeded` / `budget.role_exceeded` if adding this run's reservation (the
+provider's documented per-turn maximum, as TASK-220's Gemini ceiling) would exceed the
+axis ceiling; else insert the reservation and commit. The reservation is released exactly
+once: in the same transaction as the `spend_records` insert, or by the failure path when
+no spend was recorded. Per-role budget is `roles.budget_usd numeric NULL` (NULL = no
+ceiling). Platform ceiling, provider cap and per-routine budget are unchanged and still
+evaluated first through the existing pure gate.
 6.3 The manager role's budget covers only its own turns; specialists' runs are charged
 to the specialists and to the project. A manager cannot raise any budget.
 6.4 Fan-out: one manager turn may emit at most `roster size` `task.assigned` handoffs
@@ -198,9 +208,17 @@ decisions.
 7.3 The two disabled tools exist so that ADR-010's approval boundary has a home: when
 a later ADR enables them, they are already on the enforced side (T3/T4 park by default)
 and a `require_approval_rules` row for the manager role makes the human the approver of
-every bot creation and every grant. Until then, `CapabilityRegistry` construction and
-L1 both refuse them (`capability.disabled`), and a test asserts the manager cannot
-create a role or a grant through any path.
+every bot creation and every grant. **Two invariants (v1.1, ADR-019 §4):**
+(A) declared-disabled is enforced independently of persistence — `CapabilityRegistry.build`
+throws `CapabilityEnabledDriftError` on enabled-state drift and `brokerPorts.getCapability`
+returns `null` for a declaration with `enabled: false` regardless of the persisted row,
+denied at L1 with the new per-capability reason `capability.declared_disabled` (distinct
+from the kill-switch `capability.disabled`); this ships first as its own protected-path
+task (P-0). (B) The project MCP server exposes exactly the enabled `project.*` tools and
+its handlers reach only `packages/db` project functions — never `createRole`,
+`upsertRoleGrant` or a control-api route; a liveness test through the real broker→MCP
+composition invokes every mounted manager tool and proves by before/after row counts
+that `roles` and `role_grants` are unchanged, keyed on each tool's audit event.
 
 7.4 A project with no manager exposes the same board to the human through the API and
 UI; the manager is optional automation, not a prerequisite.
@@ -244,15 +262,16 @@ project's; the Results view lists the artifact register; the attention inbox lis
 
 | # | Scope | Owned_Paths (proposal) | Review |
 |---|---|---|---|
-| P-1 | Migration: `projects`, `project_roles`, `project_tasks`, `project_task_runs`, `project_artifacts`, `project_decisions`, `spend_records.project_id`, `roles.budget_usd`; `packages/db/src/projects*` | `infra/postgres/migrations/02N_projects.*`, `packages/db/src/projects*`, `packages/db/src/spend.ts` | standard |
+| P-0 | Broker: declared-disabled as an invariant — `CapabilityEnabledDriftError` at build, `getCapability` null for `enabled: false` declarations, deny reason `capability.declared_disabled`; construction, direct-L1 and mount-absence tests | `packages/broker/src/capabilityRegistry.ts` ⚑ protected, `packages/broker/src/index.ts` ⚑ protected, their tests | adversarial, different model — **precedes P-4** |
+| P-1 | Migration: `projects`, `project_roles`, `project_tasks`, `project_task_runs`, `project_artifacts`, `project_decisions`, `spend_records.project_id`, `roles.budget_usd`, `spend_reservations`, `budget_ledgers`; `packages/db/src/projects*`, `packages/db/src/spendReservations.ts` | `infra/postgres/migrations/02N_projects.*`, `packages/db/src/projects*`, `packages/db/src/spendReservations*`, `packages/db/src/spend.ts` | standard |
 | P-2 | Typed handoff kinds + locator CHECK extension; `sendToRole` additive fields | `packages/db/src/roleMessages*`, `services/workspace/src/mailbox*` | adversarial (ACL-adjacent, ADR-012 §6 precedent) |
-| P-3 | Budget gate inputs + deny reasons; spend attribution to project and role | `packages/broker/src/budgetGate*` ⚑ protected, `services/worker/src/subprocessProviders.ts`, `services/worker/src/chatRunDriver.ts` (attribution only) | adversarial, different model |
-| P-4 | `project.*` built-in tools + declared-disabled creation/grant rows; fan-out cap; workspace MCP server wiring | `packages/broker/src/builtinTools.ts` ⚑ protected, `services/worker/src/projectTools*`, `services/worker/src/workspaceMcpServer.ts` | adversarial, different model |
+| P-3 | Atomic admission for the project and role axes: reservation transaction before spawn, exactly-once release on spend record or failure, two-concurrent-admissions tests per axis; attribution to project and role | `packages/broker/src/budgetGate*` ⚑ protected, `packages/db/src/spendReservations*`, `services/worker/src/subprocessProviders.ts`, `services/worker/src/chatRunDriver.ts` (attribution + release only) | adversarial, different model |
+| P-4 | `project.*` built-in tools + declared-disabled creation/grant rows; fan-out cap; a **separate project MCP server** exposing only enabled `project.*` tools; no-role/no-grant liveness test through the real broker→MCP composition | `packages/broker/src/builtinTools.ts` ⚑ protected, `services/worker/src/projectTools*`, `services/worker/src/projectMcpServer.ts` (new), `services/worker/src/workspaceMcpServer.ts` (mount registration only) | adversarial, different model — **after P-0** |
 | P-5 | control-api project routes + summary `blockedTasks` | `services/control-api/src/projects.routes.ts` + test, `openapi.ts`, `ports.ts` (port only) | standard |
 | P-6 | Manager charter (prose) + status routine template | `services/control-api/src/charters/**`, `apps/mobile/lib/charter/**` | standard |
 | P-7 | Dashboard board/register/attention on the Workspace-1 views; mobile project screens | `apps/dashboard/src/components/workspace/project/**`, `apps/mobile/lib/screens/project*` | standard |
 
-Sequencing: P-1 → P-2 ∥ P-3 ∥ P-4 → P-5 → P-6 ∥ P-7. Conflicts with Wave Workspace-1:
+Sequencing: P-0 ∥ P-1 → P-2 ∥ P-3 → P-4 (after P-0) → P-5 → P-6 ∥ P-7. Conflicts with Wave Workspace-1:
 P-3 shares `chatRunDriver.ts` with TASK-244/246 (sequence after them); P-5 shares
 `app.ts`/`ports.ts` with TASK-242 (sequence after); P-7 builds on TASK-243.
 
@@ -261,8 +280,9 @@ P-3 shares `chatRunDriver.ts` with TASK-244/246 (sequence after them); P-5 share
 - Creating a project creates exactly one group thread, a roster of ≤ 6, at most one manager, the D1 project directory, and the charter as project-scope memory facts visible to every member's next run and to no non-member. (§1.2, §2)
 - A work item cannot be `blocked` without a reason, cannot be owned by a non-member, and every transition is an audit event. (§3)
 - `task.completed` without an artifact reference is rejected; a `workspace_file` artifact outside the project directory is rejected; artifact rows never contain bytes. (§4, §5.2)
-- A manager run that attempts `mcp__project__create_role` or `mcp__project__request_grant` is denied `capability.disabled` at L1 and the tools are absent from the mount; a test proves no code path writes `roles` or `role_grants` from a manager turn. (§7.3)
-- A project whose spend reaches `budget_usd` has its next attributed run denied `budget.project_exceeded`; a manager role at its `roles.budget_usd` is denied `budget.role_exceeded` while specialists continue. (§6)
+- `CapabilityRegistry.build` throws `CapabilityEnabledDriftError` when a declared-disabled tool's persisted row is enabled; a direct L1 call for a declared-disabled tool by a role that holds a grant is denied `capability.declared_disabled` (not `capability.disabled`); the tool is absent from every mount. (§7.3 A)
+- A liveness test through the real broker→MCP composition invokes every mounted manager tool and proves `roles` and `role_grants` row counts are unchanged, keyed on each tool's audit event; the project MCP server's handler set contains no role or grant verb. (§7.3 B)
+- Two simultaneous near-limit admissions on the project axis result in at most one provider invocation, the other denied `budget.project_exceeded` before spawn; likewise on the role axis with `budget.role_exceeded`; a reservation is released exactly once on spend record or on failure. (§6.2)
 - One manager turn cannot emit more `task.assigned` handoffs than roster members. (§6.4)
 - The manager's status routine sends nothing when `STATUS.md` is unchanged. (§1.3)
 - The Workspace-1 summary reports `blockedTasks` for the project thread. (§3.3)

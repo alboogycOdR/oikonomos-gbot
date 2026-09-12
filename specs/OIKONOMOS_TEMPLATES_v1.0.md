@@ -1,5 +1,7 @@
 # OIKONOMOS Templates v1.0 — installable bot recipes
 
+> **Changelog:** v1.1 (2026-09-12, ORCH) — §3.2, §5.2 and §10 amended to apply the two required changes from the CX9 adversarial review of ADR-018 (`docs/decisions/ADR-018-review-cx9-2026-09.md`): a five-class template credential policy with an adjacent-field split scan and a stated threat model; install proven to write exactly the built-in floor and no template-derived grant, at the database.
+
 Written 2026-09-12 (Fable 5.1 design session from
 `docs/research/fable-brief-templates-project-manager-bot-2026-09-12.md`). Decisions that
 are hard to reverse live in `docs/decisions/ADR-018-bot-templates.md`; this spec is the
@@ -77,13 +79,25 @@ compatibility) but are reported at install (§5.4).
 projects the role into a manifest, scans it, stores it, and returns `{templateId,
 version, digest}`. Tenant-scoped; 404-never-403.
 
-3.2 **Secret scan.** Every string in the manifest (identity, skill bodies, routine
-definitions, memory values — recursively, arrays and nested objects) is passed through
-`matchesSecretPattern` from `packages/audit/src/redact.ts` (the same eight pattern
-families used for audit redaction, `hooks/lib.js` and `infra/ci/secret-scan.mjs`) plus a
-`secret://` reference detector. **Any match refuses the export** with 422 and a list of
-JSON-pointer field paths (never the matched text), and writes audit event
-`template.export_refused {role_id, field_paths}`. Nothing is stored.
+3.2 **Credential scan (v1.1, per ADR-018 §2 as amended by the CX9 review).** Every
+string in the manifest (recursively, arrays and nested objects) is passed through the
+**template credential policy** (`packages/templates/src/credentialPolicy.ts`), which
+refuses on any of five classes: (1) the eight audit pattern families via
+`matchesSecretPattern` (reused, never copied); (2) JWT shape (three base64url segments,
+first decoding to JSON with `alg`/`typ`); (3) URLs with userinfo or a credential-bearing
+query/fragment key (`token`, `access_token`, `id_token`, `key`, `api_key`, `secret`,
+`password`, `pwd`, `sig`, `signature`, `auth`, `authorization`, `credential`, `session`);
+(4) opaque blobs of ≥ 32 base64/base64url/hex characters with Shannon entropy > 4.0
+bits/char, unless the value is one of the manifest's structural identifiers (skill
+names, capability ids, cron strings); (5) any `secret://` reference. The policy also
+scans the **canonical serialization** of all string values joined in canonical field
+order, so a credential split across two adjacent prose fields is caught; splits across
+non-adjacent fields are outside the stated threat model (accidental leakage by the
+creator), and the free-prose surface is exactly: `identity.description`,
+`identity.instructions`, skill `body`/`description`/`when_to_use`, routine `definition`,
+memory `value`. **Any match refuses the export** with 422 and a list of JSON-pointer
+field paths plus the class names (never the matched text), and writes audit event
+`template.export_refused {role_id, field_paths, classes}`. Nothing is stored.
 
 3.3 **Liveness.** A test exports a role whose instructions contain a fragment-assembled
 key-shaped string (the audit package's own fixture technique) and asserts the 422, the
@@ -136,12 +150,17 @@ create `name-2`), enables them for the role, creates routines **paused**, writes
 opt-in memory facts as agent-scope profile facts for the new role, and records
 `role_template_installs`.
 
-5.2 **Install never grants.** `integrations[]` become a **pending grant checklist**
-returned in the response and shown in the UI: `{capability_id, requested_max_tier,
-status: 'available' | 'unknown_capability' | 'disabled'}`. The installer grants each one
-through the existing `POST /roles/:roleId/grants`, one at a time, at or below the
-requested tier. Nothing in the install path calls `upsertRoleGrant` (asserted by a
-negative test that spies the grant port).
+5.2 **Install writes exactly the built-in floor and no template-derived grant (v1.1,
+ADR-018 §3 as amended).** The role-creation path performs the same `role_grants` writes
+every human-created bot gets — one row per capability in `BUILTIN_TOOLS` at its declared
+tier — and nothing else. `integrations[]` become a **pending grant checklist** returned in
+the response and shown in the UI: `{capability_id, requested_max_tier, status:
+'available' | 'unknown_capability' | 'disabled'}`. The installer grants each one through
+the existing `POST /roles/:roleId/grants`, one at a time, at or below the requested tier.
+The proof is at the database: after the install transaction, the new role's
+`role_grants` capability-id set equals the `BUILTIN_TOOLS` capability-id set exactly, and
+contains no id named in `integrations[]`; a second test shows the installed role is denied
+an `integrations[]` capability at L1 until a human grants it.
 
 5.3 Because only `account_ownership: basileia` connectors can be registered
 (`packages/connectors/src/manifest/schema.ts`), a template cannot name a capability
@@ -204,8 +223,8 @@ integration task.
 ## 10. Acceptance criteria (spec-level; tasks inherit)
 
 - Exporting a role and re-importing it yields a role whose re-projection digest equals the template digest. (§2.2, §5.1)
-- An export of a role containing a key-shaped string is refused with field paths and no stored row; the refusal is an audit event; a production-composition liveness test proves the scan is wired. (§3.2, §3.3)
-- The install path performs zero `role_grants` writes (spy on the grant port) and returns the grant checklist. (§5.2)
+- An export of a role containing a credential of any of the five policy classes (eight audit families, JWT, credential URL, high-entropy blob, `secret://`) or a credential split across two adjacent prose fields is refused with field paths and class names and no stored row; the refusal is an audit event; a production-composition liveness test proves the scan is wired; every class has a fragment-assembled negative test. (§3.2, §3.3)
+- After install, the new role's `role_grants` capability-id set equals `BUILTIN_TOOLS`' set exactly and contains no `integrations[]` id; the installed role is denied an `integrations[]` capability at L1 until granted by a human; the grant checklist is returned. (§5.2)
 - An `integrations[]` entry naming an unregistered capability is reported `unknown_capability` and skipped, never granted. (§2.4, §5.2)
 - Installed routines are paused and have no budget until a human resumes and sets one. (§2.3, §5.6)
 - A manifest never contains a `secret://` string, a role id, a grant, or an attachment id (schema-level negative tests). (§1.3)
