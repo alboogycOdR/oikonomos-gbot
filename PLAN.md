@@ -7113,7 +7113,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-238
 **Title:** Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §5.1–§5.4; CLAUDE.md control-liveness rule; ADR-005
@@ -7127,16 +7127,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Liveness: the third submission produces a `run.queued` audit event with reason `concurrency.cap`; a separate test builds the production `ports.ts` composition and proves the gate is in the path by observing that event, not by inspecting config. (§5.4)
 - [ ] Group-thread fan-out runs are subject to the same gate (test through `deliverBotToBotMessage` or the fan-out port). (§5.2)
 - [ ] worker and control-api suites green; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-238-cx9
+**Started_At:** 2026-09-12T11:17:24Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T11:17:24Z
 
 ### TASK-239
 **Title:** Workspace-1 — dashboard session bootstrap, logout, summary poll, blocked-reason surfacing
