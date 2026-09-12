@@ -7140,7 +7140,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-239
 **Title:** Workspace-1 — dashboard session bootstrap, logout, summary poll, blocked-reason surfacing
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.2, §4.3, §1
@@ -7154,16 +7154,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A `capability.disabled` or `budget.*` deny reason is displayed as the blocker with no additional generated explanation. (§4.3)
 - [ ] `ChatPage.test.tsx` covers bootstrap-authenticated, bootstrap-unauthenticated, summary badge rendering and logout state drop with fake HTTP. (§2.7)
 - [ ] dashboard test/typecheck/build green; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-239-s5
+**Started_At:** 2026-09-12T11:17:14Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T11:17:14Z
 
 ### TASK-240
 **Title:** Workspace-1 — release environment: single HTTPS origin, required-config check, isolated test database script, deploy/rollback runbook
