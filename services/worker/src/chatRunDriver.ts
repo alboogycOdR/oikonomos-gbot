@@ -282,6 +282,8 @@ async function runChatTask(
   // provider actually ran, for the human-takeover audit event's `actor`.
   // Stays "claude" if the run never gets far enough to resolve a role.
   let effectiveProvider: string = "claude";
+  let geminiSpendRecorded = false;
+  let noteFailureUnrecordedSpend: (() => Promise<void>) | undefined;
   // TASK-230 — per-phase latency instrumentation. Best-effort only: a
   // timing-record failure must never fail the actual run (same principle
   // as "push is additive, never load-bearing" elsewhere in this codebase).
@@ -378,6 +380,11 @@ async function runChatTask(
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
     const execution = resolveChatRunExecution(options);
     const budget = createChatRunBudget(options, request, run.runId, execution);
+    noteFailureUnrecordedSpend = async () => {
+      if (!geminiSpendRecorded && !budget.reported()) {
+        await noteUnrecordedSpend(options, request, run.runId, execution);
+      }
+    };
     // Fail closed before any Claude tokens are spent: a ceiling already at
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
@@ -391,7 +398,6 @@ async function runChatTask(
     // below would misread a real (if zero) Gemini spend record as
     // unrecorded. Tracked separately rather than forcing Gemini through the
     // Claude-shaped tap.
-    let geminiSpendRecorded = false;
     try {
       // TASK-224 — a user's `/skill-name` token (inserted verbatim by the
       // mobile composer's skill picker, apps/mobile/lib/screens/chat_screen.dart)
@@ -461,6 +467,8 @@ async function runChatTask(
     recordTimingSafe(runId, "finalize", performance.now() - finalizeStart);
   } catch (error) {
     if (runId !== undefined) {
+      // §7.4: a failed run with no spend tap report is unrecorded, not free.
+      await noteFailureUnrecordedSpend?.();
       if (isHumanTakeoverSignal(error)) {
         // G-07's own event/park contract (this task's scope, not G-06a's):
         // a CAPTCHA/2FA/login-wall/payment signal from steelSession.ts is not
@@ -479,13 +487,17 @@ async function runChatTask(
         // a Gemini-triggered takeover as `agent:claude` would misattribute a
         // real audit record precisely where TASK-188's mobile client and any
         // future review of this event would trust it least.
-        await recordAuditEvent(options, {
-          tenantId: request.task.tenantId,
-          runId,
-          actor: `agent:${effectiveProvider}`,
-          eventType: HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
-          payload: { kind: error.kind, detail: error.detail },
-        });
+        // Gemini persists the event in its detecting executor callback;
+        // Claude reaches this catch directly and is recorded here.
+        if (!(error instanceof GeminiHumanTakeoverSignal)) {
+          await recordAuditEvent(options, {
+            tenantId: request.task.tenantId,
+            runId,
+            actor: `agent:${effectiveProvider}`,
+            eventType: HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
+            payload: { kind: error.kind, detail: error.detail },
+          });
+        }
         await parkTaskRun(options, runId);
         return;
       }
@@ -644,14 +656,8 @@ export async function executeGeminiChatRun(
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
 
-  // TASK-225: set synchronously by a Steel tool's own onHumanTakeover, the
-  // instant it detects a challenge page — checked the moment adapter.run()
-  // returns below (see this variable's read site for the honest gap that
-  // remains between detection and the model's next turn). The actual audit
-  // event is recorded once, by runChatTask's own outer catch, once this
-  // signal has propagated there via GeminiHumanTakeoverSignal below — not
-  // here, to avoid a second, differently-labelled event for the same
-  // detection (see that catch's own comment).
+  // Persisted by the detecting Steel executor before it returns. Its terminal
+  // result stops the Gemini loop before another batch member or retry.
   let takeoverSignal: { readonly kind: string; readonly detail: string } | undefined;
   const steelTools = browserConnector === undefined
     ? []
@@ -660,8 +666,15 @@ export async function executeGeminiChatRun(
           client,
           endpoint: resolvedSandbox.endpoint,
           workspace,
-          onHumanTakeover: (kind, detail) => {
+          onHumanTakeover: async (kind, detail) => {
             takeoverSignal = { kind, detail };
+            await recordAuditEvent(options, {
+              tenantId: request.task.tenantId,
+              runId: run.runId,
+              actor: `agent:${GEMINI_PROVIDER_ID}`,
+              eventType: HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
+              payload: { kind, detail },
+            });
           },
         },
         browserConnector.allowedTools,
