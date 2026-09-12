@@ -7478,7 +7478,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-252
 **Title:** Adversarial review of ADR-018 (bot templates) and ADR-019 (Project entity + manager role) by a non-Anthropic model, per the protected-path rule for docs/decisions/**
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; docs/decisions/ADR-019-project-entity-and-manager-role.md; specs/OIKONOMOS_TEMPLATES_v1.0.md; specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md; CLAUDE.md protected paths; docs/decisions/ADR-014-dynamic-secret-vault.md (review-section format to mirror); docs/decisions/ADR-015-review-fable-2026-09-06.md (format precedent)
@@ -7489,13 +7489,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Two review files exist at the Owned_Paths, each with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
 - [ ] Every pressure point in the Description is answered explicitly, with evidence, not opinion.
 - [ ] No file outside Owned_Paths is modified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-252-cx9
+**Started_At:** 2026-09-12T12:32:50Z
 **Progress_Notes:**
 - [2026-09-12T11:05:00Z] [ORCH] Filed so the protected-path different-model rule is satisfied before either ADR moves to Accepted. Dispatch after TASK-237's rework and before TASK-238 if CX9 has a gap, else after TASK-242.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T11:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T12:32:50Z
