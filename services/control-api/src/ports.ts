@@ -19,6 +19,7 @@ import {
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
   getTask as dbGetTask,
   insertMessage as dbInsertMessage,
+  insertAuditEvent as dbInsertAuditEvent,
   getAuditEventsForRun as dbGetAuditEventsForRun,
   getRun as dbGetRun,
   listPendingApprovals as dbListPendingApprovals,
@@ -95,6 +96,7 @@ import {
   completeTaskRun,
   createChatRunDriver,
   createTierZeroProvider,
+  createRunGate,
   deliverBotToBotMessage,
   failTaskRun,
   parkTaskRun,
@@ -104,6 +106,8 @@ import {
   type CreateTierZeroProviderOptions,
   type CreateChatRunDriverOptions,
   type GroupRoute,
+  type QueuedRun,
+  type RunGate,
 } from "@oikonomos/worker";
 import {
   createSandboxClient,
@@ -218,8 +222,51 @@ export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
   pushTransport?: PushTransportPort;
   /** Test-only seams for real database-backed chat lifecycle tests. */
   chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, keyof DatabaseOptions>;
+  /** Test seam proving the production composition observes gate evidence. */
+  onRunQueued?: (queued: QueuedRun) => void;
   /** Injectable Tier-0 configuration; production resolves the same values from env. */
   tierZeroProviderOptions?: Omit<CreateTierZeroProviderOptions, "db" | "runId">;
+}
+
+export const RUN_QUEUED_EVENT_TYPE = "run.queued";
+
+interface QueuedRunAudit {
+  readonly runId: string | null;
+  readonly taskId: string;
+  readonly tenantId: string;
+  readonly roleId: string;
+  readonly position: number;
+  readonly reason: "concurrency.cap";
+}
+
+/** The production chat wrapper: liveness tests observe its emitted queue evidence. */
+export function createGatedChatRunTask(
+  chatRunDriver: ChatRunDriver,
+  dependencies: {
+    readonly recordQueuedRun: (event: QueuedRunAudit) => Promise<void>;
+  },
+  gate: RunGate = createRunGate({ maxConcurrent: 2 }),
+): ControlApiDeps["runChatTask"] {
+  return async (request) => gate.run(
+    request.task.roleId,
+    () => chatRunDriver.run(request),
+    async (queued) => dependencies.recordQueuedRun({
+      runId: null,
+      taskId: request.task.taskId,
+      tenantId: request.task.tenantId,
+      ...queued,
+    }),
+  );
+}
+
+/** Keep the group delivery port on the exact gate used by ordinary chat runs. */
+export function runGatedGroupFanout<T>(
+  gate: RunGate,
+  roleId: string,
+  fn: (execution: { readonly queued: QueuedRun | null }) => Promise<T> | T,
+  onQueued?: (queued: QueuedRun) => void | Promise<void>,
+): Promise<T> {
+  return gate.run(roleId, fn, onQueued);
 }
 
 /**
@@ -392,8 +439,21 @@ export async function notifyAfterChatRun(
 export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
   const chatRunDriver: ChatRunDriver = createChatRunDriver({ ...options, ...options.chatRunDriverOptions });
   const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
+  const runGate = createRunGate({ maxConcurrent: 2, onQueued: options.onRunQueued });
+  const recordQueuedRun = async (event: QueuedRunAudit): Promise<void> => {
+    await dbInsertAuditEvent(options, {
+      tenantId: event.tenantId,
+      runId: event.runId,
+      actor: "system:run-concurrency",
+      eventType: RUN_QUEUED_EVENT_TYPE,
+      payload: { taskId: event.taskId, roleId: event.roleId, position: event.position, reason: event.reason },
+    });
+  };
+  const runChatTask = createGatedChatRunTask(chatRunDriver, {
+    recordQueuedRun,
+  }, runGate);
   const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
-    runChatTask: (request) => chatRunDriver.run(request),
+    runChatTask,
     listRuns: (filter) => dbListRuns(options, filter),
     listPendingApprovals: () => dbListPendingApprovals(options),
     listDeviceTokens: () => dbListDeviceTokens(options),
@@ -455,8 +515,9 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     registerDeviceToken: (input) => dbRegisterDeviceToken(options, input),
     runChatTask: notify,
     requestGroupFanout: async ({ task, memberRoleIds, body }) => {
-      const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group" });
-      const result = await deliverBotToBotMessage(options, {
+      const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group", tenantId: task.tenantId });
+      const result = await runGatedGroupFanout(runGate, task.roleId, async () => {
+        return deliverBotToBotMessage(options, {
         // The fan-out gate's sender label is audit data, not a role FK. The
         // persisted group-thread message remains correctly unattributed
         // (`senderRoleId: null`) because its author is the human user.
@@ -464,8 +525,14 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         toRoleIds: memberRoleIds,
         body,
         runId: run.runId,
+          tenantId: task.tenantId,
+        });
+      }, async (queued) => recordQueuedRun({
+        runId: run.runId,
+        taskId: task.taskId,
         tenantId: task.tenantId,
-      });
+        ...queued,
+      }));
       // TASK-205: a fan-out (2+ recipients) issues a real pending approval
       // via `deliverBotToBotMessage` but never parked the run — the caller
       // never checked `result.delivered`, so `runs.status` stayed `started`
