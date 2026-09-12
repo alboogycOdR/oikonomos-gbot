@@ -21,6 +21,7 @@ import {
   insertMessage as dbInsertMessage,
   insertAuditEvent as dbInsertAuditEvent,
   getAuditEventsForRun as dbGetAuditEventsForRun,
+  getRunReceipt as dbGetRunReceipt,
   getRun as dbGetRun,
   listPendingApprovals as dbListPendingApprovals,
   listMessages as dbListMessages,
@@ -65,6 +66,7 @@ import {
   type Run,
   type RunListFilter,
   type RunListPage,
+  type RunReceipt,
   type Task,
   type TaskListFilter,
   type TaskListPage,
@@ -159,6 +161,8 @@ export interface ControlApiDeps {
   getTask(taskId: string): Promise<Task | null>;
   listRuns(filter?: RunListFilter): Promise<RunListPage>;
   getRun(runId: string): Promise<Run | null>;
+  /** Optional for legacy route-test fixtures; production always wires this. */
+  getRunReceipt?(runId: string, tenantId: string): Promise<RunReceipt | null>;
   /**
    * TASK-230 — per-phase latency stats (p50/p95/max) over the most recent
    * runs. Optional (like `listEnabledSkillsForRole` below) so the many
@@ -505,6 +509,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     getTask: (taskId) => dbGetTask(options, taskId),
     listRuns: (filter) => dbListRuns(options, filter),
     getRun: (runId) => dbGetRun(options, runId),
+    getRunReceipt: (runId, tenantId) => dbGetRunReceipt(options, { runId, tenantId }),
     getRunLatencyStats: (limit) => dbQueryRunLatencyStats(options, { ...(limit === undefined ? {} : { limit }) }),
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),
     decideApproval: (nonce, decision, decidedBy) =>

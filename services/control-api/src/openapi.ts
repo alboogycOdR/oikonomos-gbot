@@ -85,6 +85,20 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/runs/{id}/receipt": {
+        get: {
+          summary: "Get a tenant-scoped run completion receipt",
+          operationId: "getRunReceipt",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: {
+            "200": {
+              description: "Final result, audited actions, approvals, and recorded spend. Spend is unavailable when no ledger rows exist.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/RunReceipt" } } },
+            },
+            "404": { description: "No run with that id, or owned by a different tenant" },
+          },
+        },
+      },
       "/runs/{id}/evidence": {
         get: {
           summary: "List a run's audit-trail evidence, oldest-first",
@@ -471,6 +485,33 @@ export function getOpenApiDocument(): Record<string, unknown> {
         },
         Task: { type: "object" },
         Run: { type: "object" },
+        RunReceipt: {
+          type: "object",
+          required: ["run", "finalMessage", "actions", "approvals", "unresolvedApprovals", "spend"],
+          properties: {
+            run: { $ref: "#/components/schemas/Run" },
+            finalMessage: { nullable: true, type: "object" },
+            actions: { type: "array", items: { $ref: "#/components/schemas/RunReceiptAction" } },
+            approvals: { type: "array", items: { $ref: "#/components/schemas/RunReceiptApproval" } },
+            unresolvedApprovals: { type: "array", items: { $ref: "#/components/schemas/RunReceiptApproval" } },
+            spend: { $ref: "#/components/schemas/RunReceiptSpend" },
+          },
+        },
+        RunReceiptAction: {
+          type: "object",
+          required: ["capability", "tier", "verdict", "reason"],
+          properties: {
+            capability: { type: "string", nullable: true }, tier: { type: "string", nullable: true },
+            verdict: { type: "string", nullable: true }, reason: { type: "string", nullable: true },
+          },
+        },
+        RunReceiptApproval: { type: "object" },
+        RunReceiptSpend: {
+          oneOf: [
+            { type: "object", required: ["kind", "costUsd", "tokens"], properties: { kind: { type: "string", enum: ["actual"] }, costUsd: { type: "number" }, tokens: { type: "integer", nullable: true } } },
+            { type: "object", required: ["kind"], properties: { kind: { type: "string", enum: ["unavailable"] } } },
+          ],
+        },
         RunListPage: {
           type: "object",
           properties: {

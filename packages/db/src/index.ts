@@ -202,6 +202,13 @@ export {
   type SpendRecord,
 } from "./spend.js";
 export {
+  getRunReceipt,
+  type RunReceipt,
+  type RunReceiptAction,
+  type RunReceiptApproval,
+  type RunReceiptSpend,
+} from "./runReceipt.js";
+export {
   createSecretVault,
   resolveSecretVaultKey,
   SECRET_VAULT_READ_EVENT,

@@ -1910,6 +1910,23 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     }
   });
 
+  app.get<{ Params: { id: string } }>("/runs/:id/receipt", async (request, reply) => {
+    if (deps.getRunReceipt === undefined) {
+      await reply.code(501).send({ error: "run receipt not implemented" });
+      return;
+    }
+    try {
+      const receipt = await deps.getRunReceipt(request.params.id, request.tenantId);
+      if (receipt === null) {
+        await reply.code(404).send({ error: "run not found" });
+        return;
+      }
+      await reply.code(200).send(receipt);
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
   app.get<{ Params: { id: string } }>("/runs/:id/evidence", async (request, reply) => {
     try {
       // TASK-190: this route previously fetched audit events straight off
@@ -2335,6 +2352,7 @@ if (import.meta.vitest) {
       listRuns: async () => ({ runs: [], nextCursor: null }),
       getRunLatencyStats: async () => [],
       getRun: async () => makeRun(),
+      getRunReceipt: async () => null,
       listPendingApprovals: async () => [],
       decideApproval: async () => ({ decided: false, rowCount: 0 }),
       editApproval: async () => ({ edited: false, rowCount: 0 }),
