@@ -6667,7 +6667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-224
 **Title:** `promptAssembly.ts`'s skill-block assembly (`assembleSystemPrompt`/`assembleChatPrompt`) has zero production call sites
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** low
 **Spec_References:** `services/worker/src/promptAssembly.ts` — `assembleSystemPrompt` (persona + `## Skill: name` blocks per enabled `/name` token) and `assembleChatPrompt` (full turn: persona → skills → latest summary → verbatim history); `SkillResolver` type. TASK-177 (G-01b, `/name` token extraction) and TASK-179 (G-03a, full turn assembly) presumably built this.
@@ -6675,19 +6675,22 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Surfaced while wiring TASK-220's thread-history fix (2026-09-08): `grep -rn "assembleChatPrompt\|resolveEnabledSkill" services` outside test files returns nothing. `extractSkillTokens`/`formatSkillBlock`/`assembleSystemPrompt`/`assembleChatPrompt` are fully built and unit-tested (per `promptAssembly.test.ts`) but neither the Claude lane (`executeTaskRun`/`executeSandboxChatRun`) nor the Gemini lane (`executeGeminiChatRun`) ever calls them — both use the narrower `buildRoleSystemPrompt` alone. A user typing `/skill-name` in a chat message today gets no skill block injected at all; the token is silently left as plain text in the prompt. Same defect class this session has now found repeatedly (TASK-185 egress marker, TASK-215 R1 broker bypass, TASK-222 sandbox-state drift, TASK-220's own dispatch wiring): a control built, tested in isolation, and never actually reached by a real execution path. Deliberately NOT fixed as part of TASK-220 — wiring it correctly means also wiring a real `SkillResolver` (does one exist? is `packages/db`'s `Skill`/enablement model even queryable per-role today?) and touches both execution lanes, which is real, separate scope from "thread Gemini's history."
 **Acceptance_Criteria:**
-- [ ] Confirm or rule out whether skills are a live, used feature elsewhere (mobile client, control-api routes) that this gap is silently starving, vs. a feature nobody has actually exercised yet — check for a `/roles/:roleId/skills` or similar API surface and whether the mobile client exposes skill management at all, before assuming this is urgent.
-- [ ] If real: wire `assembleSystemPrompt`/`assembleChatPrompt` (or a decision to reimplement more narrowly) into both the Claude and Gemini lanes, with a real `SkillResolver` backed by `packages/db`.
-- [ ] If not yet real/exercised: say so explicitly and record the finding rather than force a wiring nobody needs yet — matching TASK-164's own precedent for an inert-but-tested feature.
+- [x] Confirm or rule out whether skills are a live, used feature elsewhere. CONFIRMED REAL, not hypothetical: `apps/mobile/lib/screens/chat_screen.dart`'s composer skill picker (TASK-178, G-01c) inserts `/${skill.name} ` literally into the compose text field (`_composeController.text = '/${skill.name} '`), and that text is sent verbatim as the message body — a user picking a skill today gets a `/name` token in their sent message with nothing server-side ever expanding it. Not a "nobody uses this yet" situation.
+- [x] Wire `assembleSystemPrompt` into both lanes, with a real `SkillResolver` backed by `packages/db`. Both lanes read ONE `systemPrompt` value computed at a single call site in `runChatTask` (confirmed by direct trace — Gemini's `executeGeminiChatRun` and Claude's `agentSdkOptions.systemPrompt` both receive the same variable), so wiring that one spot reaches both without touching either lane's own code. New `createSkillResolver` fetches a role's enabled skills once per run (not once per token) via the already-exported `listEnabledForRole`, resolves by name from that list.
+- [x] N/A — confirmed real, so the "not yet real" branch doesn't apply.
 **Branch:** —
-**Started_At:** —
+**Started_At:** 2026-09-08T15:20:00Z
 **Progress_Notes:**
 - [2026-09-08T15:20:00Z] [ORCH] Filed while wiring TASK-220's thread-history fix (`buildGeminiTurnPrompt`), which deliberately reused `promptAssembly.ts`'s own formatting conventions (`[role] body`, `## Earlier in this conversation`) for consistency without pulling in `assembleChatPrompt` directly, specifically because doing so would have silently required inventing a throwaway `SkillResolver` just to satisfy the type, which would have been worse than not fixing this gap at all. Low priority: unlike the other "built but never wired" findings this session caught, this one doesn't look like a security/governance gap — it's a missing UX feature (a `/name` shortcut silently not expanding), not a bypassed control.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T08:15:00Z] [ORCH] RESOLVED. `services/worker/src/chatRunDriver.ts`'s single `systemPrompt` assignment (previously `buildRoleSystemPrompt(role, request.task.roleId)`) replaced with `await assembleSystemPrompt({ role, fallbackRoleId, message: request.task.goal, resolveEnabledSkill: createSkillResolver(...) })`. `request.task.goal` confirmed to carry the raw message body verbatim (`buildChatGoal` in `services/control-api/src/ports.ts` preserves `body.trim()` as-is at the front even with attachments), so the composer's literal `/name` token survives intact into skill-token extraction. `assembleChatPrompt` (the fuller persona+skills+history variant) was deliberately NOT used — history/summary threading already has its own working, separately-built path (`buildGeminiTurnPrompt` for Gemini, message history handled inside `executeTaskRun` for Claude); duplicating that assembly here would risk two different history-threading implementations drifting apart. `assembleSystemPrompt` alone is the right scope: skills into the system prompt, nothing else.
+
+  Two new in-source control-liveness tests in `chatRunDriver.ts` (not just `promptAssembly.test.ts`'s own already-passing unit tests, which proved nothing about whether any execution lane actually called this): (1) creates a real skill, enables it for a role, sends a task with `/task-224-standup` in its goal, runs a real local-queryFn chat turn, and asserts the ACTUAL captured model prompt (read from the real `AgentSdkQueryInput.options.systemPrompt` the queryFn receives) contains a real `## Skill: task-224-standup` block with the skill's real body; (2) a `/name` token matching no enabled skill produces the documented "not enabled for this bot" note rather than silent disappearance. Both passing. Rebuilt `packages/db` and `services/worker`, restarted the live worker process (via the TASK-229 watchdog) onto the fresh build so this is live now, not just committed.
+**Artifacts:** services/worker/src/chatRunDriver.ts (wiring + two new tests)
+**Test_Evidence:** Both new control-liveness tests passing against real Postgres. Full `services/worker` suite: 241/241 passing once the live worker process (which independently contends for the same pg-boss queue as `workerJobQueue.test.ts` — see TASK-229's own Progress_Notes for this pre-existing, unrelated interaction) was stopped for the run; `pnpm --filter @oikonomos/worker typecheck` clean throughout.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-08T15:20:00Z
+**Updated_At:** 2026-09-12T08:15:00Z
 
 ### TASK-225
 **Title:** Wire Steel Browser tools into the Gemini execution lane — the real prerequisite TASK-214 assumed already existed
