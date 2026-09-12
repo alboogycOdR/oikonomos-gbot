@@ -41,6 +41,21 @@ or copy afterwards). For control-api/worker, `dist/` is rebuilt in place; the
 previous commit's build is recovered by checking out the previous SHA and
 rebuilding (see Roll back).
 
+### Dashboard Google sign-in (TASK-241)
+
+The dashboard build reads four **public** Firebase web-app fields at build time:
+`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+`VITE_FIREBASE_APP_ID` (see `apps/dashboard/.env.example`). They come from a
+**Web app** registered in the same Firebase project the Android app uses
+(`FIREBASE_PROJECT_ID`, default `basileia-oikonomos-gmail`, see
+`docs/runbooks/firebase-android-setup.md`); the release origin
+`https://studyworkstation.<tailnet>.ts.net` must be added to that project's
+authorised domains or the popup is refused. These are not secrets, but they are
+build inputs: set them in the shell that runs `pnpm --filter @oikonomos/dashboard
+build`. Until they are provisioned the "Continue with Google" button reports
+`FirebaseConfigError`, the operator-token login still works, and acceptance case
+A20 (same principal on web and Android) is **not run**.
+
 ## Deploy
 
 1. `node scripts/check-config.mjs --user-scope` — must exit 0. It names every

@@ -43,6 +43,10 @@ const OPTIONAL = [
   "OIK_SECRET_OPENSANDBOX_EXECD_ACCESS_TOKEN",
   "FREE_LLM_API_ENDPOINT", "FREE_LLM_API_KEY", "FREE_LLM_API_MODEL",
   "OIKONOMOS_BUILD_SHA", "DASHBOARD_STATIC_PORT",
+  // Dashboard build-time Firebase web config (TASK-241, public client fields only;
+  // read by vite at build, not by the services). Absent => the Google button
+  // fails with FirebaseConfigError and acceptance case A20 stays withheld.
+  "VITE_FIREBASE_API_KEY", "VITE_FIREBASE_AUTH_DOMAIN", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_APP_ID",
 ];
 
 const args = process.argv.slice(2);
