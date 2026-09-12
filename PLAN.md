@@ -7081,7 +7081,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-237
 **Title:** Workspace-1 — session and workspace-summary API: GET /auth/me, POST /auth/logout, GET /workspace/summary, build SHA on /health, stale liveAgent header
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.1, §6.2; ORCH_REVIEW/DISPOSITION_MATRIX.md rows C1, C3, G2, I2
@@ -7096,16 +7096,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `GET /health` includes `buildSha`; OpenAPI documents all new routes. (§6.2)
 - [ ] The stale wiring paragraph in `liveAgent.routes.ts` is gone; `liveAgent.routes.test.ts` (unowned, untouched) still passes.
 - [ ] control-api and db suites green via their package scripts; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-237-cx9
+**Started_At:** 2026-09-12T10:13:08Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T10:13:08Z
 
 ### TASK-238
 **Title:** Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
