@@ -882,3 +882,18 @@ Scope: `git diff fb67a5e..31b33b3` — workspaceSummary.ts (+2 predicates), work
 - R3 addressed (comment on the public `/health`).
 
 Verified, not taken on trust (ORCH, isolated database, `scripts/test-isolated.ps1 -Root <worktree>`): db 197/199 (2 skipped), control-api 266/266; full `pnpm -r test` exit 0 once packages were serialised (`--workspace-concurrency=1`, committed 40ca82b) — the earlier concurrent run's three failures (db capability-count 36≠37, worker TASK-116 reply undefined, worker finalize timing) came from four packages mutating one database at once, not from this branch.
+
+## TASK-238 | CX9 | rework | first-pass: no
+
+Scope: `git diff master...task/TASK-238-cx9` — 6 files, all inside Owned_Paths (+ own dossier); commits `4b244de`, `0f87de0` with the `[TASK-238]` suffix; no PLAN.md edits. Territory clean.
+
+Verified, not taken on trust (ORCH, isolated database, serialised): worker 245/245, control-api 268/268. `createRunGate` (strict FIFO, global cap, per-role serialisation, `onQueued` seam) is wired into the production `runChatTask` in `ports.ts` and the group fan-out path goes through the same gate; the composition test observes `run.queued` through the production wrapper (§5.4 done right). Gate tests cover cap-of-two, per-role exclusion, and FIFO with ten submissions (§5.1–§5.3 correctness).
+
+MEDIUM (blocking for this spec)
+- R1 Evidence is written after the run, not when it queues. `createGatedChatRunTask` records `run.queued` in a `finally` after `chatRunDriver.run` returns, because the run id only exists once the driver has created the row. Consequence: while a run is actually waiting for a slot there is no row anywhere — no audit event, no run — so §5.3 "recorded as queued with a visible reason" is not met and TASK-239's summary cannot show "queued" during the wait; if the process dies while queued, nothing was ever recorded. `audit_events.run_id` is nullable (`packages/audit/src/index.ts:124`). Required: emit `run.queued` at enqueue time with `runId: null` and `payload.taskId` (plus role, position, reason), keep the post-run event if you want the run id linked (or update the payload), and add the task-id-keyed enqueue-time event to the composition test. The fan-out path already has the run id before gating and records before delivery — that half is fine.
+
+LOW / non-gating
+- R2 Strict FIFO with head-of-line blocking: when the head's role is active, a free slot stays idle although a different role waits behind it. Justified in the comment (truthful positions, no starvation); acceptable for the beta, but state the trade-off in the spec-facing doc comment on `createRunGate` so TASK-246 (queue-driven execution) inherits the decision knowingly.
+- R3 `startTaskRun(..., tenantId)` added on the fan-out path — correct, but it is a behaviour change outside the gate; mention it in the dossier.
+
+Same branch, same territory. R1 only is required for approval.
