@@ -120,9 +120,8 @@ describe("run concurrency production composition (TASK-238)", () => {
     const driver: ChatRunDriver = {
       run: async () => new Promise<void>((resolve) => { releases.push(resolve); }),
     };
-    const gate = createRunGate({ maxConcurrent: 2, onQueued: (event) => queued.push(event) });
+    const gate = createRunGate({ maxConcurrent: 2, onQueued: (event) => { queued.push(event); } });
     const runChatTask = createGatedChatRunTask(driver, {
-      listRuns: async ({ taskId }) => ({ runs: [{ ...run, runId: taskId!, taskId: taskId! }], nextCursor: null }),
       recordQueuedRun: async (event) => { audits.push(event); },
     }, gate);
     const input = (id: string) => ({ task: { ...task, taskId: id, roleId: `role-${id}` }, threadId: "thread-1" });
@@ -130,11 +129,16 @@ describe("run concurrency production composition (TASK-238)", () => {
     const second = runChatTask(input("22222222-2222-2222-2222-222222222222"));
     const third = runChatTask(input("33333333-3333-3333-3333-333333333333"));
     expect(queued).toEqual([{ roleId: "role-33333333-3333-3333-3333-333333333333", position: 1, reason: "concurrency.cap" }]);
+    await vi.waitFor(() => expect(audits).toEqual([expect.objectContaining({
+      runId: null,
+      taskId: "33333333-3333-3333-3333-333333333333",
+      reason: "concurrency.cap",
+    })]));
     releases.shift()!();
     await vi.waitFor(() => expect(releases).toHaveLength(2));
     for (const release of releases.splice(0)) release();
     await Promise.all([first, second, third]);
-    expect(audits).toEqual([expect.objectContaining({ runId: "33333333-3333-3333-3333-333333333333", reason: "concurrency.cap" })]);
+    expect(audits).toHaveLength(1);
   });
 
   it("holds group fan-out behind the same gate as chat work", async () => {

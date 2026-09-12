@@ -11,17 +11,22 @@ export interface RunGateExecution {
 
 export interface RunGateOptions {
   readonly maxConcurrent: number;
-  readonly onQueued?: (queued: QueuedRun) => void;
+  readonly onQueued?: (queued: QueuedRun) => void | Promise<void>;
 }
 
 export interface RunGate {
-  run<T>(roleId: string, fn: (execution: RunGateExecution) => Promise<T> | T): Promise<T>;
+  run<T>(
+    roleId: string,
+    fn: (execution: RunGateExecution) => Promise<T> | T,
+    onQueued?: (queued: QueuedRun) => void | Promise<void>,
+  ): Promise<T>;
 }
 
 interface Entry {
   readonly roleId: string;
   readonly fn: (execution: RunGateExecution) => Promise<unknown> | unknown;
   readonly queued: QueuedRun | null;
+  ready: boolean;
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: unknown) => void;
 }
@@ -30,6 +35,8 @@ interface Entry {
  * Limits executing work globally and serialises each role. The queue is
  * deliberately strict FIFO: a blocked head is not skipped by a later role.
  * This makes the reported queue position truthful and prevents starvation.
+ * The trade-off is head-of-line blocking: an unavailable role at the head can
+ * leave a global slot idle rather than allowing a later role to overtake it.
  */
 export function createRunGate(options: RunGateOptions): RunGate {
   if (!Number.isSafeInteger(options.maxConcurrent) || options.maxConcurrent < 1) {
@@ -42,7 +49,7 @@ export function createRunGate(options: RunGateOptions): RunGate {
   const pump = (): void => {
     while (active < options.maxConcurrent) {
       const next = queue[0];
-      if (next === undefined || activeRoles.has(next.roleId)) return;
+      if (next === undefined || !next.ready || activeRoles.has(next.roleId)) return;
       queue.shift();
       active += 1;
       activeRoles.add(next.roleId);
@@ -55,20 +62,36 @@ export function createRunGate(options: RunGateOptions): RunGate {
   };
 
   return {
-    run<T>(roleId: string, fn: (execution: RunGateExecution) => Promise<T> | T): Promise<T> {
+    run<T>(
+      roleId: string,
+      fn: (execution: RunGateExecution) => Promise<T> | T,
+      onQueued?: (queued: QueuedRun) => void | Promise<void>,
+    ): Promise<T> {
       const normalizedRoleId = roleId.trim();
       if (normalizedRoleId.length === 0) return Promise.reject(new Error("roleId must not be empty."));
       return new Promise<T>((resolve, reject) => {
         const queues = active >= options.maxConcurrent || queue.length > 0 || activeRoles.has(normalizedRoleId);
         const queued = queues ? { roleId: normalizedRoleId, position: queue.length + 1, reason: "concurrency.cap" as const } : null;
-        if (queued !== null) options.onQueued?.(queued);
-        queue.push({
+        const entry: Entry = {
           roleId: normalizedRoleId,
           fn,
           queued,
+          ready: queued === null,
           resolve: (value) => resolve(value as T),
           reject,
-        });
+        };
+        queue.push(entry);
+        if (queued !== null) {
+          void Promise.all([options.onQueued?.(queued), onQueued?.(queued)]).then(
+            () => { entry.ready = true; pump(); },
+            (error: unknown) => {
+              const index = queue.indexOf(entry);
+              if (index >= 0) queue.splice(index, 1);
+              reject(error);
+              pump();
+            },
+          );
+        }
         pump();
       });
     },

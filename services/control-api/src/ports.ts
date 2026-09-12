@@ -231,7 +231,8 @@ export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
 export const RUN_QUEUED_EVENT_TYPE = "run.queued";
 
 interface QueuedRunAudit {
-  readonly runId: string;
+  readonly runId: string | null;
+  readonly taskId: string;
   readonly tenantId: string;
   readonly roleId: string;
   readonly position: number;
@@ -242,22 +243,20 @@ interface QueuedRunAudit {
 export function createGatedChatRunTask(
   chatRunDriver: ChatRunDriver,
   dependencies: {
-    readonly listRuns: (filter: RunListFilter) => Promise<RunListPage>;
     readonly recordQueuedRun: (event: QueuedRunAudit) => Promise<void>;
   },
   gate: RunGate = createRunGate({ maxConcurrent: 2 }),
 ): ControlApiDeps["runChatTask"] {
-  return async (request) => gate.run(request.task.roleId, async ({ queued }) => {
-    try {
-      await chatRunDriver.run(request);
-    } finally {
-      if (queued !== null) {
-        const { runs } = await dependencies.listRuns({ taskId: request.task.taskId, limit: 1 });
-        const run = runs[0];
-        if (run !== undefined) await dependencies.recordQueuedRun({ runId: run.runId, tenantId: request.task.tenantId, ...queued });
-      }
-    }
-  });
+  return async (request) => gate.run(
+    request.task.roleId,
+    () => chatRunDriver.run(request),
+    async (queued) => dependencies.recordQueuedRun({
+      runId: null,
+      taskId: request.task.taskId,
+      tenantId: request.task.tenantId,
+      ...queued,
+    }),
+  );
 }
 
 /** Keep the group delivery port on the exact gate used by ordinary chat runs. */
@@ -265,8 +264,9 @@ export function runGatedGroupFanout<T>(
   gate: RunGate,
   roleId: string,
   fn: (execution: { readonly queued: QueuedRun | null }) => Promise<T> | T,
+  onQueued?: (queued: QueuedRun) => void | Promise<void>,
 ): Promise<T> {
-  return gate.run(roleId, fn);
+  return gate.run(roleId, fn, onQueued);
 }
 
 /**
@@ -446,11 +446,10 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       runId: event.runId,
       actor: "system:run-concurrency",
       eventType: RUN_QUEUED_EVENT_TYPE,
-      payload: { roleId: event.roleId, position: event.position, reason: event.reason },
+      payload: { taskId: event.taskId, roleId: event.roleId, position: event.position, reason: event.reason },
     });
   };
   const runChatTask = createGatedChatRunTask(chatRunDriver, {
-    listRuns: (filter) => dbListRuns(options, filter),
     recordQueuedRun,
   }, runGate);
   const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
@@ -517,8 +516,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     runChatTask: notify,
     requestGroupFanout: async ({ task, memberRoleIds, body }) => {
       const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group", tenantId: task.tenantId });
-      const result = await runGatedGroupFanout(runGate, task.roleId, async ({ queued }) => {
-        if (queued !== null) await recordQueuedRun({ runId: run.runId, tenantId: task.tenantId, ...queued });
+      const result = await runGatedGroupFanout(runGate, task.roleId, async () => {
         return deliverBotToBotMessage(options, {
         // The fan-out gate's sender label is audit data, not a role FK. The
         // persisted group-thread message remains correctly unattributed
@@ -529,7 +527,12 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         runId: run.runId,
           tenantId: task.tenantId,
         });
-      });
+      }, async (queued) => recordQueuedRun({
+        runId: run.runId,
+        taskId: task.taskId,
+        tenantId: task.tenantId,
+        ...queued,
+      }));
       // TASK-205: a fan-out (2+ recipients) issues a real pending approval
       // via `deliverBotToBotMessage` but never parked the run — the caller
       // never checked `result.delivered`, so `runs.status` stayed `started`
