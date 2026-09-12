@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { getMe, login as apiLogin, logout as apiLogout } from "./api";
+import { getMe, login as apiLogin, loginWithGoogle as apiLoginWithGoogle, logout as apiLogout } from "./api";
 
 /**
  * TASK-102 — auth state lives in memory only (never localStorage/
@@ -30,6 +30,13 @@ interface AuthContextValue {
   /** True until the initial `GET /auth/me` bootstrap check has settled. */
   isBootstrapping: boolean;
   login: (token: string) => Promise<void>;
+  /**
+   * TASK-241 (spec §3.3) — exchanges a real Firebase ID token for a
+   * session via `POST /auth/google`; same shared-identity contract as
+   * `login` above, just a different credential (Google, not the shared
+   * operator token).
+   */
+  loginWithGoogle: (idToken: string) => Promise<void>;
   /** Clears the server-side session (spec §3.2) and marks the client unauthenticated. */
   logout: () => Promise<void>;
   markUnauthenticated: () => void;
@@ -65,6 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(true);
   }, []);
 
+  const loginWithGoogle = useCallback(async (idToken: string) => {
+    await apiLoginWithGoogle(idToken);
+    setIsAuthenticated(true);
+  }, []);
+
   const markUnauthenticated = useCallback(() => {
     setIsAuthenticated(false);
   }, []);
@@ -81,8 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, isBootstrapping, login, logout, markUnauthenticated }),
-    [isAuthenticated, isBootstrapping, login, logout, markUnauthenticated],
+    () => ({ isAuthenticated, isBootstrapping, login, loginWithGoogle, logout, markUnauthenticated }),
+    [isAuthenticated, isBootstrapping, login, loginWithGoogle, logout, markUnauthenticated],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

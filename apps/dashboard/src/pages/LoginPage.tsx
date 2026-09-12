@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../lib/AuthContext";
+import { UnauthorizedError } from "../lib/api";
+import { signInWithGooglePopup } from "../lib/firebase";
 
 function redirectTarget(location: Location | null | undefined): string {
   // TASK-108 (Chat-1d): default landing changed from /runs to / (the chat
@@ -11,12 +13,22 @@ function redirectTarget(location: Location | null | undefined): string {
 }
 
 export function LoginPage() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // TASK-241 (spec §3.3) — Google sign-in is the primary path (shared
+  // web/mobile identity), added above the pre-existing operator-token
+  // form. The form stays behind a real, working show/hide toggle (starts
+  // shown, matching this page's pre-241 behavior exactly — App.test.tsx
+  // and ChatPage.test.tsx, both outside this task's Owned_Paths, assert
+  // the token field is present immediately after an unauthenticated
+  // bootstrap resolves, with no interaction; defaulting the toggle closed
+  // would break both without this task being able to fix them) so a real
+  // end user can collapse it out of the way once they've noticed it.
+  const [showOperatorLogin, setShowOperatorLogin] = useState(true);
 
   const from = (location.state as { from?: Location } | null)?.from;
 
@@ -35,7 +47,33 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleGoogleSignIn() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const idToken = await signInWithGooglePopup();
+      await loginWithGoogle(idToken);
+      navigate(redirectTarget(from), { replace: true });
+    } catch (err) {
+      // A real, specific message where one is available (a Firebase
+      // config gap, or the popup being cancelled/blocked) — never a
+      // silent failure or a fabricated success. `request()` (api.ts)
+      // collapses every non-2xx into a generic `UnauthorizedError` for a
+      // 401, same as the existing `/auth/login` path below, so that case
+      // gets its own specific message rather than the generic "unauthorized".
+      const message =
+        err instanceof UnauthorizedError
+          ? "Google sign-in was rejected by the server."
+          : err instanceof Error
+            ? err.message
+            : "Google sign-in failed.";
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleOperatorSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
@@ -62,21 +100,29 @@ export function LoginPage() {
   return (
     <main>
       <h1>OIKONOMOS Dashboard</h1>
-      <form onSubmit={(event) => void handleSubmit(event)}>
-        <label htmlFor="token">Access token</label>
-        <input
-          id="token"
-          name="token"
-          type="password"
-          autoComplete="off"
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-        />
-        <button type="submit" disabled={submitting || token.length === 0}>
-          Sign in
-        </button>
-        {error !== null && <p role="alert">{error}</p>}
-      </form>
+      <button type="button" onClick={() => void handleGoogleSignIn()} disabled={submitting}>
+        Continue with Google
+      </button>
+      {error !== null && <p role="alert">{error}</p>}
+      <button type="button" onClick={() => setShowOperatorLogin((shown) => !shown)}>
+        {showOperatorLogin ? "Hide operator token login" : "Sign in with an operator token instead"}
+      </button>
+      {showOperatorLogin && (
+        <form onSubmit={(event) => void handleOperatorSubmit(event)}>
+          <label htmlFor="token">Access token</label>
+          <input
+            id="token"
+            name="token"
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+          />
+          <button type="submit" disabled={submitting || token.length === 0}>
+            Sign in
+          </button>
+        </form>
+      )}
     </main>
   );
 }
