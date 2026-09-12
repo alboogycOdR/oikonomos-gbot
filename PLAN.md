@@ -7252,7 +7252,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-243
 **Title:** Workspace-1 — dashboard Results and Work views: receipt panel, routines with pause/resume/test-run and next fire (UTC)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §7.2, §7.3, §1
@@ -7265,16 +7265,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Pausing a routine while a run is active leaves the run's state unchanged in the UI. (§1)
 - [ ] Route segments `/results` and `/work` deep-link correctly and fall back to chat. (§2.6)
 - [ ] dashboard tests cover both views with fake HTTP; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-243-s5
+**Started_At:** 2026-09-12T12:48:11Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T12:48:11Z
 
 ### TASK-244
 **Title:** Workspace-1 — Gemini lane: terminate the turn immediately on human_takeover_required, incl. batched tools and retries; spend.unrecorded on failure path (protected path)
