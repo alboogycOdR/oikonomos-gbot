@@ -17,3 +17,5 @@ No cap or serialisation exists today: control-api fires runs as `void deps.runCh
 services/worker/src/runConcurrency.ts, services/worker/src/runConcurrency.test.ts, services/worker/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/index.ts
 
 ## Work Log
+
+- [2026-09-12T13:27:00Z] [CX9] Added the FIFO global/per-role run gate, production chat and fan-out composition, persisted `run.queued` audit evidence, and liveness/correctness tests. Preflight: NEW services/worker/src/runConcurrency.ts; NEW services/worker/src/runConcurrency.test.ts; FILE services/worker/src/index.ts (81 lines); FILE services/control-api/src/ports.ts (781 lines); FILE services/control-api/src/ports.test.ts (140 lines); FILE services/control-api/src/index.ts (66 lines). Focused tests passed: worker runConcurrency 3/3; control-api ports 7/7; worker/control-api typecheck passed. `pnpm -r test` was started, then re-run serially after a pre-existing parallel DB-race failure in packages/db; runner output was truncated mid-run after green dashboard and agent-providers packages.

@@ -45,6 +45,8 @@ export {
   type GatedGrokOptions,
 } from "./subprocessProviders.js";
 
+export { createRunGate, type QueuedRun, type RunGate, type RunGateExecution, type RunGateOptions } from "./runConcurrency.js";
+
 export {
   createTierZeroProvider,
   type CreateTierZeroProviderOptions,

@@ -13,8 +13,11 @@ import {
   buildChatGoal,
   createDatabaseBackedDeps,
   createFilesystemAttachmentStore,
+  createGatedChatRunTask,
+  runGatedGroupFanout,
   notifyAfterChatRun,
 } from "./ports.js";
+import { createRunGate, type ChatRunDriver } from "@oikonomos/worker";
 
 const task: Task = {
   taskId: "11111111-1111-1111-1111-111111111111",
@@ -106,6 +109,43 @@ describe("notifyAfterChatRun (TASK-145)", () => {
       vi.unstubAllEnvs();
       await app.close();
     }
+  });
+});
+
+describe("run concurrency production composition (TASK-238)", () => {
+  it("observes run.queued evidence through the production chat wrapper", async () => {
+    const queued: unknown[] = [];
+    const audits: unknown[] = [];
+    const releases: Array<() => void> = [];
+    const driver: ChatRunDriver = {
+      run: async () => new Promise<void>((resolve) => { releases.push(resolve); }),
+    };
+    const gate = createRunGate({ maxConcurrent: 2, onQueued: (event) => queued.push(event) });
+    const runChatTask = createGatedChatRunTask(driver, {
+      listRuns: async ({ taskId }) => ({ runs: [{ ...run, runId: taskId!, taskId: taskId! }], nextCursor: null }),
+      recordQueuedRun: async (event) => { audits.push(event); },
+    }, gate);
+    const input = (id: string) => ({ task: { ...task, taskId: id, roleId: `role-${id}` }, threadId: "thread-1" });
+    const first = runChatTask(input("11111111-1111-1111-1111-111111111111"));
+    const second = runChatTask(input("22222222-2222-2222-2222-222222222222"));
+    const third = runChatTask(input("33333333-3333-3333-3333-333333333333"));
+    expect(queued).toEqual([{ roleId: "role-33333333-3333-3333-3333-333333333333", position: 1, reason: "concurrency.cap" }]);
+    releases.shift()!();
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    for (const release of releases.splice(0)) release();
+    await Promise.all([first, second, third]);
+    expect(audits).toEqual([expect.objectContaining({ runId: "33333333-3333-3333-3333-333333333333", reason: "concurrency.cap" })]);
+  });
+
+  it("holds group fan-out behind the same gate as chat work", async () => {
+    const release = new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    const started: string[] = [];
+    const gate = createRunGate({ maxConcurrent: 1 });
+    const chat = gate.run("chat-role", async () => { started.push("chat"); await release; });
+    const fanout = runGatedGroupFanout(gate, "group-role", () => { started.push("fanout"); });
+    expect(started).toEqual(["chat"]);
+    await Promise.all([chat, fanout]);
+    expect(started).toEqual(["chat", "fanout"]);
   });
 });
 
