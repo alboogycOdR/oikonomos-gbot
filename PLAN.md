@@ -7225,7 +7225,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-242
 **Title:** Workspace-1 — run completion receipt API: GET /runs/:id/receipt
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §7.1; ORCH_REVIEW/DISPOSITION_MATRIX.md row F4; ADR-004
@@ -7237,16 +7237,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A run belonging to another tenant returns 404 with no metadata. (§7.1)
 - [ ] A run with no `spend_records` rows reports `unavailable`, never zero. (§7.1)
 - [ ] OpenAPI documents the route; db and control-api suites green; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-242-cx9
+**Started_At:** 2026-09-12T11:52:23Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T11:52:23Z
 
 ### TASK-243
 **Title:** Workspace-1 — dashboard Results and Work views: receipt panel, routines with pause/resume/test-run and next fire (UTC)
