@@ -61,6 +61,16 @@ Required changes (all applied above):
 
 Non-gating notes: pg-boss `singletonKey` only dedupes jobs in created/active state, which is what decision 2 needs; the routine-poll cleanup helper (`jobs/pgBossTestCleanup.ts`) must learn the new queue name or the isolated suite will leak jobs between files (TASK-251's family).
 
+## Amendment 1a — persisted execution context (2026-09-12, ORCH, from a TASK-246 implementation finding)
+
+CX9 found while implementing decision 1 that a reference-only job `{runId}` cannot be executed: the consumer needs the run's `threadId` (and for fan-out the source message id and recipient), and nothing durable links a run to its thread before the run has produced a reply (`messages.run_id` is written afterwards; `tasks` has no thread column). The in-process path never noticed because the API handed the driver an in-memory request. Decision:
+
+- `tasks` gains `execution jsonb NULL` (migration `025_task_execution`), written **in the same transaction** as the task/run rows at submission, with a versioned validated shape: `{ version: 1, kind: "chat", threadId }` for chat runs and `{ version: 1, kind: "fanout", threadId, sourceMessageId, recipientRoleId }` for group fan-out. It carries identifiers only — never message bodies, instructions, credentials or approval data — so decision 1's "reference-only, non-mutable" property holds: the consumer loads the message body from `messages` by id at execution time.
+- The job payload stays `{ version: 1, runId }`. The consumer resolves run → task → `execution` and refuses (terminal `failed`, audit `run.execution_unresolvable`) a run whose task has no `execution`, which can only be a legacy row from before this migration.
+- Routing for fan-out is computed **at submission** by the API (it already is: one run per recipient), so the worker never re-runs the Tier-0 scorer.
+
+Files this adds to TASK-246's territory: `packages/db/src/tasks.ts` + test, `infra/postgres/migrations/025_task_execution.up.sql`/`.down.sql`, `services/worker/src/index.ts` (export of the enqueue port the API imports).
+
 ## Resolution
 
-R1, R2 and R3 applied 2026-09-12 in decisions 3, 7 and 4 and in the test obligations. ADR is Accepted; TASK-246 implements against this text.
+R1, R2 and R3 applied 2026-09-12 in decisions 3, 7 and 4 and in the test obligations; Amendment 1a added the same day. ADR is Accepted; TASK-246 implements against this text.
