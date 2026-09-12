@@ -1,5 +1,7 @@
 # OIKONOMOS Workspace Wave v1.0 — spec entry point for Wave "Workspace-1"
 
+> **Changelog:** v1.1 (2026-09-12, ORCH) — §6.1 gains the prefix-collision rule found while executing TASK-240: the release proxy mounts API paths by prefix, so a dashboard client route must not share a top-level segment with an API prefix; `GET /workspace/summary` (TASK-237) is mounted at its exact path and `/workspace/:threadId` (TASK-236) stays a client route. No task's Owned_Paths or acceptance criteria change.
+
 Written 2026-09-12 (ORCH, after the independent review of the CX advisory package at
 `E:\DELL-PROJECTS\GROKBOT-RESEARCH-DOCS\ORCH_REVIEW\` — verdict, disposition matrix,
 execution proposal, owner decisions). The owner accepted the review's recommendations
@@ -121,6 +123,11 @@ serialisation exists: runs are `void deps.runChatTask(...)` at `app.ts:1738,1756
 6.1 **One origin.** A reverse proxy on the workstation serves the built dashboard and
 proxies the API and SSE on one HTTPS origin over Tailscale, so the `Secure;
 SameSite=Strict` cookie (`auth.ts:75-77`) works without a second origin.
+**Prefix rule (v1.1):** the proxy mounts API paths by prefix. A dashboard client
+route must never share a top-level segment with an API prefix; where one path does
+(`GET /workspace/summary` under the client's `/workspace/:threadId`), the API path
+is mounted exactly. New API families whose UI also needs routes (projects,
+templates) put their client routes under a distinct segment.
 6.2 `GET /health` reports the git SHA of the running build; the dashboard embeds its own.
 6.3 A required-configuration check lists every required variable by name and reports
 present/absent **without printing values**; it must include `OIKONOMOS_CAPABILITIES_ENABLED`

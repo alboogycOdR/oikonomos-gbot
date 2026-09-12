@@ -70,6 +70,18 @@ if (Test-PortOpen -Port 3000) {
         -ErrLog (Join-Path $logDir "control-api-err.log")
 }
 
+# --- dashboard-static (TASK-240): the built web workspace on 127.0.0.1:5174,
+# mounted at `/` by Tailscale Serve (infra/compose/tailscale-serve.ps1). ---
+if (Test-PortOpen -Port 5174) {
+    Write-WatchdogLog "dashboard-static healthy (port 5174 listening)."
+} else {
+    Start-OikonomosService -Name "dashboard-static" `
+        -WorkingDir (Join-Path $repoRoot "infra\compose") `
+        -ScriptPath "dashboard-static.mjs" `
+        -OutLog (Join-Path $logDir "dashboard-static-out.log") `
+        -ErrLog (Join-Path $logDir "dashboard-static-err.log")
+}
+
 # --- worker: no port to check (it's a queue consumer, not a server) ---
 # so health is "a node.exe process with dist/main.js on its command line
 # exists". CommandLine access requires Win32_Process (Get-Process alone

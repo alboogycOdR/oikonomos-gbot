@@ -17,6 +17,16 @@ This is scoped deliberately to *this workstation*. It is not a migration
 to `clawsrv` or a systemd/docker-compose production deployment — that is a
 separate, larger decision about where the product is hosted long-term.
 
+## Disclosed limitation (TASK-240, 2026-09-12)
+
+The Scheduled Task is **logon-triggered** (`-AtLogOn` plus a 2-minute repeat,
+`/RL LIMITED`, no `-AtStartup`, no stored credential). After a reboot nothing
+runs until a user logs in. Therefore, until TASK-249 moves the services to an
+always-on host: **the host must be on and logged in; no 24/7 or "works while
+your device is off" claim is made.** The watchdog also supervises
+`dashboard-static.mjs` (port 5174) since TASK-240 — see
+`docs/runbooks/release-workspace-1.md`.
+
 ## The mechanism
 
 `infra/compose/service-watchdog.ps1` checks both services and starts

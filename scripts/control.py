@@ -167,6 +167,24 @@ def apply_control_to_plan(plan_text: str, block: dict, ts: str) -> ApplyResult:
         return ApplyResult(plan_text, False, f"CONTROL {task_id}: unknown task ID — no edit made")
     start, end = span
 
+    # Guard (ORCH 2026-09-12): a CONTROL block is a builder's report on a task it
+    # is actively working. It may only transition a task whose current Status is
+    # claimed/in_progress. Without this, `drain` applied four week-old queued
+    # blocks (TASK-163 -> needs_review, TASK-185 -> blocked x3) to tasks that had
+    # long been reviewed and merged, because the mismatch check only compares the
+    # block's task id to the dispatcher's launch record, not to the plan's state.
+    current_status = None
+    for line in lines[start:end]:
+        if line.startswith("**Status:**"):
+            current_status = line.split("**Status:**", 1)[1].strip()
+            break
+    if current_status not in ("claimed", "in_progress"):
+        return ApplyResult(
+            plan_text,
+            False,
+            f"CONTROL {task_id}: task is '{current_status}', not claimed/in_progress — stale block, no edit made",
+        )
+
     # Every free-text field is sanitized exactly like tg_commands.py's
     # /answer and /rework free text: newlines/control characters collapsed
     # to spaces so nothing can ever land at the START of a line and be
