@@ -4,8 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { RequireAuth } from "../components/RequireAuth";
 import { AuthProvider, useAuth } from "../lib/AuthContext";
 import { ChatPage } from "./ChatPage";
+import { LoginPage } from "./LoginPage";
 
 const THREAD = {
   id: "thread-1",
@@ -149,6 +151,42 @@ function renderPage(initialPath = "/") {
 }
 
 /**
+ * TASK-239 (spec §3.1) — the real tree: `AuthProvider`'s own bootstrap
+ * `GET /auth/me` check (no `AuthedProbe` short-circuit via an explicit
+ * `login()` call) decides whether `RequireAuth` renders `ChatPage` or
+ * `LoginPage` redirects there. Exercises "reloading with a valid cookie
+ * lands on the workspace without the login screen" and "reloading with
+ * none shows login" (§3.1) end to end.
+ */
+function renderWithBootstrap(initialPath = "/") {
+  return render(
+    <AuthProvider>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <ChatPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/workspace/:threadId"
+            element={
+              <RequireAuth>
+                <ChatPage />
+              </RequireAuth>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
+  );
+}
+
+/**
  * TASK-108 AC coverage:
  *  - `/` shows real threads from `GET /threads` (not fixture data).
  *  - sending a message calls `POST /threads/:id/messages` and the reply
@@ -183,6 +221,9 @@ describe("ChatPage", () => {
       if (url.endsWith("/roles")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
+      if (url.endsWith("/workspace/summary")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
       if (url.endsWith("/threads")) {
         return new Response(JSON.stringify([THREAD]), { status: 200 });
       }
@@ -213,6 +254,9 @@ describe("ChatPage", () => {
         return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
       }
       if (url.endsWith("/roles")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/workspace/summary")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (url.endsWith("/threads")) {
@@ -262,6 +306,9 @@ describe("ChatPage", () => {
         return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
       }
       if (url.endsWith("/roles")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/workspace/summary")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (url.endsWith("/threads")) {
@@ -329,6 +376,7 @@ describe("ChatPage", () => {
       const url = String(input);
       if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
       if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
       if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
       if (url.includes("/threads/thread-1/stream")) return openStream();
       if (url.includes("/threads/thread-1/messages") && init?.method === "POST") {
@@ -364,6 +412,9 @@ describe("ChatPage", () => {
         return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
       }
       if (url.endsWith("/roles")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/workspace/summary")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (url.endsWith("/threads")) {
@@ -407,6 +458,9 @@ describe("ChatPage", () => {
       if (url.endsWith("/roles")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
+      if (url.endsWith("/workspace/summary")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
       if (url.endsWith("/threads")) {
         return new Response(JSON.stringify([THREAD]), { status: 200 });
       }
@@ -436,6 +490,7 @@ describe("ChatPage", () => {
       const url = String(input);
       if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
       if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
       if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
       if (url.endsWith("/roles/role-1/routines")) {
         return new Response(JSON.stringify([{ routineId: "routine-1", name: "Daily briefing", schedule: "0 8 * * *" }]), { status: 200 });
@@ -470,6 +525,7 @@ describe("ChatPage", () => {
             { status: 200 },
           );
         }
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD, THREAD_2, THREAD_3]), { status: 200 });
         if (url.includes("/threads/thread-1/stream")) return openStream();
         if (url.includes("/threads/thread-2/stream")) return openStream();
@@ -578,6 +634,7 @@ describe("ChatPage", () => {
             { status: 200 },
           );
         }
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
         if (url.includes("/threads/thread-1/stream")) return openStream();
         if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
@@ -612,6 +669,7 @@ describe("ChatPage", () => {
             { status: 200 },
           );
         }
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([GROUP_THREAD]), { status: 200 });
         if (url.includes("/threads/group-1/stream")) return openStream();
         if (url.includes("/threads/group-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
@@ -632,6 +690,7 @@ describe("ChatPage", () => {
         const url = String(input);
         if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
         if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
         // If ChatPage ever calls this for a thread it doesn't own, that's
         // the exact leak spec §2.6 forbids — fail loudly.
@@ -652,6 +711,7 @@ describe("ChatPage", () => {
         const url = String(input);
         if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
         if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([]), { status: 200 });
         return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
       }) as unknown as typeof fetch;
@@ -659,6 +719,123 @@ describe("ChatPage", () => {
       renderPage("/");
 
       expect(await screen.findByText(/no bots yet/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("session bootstrap (spec §3.1)", () => {
+    it("bootstrap-authenticated: a valid session cookie lands on the workspace without the login screen", async () => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/auth/me")) {
+          return new Response(
+            JSON.stringify({ tenantId: "basileia", kind: "user", expiresAt: "2026-09-13T00:00:00.000Z" }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
+        if (url.includes("/threads/thread-1/stream")) return openStream();
+        if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }) as unknown as typeof fetch;
+
+      renderWithBootstrap("/");
+
+      await waitFor(() => expect(screen.getAllByText("Research Assistant").length).toBeGreaterThan(0));
+      expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
+    });
+
+    it("bootstrap-unauthenticated: no session cookie shows the login screen, never the workspace", async () => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/auth/me")) {
+          return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }) as unknown as typeof fetch;
+
+      renderWithBootstrap("/");
+
+      expect(await screen.findByLabelText(/access token/i)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("listbox", { name: /bot threads/i })).not.toBeInTheDocument());
+    });
+  });
+
+  describe("workspace summary poll and badges (spec §4.2)", () => {
+    it("renders a badge on a background thread from GET /workspace/summary, none on the active thread", async () => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+        if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) {
+          return new Response(
+            JSON.stringify([
+              {
+                threadId: "thread-2",
+                latestRun: { runId: "run-2", status: "waiting_approval" },
+                pendingApprovals: 1,
+                lastActivityAt: "2026-09-12T09:00:00.000Z",
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD, THREAD_2]), { status: 200 });
+        if (url.includes("/threads/thread-1/stream") || url.includes("/threads/thread-2/stream")) {
+          return openStream();
+        }
+        if (url.includes("/threads/thread-1/messages") || url.includes("/threads/thread-2/messages")) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }) as unknown as typeof fetch;
+
+      renderPage("/workspace/thread-1");
+
+      const opsBotRow = await screen.findByRole("option", { name: /ops bot/i });
+      expect(opsBotRow).toHaveTextContent(/approval/i);
+
+      const researchRow = screen.getByRole("option", { name: /research assistant/i });
+      expect(researchRow).not.toHaveTextContent(/approval|working|blocked|new/i);
+    });
+  });
+
+  describe("logout (spec §3.2)", () => {
+    it("calls POST /auth/logout and drops in-memory workspace state (drafts, transcript)", async () => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+        if (url.endsWith("/auth/logout") && init?.method === "POST") {
+          return new Response(null, { status: 204 });
+        }
+        if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
+        if (url.includes("/threads/thread-1/stream")) return openStream();
+        if (url.includes("/threads/thread-1/messages")) {
+          return new Response(JSON.stringify([USER_MESSAGE]), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }) as unknown as typeof fetch;
+
+      const user = userEvent.setup({ delay: null });
+      renderPage("/workspace/thread-1");
+
+      await screen.findByText("hi there");
+      await user.type(screen.getByLabelText("Message"), "an unsent draft");
+      expect(screen.getByLabelText("Message")).toHaveValue("an unsent draft");
+
+      await user.click(screen.getByRole("button", { name: /log out/i }));
+
+      await waitFor(() =>
+        expect(global.fetch).toHaveBeenCalledWith(
+          expect.stringContaining("/auth/logout"),
+          expect.objectContaining({ method: "POST" }),
+        ),
+      );
+      await waitFor(() => expect(screen.getByLabelText("Message")).toHaveValue(""));
+      expect(screen.queryByText("hi there")).not.toBeInTheDocument();
     });
   });
 });

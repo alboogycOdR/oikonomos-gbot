@@ -3,6 +3,22 @@
 // TASK-108 (Chat-1d) wires these to the real GET /threads, GET
 // /threads/:id/messages responses without needing to reshape props here.
 
+/**
+ * TASK-239 (spec §4.2/§4.3) — a background workspace's status, derived from
+ * `GET /workspace/summary` (never invented client-side text). `blockedReason`
+ * is only ever populated for `"blocked"` (a failed run) and is the
+ * deterministic string read off the run's terminal audit event / failure
+ * note — see `ChatPage.tsx`'s `computeWorkspaceBadge`/`fetchBlockedReason`.
+ */
+export type WorkspaceBadgeKind = "working" | "waiting_approval" | "blocked" | "unread";
+
+export interface WorkspaceStatus {
+  badge: WorkspaceBadgeKind;
+  pendingApprovals: number;
+  /** Populated only for `badge === "blocked"`. */
+  blockedReason?: string | null;
+}
+
 export interface BotSummary {
   id: string;
   /** Role owning this thread; distinct from the thread ID used as `id`. */
@@ -13,6 +29,8 @@ export interface BotSummary {
   avatarSeed: string;
   lastMessagePreview?: string;
   updatedAt: string;
+  /** TASK-239 (spec §4.2) — background-workspace status badge; absent for the active thread and for a thread with nothing to report. */
+  status?: WorkspaceStatus;
 }
 
 export type MessageRole = "user" | "bot" | "system";
