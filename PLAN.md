@@ -7335,7 +7335,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
-**Owned_Paths:** services/worker/src/jobs/**, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, docs/decisions/ADR-016-run-execution-queue.md
+**Owned_Paths:** services/worker/src/jobs/**, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts
 **Depends_On:** TASK-238, TASK-242, TASK-244
 **Description:** Today `reconcileInterruptedRuns` (`runLifecycle.ts:224-250`) → `resumeInterruptedRun` (`:47-55`) → `resumeRun` is a status flip; pg-boss registers only heartbeat and routine-poll (`workerJobQueue.ts:6-7`); chat runs are in-process promises fired from control-api. A restart loses the in-flight turn. Design first: an ADR (protected path, different-model review) deciding queue-driven run execution — job per run, singleton per run id, the TASK-238 gate becomes the consumer's concurrency, reconciliation re-enqueues rather than re-labels, governed side effects stay exactly-once via the approval nonce, anything else re-executed must be idempotent or parked. Build after the ADR is accepted. Unblocks the full A15 case.
 **Acceptance_Criteria:**
@@ -7347,12 +7347,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T12:50:33Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+- [2026-09-12T13:05:00Z] [ORCH] Owned_Paths corrected (docs/decisions/ADR-016-run-execution-queue.md removed): docs/** is in the builder territory firewall and can never be committed by a builder (TASK-252 proved it). Deliver the ADR-016 draft as `dossiers/TASK-246.md` section `## ADR-016 draft` (your dossier is yours); ORCH lifts it into docs/decisions/, gets it reviewed by an Anthropic model (different from you), and commits it. Do not start the queue implementation until ORCH has recorded the ADR as accepted in this task's Review_Findings — emit `blocked` with `MISSING_DEPENDENCY: ADR-016 acceptance` after the draft if you reach that point.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T12:50:33Z
+**Updated_At:** 2026-09-12T13:05:00Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
@@ -7408,7 +7409,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.5; ADR-010; docs/runbooks/service-supervision.md; owner decision D5
-**Owned_Paths:** docs/decisions/ADR-017-application-hosting.md, infra/compose/**, docs/runbooks/**
+**Owned_Paths:** infra/compose/**, docs/runbooks/** (runbooks are ORCH-executed; if a builder ever takes this task, the ADR-017 draft goes in its dossier and ORCH commits it)
 **Depends_On:** TASK-240, TASK-245
 **Description:** Owner decision D5 keeps the workstation for now and defers this. `docker-compose.prod.yml` defines Postgres only; the watchdog is a logon-triggered Scheduled Task; `clawsrv` is shared (~20 containers, ~5 GB free) and each browser sandbox reserves 2 GB. Write ADR-017 (protected path, different-model review) choosing the host (dedicated box vs `clawsrv` with headroom checks), process supervision with boot-without-logon, credentials provisioning via the existing `secret://` convention, backup/rollback, and the sandbox reachability path; then execute the migration with a real reboot test. Until this lands, every 24/7 or device-off claim stays withheld (§10).
 **Acceptance_Criteria:**
@@ -7424,7 +7425,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_At:** 2026-09-12T13:05:00Z
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
