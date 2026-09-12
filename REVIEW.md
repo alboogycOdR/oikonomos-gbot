@@ -897,3 +897,12 @@ LOW / non-gating
 - R3 `startTaskRun(..., tenantId)` added on the fan-out path — correct, but it is a behaviour change outside the gate; mention it in the dossier.
 
 Same branch, same territory. R1 only is required for approval.
+
+## TASK-238 rework (1c08514, merge) | CX9 | approved | first-pass: no (rework round 1)
+
+Scope: `git diff 0f87de0..1198240` — runConcurrency.ts (+37: `onQueued` per-call hook, entry `ready` flag, head-of-line trade-off documented), ports.ts (evidence emitted at admission with `runId: null` + `taskId`, fan-out keeps the run id), ports.test.ts (enqueue-time event awaited), dossier.
+
+- R1 fixed, and better than asked: the queued entry is admitted only after the `run.queued` audit write resolves, so the evidence is durable before the run exists; a failed evidence write rejects the run rather than running unrecorded. Event carries taskId/roleId/position/reason with `runId: null` for chat and the real run id for fan-out.
+- R2 documented on `createRunGate`. R3 noted in the dossier.
+
+Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0 (worker 245/245, control-api 268/268 in the earlier per-package run on the same rework commit).
