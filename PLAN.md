@@ -7331,7 +7331,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7348,12 +7348,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 - [2026-09-12T13:05:00Z] [ORCH] Owned_Paths corrected (docs/decisions/ADR-016-run-execution-queue.md removed): docs/** is in the builder territory firewall and can never be committed by a builder (TASK-252 proved it). Deliver the ADR-016 draft as `dossiers/TASK-246.md` section `## ADR-016 draft` (your dossier is yours); ORCH lifts it into docs/decisions/, gets it reviewed by an Anthropic model (different from you), and commits it. Do not start the queue implementation until ORCH has recorded the ADR as accepted in this task's Review_Findings — emit `blocked` with `MISSING_DEPENDENCY: ADR-016 acceptance` after the draft if you reach that point.
+- [2026-09-12T12:54:21Z] [SV:CX9] Drafted and committed ADR-016 in the TASK-246 dossier; it specifies durable pg-boss execution, re-enqueue audit liveness, approval parking, and nonce-only exactly-once scope.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: ADR-016 must be lifted by ORCH, reviewed by an Anthropic model, committed, and recorded accepted in TASK-246 Review_Findings before queue implementation may begin.
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T13:05:00Z
+**Updated_At:** 2026-09-12T12:54:21Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
