@@ -72,6 +72,24 @@ export async function login(token: string): Promise<void> {
 }
 
 /**
+ * TASK-241 (spec §3.3) — exchanges a real Firebase ID token (obtained
+ * client-side via `lib/firebase.ts`'s `signInWithGooglePopup`) for a
+ * session cookie at the real `POST /auth/google` route (`app.ts:967-978`,
+ * TASK-172). Request/response shape read directly from that handler:
+ * `{idToken}` in, `{authenticated: true}` + `set-cookie` out — same shape
+ * as `login` above, just a different credential. A rejected/expired/
+ * tampered ID token surfaces as the same generic request failure `request`
+ * already produces for a non-2xx response; the server's own message
+ * ("invalid or expired Firebase ID token") rides through via `body.error`.
+ */
+export async function loginWithGoogle(idToken: string): Promise<void> {
+  await request<{ authenticated: boolean }>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+}
+
+/**
  * TASK-239 (spec §3.1) — mirrors control-api's real `GET /auth/me` shape
  * exactly (`app.ts`'s handler): `expiresAt` is `null` for a bearer-service
  * principal, an ISO-8601 string for a cookie-backed user session. `request`

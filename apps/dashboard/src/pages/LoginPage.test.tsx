@@ -7,6 +7,19 @@ import { AuthProvider } from "../lib/AuthContext";
 import { LoginPage } from "./LoginPage";
 
 /**
+ * TASK-241 (spec §3.3) — Google sign-in is exercised with a fake ID-token
+ * provider (`lib/firebase.ts`'s real `signInWithPopup` opens a real
+ * browser popup against Google's servers, which cannot run in this test
+ * environment) rather than a real Firebase flow, matching TASK-173's
+ * Flutter `FakeGoogleAuthPort` test convention on the mobile side.
+ */
+vi.mock("../lib/firebase", () => ({
+  signInWithGooglePopup: vi.fn(),
+}));
+
+import { signInWithGooglePopup } from "../lib/firebase";
+
+/**
  * TASK-239 (spec §3.1) — `LoginPage` is where the "reload with a valid
  * cookie never shows the login screen" behavior actually lives (see
  * `AuthContext.tsx`'s own comment on why the bootstrap check doesn't gate
@@ -37,12 +50,18 @@ describe("LoginPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the sign-in form when the bootstrap check finds no valid session", async () => {
+  it("shows both the Google sign-in button and the operator token form (toggle starts open), and the toggle can hide the form", async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 })) as unknown as typeof fetch;
 
     renderLogin();
 
+    expect(await screen.findByRole("button", { name: /continue with google/i })).toBeInTheDocument();
     expect(await screen.findByLabelText(/access token/i)).toBeInTheDocument();
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /hide operator token login/i }));
+
+    expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
   });
 
   it("navigates straight to the workspace once the bootstrap check resolves authenticated, without ever showing the form staying put", async () => {
@@ -55,7 +74,7 @@ describe("LoginPage", () => {
     renderLogin();
 
     await waitFor(() => expect(screen.getByText("Workspace")).toBeInTheDocument());
-    expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /continue with google/i })).not.toBeInTheDocument();
   });
 
   it("navigates back to a captured deep link (`from`) once bootstrap resolves authenticated", async () => {
@@ -81,7 +100,68 @@ describe("LoginPage", () => {
     await waitFor(() => expect(screen.getByText("Runs")).toBeInTheDocument());
   });
 
-  it("signs in via POST /auth/login and navigates to the workspace", async () => {
+  it("signs in via the Google popup + POST /auth/google and navigates to the workspace", async () => {
+    const calls: string[] = [];
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/auth/me")) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      }
+      if (url.endsWith("/auth/google")) {
+        return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+    vi.mocked(signInWithGooglePopup).mockResolvedValue("fake-id-token");
+
+    const user = userEvent.setup({ delay: null });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /continue with google/i }));
+
+    await waitFor(() => expect(screen.getByText("Workspace")).toBeInTheDocument());
+    expect(calls).toContainEqual(expect.stringContaining("/auth/google"));
+  });
+
+  it("shows a real error and stays on the login screen when the Google popup is cancelled", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 })) as unknown as typeof fetch;
+    vi.mocked(signInWithGooglePopup).mockRejectedValue(new Error("popup closed by user"));
+
+    const user = userEvent.setup({ delay: null });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /continue with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/popup closed by user/i);
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+  });
+
+  it("shows a real error and stays on the login screen when the server rejects the Firebase ID token", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      }
+      if (url.endsWith("/auth/google")) {
+        return new Response(JSON.stringify({ error: "invalid or expired Firebase ID token" }), { status: 401 });
+      }
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+    vi.mocked(signInWithGooglePopup).mockResolvedValue("fake-id-token");
+
+    const user = userEvent.setup({ delay: null });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /continue with google/i }));
+
+    // request()/api.ts collapses every 401 into a generic UnauthorizedError
+    // (loses the server's own body.error message) — LoginPage gives that
+    // case its own specific message rather than surfacing the generic one.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/rejected by the server/i);
+  });
+
+  it("signs in via the operator token form + POST /auth/login and navigates to the workspace", async () => {
     const calls: string[] = [];
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -99,13 +179,13 @@ describe("LoginPage", () => {
     renderLogin();
 
     await user.type(await screen.findByLabelText(/access token/i), "a-token");
-    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => expect(screen.getByText("Workspace")).toBeInTheDocument());
     expect(calls).toContainEqual(expect.stringContaining("/auth/login"));
   });
 
-  it("shows an error and stays on the form when the token is rejected", async () => {
+  it("shows an error and stays on the operator form when the token is rejected", async () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/auth/me")) {
@@ -121,7 +201,7 @@ describe("LoginPage", () => {
     renderLogin();
 
     await user.type(await screen.findByLabelText(/access token/i), "wrong-token");
-    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid token/i);
     expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
