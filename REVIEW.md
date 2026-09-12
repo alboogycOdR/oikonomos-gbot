@@ -906,3 +906,11 @@ Scope: `git diff 0f87de0..1198240` — runConcurrency.ts (+37: `onQueued` per-ca
 - R2 documented on `createRunGate`. R3 noted in the dossier.
 
 Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0 (worker 245/245, control-api 268/268 in the earlier per-package run on the same rework commit).
+
+## TASK-239 | S5 | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-239-s5` — 10 files, all inside Owned_Paths (+ own dossier); commits `6767614`, `1dc94e9` with the `[TASK-239]` suffix; no PLAN.md edits. Territory clean. (An uncommitted `AUTOPILOT_LOG.md` line in the worktree was the session-end hook's own SESSION_END record, not a builder edit; discarded.)
+
+Checked against the spec text: §3.1 `AuthContext` bootstraps from `GET /auth/me` with an `isBootstrapping` gate, authenticated only on 200; §3.2 logout calls `POST /auth/logout` and resets workspace state (drafts and transcript dropped — tested); §4.2 `GET /workspace/summary` polled every 15 s (`VITE_WORKSPACE_SUMMARY_POLL_MS` override), paused on `document.hidden`, refreshed on `focus`, active thread keeps its single SSE stream; §4.3 a `failed` latest run shows the deterministic reason read from the run's audit events' `reason` payload (fallback `failureNote`), never generated text, with a retry action; `waiting_approval` badges link to the thread; build SHA in the footer via the `__OIKONOMOS_BUILD_SHA__` define (declared in `api.ts`). `LoginPage` deep-link return (`from`) covered.
+
+Verified, not taken on trust (ORCH): dashboard typecheck/build green, 116/116 (was 107). Full `pnpm -r test` on the isolated DB, serialised: two failures, both pre-existing and outside this branch's reach — worker `finalize` phase-timing race (TASK-251) and `packages/db` `database.test.ts` capability-count assertion (35≠36) racing the same package's registration tests (added to TASK-251). Identical failures reproduce on master.
