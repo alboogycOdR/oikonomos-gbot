@@ -172,6 +172,10 @@ export {
   type NewMessage,
 } from "./messages.js";
 export {
+  listWorkspaceSummary,
+  type WorkspaceSummary,
+} from "./workspaceSummary.js";
+export {
   getOrInitThreadContext,
   updateThreadContext,
   startFreshEpoch,

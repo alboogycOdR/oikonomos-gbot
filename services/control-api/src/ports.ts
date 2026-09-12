@@ -23,6 +23,7 @@ import {
   getRun as dbGetRun,
   listPendingApprovals as dbListPendingApprovals,
   listMessages as dbListMessages,
+  listWorkspaceSummary as dbListWorkspaceSummary,
   listRoles as dbListRoles,
   listRoleMessages as dbListRoleMessages,
   updateRoleInstructions as dbUpdateRoleInstructions,
@@ -80,6 +81,7 @@ import {
   type Skill,
   type SkillListFilter,
   type UpdateSkill,
+  type WorkspaceSummary,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -146,6 +148,7 @@ export interface ControlApiDeps {
   listThreads(): Promise<Thread[]>;
   createGroupThread(input: NewGroupThread): Promise<GroupThread>;
   listAllThreadsWithMembers(): Promise<Array<Thread | GroupThread>>;
+  listWorkspaceSummary?(tenantId: string): Promise<WorkspaceSummary[]>;
   insertMessage(input: NewMessage): Promise<Message>;
   listMessages(threadId: string, options?: MessageListOptions): Promise<Message[]>;
   listTasks(filter?: TaskListFilter): Promise<TaskListPage>;
@@ -435,6 +438,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     listThreads: () => dbListThreads(options),
     createGroupThread: (input) => dbCreateGroupThread(options, input),
     listAllThreadsWithMembers: () => dbListAllThreadsWithMembers(options),
+    listWorkspaceSummary: (tenantId) => dbListWorkspaceSummary(options, tenantId),
     insertMessage: (input) => dbInsertMessage(options, input),
     listMessages: (threadId, listOptions) => dbListMessages(options, threadId, listOptions),
     listTasks: (filter) => dbListTasks(options, filter),

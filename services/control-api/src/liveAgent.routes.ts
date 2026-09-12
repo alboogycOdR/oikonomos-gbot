@@ -33,15 +33,9 @@
  * callback actually fires when a viewer sends data, not just that the
  * upstream never receives it.
  *
- * Real production wiring of `LiveAgentPort` (querying `role_sandboxes`
- * via `@oikonomos/db` and resolving the execd endpoint via
- * `@oikonomos/sandbox-client`) is deliberately left to a follow-up task:
- * `services/control-api/src/ports.ts` and `src/index.ts` are both outside
- * this task's `Owned_Paths` (mirrors TASK-179's `ThreadContextPort`
- * precedent in `app.ts` — route logic lands in-territory now, production
- * wiring is real, valuable follow-up work). Left `undefined` in
- * production until that task exists; both routes answer `501`/refuse the
- * upgrade rather than fabricating state when it is absent.
+ * Production wiring of `LiveAgentPort` lives in `ports.ts` and is supplied
+ * by `index.ts`; routes still fail closed when an explicitly injected test
+ * composition omits that port.
  *
  * TASK-228 (G-07 part 2) — a THIRD route added later, `GET
  * /roles/:roleId/live-agent/takeover`: the write-capable counterpart to

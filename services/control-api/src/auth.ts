@@ -19,6 +19,16 @@ export interface AuthPrincipal {
   credential: "bearer" | "session";
 }
 
+export interface SessionPrincipal {
+  tenantId: string;
+  expiresAt: Date;
+}
+
+export interface SessionRevocationStore {
+  revoke(token: string): void;
+  has(token: string): boolean;
+}
+
 export type FirebaseIdTokenVerifier = (idToken: string) => Promise<{ uid: string }>;
 
 function safeEqual(a: string, b: string): boolean {
@@ -42,6 +52,12 @@ export function createSessionToken(secret: string, tenantIdOrNow: string | numbe
 
 /** Verify a session and return its authenticated principal, failing closed. */
 export function verifySessionToken(secret: string, token: string, now: number = Date.now()): AuthPrincipal | undefined {
+  const principal = verifySessionPrincipal(secret, token, now);
+  return principal === undefined ? undefined : { tenantId: principal.tenantId, credential: "session" };
+}
+
+/** Verify a session and retain its expiry for session-status responses. */
+export function verifySessionPrincipal(secret: string, token: string, now: number = Date.now()): SessionPrincipal | undefined {
   const separatorIndex = token.indexOf(".");
   if (separatorIndex === -1) return undefined;
   const payload = token.slice(0, separatorIndex);
@@ -56,7 +72,39 @@ export function verifySessionToken(secret: string, token: string, now: number = 
   if (parsed === null || typeof parsed !== "object") return undefined;
   const { exp, tenantId } = parsed as { exp?: unknown; tenantId?: unknown };
   if (typeof exp !== "number" || exp <= now || typeof tenantId !== "string" || tenantId.trim().length === 0) return undefined;
-  return { tenantId, credential: "session" };
+  return { tenantId, expiresAt: new Date(exp) };
+}
+
+/**
+ * In-memory session revocation for one control-api process. Deployments with
+ * more than one process need a shared revocation store; this intentionally
+ * does not claim cross-process logout. Entries are pruned against their signed
+ * expiry each time the store is used, bounding memory by the session TTL.
+ */
+export function createSessionRevocationStore(
+  secret: string,
+  now: () => number = Date.now,
+): SessionRevocationStore {
+  const revoked = new Map<string, number>();
+
+  function prune(): void {
+    const current = now();
+    for (const [token, expiresAt] of revoked) {
+      if (expiresAt <= current) revoked.delete(token);
+    }
+  }
+
+  return {
+    revoke(token: string): void {
+      prune();
+      const session = verifySessionPrincipal(secret, token, now());
+      if (session !== undefined) revoked.set(token, session.expiresAt.getTime());
+    },
+    has(token: string): boolean {
+      prune();
+      return revoked.has(token);
+    },
+  };
 }
 
 /** Parse a raw Cookie header into a name -> value map. */

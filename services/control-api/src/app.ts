@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import type { Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 
@@ -28,9 +29,13 @@ import {
   buildExpiredSessionCookie,
   buildSessionCookie,
   authenticate,
+  createSessionRevocationStore,
   createFirebaseIdTokenVerifier,
   createSessionToken,
+  SESSION_COOKIE_NAME,
   isValidLoginToken,
+  parseCookieHeader,
+  verifySessionPrincipal,
   type FirebaseIdTokenVerifier,
 } from "./auth.js";
 
@@ -758,6 +763,16 @@ function validateEditExpiresAt(expiresAt: Date, now: number): string | undefined
  * tests inject a fake port; `index.ts#start` and the DATABASE_URL-gated
  * integration tests inject `createDatabaseBackedDeps(...)`.
  */
+function resolveBuildSha(): string {
+  const configured = process.env.OIKONOMOS_BUILD_SHA?.trim();
+  if (configured !== undefined && configured.length > 0) return configured;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): FastifyInstance {
   const resolvedAuthToken = options.authToken ?? process.env.CONTROL_API_TOKEN ?? "";
   if (resolvedAuthToken.trim().length === 0) {
@@ -771,6 +786,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   const firebaseProjectId = options.firebaseProjectId ?? process.env.FIREBASE_PROJECT_ID ?? "basileia-oikonomos-gmail";
   const verifyFirebaseIdToken = options.verifyFirebaseIdToken ?? createFirebaseIdTokenVerifier(firebaseProjectId);
   const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
+  const buildSha = resolveBuildSha();
+  const revokedSessionTokens = createSessionRevocationStore(authToken);
 
   const app = Fastify({
     logger:
@@ -802,7 +819,10 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     if (config?.public === true) {
       return;
     }
-    const principal = authenticate({ authorization: request.headers.authorization, cookie: request.headers.cookie }, authToken);
+    const sessionToken = parseCookieHeader(request.headers.cookie)[SESSION_COOKIE_NAME];
+    const principal = sessionToken !== undefined && revokedSessionTokens.has(sessionToken)
+      ? undefined
+      : authenticate({ authorization: request.headers.authorization, cookie: request.headers.cookie }, authToken);
     if (principal !== undefined) {
       request.tenantId = principal.tenantId;
       return;
@@ -851,6 +871,18 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
               "401": { description: "Invalid or expired Firebase ID token" },
             },
           },
+        },
+        "/auth/me": {
+          get: { summary: "Get the current authenticated session", operationId: "getCurrentSession", responses: { "200": { description: "Current principal" }, "401": { description: "No valid session" } } },
+        },
+        "/auth/logout": {
+          post: { summary: "Clear the current session cookie", operationId: "logout", responses: { "204": { description: "Session cleared" } } },
+        },
+        "/workspace/summary": {
+          get: { summary: "List owned workspace run summaries", operationId: "getWorkspaceSummary", responses: { "200": { description: "One bounded summary per owned workspace" } } },
+        },
+        "/health": {
+          get: { summary: "Service health and build revision", operationId: "health", responses: { "200": { description: "Running build" } } },
         },
         "/tasks": {
           ...(base.paths["/tasks"] as Record<string, unknown>),
@@ -958,6 +990,43 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }
     },
   );
+
+  app.get("/auth/me", async (request, reply) => {
+    const bearer = request.headers.authorization;
+    if (bearer !== undefined && /^Bearer\s+/.test(bearer)) {
+      const principal = authenticate({ authorization: bearer }, authToken);
+      if (principal?.credential === "bearer") {
+        await reply.code(200).send({ tenantId: principal.tenantId, kind: "service", expiresAt: null });
+        return;
+      }
+    }
+    const token = parseCookieHeader(request.headers.cookie)[SESSION_COOKIE_NAME];
+    const session = token === undefined || revokedSessionTokens.has(token) ? undefined : verifySessionPrincipal(authToken, token);
+    if (session === undefined) {
+      await reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    await reply.code(200).send({ tenantId: session.tenantId, kind: "user", expiresAt: session.expiresAt.toISOString() });
+  });
+
+  app.post("/auth/logout", async (request, reply) => {
+    const token = parseCookieHeader(request.headers.cookie)[SESSION_COOKIE_NAME];
+    if (token !== undefined) revokedSessionTokens.revoke(token);
+    await reply.header("set-cookie", buildExpiredSessionCookie()).code(204).send();
+  });
+
+  // Deliberately public: liveness probes cannot carry an operator credential.
+  app.get("/health", { config: { public: true } }, async (_request, reply) => {
+    await reply.code(200).send({ status: "ok", buildSha });
+  });
+
+  app.get("/workspace/summary", async (request, reply) => {
+    if (deps.listWorkspaceSummary === undefined) {
+      await reply.code(501).send({ error: "workspace summary not implemented" });
+      return;
+    }
+    await reply.code(200).send(await deps.listWorkspaceSummary(request.tenantId));
+  });
 
   app.post<{ Body: { token: string; platform: DevicePlatform } }>(
     "/devices",
