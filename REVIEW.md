@@ -872,3 +872,13 @@ Checked against the spec text, not the summary: §2.1 one owner — the active t
 Verified, not taken on trust (ORCH, isolated database via `scripts/test-isolated.ps1 -Root <worktree>`): dashboard typecheck clean, 107/107 (was 84), build green; full `pnpm -r test` green across all 21 packages including worker 242/242 and control-api 261/261.
 
 Non-blocking notes for the next owner (TASK-239, same builder): `draft-changed` dispatches on every keystroke and re-renders the page — fine at this size, watch it when the summary poll lands; `loadedThreadsRef` loads history once per thread and relies on `last-event-id` resume for gaps, which is the intended §2.4 behaviour.
+
+## TASK-237 rework (31b33b3, merge) | CX9 | approved | first-pass: no (rework round 1)
+
+Scope: `git diff fb67a5e..31b33b3` — workspaceSummary.ts (+2 predicates), workspaceSummary.test.ts (+72, real Postgres), app.ts (revocation store + /health comment), auth.ts (+37 `createSessionRevocationStore`), auth.test.ts (+21), dossier. Territory clean.
+
+- R1 fixed. Both ownership branches now require `roles.status = 'active'`; the group branch excludes a thread if any member is foreign OR non-active. The new integration test builds owned, second-owned, foreign-tenant and hidden fixtures, asserts the 1:1 and fully-owned group appear and the foreign group and hidden-role thread do not, and cleans up FK-ordered in `finally` with a `max: 1` pool. This is the AC3 test as specified.
+- R2 fixed. `Map<token, exp>` pruned on every `revoke`/`has` against the signed expiry; only a verifiable token is stored; single-process scope stated in the doc comment.
+- R3 addressed (comment on the public `/health`).
+
+Verified, not taken on trust (ORCH, isolated database, `scripts/test-isolated.ps1 -Root <worktree>`): db 197/199 (2 skipped), control-api 266/266; full `pnpm -r test` exit 0 once packages were serialised (`--workspace-concurrency=1`, committed 40ca82b) — the earlier concurrent run's three failures (db capability-count 36≠37, worker TASK-116 reply undefined, worker finalize timing) came from four packages mutating one database at once, not from this branch.
