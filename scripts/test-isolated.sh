@@ -19,4 +19,4 @@ if [ "${1:-}" = "--init" ]; then
   shift
 fi
 echo "[test-isolated] database: $testdb"
-DATABASE_URL="$test_url" pnpm -r test
+DATABASE_URL="$test_url" pnpm -r --no-bail --workspace-concurrency=1 test

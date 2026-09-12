@@ -84,7 +84,7 @@ try {
   Push-Location $repoRoot
   try {
     # --no-bail: report every package, not just the first failing one.
-    if ($Filter) { pnpm --filter $Filter test } else { pnpm -r --no-bail test }
+    if ($Filter) { pnpm --filter $Filter test } else { pnpm -r --no-bail --workspace-concurrency=1 test }
     $code = $LASTEXITCODE
   } finally { Pop-Location }
   Write-Host "[test-isolated] pnpm exit code $code (database $testDb)"
