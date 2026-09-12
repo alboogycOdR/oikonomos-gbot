@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { ChatShell } from "./ChatShell";
+import { ChatShell, type ChatShellProps } from "./ChatShell";
 import {
   fixtureBots,
   fixtureMembers,
@@ -20,15 +21,43 @@ function messagesByBotId() {
   );
 }
 
+/**
+ * TASK-236 (spec §2.1): `ChatShell` is now fully controlled — it keeps no
+ * `useState` copy of `activeBotId` or the draft. This harness stands in
+ * for `ChatPage`, which is the real single owner of both, so these tests
+ * exercise the same contract a real caller relies on.
+ */
+function ControlledChatShell(
+  props: Partial<ChatShellProps> & Pick<ChatShellProps, "bots" | "messagesByBotId">,
+) {
+  const [activeBotId, setActiveBotId] = useState<string | undefined>(props.activeBotId);
+  const [draft, setDraft] = useState(props.draft ?? "");
+  return (
+    <ChatShell
+      members={fixtureMembers}
+      routines={fixtureRoutines}
+      {...props}
+      activeBotId={activeBotId}
+      draft={draft}
+      onDraftChange={(value) => {
+        setDraft(value);
+        props.onDraftChange?.(value);
+      }}
+      onSelectBot={(botId) => {
+        setActiveBotId(botId);
+        props.onSelectBot?.(botId);
+      }}
+    />
+  );
+}
+
 describe("ChatShell", () => {
   it("renders the three-column layout: sidebar, conversation, right panel", () => {
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
       />,
     );
 
@@ -40,14 +69,7 @@ describe("ChatShell", () => {
   });
 
   it("lists every fixture bot in the sidebar", () => {
-    render(
-      <ChatShell
-        bots={fixtureBots}
-        messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-      />,
-    );
+    render(<ControlledChatShell bots={fixtureBots} messagesByBotId={messagesByBotId()} />);
 
     const sidebar = screen.getByLabelText("Your bots");
     for (const bot of fixtureBots) {
@@ -57,12 +79,10 @@ describe("ChatShell", () => {
 
   it("renders a multi-message conversation with distinguishable user/bot bubbles", () => {
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
       />,
     );
 
@@ -79,12 +99,10 @@ describe("ChatShell", () => {
   it("switches conversation when a different bot is selected in the sidebar", async () => {
     const user = userEvent.setup();
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
       />,
     );
 
@@ -94,8 +112,11 @@ describe("ChatShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("compose box calls onSend with the active bot id and message body, Enter submits", async () => {
-    const onSend = vi.fn();
+  it("does not keep its own copy of activeBotId — selecting a bot has no effect without a parent onSelectBot wiring it back", async () => {
+    // A bare, uncontrolled-style render (no internal state feeding
+    // activeBotId back in) must NOT switch on click — that would mean
+    // ChatShell still owns a copy of the selection itself, the exact
+    // defect this task fixes.
     const user = userEvent.setup();
     render(
       <ChatShell
@@ -103,7 +124,26 @@ describe("ChatShell", () => {
         messagesByBotId={messagesByBotId()}
         members={fixtureMembers}
         routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
+        draft=""
+        onDraftChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("option", { name: /Ops Bot/i }));
+    expect(
+      screen.getByLabelText("Conversation with Research Assistant"),
+    ).toBeInTheDocument();
+  });
+
+  it("compose box calls onSend with the active bot id and message body, Enter submits", async () => {
+    const onSend = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ControlledChatShell
+        bots={fixtureBots}
+        messagesByBotId={messagesByBotId()}
+        activeBotId="bot-research"
         onSend={onSend}
       />,
     );
@@ -114,14 +154,31 @@ describe("ChatShell", () => {
     expect(onSend).toHaveBeenCalledWith("bot-research", "hello there");
   });
 
-  it("disables the compose box while a bot response is in flight and shows a typing indicator", () => {
+  it("the draft is controlled: typing dispatches onDraftChange, not internal state", async () => {
+    const onDraftChange = vi.fn();
+    const user = userEvent.setup();
     render(
       <ChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
         members={fixtureMembers}
         routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
+        draft=""
+        onDraftChange={onDraftChange}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Message"), "h");
+    expect(onDraftChange).toHaveBeenCalledWith("h");
+  });
+
+  it("disables the compose box while a bot response is in flight and shows a typing indicator", () => {
+    render(
+      <ControlledChatShell
+        bots={fixtureBots}
+        messagesByBotId={messagesByBotId()}
+        activeBotId="bot-research"
         isBotResponding
       />,
     );
@@ -132,12 +189,10 @@ describe("ChatShell", () => {
 
   it("keeps the compose box enabled for a selected group thread", () => {
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={[{ ...fixtureBots[0]!, id: "group-thread", name: "Planning group", isGroup: true } as typeof fixtureBots[number]]}
         messagesByBotId={{}}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="group-thread"
+        activeBotId="group-thread"
       />,
     );
 
@@ -147,12 +202,10 @@ describe("ChatShell", () => {
   it("right panel switches between Members and Routines tabs", async () => {
     const user = userEvent.setup();
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
       />,
     );
 
@@ -163,12 +216,10 @@ describe("ChatShell", () => {
 
   it("renders an inline approval placeholder for a bot message awaiting approval, never as HTML", () => {
     render(
-      <ChatShell
+      <ControlledChatShell
         bots={fixtureBots}
         messagesByBotId={messagesByBotId()}
-        members={fixtureMembers}
-        routines={fixtureRoutines}
-        initialActiveBotId="bot-research"
+        activeBotId="bot-research"
       />,
     );
 
@@ -214,12 +265,10 @@ describe("ChatShell", () => {
       global.fetch = mockGrantsFetch();
       try {
         render(
-          <ChatShell
+          <ControlledChatShell
             bots={botsWithRoles}
             messagesByBotId={messagesByBotId()}
-            members={fixtureMembers}
-            routines={fixtureRoutines}
-            initialActiveBotId="bot-research"
+            activeBotId="bot-research"
           />,
         );
 
@@ -236,12 +285,10 @@ describe("ChatShell", () => {
       const user = userEvent.setup();
       try {
         render(
-          <ChatShell
+          <ControlledChatShell
             bots={botsWithRoles}
             messagesByBotId={messagesByBotId()}
-            members={fixtureMembers}
-            routines={fixtureRoutines}
-            initialActiveBotId="bot-research"
+            activeBotId="bot-research"
           />,
         );
 

@@ -1,27 +1,38 @@
 // TASK-107 (Chat-1c): compose box — textarea + send button, disabled while
 // a message is in flight, Enter-to-send / Shift+Enter-newline (spec §5).
-// Only a `disabled` prop and an `onSend` callback for now — Chat-1d wires
-// this to a real POST /threads/:id/messages call.
-import { useState, type KeyboardEvent } from "react";
+//
+// TASK-236 (Workspace-1 §2.3): fully controlled — the draft text lives in
+// `workspaceState.ts`, owned by `ChatPage`, keyed by thread id. This
+// component no longer holds its own `useState` copy of the text: the old
+// internal state cleared the textarea the instant `onSend` was called,
+// before the (void, fire-and-forget) POST resolved, so a failed send lost
+// the user's words with no way to recover them. Clearing now happens only
+// when the parent's state says the send succeeded (a new, empty `value`
+// prop arrives); a failed send leaves `value` — and therefore the
+// textarea — untouched.
+import type { KeyboardEvent } from "react";
 
 export interface ComposeBoxProps {
+  /** The current draft text for the active thread. Fully controlled. */
+  value: string;
+  /** Called on every keystroke; the parent is the source of truth for the draft. */
+  onChange: (value: string) => void;
   disabled?: boolean;
   onSend?: (body: string) => void;
   placeholder?: string;
 }
 
 export function ComposeBox({
+  value,
+  onChange,
   disabled = false,
   onSend,
   placeholder = "Message your bot…",
 }: ComposeBoxProps) {
-  const [value, setValue] = useState("");
-
   const trySend = () => {
     const trimmed = value.trim();
     if (trimmed.length === 0 || disabled) return;
     onSend?.(trimmed);
-    setValue("");
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -42,7 +53,7 @@ export function ComposeBox({
       <textarea
         aria-label="Message"
         value={value}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
