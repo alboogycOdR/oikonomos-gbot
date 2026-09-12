@@ -844,3 +844,21 @@ Scope: `git diff 2502e77 4c74c09` — chatRunDriver.ts (record-before-throw), ch
 - U2/U3 fixed as described.
 
 Independent re-run (Fable, worktree at 4c74c09): gemini.test.ts 22/22; TASK-220/Fable driver tests 6/6 on real Postgres; typecheck 18/18; lint clean; full suite: every parallel-load failure passed standalone except the two tracked TASK-221 pg-boss timeouts. Merged --no-ff; TASK-220 → done.
+
+## TASK-237 | CX9 | rework | first-pass: no
+
+Scope: `git diff master...task/TASK-237-cx9` — 12 files, all inside Owned_Paths (+ own dossier); one commit `fb67a5e` with the `[TASK-237]` suffix; no PLAN.md edits on the branch. Territory clean.
+
+Verified, not taken on trust (ORCH, isolated database `oikonomos_test` via `scripts/test-isolated.ps1 -Root <worktree>`): db 196/198 (2 skipped); control-api 264/264 on the second run — the first run's 4 failures (`chat.routes.test.ts` TASK-155 resume, `test/edit.route.integration.test.ts` x2) are the TASK-162 connection-exhaustion flake, identical files, not this branch. `/auth/me`, `/auth/logout`, `/health` and `/workspace/summary` exist, are documented in OpenAPI, and the stale live-agent header paragraph is gone (comment-only diff). Migration 023 adds the two indexes the dossier's EXPLAIN justified; up/down pair present.
+
+BLOCKING
+- R1 `packages/db/src/workspaceSummary.ts` ownership predicate diverges from `findTenantOwnedThread` (`app.ts:636-652`) and is untested against a real database. The existing rule owns a thread only through roles with `status: "active"`; the SQL joins `roles` on `tenant_id` alone, so a thread whose role is `hidden`/`deleted` is still listed. AC3 requires "another principal's threads never appear (real-Postgres two-principal test, FK-ordered cleanup in `finally`)"; delivered tests are a mocked route test (`workspace.routes.test.ts`) and a blank-tenant guard (`workspaceSummary.test.ts`). The predicate *is* the authorization boundary of this endpoint — it needs `roles.status = 'active'` in both branches and the real two-principal test (1:1 thread, group thread fully owned, group thread with one foreign member → absent, thread of a hidden role → absent).
+
+MEDIUM
+- R2 `app.ts` `revokedSessionTokens` is an in-process `Set<string>` that only ever grows: every logout adds a token string for the life of the process (unbounded memory under repeated login/logout; a trivial tailnet-side DoS). Prune on insert using the token's own `exp` (already available via `verifySessionPrincipal`), and state in a comment that revocation is single-process (a restart forgets it — acceptable because the cookie is cleared client-side, but say so).
+
+LOW / non-gating
+- R3 `/health` is now `public: true`. Acceptable on a tailnet-only origin and required by spec §6.2; note it in the route comment so the next reader does not "fix" it.
+- R4 Test_Evidence says "pnpm -r test completed successfully" while the dossier says the db suite was "launched ... before output truncation". Do not claim a full run you did not observe; ORCH runs it anyway.
+
+Approved parts stand; rework is R1 + R2 only. Same branch, same territory.
