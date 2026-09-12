@@ -7331,7 +7331,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7350,12 +7350,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T13:05:00Z] [ORCH] Owned_Paths corrected (docs/decisions/ADR-016-run-execution-queue.md removed): docs/** is in the builder territory firewall and can never be committed by a builder (TASK-252 proved it). Deliver the ADR-016 draft as `dossiers/TASK-246.md` section `## ADR-016 draft` (your dossier is yours); ORCH lifts it into docs/decisions/, gets it reviewed by an Anthropic model (different from you), and commits it. Do not start the queue implementation until ORCH has recorded the ADR as accepted in this task's Review_Findings — emit `blocked` with `MISSING_DEPENDENCY: ADR-016 acceptance` after the draft if you reach that point.
 - [2026-09-12T12:54:21Z] [SV:CX9] Drafted and committed ADR-016 in the TASK-246 dossier; it specifies durable pg-boss execution, re-enqueue audit liveness, approval parking, and nonce-only exactly-once scope.
 - [2026-09-12T13:25:00Z] [ORCH] ADR-016 lifted from the dossier draft, reviewed adversarially by ORCH (three required changes applied in the committed ADR), Accepted. Unblocked: implement now.
+- [2026-09-12T13:49:00Z] [SV:CX9] ADR-016 is accepted, but its worker-side composition and fan-out requirements cannot be implemented within the assigned paths. Evidence and preflight are recorded in the task dossier; commit c80b816.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** ADR-016 ACCEPTED-WITH-CHANGES (ORCH on Claude Fable 5.1, different model from the CX9/GPT author; 2026-09-12T13:25:00Z; docs/decisions/ADR-016-run-execution-queue.md). Implement against the committed ADR text, not the dossier draft. Three binding changes: R1 group fan-out (`deliverBotToBotMessage`) enqueues through the same port — no run starts from the API process; R2 re-drive semantics: resume the run only when `session_ref` exists and the provider supports it, otherwise close it `failed` (`failure_note` worker_restart) and start a new run on the same task from persisted thread state, both audited `run.requeued {reason, mode, previous_run_id}`; R3 keep TASK-238's enqueue-time `run.queued` at submission and add a consumer-side one with reason consumer_gate. Test obligations listed in the ADR; register the new queue in `jobs/pgBossTestCleanup.ts`.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T13:25:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: require services/worker/src/main.ts and services/worker/src/groupFanout.ts, plus services/worker/src/main.test.ts for the mandatory real boot/restart proof. Implementing only assigned paths would retain or duplicate a prohibited API-process executor.
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T13:49:00Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
