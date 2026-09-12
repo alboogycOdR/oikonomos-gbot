@@ -7085,7 +7085,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-237
 **Title:** Workspace-1 — session and workspace-summary API: GET /auth/me, POST /auth/logout, GET /workspace/summary, build SHA on /health, stale liveAgent header
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.1, §6.2; ORCH_REVIEW/DISPOSITION_MATRIX.md rows C1, C3, G2, I2
@@ -7104,12 +7104,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T10:13:08Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T10:31:42Z] [SV:CX9] Implemented and committed session status/logout, build-SHA health, tenant-scoped workspace summary query/port, required indexes, OpenAPI endpoint documentation, and live-agent wiring comment correction on task/TASK-237-cx9 (fb67a5e).
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/auth.ts, services/control-api/src/ports.ts, services/control-api/src/session.routes.test.ts, services/control-api/src/workspace.routes.test.ts, services/control-api/src/liveAgent.routes.ts, packages/db/src/workspaceSummary.ts, packages/db/src/workspaceSummary.test.ts, packages/db/src/index.ts, infra/postgres/migrations/023_workspace_summary_indexes.up.sql, infra/postgres/migrations/023_workspace_summary_indexes.down.sql, dossiers/TASK-237.md
+**Test_Evidence:** pnpm -r build passed; pnpm --filter @oikonomos/control-api typecheck passed; focused route tests 3/3 passed; focused db test 1/1 passed; full control-api suite passed 264/264; pnpm -r test completed successfully. Pre-migration EXPLAIN recorded in dossier: sequential scans on messages.run_id and approvals(run_id,status), with paired indexes added.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T10:13:08Z
+**Updated_At:** 2026-09-12T10:31:42Z
 
 ### TASK-238
 **Title:** Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
