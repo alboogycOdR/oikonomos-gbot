@@ -7225,7 +7225,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-242
 **Title:** Workspace-1 — run completion receipt API: GET /runs/:id/receipt
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §7.1; ORCH_REVIEW/DISPOSITION_MATRIX.md row F4; ADR-004
@@ -7241,12 +7241,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T11:52:23Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T12:08:24Z] [SV:CX9] Implemented and committed tenant-scoped run receipts (c6d9a48); final bot output, audit actions, approvals, actual-or-unavailable spend, OpenAPI, and tests are included.
+**Artifacts:** packages/db/src/runReceipt.ts, packages/db/src/runReceipt.test.ts, packages/db/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/receipt.routes.test.ts
+**Test_Evidence:** Isolated real-Postgres receipt tests: db 3/3 pass; control-api route test 1/1 pass. DB and control-api typecheck pass. Serial full isolated suite invoked; pre-existing db-suite failures recorded in dossier (capability count mismatch; roles migration deadlock).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T11:52:23Z
+**Updated_At:** 2026-09-12T12:08:24Z
 
 ### TASK-243
 **Title:** Workspace-1 — dashboard Results and Work views: receipt panel, routines with pause/resume/test-run and next fire (UTC)
