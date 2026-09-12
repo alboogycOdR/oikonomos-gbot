@@ -7199,7 +7199,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-241
 **Title:** Workspace-1 — dashboard Google sign-in via Firebase web SDK against POST /auth/google (shared web/mobile identity)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.3; TASK-172 and TASK-173 Progress_Notes; docs/runbooks/firebase-android-setup.md
@@ -7212,16 +7212,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The Firebase web config contains only public client fields; the runbook names the `VITE_FIREBASE_*` variables. (§3.3)
 - [ ] `LoginPage.test.tsx` covers the Google path with a fake ID-token provider and the operator token path. (§2.7)
 - [ ] dashboard test/typecheck/build green; lockfile change limited to the new dependency; `pnpm -r test` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-241-s5
+**Started_At:** 2026-09-12T11:55:23Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T11:55:23Z
 
 ### TASK-242
 **Title:** Workspace-1 — run completion receipt API: GET /runs/:id/receipt
