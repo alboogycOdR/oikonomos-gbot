@@ -19,6 +19,11 @@ export interface AuthPrincipal {
   credential: "bearer" | "session";
 }
 
+export interface SessionPrincipal {
+  tenantId: string;
+  expiresAt: Date;
+}
+
 export type FirebaseIdTokenVerifier = (idToken: string) => Promise<{ uid: string }>;
 
 function safeEqual(a: string, b: string): boolean {
@@ -42,6 +47,12 @@ export function createSessionToken(secret: string, tenantIdOrNow: string | numbe
 
 /** Verify a session and return its authenticated principal, failing closed. */
 export function verifySessionToken(secret: string, token: string, now: number = Date.now()): AuthPrincipal | undefined {
+  const principal = verifySessionPrincipal(secret, token, now);
+  return principal === undefined ? undefined : { tenantId: principal.tenantId, credential: "session" };
+}
+
+/** Verify a session and retain its expiry for session-status responses. */
+export function verifySessionPrincipal(secret: string, token: string, now: number = Date.now()): SessionPrincipal | undefined {
   const separatorIndex = token.indexOf(".");
   if (separatorIndex === -1) return undefined;
   const payload = token.slice(0, separatorIndex);
@@ -56,7 +67,7 @@ export function verifySessionToken(secret: string, token: string, now: number = 
   if (parsed === null || typeof parsed !== "object") return undefined;
   const { exp, tenantId } = parsed as { exp?: unknown; tenantId?: unknown };
   if (typeof exp !== "number" || exp <= now || typeof tenantId !== "string" || tenantId.trim().length === 0) return undefined;
-  return { tenantId, credential: "session" };
+  return { tenantId, expiresAt: new Date(exp) };
 }
 
 /** Parse a raw Cookie header into a name -> value map. */
