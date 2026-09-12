@@ -196,6 +196,27 @@ describe("createSteelGeminiTools — Steel Browser tools for the Gemini lane (TA
     expect(command).toContain("-X POST");
   });
 
+  // TASK-214's live proof caught this for real: a genuinely successful
+  // Steel session create was misread as a failure. `runCommand`'s stdout is
+  // assembled from separately-streamed execd chunks (packages/sandbox-client,
+  // plain `+=` concatenation) — a live run showed curl's trailing "\n200"
+  // can arrive split from the JSON body's own chunk in a way that loses the
+  // newline between them by the time this code sees the joined string.
+  // Reproduces that exact shape (no newline at all between body and status)
+  // rather than trusting the `restStdout` helper's always-clean `\n`.
+  it("still recognizes a real success when the body/status newline did not survive concatenation (TASK-214 live-bug regression)", async () => {
+    const runCommand = vi.fn<SandboxClient["runCommand"]>(async () => ({
+      stdout: `${JSON.stringify({ id: "sess-live", status: "live" })}200`,
+      stderr: "",
+      exitCode: 0,
+    }));
+    const { client } = fakeClient(runCommand);
+    const tools = createSteelGeminiTools({ client, endpoint, workspace }, ALL_STEEL_TOOL_NAMES);
+
+    const result = await toolNamed(tools, "mcp__steel__steel_session_create").execute({});
+    expect(result).toMatchObject({ ok: true, session_id: "sess-live" });
+  });
+
   it("session_release POSTs /v1/sessions/{id}/release", async () => {
     const runCommand = vi.fn<SandboxClient["runCommand"]>(async () => ({ stdout: restStdout({}, 200), stderr: "", exitCode: 0 }));
     const { client } = fakeClient(runCommand);

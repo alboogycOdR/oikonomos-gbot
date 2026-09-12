@@ -245,12 +245,25 @@ async function steelRest(
   // -w appends the HTTP status on its own trailing line — curl exits 0 even on
   // a 4xx/5xx response, so the status must be read out of the body, not the
   // exit code, to distinguish a real failure from a genuine JSON error body.
+  //
+  // TASK-214's live proof caught a real bug here: `runCommand`'s stdout is
+  // assembled from separately-streamed execd chunks concatenated with plain
+  // `+=` (packages/sandbox-client), and a real live run showed the trailing
+  // "\n200" curl appends can arrive as its OWN stdout chunk, split from the
+  // JSON body's chunk exactly at (or after) the newline — so the newline
+  // that separates them does not reliably survive concatenation. Splitting
+  // on `lastIndexOf("\n")` silently mis-parsed a genuinely successful 200
+  // response (a real Steel session, confirmed live in the sandbox's own
+  // logs: `"status":"live"`) as a failure, because the expected newline
+  // was gone by the time this code saw the string. Matching the trailing
+  // 3-digit status directly — greedy, so it finds the LAST such run, not
+  // the first coincidental one inside the JSON body — works whether or not
+  // that newline survived.
   const raw = await runInSandbox(context, `curl -sS -X ${method} ${shellQuote(url)}${bodyFlag} -w '\\n%{http_code}'`);
   if (!raw.ok) return { ok: false, raw };
-  const splitAt = raw.stdout.lastIndexOf("\n");
-  const bodyText = splitAt >= 0 ? raw.stdout.slice(0, splitAt) : "";
-  const statusText = splitAt >= 0 ? raw.stdout.slice(splitAt + 1).trim() : raw.stdout.trim();
-  const status = Number.parseInt(statusText, 10);
+  const match = /^([\s\S]*)(\d{3})\s*$/.exec(raw.stdout);
+  const bodyText = match?.[1]?.trimEnd() ?? "";
+  const status = match === null ? Number.NaN : Number.parseInt(match[2]!, 10);
   if (!Number.isInteger(status) || status < 200 || status >= 300) return { ok: false, raw, status: Number.isInteger(status) ? status : undefined };
   try {
     return { ok: true, json: JSON.parse(bodyText) as unknown, status, raw };
@@ -280,16 +293,33 @@ interface CdpStepResult {
  * compatible with Gemini's one-shot `execute()` contract rather than
  * needing a persistent process the adapter has nowhere to hold.
  */
+// TASK-214's live proof caught a real, previously-unverified protocol bug
+// here: Steel's REST session returns a BROWSER-level CDP websocket
+// (\`ws://127.0.0.1:3000/\`), not a page-level one. \`Page.*\`/\`Runtime.*\`
+// commands are only valid within an attached page session — sent directly
+// on the raw browser connection, CDP itself rejects them with
+// \`'Page.enable' wasn't found\`, confirmed live against a real Steel
+// session, not inferred. The fix is the standard CDP "flatten" attach
+// (https://chromedevtools.github.io/devtools-protocol/#target-sessions):
+// \`Target.getTargets\` to find a real page, \`Target.attachToTarget\` with
+// \`flatten: true\` to obtain a \`sessionId\`, then that \`sessionId\` rides
+// on every subsequent command envelope and every incoming flattened
+// event. Done once, transparently, inside the runner — \`steel_navigate\`/
+// \`steel_snapshot\`/\`steel_act\` (this function's three callers) needed no
+// changes, since they only ever supply page-domain \`payload.steps\`.
 const CDP_RUNNER_SCRIPT = `
 const payload = JSON.parse(Buffer.from(process.argv[process.argv.length - 1], "base64").toString("utf8"));
 const ws = new WebSocket(payload.websocketUrl);
 let id = 0;
+let pageSessionId;
 const pending = new Map();
 function send(method, params) {
   return new Promise((resolve, reject) => {
     const msgId = ++id;
     pending.set(msgId, { resolve, reject });
-    ws.send(JSON.stringify({ id: msgId, method, params: params || {} }));
+    const envelope = { id: msgId, method, params: params || {} };
+    if (pageSessionId !== undefined) envelope.sessionId = pageSessionId;
+    ws.send(JSON.stringify(envelope));
   });
 }
 function waitForEvent(eventName, timeoutMs) {
@@ -297,7 +327,7 @@ function waitForEvent(eventName, timeoutMs) {
     const timer = setTimeout(() => { ws.removeEventListener("message", handler); reject(new Error("timeout waiting for " + eventName)); }, timeoutMs || 10000);
     function handler(event) {
       const msg = JSON.parse(event.data);
-      if (msg.method === eventName) { clearTimeout(timer); ws.removeEventListener("message", handler); resolve(msg.params); }
+      if (msg.method === eventName && (pageSessionId === undefined || msg.sessionId === pageSessionId)) { clearTimeout(timer); ws.removeEventListener("message", handler); resolve(msg.params); }
     }
     ws.addEventListener("message", handler);
   });
@@ -314,6 +344,15 @@ ws.addEventListener("message", (event) => {
 const overallTimeout = setTimeout(() => { console.error("CDP overall timeout"); process.exit(1); }, payload.timeoutMs || 20000);
 ws.addEventListener("open", async () => {
   try {
+    // Attach to a real page target (flatten mode) BEFORE any page-domain
+    // step runs — see this script's own top comment for why this is
+    // required, not optional, against a browser-level websocket.
+    const { targetInfos } = await send("Target.getTargets", {});
+    const pageTarget = (targetInfos || []).find((t) => t.type === "page") || (targetInfos || [])[0];
+    if (pageTarget === undefined) throw new Error("no page target available to attach to");
+    const attached = await send("Target.attachToTarget", { targetId: pageTarget.targetId, flatten: true });
+    pageSessionId = attached.sessionId;
+
     const results = [];
     for (const step of payload.steps) {
       if (step.waitForEvent) {
