@@ -914,3 +914,13 @@ Scope: `git diff master...task/TASK-239-s5` — 10 files, all inside Owned_Paths
 Checked against the spec text: §3.1 `AuthContext` bootstraps from `GET /auth/me` with an `isBootstrapping` gate, authenticated only on 200; §3.2 logout calls `POST /auth/logout` and resets workspace state (drafts and transcript dropped — tested); §4.2 `GET /workspace/summary` polled every 15 s (`VITE_WORKSPACE_SUMMARY_POLL_MS` override), paused on `document.hidden`, refreshed on `focus`, active thread keeps its single SSE stream; §4.3 a `failed` latest run shows the deterministic reason read from the run's audit events' `reason` payload (fallback `failureNote`), never generated text, with a retry action; `waiting_approval` badges link to the thread; build SHA in the footer via the `__OIKONOMOS_BUILD_SHA__` define (declared in `api.ts`). `LoginPage` deep-link return (`from`) covered.
 
 Verified, not taken on trust (ORCH): dashboard typecheck/build green, 116/116 (was 107). Full `pnpm -r test` on the isolated DB, serialised: two failures, both pre-existing and outside this branch's reach — worker `finalize` phase-timing race (TASK-251) and `packages/db` `database.test.ts` capability-count assertion (35≠36) racing the same package's registration tests (added to TASK-251). Identical failures reproduce on master.
+
+## TASK-242 | CX9 | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-242-cx9` — 8 files, all inside Owned_Paths (+ own dossier); commits `c6d9a48`, `8e5255d` with the `[TASK-242]` suffix; no PLAN.md edits. Territory clean. `chatRunDriver.ts` untouched as instructed (the §7.4 marker is TASK-244's).
+
+Checked against §7.1: `getRunReceipt` scopes ownership through `runs → tasks.tenant_id` (404-never-403 at the route); final bot message is the newest `messages` row with `run_id`; actions are the run's audit events (capability, tier, verdict, reason from payload); approvals returned as stored renders (ADR-004) with the pending subset as `unresolvedApprovals`; spend is `{kind:'actual'}` only when `spend_records` rows exist, else `{kind:'unavailable'}` — never zero, never estimated. Invalid UUIDs are rejected before any query. OpenAPI documents the route; the port is optional for legacy fixtures and wired in `createDatabaseBackedDeps`.
+
+Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0. Tests: route test with a tenant-rejecting port stub; two real-Postgres integration tests (populated receipt with actual spend; no-spend → unavailable).
+
+Note for TASK-243's owner: `finalMessage` is null for a run whose reply was never persisted; the UI must render that state, not assume a body.
