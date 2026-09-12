@@ -7354,12 +7354,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T13:25:00Z] [ORCH] ADR-016 lifted from the dossier draft, reviewed adversarially by ORCH (three required changes applied in the committed ADR), Accepted. Unblocked: implement now.
 - [2026-09-12T13:49:00Z] [SV:CX9] ADR-016 is accepted, but its worker-side composition and fan-out requirements cannot be implemented within the assigned paths. Evidence and preflight are recorded in the task dossier; commit c80b816.
 - [2026-09-12T13:12:00Z] [ORCH] OWNERSHIP_CONFLICT accepted as legitimate: ADR-016 decisions 3 (fan-out through the same enqueue port) and its consequences (worker owns the queue + executor composition; a real boot/restart proof) require `services/worker/src/main.ts`, `main.test.ts`, `groupFanout.ts`, `groupFanout.test.ts`. None is owned by an active task (TASK-243 is dashboard-only; TASK-251/164 depend on this task). Owned_Paths widened; resume on `task/TASK-246-cx9`.
+- [2026-09-12T14:08:29Z] [SV:CX9] Implemented durable queue core and recorded checkpoint in dossier; worker/control-api typechecks pass. Commit is blocked by a stale git index lock held by git PID 17372. NEXT: Clear the stale worktree index lock, commit the staged changes, then add real pg-boss restart/duplicate/approval/audit coverage and complete ADR-016 R1 fan-out queuing.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** ADR-016 ACCEPTED-WITH-CHANGES (ORCH on Claude Fable 5.1, different model from the CX9/GPT author; 2026-09-12T13:25:00Z; docs/decisions/ADR-016-run-execution-queue.md). Implement against the committed ADR text, not the dossier draft. Three binding changes: R1 group fan-out (`deliverBotToBotMessage`) enqueues through the same port — no run starts from the API process; R2 re-drive semantics: resume the run only when `session_ref` exists and the provider supports it, otherwise close it `failed` (`failure_note` worker_restart) and start a new run on the same task from persisted thread state, both audited `run.requeued {reason, mode, previous_run_id}`; R3 keep TASK-238's enqueue-time `run.queued` at submission and add a consumer-side one with reason consumer_gate. Test obligations listed in the ADR; register the new queue in `jobs/pgBossTestCleanup.ts`.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T13:12:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T14:08:29Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
