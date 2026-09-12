@@ -7331,7 +7331,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7343,16 +7343,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Killing the worker during a safe test run and restarting it results in the run reaching a real executor turn and a result, with no duplicate governed side effect (approval consumed once). (§9.2, A15)
 - [ ] A run parked on approval stays parked across restart and resumes only through the normal decide path. (ADR-007)
 - [ ] Liveness: reconciliation emits a `run.requeued` audit event; a test keys on it.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-246-cx9
+**Started_At:** 2026-09-12T12:50:33Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T12:50:33Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
