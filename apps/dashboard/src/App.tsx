@@ -65,6 +65,18 @@ export function App() {
             </RequireAuth>
           }
         />
+        {/* TASK-236 (spec §2.6): `/workspace/:threadId` selects a specific
+            thread; `ChatPage` itself redirects `/` to the most recent
+            thread (or renders the empty state) and renders a not-found
+            state for an id that doesn't resolve to an owned thread. */}
+        <Route
+          path="/workspace/:threadId"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/ops/runs"
           element={

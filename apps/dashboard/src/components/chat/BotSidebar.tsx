@@ -40,6 +40,14 @@ export interface BotSidebarProps {
   activeBotId?: string;
   onSelectBot?: (botId: string) => void;
   onCreateBot?: () => void;
+  /**
+   * TASK-236 (spec §2.5) — forwarded straight through to
+   * `CreateBotDialog`/`GroupThreadDialog`'s own `onCreated` so the parent
+   * (`ChatPage`) can refresh the thread list and navigate to the new
+   * thread without a full page reload.
+   */
+  onThreadCreated?: (result: { threadId: string }) => void;
+  onUnauthorized?: () => void;
 }
 
 export function BotSidebar({
@@ -47,6 +55,8 @@ export function BotSidebar({
   activeBotId,
   onSelectBot,
   onCreateBot,
+  onThreadCreated,
+  onUnauthorized,
 }: BotSidebarProps) {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
   const [isGroupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -85,11 +95,21 @@ export function BotSidebar({
       <CreateBotDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+        onCreated={(result) => {
+          setCreateDialogOpen(false);
+          onThreadCreated?.({ threadId: result.threadId });
+        }}
+        onUnauthorized={onUnauthorized}
       />
       <GroupThreadDialog
         isOpen={isGroupDialogOpen}
         bots={realBots}
         onClose={() => setGroupDialogOpen(false)}
+        onCreated={(result) => {
+          setGroupDialogOpen(false);
+          onThreadCreated?.(result);
+        }}
+        onUnauthorized={onUnauthorized}
       />
       <ul className="flex-1 overflow-y-auto" role="listbox" aria-label="Bot threads">
         {groupAwareBots.map((bot) => {

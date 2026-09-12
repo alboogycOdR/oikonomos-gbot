@@ -34,8 +34,10 @@ createRoot(container).render(
       messagesByBotId={messagesByBotId}
       members={fixtureMembers}
       routines={fixtureRoutines}
-      initialActiveBotId="bot-research"
+      activeBotId="bot-research"
       isBotResponding={false}
+      draft=""
+      onDraftChange={() => {}}
     />
   </StrictMode>,
 );

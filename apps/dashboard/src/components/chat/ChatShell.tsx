@@ -9,8 +9,6 @@
 // including this task's own tests and preview harness.
 import "../../index.css";
 
-import { useState } from "react";
-
 import type { BotSummary, ChatMessage, MemberSummary, RoutineSummary } from "./types";
 import { BotSidebar } from "./BotSidebar";
 import { ComposeBox } from "./ComposeBox";
@@ -33,11 +31,26 @@ export interface ChatShellProps {
   messagesByBotId: Record<string, ChatMessage[]>;
   members: MemberSummary[];
   routines: RoutineSummary[];
-  initialActiveBotId?: string;
+  /**
+   * TASK-236 (spec §2.1) — the single owner of the active thread id is
+   * `ChatPage` (derived from the route). `ChatShell` renders whatever it's
+   * told and keeps no state of its own: there is deliberately no
+   * `initialActiveBotId`/internal `useState` fallback here anymore — a
+   * second copy of this value is exactly the defect this task fixes
+   * (`ChatPage.tsx:116` vs the old `ChatShell.tsx:54-64`).
+   */
+  activeBotId: string | undefined;
   isBotResponding?: boolean;
+  /** The active thread's draft text (spec §2.3) — controlled, owned by `ChatPage`/`workspaceState.ts`. */
+  draft: string;
+  onDraftChange: (value: string) => void;
   onSelectBot?: (botId: string) => void;
   onSend?: (botId: string, body: string) => void;
   onCreateBot?: () => void;
+  /** Fired after a bot or group thread is created from the sidebar (spec §2.5) — no reload involved. */
+  onThreadCreated?: (result: { threadId: string }) => void;
+  /** The dashboard's session cookie expired (401) while creating a bot/group. */
+  onUnauthorized?: () => void;
 }
 
 export function ChatShell({
@@ -45,39 +58,39 @@ export function ChatShell({
   messagesByBotId,
   members,
   routines,
-  initialActiveBotId,
+  activeBotId,
   isBotResponding = false,
+  draft,
+  onDraftChange,
   onSelectBot,
   onSend,
   onCreateBot,
+  onThreadCreated,
+  onUnauthorized,
 }: ChatShellProps) {
-  const [activeBotId, setActiveBotId] = useState<string | undefined>(
-    initialActiveBotId ?? bots[0]?.id,
-  );
-
   const activeBot: GroupAwareBotSummary | undefined = bots.find((bot) => bot.id === activeBotId);
   const messages = activeBotId ? (messagesByBotId[activeBotId] ?? []) : [];
-
-  const handleSelectBot = (botId: string) => {
-    setActiveBotId(botId);
-    onSelectBot?.(botId);
-  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-chrome text-slate-100">
       <BotSidebar
         bots={bots}
         activeBotId={activeBotId}
-        onSelectBot={handleSelectBot}
+        onSelectBot={onSelectBot}
         onCreateBot={onCreateBot}
+        onThreadCreated={onThreadCreated}
+        onUnauthorized={onUnauthorized}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <ConversationPane
           bot={activeBot}
           messages={messages}
           isBotResponding={isBotResponding}
+          onUnauthorized={onUnauthorized}
         />
         <ComposeBox
+          value={draft}
+          onChange={onDraftChange}
           disabled={isBotResponding || !activeBot}
           onSend={(body) => activeBotId && onSend?.(activeBotId, body)}
         />
