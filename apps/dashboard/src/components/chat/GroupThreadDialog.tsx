@@ -1,11 +1,12 @@
 // TASK-122 (Chat-2c): "New group" flow (specs/OIKONOMOS_CHAT_SURFACE_v1.0.md
 // §8 group threads, WBS OIK-150) — multi-selects 2+ existing bots and calls
 // `POST /threads/group` (TASK-121/`lib/api.ts`'s `createGroupThread`),
-// mirroring `CreateBotDialog.tsx` (TASK-110)'s own dialog pattern and its
-// "reload so ChatPage's existing mount effect lands on the new thread"
-// approach, for the same territory reason: this task's Owned_Paths is
-// `components/chat/**` (a fixed list) + `pages/ChatPage.tsx` + `lib/api.ts`,
-// not a second place to add cross-component React state wiring.
+// mirroring `CreateBotDialog.tsx` (TASK-110)'s own dialog pattern.
+//
+// TASK-236 (spec §2.5): on success this calls `onCreated` only — no
+// `window.location.reload()`. See `CreateBotDialog.tsx`'s own TASK-236
+// note for why: `ChatPage` refreshes `GET /threads` and navigates to the
+// new thread itself, without dropping other threads' in-memory state.
 import { useId, useState, type FormEvent } from "react";
 
 import { UnauthorizedError, createGroupThread } from "../../lib/api";
@@ -73,11 +74,11 @@ export function GroupThreadDialog({
         trimmedTitle.length > 0 ? trimmedTitle : undefined,
       );
       onCreated?.({ threadId: thread.id });
-      // Full reload (same URL) so ChatPage's existing mount effect
-      // re-fetches GET /threads and picks up the new group — same
-      // approach CreateBotDialog uses for exactly the same territory
-      // reason (see file header).
-      window.location.reload();
+      // No reload anymore (TASK-236) — reset local form state for the
+      // next open of this same long-lived component instance.
+      setTitle("");
+      setSelectedRoleIds([]);
+      setSubmitting(false);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         onUnauthorized?.();

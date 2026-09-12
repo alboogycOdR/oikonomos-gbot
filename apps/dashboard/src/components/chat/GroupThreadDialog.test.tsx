@@ -1,7 +1,9 @@
 // TASK-122 (Chat-2c) tests for GroupThreadDialog: client-side 2+ selection
 // validation, the POST /threads/group happy path (via lib/api.ts's
-// createGroupThread), 401 handling, and that group-thread reload lands the
-// user on the new group, same pattern as CreateBotDialog.test.tsx.
+// createGroupThread), 401 handling.
+//
+// TASK-236 (spec §2.5): success no longer reloads the page — `onCreated`
+// is the only signal the parent gets.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,28 +11,25 @@ import userEvent from "@testing-library/user-event";
 import { GroupThreadDialog } from "./GroupThreadDialog";
 import type { BotSummary } from "./types";
 
-const originalReload = window.location.reload;
-
 const bots: BotSummary[] = [
   { id: "thread-a", roleId: "role-a", name: "Alpha", avatarSeed: "role-a", updatedAt: "2026-01-01T00:00:00Z" },
   { id: "thread-b", roleId: "role-b", name: "Beta", avatarSeed: "role-b", updatedAt: "2026-01-01T00:00:00Z" },
   { id: "thread-c", roleId: "role-c", name: "Gamma", avatarSeed: "role-c", updatedAt: "2026-01-01T00:00:00Z" },
 ];
 
+let reloadSpy: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
+  reloadSpy = vi.fn();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { ...window.location, reload: vi.fn() },
+    value: { ...window.location, reload: reloadSpy },
   });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    value: { ...window.location, reload: originalReload },
-  });
 });
 
 function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) {
@@ -66,7 +65,7 @@ describe("GroupThreadDialog", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("creates a group thread with the selected roleIds, calls onCreated, and reloads on success", async () => {
+  it("creates a group thread with the selected roleIds and calls onCreated, without reloading", async () => {
     const fetchMock = mockFetchSequence([
       {
         status: 201,
@@ -89,7 +88,8 @@ describe("GroupThreadDialog", () => {
     await user.click(screen.getByRole("option", { name: /Beta/ }));
     await user.click(screen.getByRole("button", { name: "Create group" }));
 
-    await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(reloadSpy).not.toHaveBeenCalled();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [call] = fetchMock.mock.calls;
@@ -110,7 +110,7 @@ describe("GroupThreadDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create group" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("roleIds must contain at least two entries.");
-    expect(window.location.reload).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it("calls onUnauthorized and does not reload on a 401", async () => {
@@ -124,7 +124,7 @@ describe("GroupThreadDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create group" }));
 
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
-    expect(window.location.reload).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it("calls onClose when Cancel is clicked", async () => {

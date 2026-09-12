@@ -2,28 +2,29 @@
 // the POST /roles → POST /threads happy path, 401 handling, and that the
 // dialog never sends a tier/capability field (spec §1.4, §6 correction:
 // zero role_grants, no tier picker).
+//
+// TASK-236 (spec §2.5): success no longer reloads the page — `onCreated`
+// is the only signal the parent gets, so these tests assert on that
+// callback and on `window.location.reload` never being called at all.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CreateBotDialog } from "./CreateBotDialog";
 
-const originalReload = window.location.reload;
+let reloadSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  reloadSpy = vi.fn();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { ...window.location, reload: vi.fn() },
+    value: { ...window.location, reload: reloadSpy },
   });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    value: { ...window.location, reload: originalReload },
-  });
 });
 
 function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) {
@@ -70,7 +71,7 @@ describe("CreateBotDialog", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("creates a role then a thread, calls onCreated, and reloads on success", async () => {
+  it("creates a role then a thread and calls onCreated, without reloading", async () => {
     const fetchMock = mockFetchSequence([
       {
         status: 201,
@@ -85,7 +86,8 @@ describe("CreateBotDialog", () => {
     await user.type(screen.getByLabelText("Name"), "Research Bot");
     await user.click(screen.getByRole("button", { name: "Create bot" }));
 
-    await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(reloadSpy).not.toHaveBeenCalled();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [rolesCall, threadsCall] = fetchMock.mock.calls;
@@ -118,7 +120,7 @@ describe("CreateBotDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create bot" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("name must not be empty.");
-    expect(window.location.reload).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it("calls onUnauthorized and does not reload on a 401", async () => {
@@ -131,7 +133,7 @@ describe("CreateBotDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create bot" }));
 
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
-    expect(window.location.reload).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it("calls onClose when Cancel is clicked", async () => {

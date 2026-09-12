@@ -7,24 +7,19 @@
 // enforced in services/control-api/src/app.ts's `POST /roles` handler,
 // not here) — this dialog never sends or exposes a tier/capability field.
 //
-// Territory note: this task's Owned_Paths is exactly
-// CreateBotDialog.tsx/.test.tsx + BotSidebar.tsx — it does not include
-// apps/dashboard/src/lib/api.ts (TASK-108/Chat-1d's territory, which has
-// no `createRole`/`createThread` exports yet) or pages/ChatPage.tsx /
-// components/chat/ChatShell.tsx (whose state would need to change for a
-// pure-React-state "land in the new conversation" transition). Rather
-// than reach outside Owned_Paths — an explicit prohibition, see
-// AGENTS.md commandment 4 — this component talks to control-api directly
-// with a small local fetch helper mirroring lib/api.ts's own
-// conventions (same-origin credentials, same BASE_URL env var, same
-// UnauthorizedError shape reused by import so 401 handling matches the
-// rest of the app), and on success does a same-URL `window.location.reload()`
-// so `ChatPage`'s existing mount effect (which already re-fetches
-// `GET /threads` and selects the most-recently-updated thread first)
-// naturally lands the user on the brand-new thread. The URL never
-// changes (still `/`), so this satisfies spec §1.4 "immediately be able
-// to talk to it... without navigating away" without editing a file
-// outside this task's territory.
+// This component talks to control-api directly with a small local fetch
+// helper mirroring lib/api.ts's own conventions (same-origin credentials,
+// same BASE_URL env var, same UnauthorizedError shape reused by import so
+// 401 handling matches the rest of the app) rather than adding exports to
+// `lib/api.ts` (still outside this task's Owned_Paths).
+//
+// TASK-236 (spec §2.5, AC "refreshes the thread list without reload"): on
+// success this now calls `onCreated` only — no `window.location.reload()`.
+// A full reload used to be how `ChatPage`'s old mount effect picked up the
+// new thread; `ChatPage` now refreshes `GET /threads` and navigates to the
+// new thread's route itself in response to `onCreated`, so the SPA never
+// drops its in-memory state (other threads' drafts, open streams) just to
+// show one new thread.
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { UnauthorizedError } from "../../lib/api";
@@ -123,11 +118,12 @@ export function CreateBotDialog({
       });
       const thread = await postJson<CreatedThread>("/threads", { roleId: role.id });
       onCreated?.({ role, threadId: thread.id });
-      // Full reload (same URL) so ChatPage's existing mount effect
-      // re-fetches GET /threads and lands on the new thread — see the
-      // territory note above for why this happens here rather than via
-      // parent React state.
-      window.location.reload();
+      // No reload anymore (TASK-236): reset local form state so a
+      // subsequent open of this same long-lived component instance starts
+      // fresh, exactly as `resetAndClose` does for Cancel.
+      setName("");
+      setDescription("");
+      setSubmitting(false);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         onUnauthorized?.();
