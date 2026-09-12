@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ChatShell } from "../components/chat/ChatShell";
-import type { BotSummary, ChatMessage, RoutineSummary } from "../components/chat/types";
+import type { BotSummary, ChatMessage, MemberSummary, RoutineSummary } from "../components/chat/types";
 import {
   isGroupThread,
   listRoles,
@@ -10,11 +11,13 @@ import {
   sendThreadMessage,
   UnauthorizedError,
   type GroupThread,
+  type Role,
   type Thread,
   type ThreadMessage,
 } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
 import { subscribeToThreadMessages, type RealtimeMessage } from "../lib/realtime";
+import { useWorkspaceState, type WorkspaceMessage } from "../lib/workspaceState";
 
 const BASE_URL: string = (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
 
@@ -32,10 +35,16 @@ interface ApiRoutine {
  * — all this task's territory) declares the same shape locally; plain
  * `BotSummary`/`ChatMessage` consumers ignore the extra fields untyped,
  * exactly as TypeScript's structural typing intends.
+ *
+ * TASK-236 (spec §2.5) adds `memberRoleIds` alongside the existing
+ * `memberNames` so the Members panel can resolve each group participant
+ * against the canonical roster from `listRoles()` (name/avatar) instead of
+ * re-deriving anything from the thread's own denormalized name string.
  */
 export interface GroupAwareBotSummary extends BotSummary {
   isGroup?: boolean;
   memberNames?: string[];
+  memberRoleIds?: string[];
 }
 export interface GroupAwareChatMessage extends ChatMessage {
   senderRoleId?: string | null;
@@ -55,6 +64,14 @@ export interface GroupAwareChatMessage extends ChatMessage {
  * `GET /threads/:id/messages` unmodified (spec: only the poll *loop* is
  * removed, not the endpoint) — the subscription only carries messages
  * that arrive *after* it opens.
+ *
+ * TASK-236 (Workspace-1 §2) — this is now the single owner of the active
+ * thread id, sourced from the `/workspace/:threadId` route (`App.tsx`)
+ * rather than local component state, and delegates all per-thread runtime
+ * state (messages, pending, draft) to `lib/workspaceState.ts` so
+ * `ChatShell`/`ComposeBox` can be fully controlled with zero state of
+ * their own. See spec §2.1-§2.7 and this task's PLAN.md entry for the
+ * defects this replaces.
  */
 
 function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
@@ -72,6 +89,7 @@ function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
       updatedAt: thread.updatedAt,
       isGroup: true,
       memberNames: thread.memberNames,
+      memberRoleIds: thread.memberRoleIds,
     };
   }
   return {
@@ -108,40 +126,50 @@ function toChatMessage(message: ThreadMessage): GroupAwareChatMessage {
   };
 }
 
+/** Boundary into `workspaceState.ts`'s deliberately narrow shape — see that module's own doc comment. */
+function toWorkspaceMessage(message: ThreadMessage): WorkspaceMessage {
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    role: message.role,
+    createdAt: message.createdAt,
+    raw: message,
+  };
+}
+
 export function ChatPage() {
   const { markUnauthenticated } = useAuth();
+  const navigate = useNavigate();
+  const { threadId: routeThreadId } = useParams<{ threadId?: string }>();
+
   const [bots, setBots] = useState<GroupAwareBotSummary[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [routines, setRoutines] = useState<RoutineSummary[]>([]);
-  const [messagesByBotId, setMessagesByBotId] = useState<Record<string, GroupAwareChatMessage[]>>({});
-  const [activeBotId, setActiveBotId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isBotResponding, setIsBotResponding] = useState(false);
 
-  // Tracks the createdAt of the most recent user message we're awaiting a
-  // reply to, so the subscription knows when a *newer* pushed bot message
-  // is the reply (not a stale/unrelated one) and can clear
-  // `isBotResponding`.
-  const pendingSinceRef = useRef<string | null>(null);
+  const { dispatch, getThread } = useWorkspaceState();
+  // Which threads' initial `GET /threads/:id/messages` history has already
+  // been fetched — avoids re-fetching every time the user switches back to
+  // a thread they've already visited (spec §2.7's "switch A→B→C→A" case);
+  // the reducer already keeps every visited thread's messages in memory.
+  const loadedThreadsRef = useRef<Set<string>>(new Set());
 
   const handleAuthError = useCallback(
     (err: unknown): boolean => {
       if (err instanceof UnauthorizedError) {
+        // Drops every thread's messages/drafts/pending state at once
+        // (spec §2.3 "dropped on logout") — belt-and-braces alongside the
+        // fact that `RequireAuth` unmounts this whole page on
+        // `markUnauthenticated()` anyway.
+        dispatch({ type: "reset" });
+        loadedThreadsRef.current.clear();
         markUnauthenticated();
         return true;
       }
       return false;
     },
-    [markUnauthenticated],
-  );
-
-  const loadMessages = useCallback(
-    async (threadId: string) => {
-      const messages = await listThreadMessages(threadId);
-      setMessagesByBotId((prev) => ({ ...prev, [threadId]: messages.map(toChatMessage) }));
-      return messages;
-    },
-    [],
+    [markUnauthenticated, dispatch],
   );
 
   useEffect(() => {
@@ -150,14 +178,10 @@ export function ChatPage() {
       setLoading(true);
       setError(null);
       try {
-        const [threads] = await Promise.all([listThreads(), listRoles()]);
+        const [threads, rolesList] = await Promise.all([listThreads(), listRoles()]);
         if (cancelled) return;
         setBots(threads.map(toBotSummary));
-        const first = threads[0];
-        if (first !== undefined) {
-          setActiveBotId(first.id);
-          await loadMessages(first.id);
-        }
+        setRoles(rolesList);
       } catch (err) {
         if (cancelled) return;
         if (!handleAuthError(err)) {
@@ -174,39 +198,111 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const refreshThreads = useCallback(async () => {
+    const threads = await listThreads();
+    setBots(threads.map(toBotSummary));
+    return threads;
+  }, []);
+
+  /**
+   * TASK-236 (spec §2.5) — replaces the old `window.location.reload()`
+   * dialogs used to land the user on a freshly-created bot/group: refetch
+   * the owned thread list, then navigate to the new thread's route. No
+   * reload, no lost in-memory state for any other open thread.
+   */
+  const handleThreadCreated = useCallback(
+    (result: { threadId: string }) => {
+      void (async () => {
+        try {
+          await refreshThreads();
+          navigate(`/workspace/${encodeURIComponent(result.threadId)}`);
+        } catch (err) {
+          if (!handleAuthError(err)) {
+            setError(err instanceof Error ? err.message : "failed to refresh threads");
+          }
+        }
+      })();
+    },
+    [refreshThreads, handleAuthError, navigate],
+  );
+
+  const sortedByRecency = useMemo(
+    () =>
+      [...bots].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
+    [bots],
+  );
+
+  const threadExists = routeThreadId !== undefined && bots.some((bot) => bot.id === routeThreadId);
+  const notFound = !loading && routeThreadId !== undefined && !threadExists;
+
+  /**
+   * TASK-236 (spec §2.6) — `/` redirects to the most recently active
+   * thread once threads have loaded; with no threads at all it stays put
+   * and `ChatShell`/`BotSidebar` render their existing empty state.
+   */
+  useEffect(() => {
+    if (loading || routeThreadId !== undefined) return;
+    const mostRecent = sortedByRecency[0];
+    if (mostRecent !== undefined) {
+      navigate(`/workspace/${encodeURIComponent(mostRecent.id)}`, { replace: true });
+    }
+  }, [loading, routeThreadId, sortedByRecency, navigate]);
+
+  // The one owner of the active thread id (spec §2.1): sourced from the
+  // route, never a local copy — but only once it resolves to a thread we
+  // actually own, so a foreign/unknown id in the URL never drives a
+  // messages/stream fetch (spec §2.6 "never another user's data").
+  const activeThreadId = threadExists ? routeThreadId : undefined;
+
+  const loadMessages = useCallback(
+    async (threadId: string) => {
+      const messages = await listThreadMessages(threadId);
+      dispatch({ type: "messages-loaded", threadId, messages: messages.map(toWorkspaceMessage) });
+      loadedThreadsRef.current.add(threadId);
+    },
+    [dispatch],
+  );
+
+  useEffect(() => {
+    if (activeThreadId === undefined) return;
+    if (loadedThreadsRef.current.has(activeThreadId)) return;
+    void loadMessages(activeThreadId).catch((err) => {
+      if (!handleAuthError(err)) {
+        setError(err instanceof Error ? err.message : "failed to load messages");
+      }
+    });
+  }, [activeThreadId, loadMessages, handleAuthError]);
+
   const handleSelectBot = useCallback(
     (botId: string) => {
-      // Switching threads abandons any in-flight poll for the previous one.
-      setIsBotResponding(false);
-      pendingSinceRef.current = null;
-      if (messagesByBotId[botId] === undefined) {
-        void loadMessages(botId).catch((err) => {
-          if (!handleAuthError(err)) {
-            setError(err instanceof Error ? err.message : "failed to load messages");
-          }
-        });
-      }
+      navigate(`/workspace/${encodeURIComponent(botId)}`);
     },
-    [messagesByBotId, loadMessages, handleAuthError],
+    [navigate],
   );
 
   const handleSend = useCallback(
-    async (botId: string, body: string) => {
+    async (threadId: string, body: string) => {
       try {
-        const sent = await sendThreadMessage(botId, body);
-        setMessagesByBotId((prev) => ({
-          ...prev,
-          [botId]: [...(prev[botId] ?? []), toChatMessage(sent)],
-        }));
-        pendingSinceRef.current = sent.createdAt;
-        setIsBotResponding(true);
+        const sent = await sendThreadMessage(threadId, body);
+        dispatch({ type: "message-sent", threadId, message: toWorkspaceMessage(sent) });
       } catch (err) {
         if (!handleAuthError(err)) {
           setError(err instanceof Error ? err.message : "failed to send message");
         }
+        // Deliberately no dispatch here: "message-sent" (the only action
+        // that clears a thread's draft) only ever fires on success, so a
+        // failed send leaves the draft exactly as the user left it (spec
+        // §2.3).
       }
     },
-    [handleAuthError],
+    [dispatch, handleAuthError],
+  );
+
+  const handleDraftChange = useCallback(
+    (threadId: string, value: string) => {
+      dispatch({ type: "draft-changed", threadId, draft: value });
+    },
+    [dispatch],
   );
 
   /**
@@ -217,32 +313,20 @@ export function ChatPage() {
    * cleanup test held this codebase to (AC2).
    */
   useEffect(() => {
-    if (activeBotId === undefined) return undefined;
-    const threadId = activeBotId;
+    if (activeThreadId === undefined) return undefined;
+    const threadId = activeThreadId;
 
     const subscription = subscribeToThreadMessages(
       threadId,
       (raw: RealtimeMessage) => {
-        const incoming = toChatMessage(raw as unknown as ThreadMessage);
-        setMessagesByBotId((prev) => {
-          const existing = prev[threadId] ?? [];
-          const index = existing.findIndex((message) => message.id === incoming.id);
-          const next =
-            index === -1
-              ? [...existing, incoming]
-              : existing.map((message, i) => (i === index ? incoming : message));
-          return { ...prev, [threadId]: next };
+        dispatch({
+          type: "message-arrived",
+          threadId,
+          message: toWorkspaceMessage(raw as unknown as ThreadMessage),
         });
-        const pendingSince = pendingSinceRef.current;
-        if (raw.role === "bot" && (pendingSince === null || raw.createdAt > pendingSince)) {
-          pendingSinceRef.current = null;
-          setIsBotResponding(false);
-        }
       },
       (err) => {
-        if (handleAuthError(err)) {
-          setIsBotResponding(false);
-        }
+        handleAuthError(err);
         // Transient stream errors reconnect on their own (lib/realtime.ts
         // AC3); UnauthorizedError above is the one case with no possible
         // recovery without a fresh login.
@@ -250,9 +334,9 @@ export function ChatPage() {
     );
 
     return () => subscription.close();
-  }, [activeBotId, handleAuthError]);
+  }, [activeThreadId, dispatch, handleAuthError]);
 
-  const activeBot = bots.find((bot) => bot.id === activeBotId);
+  const activeBot = bots.find((bot) => bot.id === activeThreadId);
 
   useEffect(() => {
     if (activeBot?.roleId === undefined) {
@@ -275,6 +359,38 @@ export function ChatPage() {
     return () => { cancelled = true; };
   }, [activeBot?.roleId, handleAuthError]);
 
+  /** Members panel roster (spec §2.5) — resolved against `listRoles()`'s canonical roster, not re-derived from thread display strings. */
+  const members = useMemo<MemberSummary[]>(() => {
+    if (activeBot === undefined) return [];
+    if (activeBot.isGroup) {
+      return (activeBot.memberRoleIds ?? []).map((roleId) => {
+        const role = roles.find((r) => r.id === roleId);
+        return { id: roleId, name: role?.name ?? "Unknown", role: "bot" as const };
+      });
+    }
+    if (activeBot.roleId !== undefined) {
+      const role = roles.find((r) => r.id === activeBot.roleId);
+      return [{ id: activeBot.roleId, name: role?.name ?? activeBot.name, role: "bot" as const }];
+    }
+    return [];
+  }, [activeBot, roles]);
+
+  const activeThread = getThread(activeThreadId);
+  const messagesByBotId: Record<string, GroupAwareChatMessage[]> =
+    activeThreadId === undefined
+      ? {}
+      : { [activeThreadId]: activeThread.messages.map((m) => toChatMessage(m.raw as ThreadMessage)) };
+
+  if (notFound) {
+    return (
+      <main className="flex h-screen w-full items-center justify-center bg-chrome">
+        <p role="alert" className="text-sm text-slate-400">
+          Workspace not found.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="h-screen w-full">
       {loading && bots.length === 0 && (
@@ -289,12 +405,16 @@ export function ChatPage() {
         <ChatShell
           bots={bots}
           messagesByBotId={messagesByBotId}
-          members={[]}
+          members={members}
           routines={routines}
-          initialActiveBotId={activeBot?.id}
-          isBotResponding={isBotResponding}
+          activeBotId={activeThreadId}
+          isBotResponding={activeThread.pending}
+          draft={activeThread.draft}
+          onDraftChange={(value) => activeThreadId && handleDraftChange(activeThreadId, value)}
           onSelectBot={handleSelectBot}
           onSend={(botId, body) => void handleSend(botId, body)}
+          onThreadCreated={handleThreadCreated}
+          onUnauthorized={markUnauthenticated}
         />
       ) : null}
     </main>
