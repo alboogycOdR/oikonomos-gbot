@@ -22,6 +22,18 @@ export class UnauthorizedError extends Error {
 const BASE_URL: string =
   (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
 
+/**
+ * TASK-239 (spec §6.2) — `vite.config.ts` (TASK-240) already replaces this
+ * identifier with the build's git SHA via Vite's `define`; nothing in
+ * `src/` referenced it until now, which is why only the separately-emitted
+ * `dist/build.json` could verify it. Declared ambient-locally to this
+ * module (not `vite-env.d.ts`, which is outside this task's Owned_Paths) —
+ * every consumer imports `BUILD_SHA` from here rather than the raw global.
+ */
+declare const __OIKONOMOS_BUILD_SHA__: string;
+export const BUILD_SHA: string =
+  typeof __OIKONOMOS_BUILD_SHA__ === "string" ? __OIKONOMOS_BUILD_SHA__ : "unknown";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -57,6 +69,36 @@ export async function login(token: string): Promise<void> {
     method: "POST",
     body: JSON.stringify({ token }),
   });
+}
+
+/**
+ * TASK-239 (spec §3.1) — mirrors control-api's real `GET /auth/me` shape
+ * exactly (`app.ts`'s handler): `expiresAt` is `null` for a bearer-service
+ * principal, an ISO-8601 string for a cookie-backed user session. `request`
+ * already turns a 401 into `UnauthorizedError`, which is exactly how a
+ * missing/expired/tampered cookie is meant to be told apart from a real
+ * network/server failure here.
+ */
+export interface AuthMe {
+  tenantId: string;
+  kind: "service" | "user";
+  expiresAt: string | null;
+}
+
+export async function getMe(): Promise<AuthMe> {
+  return request<AuthMe>("/auth/me");
+}
+
+/**
+ * TASK-239 (spec §3.2) — `POST /auth/logout` (`auth.ts:80`/`app.ts`) always
+ * clears the session cookie server-side and responds `204`; `request`
+ * already treats `204` as `undefined`. The dashboard's own in-memory
+ * workspace state (drafts, pending, transcripts) is dropped by `ChatPage`
+ * unmounting once `AuthContext` flips `isAuthenticated` to `false` — this
+ * call is only responsible for the server-side half.
+ */
+export async function logout(): Promise<void> {
+  await request<void>("/auth/logout", { method: "POST" });
 }
 
 export type RunStatus =
@@ -122,6 +164,25 @@ export interface AuditEvent {
 
 export async function getRunEvidence(runId: string): Promise<AuditEvent[]> {
   return request<AuditEvent[]>(`/runs/${encodeURIComponent(runId)}/evidence`);
+}
+
+/**
+ * TASK-239 (spec §4.1) — mirrors `GET /workspace/summary`'s real,
+ * server-serialized shape exactly (TASK-237, `packages/db/src/
+ * workspaceSummary.ts` / `services/control-api/src/app.ts`): one bounded
+ * row per thread the principal owns, `latestRun: null` when the thread has
+ * no runs yet, `lastActivityAt` as an ISO-8601 string (the server sends a
+ * `Date`, which serializes to ISO-8601 over JSON).
+ */
+export interface WorkspaceSummaryEntry {
+  threadId: string;
+  latestRun: { runId: string; status: RunStatus } | null;
+  pendingApprovals: number;
+  lastActivityAt: string;
+}
+
+export async function getWorkspaceSummary(): Promise<WorkspaceSummaryEntry[]> {
+  return request<WorkspaceSummaryEntry[]>("/workspace/summary");
 }
 
 export type ApprovalStatus =

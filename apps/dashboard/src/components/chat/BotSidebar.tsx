@@ -10,10 +10,25 @@
 // exactly as before.
 import { useState } from "react";
 
-import type { BotSummary } from "./types";
+import type { BotSummary, WorkspaceBadgeKind } from "./types";
 import { Avatar } from "./Avatar";
 import { CreateBotDialog } from "./CreateBotDialog";
 import { GroupThreadDialog } from "./GroupThreadDialog";
+
+/** TASK-239 (spec §4.2) — label + color per badge kind, applied to every background workspace's sidebar row. */
+const BADGE_LABEL: Record<WorkspaceBadgeKind, string> = {
+  working: "Working",
+  waiting_approval: "Approval",
+  blocked: "Blocked",
+  unread: "New",
+};
+
+const BADGE_CLASS: Record<WorkspaceBadgeKind, string> = {
+  working: "bg-sky-500/20 text-sky-300",
+  waiting_approval: "bg-amber-500/20 text-amber-300",
+  blocked: "bg-rose-500/20 text-rose-300",
+  unread: "bg-emerald-500/20 text-emerald-300",
+};
 
 /**
  * TASK-122 (Chat-2c) — see ChatPage.tsx's own comment: group-thread
@@ -138,11 +153,24 @@ export function BotSidebar({
                       {formatRelative(bot.updatedAt)}
                     </span>
                   </span>
-                  {bot.lastMessagePreview ? (
-                    <span className="block truncate text-xs text-slate-400">
-                      {bot.lastMessagePreview}
-                    </span>
-                  ) : null}
+                  <span className="flex items-center gap-2">
+                    {bot.lastMessagePreview ? (
+                      <span className="block min-w-0 flex-1 truncate text-xs text-slate-400">
+                        {bot.lastMessagePreview}
+                      </span>
+                    ) : null}
+                    {/* TASK-239 (spec §4.2) — badge for a background workspace's latest run/activity; never rendered for the active thread (ChatPage.tsx never attaches `status` to it). */}
+                    {bot.status !== undefined ? (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${BADGE_CLASS[bot.status.badge]}`}
+                      >
+                        {BADGE_LABEL[bot.status.badge]}
+                        {bot.status.badge === "waiting_approval" && bot.status.pendingApprovals > 1
+                          ? ` (${bot.status.pendingApprovals})`
+                          : ""}
+                      </span>
+                    ) : null}
+                  </span>
                 </span>
               </button>
             </li>
