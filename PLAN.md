@@ -7113,7 +7113,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-238
 **Title:** Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §5.1–§5.4; CLAUDE.md control-liveness rule; ADR-005
@@ -7131,12 +7131,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T11:17:24Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T11:28:26Z] [SV:CX9] Implemented FIFO global-two/per-role run gate, production chat and group fan-out wiring, queued audit evidence, and liveness tests. Commits 4b244de and 0f87de0.
+**Artifacts:** services/worker/src/runConcurrency.ts, services/worker/src/runConcurrency.test.ts, services/worker/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts
+**Test_Evidence:** worker typecheck PASS; control-api typecheck PASS; worker runConcurrency tests 3/3 PASS; control-api ports tests 7/7 PASS; full control-api suite exited 0. Parallel pnpm -r test exposed the already-filed packages/db TASK-140 race (37 vs 38), not a task-owned failure.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T11:17:24Z
+**Updated_At:** 2026-09-12T11:28:26Z
 
 ### TASK-239
 **Title:** Workspace-1 — dashboard session bootstrap, logout, summary poll, blocked-reason surfacing
