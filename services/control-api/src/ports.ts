@@ -112,7 +112,7 @@ import {
   type SecretResolver,
 } from "@oikonomos/sandbox-client";
 import type { ThreadContextPort } from "./app.js";
-import type { LiveAgentPort } from "./liveAgent.routes.js";
+import type { LiveAgentExecdEndpoint, LiveAgentPort } from "./liveAgent.routes.js";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
 /** execd's documented PTY/command port, reached only via the lifecycle proxy. */
@@ -292,20 +292,34 @@ export function createDatabaseBackedLiveAgent(options: CreateDatabaseBackedLiveA
       return { sandboxId: record.sandboxId, state: record.state };
     },
     async getPtyViewerEndpoint(sandboxId) {
-      const resolved = await resolveClient().getEndpoint(sandboxId, EXECD_PTY_PORT, true);
-      const httpUrl = requireLifecycleProxyUrl(resolved.endpoint);
-      const wsProtocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
-      const pathname = httpUrl.pathname.replace(/\/$/, "");
-      const token = await resolveExecdAccessToken(OPENSANDBOX_EXECD_ACCESS_TOKEN_REF);
-      return {
-        url: `${wsProtocol}//${httpUrl.host}${pathname}/pty/${encodeURIComponent(sandboxId)}/ws?mode=viewer&since=0`,
-        headers: {
-          ...resolved.headers,
-          [EXECD_ACCESS_TOKEN_HEADER]: token,
-        },
-      };
+      return resolvePtyEndpoint(sandboxId, "mode=viewer&since=0");
+    },
+    // TASK-228 — the write-capable counterpart. `takeover=1` is execd's
+    // own real contract for evicting whatever connection currently holds
+    // write access and becoming the new holder (confirmed against
+    // upstream source, `pty_ws.go` — see PLAN.md TASK-188/228's research
+    // trail). Deliberately its own query string, not `mode=viewer` with
+    // a flag appended — these are two different execd modes, not one
+    // mode with an option.
+    async getPtyTakeoverEndpoint(sandboxId) {
+      return resolvePtyEndpoint(sandboxId, "mode=holder&takeover=1");
     },
   };
+
+  async function resolvePtyEndpoint(sandboxId: string, query: string): Promise<LiveAgentExecdEndpoint> {
+    const resolved = await resolveClient().getEndpoint(sandboxId, EXECD_PTY_PORT, true);
+    const httpUrl = requireLifecycleProxyUrl(resolved.endpoint);
+    const wsProtocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
+    const pathname = httpUrl.pathname.replace(/\/$/, "");
+    const token = await resolveExecdAccessToken(OPENSANDBOX_EXECD_ACCESS_TOKEN_REF);
+    return {
+      url: `${wsProtocol}//${httpUrl.host}${pathname}/pty/${encodeURIComponent(sandboxId)}/ws?${query}`,
+      headers: {
+        ...resolved.headers,
+        [EXECD_ACCESS_TOKEN_HEADER]: token,
+      },
+    };
+  }
 }
 
 function requireLifecycleProxyUrl(endpoint: string): URL {

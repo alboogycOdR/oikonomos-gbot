@@ -13,8 +13,10 @@ import {
   encodeFrame,
   defaultDialUpstream,
   relay,
+  relayTakeover,
   registerLiveAgentRoutes,
   type LiveAgentInputDiscardedEvent,
+  type LiveAgentInputForwardedEvent,
   type LiveAgentPort,
   type LiveAgentSandboxRef,
   type UpstreamConnection,
@@ -153,6 +155,81 @@ describe("relay() — viewer-mode input cannot reach the sandbox", () => {
     relay("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relay>[2], upstream, undefined);
     downstream.emit("data", encodeFrame(0x8, Buffer.alloc(0), true));
     expect(upstream.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// relayTakeover(): TASK-228's write-capable mirror image of relay() above.
+// ---------------------------------------------------------------------------
+
+describe("relayTakeover() — genuinely interactive take-over, and only within one connection's lifetime", () => {
+  it("genuinely forwards a downstream (human) data frame upstream to execd, and reports it via onInputForwarded", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const forwarded: LiveAgentInputForwardedEvent[] = [];
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+
+    relayTakeover("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relayTakeover>[2], upstream, (event) => forwarded.push(event));
+
+    // The human types their 2FA code into the real terminal.
+    const humanInput = encodeFrame(OPCODE_TEXT, Buffer.from("123456\n"), true);
+    downstream.emit("data", humanInput);
+
+    const upstreamFrames = decodeAll(upstreamSocket.written);
+    expect(upstreamFrames).toHaveLength(1);
+    expect(upstreamFrames[0]!.payload.toString()).toBe("123456\n");
+    // Forwarded to execd MASKED, as a genuine client->server frame must be
+    // (RFC 6455 §5.1) — not a byte-for-byte passthrough of the (also
+    // masked, but with a different key) downstream frame.
+    expect(upstreamSocket.written[0]![1]! & 0x80).toBe(0x80);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({ roleId: "bot-1", sandboxId: "sandbox-1", opcode: OPCODE_TEXT, byteLength: 7 });
+  });
+
+  it("still forwards genuine execd output downstream to the human, same as the viewer", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+
+    relayTakeover("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relayTakeover>[2], upstream, undefined);
+
+    const execdOutput = encodeFrame(OPCODE_TEXT, Buffer.from("Password: "), false);
+    upstreamSocket.emit("data", execdOutput);
+
+    const frames = decodeAll(downstream.written);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.payload.toString()).toBe("Password: ");
+  });
+
+  it("stops forwarding the instant either side closes — nothing reaches execd after teardown", () => {
+    const downstream = new FakeSocket();
+    const upstreamSocket = new FakeSocket();
+    const forwarded: LiveAgentInputForwardedEvent[] = [];
+    const upstream: UpstreamConnection = {
+      socket: upstreamSocket as unknown as UpstreamConnection["socket"],
+      initialBuffer: Buffer.alloc(0),
+      close: vi.fn(),
+    };
+
+    relayTakeover("bot-1", "sandbox-1", downstream as unknown as Parameters<typeof relayTakeover>[2], upstream, (event) => forwarded.push(event));
+
+    // The human closes the session (hands back).
+    downstream.emit("data", encodeFrame(0x8, Buffer.alloc(0), true));
+    expect(upstream.close).toHaveBeenCalledTimes(1);
+
+    // A frame arriving on the now-torn-down downstream socket (a real
+    // duplicate/delayed OS-level delivery is exactly the race this guards
+    // against) must not be forwarded — teardown is a one-way door.
+    downstream.emit("data", encodeFrame(OPCODE_TEXT, Buffer.from("too late"), true));
+    expect(forwarded).toHaveLength(0);
   });
 });
 
@@ -465,6 +542,178 @@ describe("GET /roles/:roleId/live-agent/pty — real upgrade + relay over loopba
 });
 
 // ---------------------------------------------------------------------------
+// GET /roles/:roleId/live-agent/takeover — TASK-228, real upgrade + relay
+// over loopback TCP, same rig as the viewer's own tests above.
+// ---------------------------------------------------------------------------
+
+describe("GET /roles/:roleId/live-agent/takeover — real upgrade + relay over loopback TCP", () => {
+  let app: FastifyInstance | undefined;
+  let fakeExecd: Awaited<ReturnType<typeof startFakeExecd>> | undefined;
+  let acceptedSockets: Socket[] = [];
+
+  function trackAcceptedSockets(target: FastifyInstance): void {
+    target.server.on("connection", (socket: Socket) => acceptedSockets.push(socket));
+  }
+
+  afterEach(async () => {
+    for (const socket of acceptedSockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // Already destroyed.
+      }
+    }
+    acceptedSockets = [];
+    if (app !== undefined) {
+      await app.close();
+    }
+    fakeExecd?.close();
+    app = undefined;
+    fakeExecd = undefined;
+  });
+
+  it("genuinely relays real human input to execd, and real execd output back to the human", async () => {
+    fakeExecd = await startFakeExecd();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-1", state: "waiting_approval" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(sandbox),
+      getPtyViewerEndpoint: vi.fn(),
+      getPtyTakeoverEndpoint: vi.fn().mockResolvedValue({ url: `ws://127.0.0.1:${fakeExecd.port}/pty/sbx-1/ws?mode=holder&takeover=1` }),
+    };
+    const forwarded: LiveAgentInputForwardedEvent[] = [];
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, {
+      authToken: TOKEN,
+      liveAgent,
+      dialUpstream: defaultDialUpstream,
+      onInputForwarded: (event) => forwarded.push(event),
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", authHeaders());
+    expect(human.statusLine).toContain("101");
+
+    // Real execd output (e.g. a login prompt) must still reach the human.
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (human.frames.length > 0) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 5);
+      fakeExecd!.sendFrame(Buffer.from("Password: "));
+    });
+    expect(human.frames[0]!.payload.toString()).toBe("Password: ");
+
+    // The entire point of this route: the human's real keystrokes DO
+    // reach execd.
+    human.socket.write(encodeFrame(OPCODE_TEXT, Buffer.from("hunter2\n"), true));
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (fakeExecd!.receivedAfterHandshake.length > 0) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 5);
+    });
+    const upstreamFrames = decodeAll(fakeExecd.receivedAfterHandshake);
+    expect(upstreamFrames).toHaveLength(1);
+    expect(upstreamFrames[0]!.payload.toString()).toBe("hunter2\n");
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({ roleId: "bot-1", sandboxId: "sbx-1" });
+
+    human.socket.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  it("requests execd's holder+takeover mode, never viewer mode", async () => {
+    fakeExecd = await startFakeExecd();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-1", state: "waiting_approval" };
+    const getPtyTakeoverEndpoint = vi.fn().mockResolvedValue({ url: `ws://127.0.0.1:${fakeExecd.port}/pty/sbx-1/ws?mode=holder&takeover=1` });
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(sandbox),
+      getPtyViewerEndpoint: vi.fn(),
+      getPtyTakeoverEndpoint,
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent, dialUpstream: defaultDialUpstream });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", authHeaders());
+    expect(human.statusLine).toContain("101");
+    expect(getPtyTakeoverEndpoint).toHaveBeenCalledWith("sbx-1");
+    // The viewer endpoint must never even be consulted for a takeover request.
+    expect(liveAgent.getPtyViewerEndpoint).not.toHaveBeenCalled();
+
+    human.socket.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  it("501s when the configured LiveAgentPort supports the viewer but not takeover", async () => {
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-1", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue(sandbox),
+      getPtyViewerEndpoint: vi.fn(),
+      // getPtyTakeoverEndpoint deliberately omitted.
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", authHeaders());
+    expect(human.statusLine).not.toContain("101");
+    expect(human.statusLine).toContain("501");
+  });
+
+  it("refuses the upgrade for an unauthenticated request", async () => {
+    const liveAgent: LiveAgentPort = { getActiveSandbox: vi.fn(), getPtyViewerEndpoint: vi.fn(), getPtyTakeoverEndpoint: vi.fn() };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", {});
+    expect(human.statusLine).toContain("401");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TASK-203 — production LiveAgentPort (role_sandboxes + sandbox-client)
 // ---------------------------------------------------------------------------
 
@@ -514,6 +763,29 @@ describe("TASK-203 production LiveAgentPort wiring", () => {
     expect(endpoint.url).toBe(`ws://100.78.70.2:8080/v1/sandboxes/sbx-live/proxy/44772/pty/sbx-live/ws?mode=viewer&since=0`);
     expect(endpoint.url).toContain("/proxy/");
     expect(endpoint.url).not.toMatch(/:30\d{3}\b/);
+    expect(endpoint.headers).toEqual({
+      "x-proxy-token": "route-token",
+      "X-EXECD-ACCESS-TOKEN": FAKE_EXECD_TOKEN,
+    });
+  });
+
+  it("TASK-228 — resolves the PTY-takeover URL with holder+takeover mode, through the same lifecycle proxy", async () => {
+    const getEndpoint = vi.fn(async (sandboxId: string, port?: number, useServerProxy?: boolean) => {
+      expect(sandboxId).toBe("sbx-live");
+      expect(port).toBe(44_772);
+      expect(useServerProxy).toBe(true);
+      return { endpoint: PROXY_ENDPOINT, headers: { "x-proxy-token": "route-token" } };
+    });
+    const liveAgent = createDatabaseBackedLiveAgent({
+      connectionString: "postgresql://unused.invalid/test",
+      sandboxClient: { getEndpoint },
+      resolveExecdAccessToken: async () => FAKE_EXECD_TOKEN,
+    });
+
+    const endpoint = await liveAgent.getPtyTakeoverEndpoint!("sbx-live");
+    expect(endpoint.url).toBe(`ws://100.78.70.2:8080/v1/sandboxes/sbx-live/proxy/44772/pty/sbx-live/ws?mode=holder&takeover=1`);
+    expect(endpoint.url).not.toContain("mode=viewer");
+    expect(endpoint.url).toContain("/proxy/");
     expect(endpoint.headers).toEqual({
       "x-proxy-token": "route-token",
       "X-EXECD-ACCESS-TOKEN": FAKE_EXECD_TOKEN,

@@ -42,6 +42,36 @@
  * wiring is real, valuable follow-up work). Left `undefined` in
  * production until that task exists; both routes answer `501`/refuse the
  * upgrade rather than fabricating state when it is absent.
+ *
+ * TASK-228 (G-07 part 2) — a THIRD route added later, `GET
+ * /roles/:roleId/live-agent/takeover`: the write-capable counterpart to
+ * the viewer above, for genuinely interactive human take-over (typing a
+ * password, a 2FA code, solving a CAPTCHA — ADR-010's enforced set,
+ * never typed by the model). Deliberately a SEPARATE code path from
+ * `relay()`/`handleUpgrade()` above rather than a mode flag threaded
+ * through them: the viewer's entire reason to exist is that input is
+ * mechanically, unconditionally impossible on it, and a shared function
+ * with a "except when this flag is true" branch is exactly the shape of
+ * bug that turns a hard guarantee into a soft one. Two independently
+ * simple functions, each easy to audit for what it does and does not
+ * forward, is safer than one function doing both jobs.
+ *
+ * Security property (the AC1 mirror image): `relayTakeover()` DOES
+ * forward downstream DATA frames upstream — that is the entire point —
+ * but only ever for the duration of one already-authenticated,
+ * already-sandbox-resolved connection; there is no state that lets input
+ * reach execd before this function is entered or after its socket is
+ * torn down. `onInputForwarded` is this control's own CLAUDE.md-mandated
+ * liveness assertion, proving forwarding genuinely happens rather than
+ * merely being coded to.
+ *
+ * Execd contract (confirmed against upstream source,
+ * `alibaba/OpenSandbox`'s `components/execd/pkg/web/controller/pty_ws.go`
+ * — see TASK-188/TASK-228's own research trail in PLAN.md): the PTY
+ * websocket defaults to an exclusive, write-capable "holder" mode; a new
+ * connection passing `takeover=1` evicts the current holder and becomes
+ * the new one. `getPtyTakeoverEndpoint` below requests exactly that
+ * (`mode=holder&takeover=1`), never `mode=viewer`.
  */
 import { randomBytes, createHash } from "node:crypto";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -54,6 +84,7 @@ import { authenticate } from "./auth.js";
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const PTY_PATH_PATTERN = /^\/roles\/([^/]+)\/live-agent\/pty$/;
+const TAKEOVER_PATH_PATTERN = /^\/roles\/([^/]+)\/live-agent\/takeover$/;
 
 // WebSocket opcodes (RFC 6455 §5.2).
 const OPCODE_CONTINUATION = 0x0;
@@ -83,10 +114,27 @@ export interface LiveAgentPort {
   getActiveSandbox(roleId: string, tenantId: string): Promise<LiveAgentSandboxRef | null>;
   /** Resolve the execd PTY-viewer endpoint for a sandbox. */
   getPtyViewerEndpoint(sandboxId: string): Promise<LiveAgentExecdEndpoint>;
+  /**
+   * TASK-228 — resolve the execd PTY-HOLDER (write-capable, `takeover=1`)
+   * endpoint for a sandbox. Optional: a `LiveAgentPort` implementation
+   * that only ever supports the read-only viewer (e.g. an older port,
+   * or a deliberately view-only deployment) simply omits this, and the
+   * takeover route 501s exactly like the viewer route does when
+   * `liveAgent` itself is absent.
+   */
+  getPtyTakeoverEndpoint?(sandboxId: string): Promise<LiveAgentExecdEndpoint>;
 }
 
 /** Fired every time a viewer-mode connection attempts to send data — the AC1 liveness assertion. */
 export interface LiveAgentInputDiscardedEvent {
+  readonly roleId: string;
+  readonly sandboxId: string;
+  readonly opcode: number;
+  readonly byteLength: number;
+}
+
+/** TASK-228 — fired every time a takeover-mode connection's input is genuinely forwarded upstream to execd. The mirror-image liveness assertion to {@link LiveAgentInputDiscardedEvent}. */
+export interface LiveAgentInputForwardedEvent {
   readonly roleId: string;
   readonly sandboxId: string;
   readonly opcode: number;
@@ -107,6 +155,8 @@ export interface RegisterLiveAgentRoutesOptions {
   /** Injectable so tests never dial a real socket. Defaults to a real HTTP Upgrade dial against `endpoint.url`. */
   readonly dialUpstream?: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>;
   readonly onInputDiscarded?: (event: LiveAgentInputDiscardedEvent) => void;
+  /** TASK-228 — fires when a takeover connection's input genuinely reaches execd. */
+  readonly onInputForwarded?: (event: LiveAgentInputForwardedEvent) => void;
 }
 
 function acceptKeyFor(key: string): string {
@@ -379,6 +429,168 @@ export function relay(
   upstream.socket.on("close", teardown);
 }
 
+/**
+ * TASK-228 — the write-capable mirror of {@link relay}: downstream (the
+ * human's mobile client) DATA frames genuinely go upstream to execd. See
+ * this file's header for why this is a separate function from `relay`
+ * rather than a mode flag on it.
+ *
+ * There is no window where input can reach execd outside this function's
+ * own lifetime: `handleUpgrade`/`handleTakeoverUpgrade` only calls this
+ * after authentication and the upstream dial both already succeeded.
+ * `closed` is checked explicitly at the top of the downstream handler
+ * below — deliberately NOT relying only on a destroyed `Socket`'s
+ * `.write()` throwing as the sole backstop. That throw is real and does
+ * still happen (the `try/catch` around the forward keeps it as a second,
+ * independent line of defense), but a data event that was already queued
+ * before `.destroy()` ran can still be delivered afterward on a real
+ * event loop, and a security-relevant "input must not reach execd after
+ * hand-back" guarantee should not depend on that ordering accident —
+ * caught for real by this function's own test suite, which models a
+ * fake socket that (correctly, per Node's real `net.Socket` semantics)
+ * would otherwise let a post-close write silently "succeed" against it.
+ */
+export function relayTakeover(
+  roleId: string,
+  sandboxId: string,
+  downstream: Socket,
+  upstream: UpstreamConnection,
+  onInputForwarded: ((event: LiveAgentInputForwardedEvent) => void) | undefined,
+): void {
+  let closed = false;
+  function teardown(): void {
+    if (closed) return;
+    closed = true;
+    try {
+      downstream.destroy();
+    } catch {
+      // Already closed.
+    }
+    upstream.close();
+  }
+
+  const downstreamReader = new FrameReader();
+  downstream.on("data", (chunk: Buffer) => {
+    if (closed) return;
+    let frames: DecodedFrame[];
+    try {
+      frames = downstreamReader.push(chunk);
+    } catch {
+      teardown();
+      return;
+    }
+    for (const frame of frames) {
+      if (closed) return;
+      if (frame.opcode === OPCODE_CLOSE) {
+        teardown();
+        return;
+      }
+      if (frame.opcode === OPCODE_PING) {
+        try {
+          downstream.write(encodeFrame(OPCODE_PONG, frame.payload, false));
+        } catch {
+          teardown();
+          return;
+        }
+        continue;
+      }
+      if (frame.opcode === OPCODE_PONG) continue;
+      // The entire point of this function: a genuine input frame is
+      // forwarded upstream, masked as a real client->server WS frame
+      // requires, and the liveness event fires only once the write
+      // itself has been issued — never speculatively before it.
+      try {
+        upstream.socket.write(encodeFrame(frame.opcode === OPCODE_CONTINUATION ? OPCODE_BINARY : frame.opcode, frame.payload, true));
+        onInputForwarded?.({ roleId, sandboxId, opcode: frame.opcode, byteLength: frame.payload.length });
+      } catch {
+        teardown();
+        return;
+      }
+    }
+  });
+  downstream.on("error", teardown);
+  downstream.on("close", teardown);
+
+  const upstreamReader = new FrameReader();
+  function handleUpstreamChunk(chunk: Buffer): void {
+    let frames: DecodedFrame[];
+    try {
+      frames = upstreamReader.push(chunk);
+    } catch {
+      teardown();
+      return;
+    }
+    for (const frame of frames) {
+      if (frame.opcode === OPCODE_CLOSE) {
+        teardown();
+        return;
+      }
+      if (frame.opcode === OPCODE_PING) {
+        try {
+          upstream.socket.write(encodeFrame(OPCODE_PONG, frame.payload, true));
+        } catch {
+          teardown();
+          return;
+        }
+        continue;
+      }
+      if (frame.opcode === OPCODE_PONG) continue;
+      try {
+        downstream.write(encodeFrame(frame.opcode === OPCODE_CONTINUATION ? OPCODE_BINARY : frame.opcode, frame.payload, false));
+      } catch {
+        teardown();
+        return;
+      }
+    }
+  }
+  if (upstream.initialBuffer.length > 0) handleUpstreamChunk(upstream.initialBuffer);
+  upstream.socket.on("data", handleUpstreamChunk);
+  upstream.socket.on("error", teardown);
+  upstream.socket.on("close", teardown);
+}
+
+/**
+ * Shared prefix for both the viewer and takeover upgrade paths: auth,
+ * `liveAgent` presence, and sandbox resolution are identical for either
+ * — only which execd endpoint gets resolved and which relay function
+ * runs afterward differ. Returns `undefined` once it has already
+ * responded (refused/errored) so the caller knows not to proceed.
+ */
+async function authenticateAndResolveSandbox(
+  req: IncomingMessage,
+  socket: Socket,
+  authToken: string,
+  liveAgent: LiveAgentPort | undefined,
+  roleId: string,
+): Promise<{ readonly sandbox: LiveAgentSandboxRef } | undefined> {
+  const principal = authenticate({ authorization: req.headers.authorization, cookie: req.headers.cookie }, authToken);
+  if (principal === undefined) {
+    writeRawResponseAndDestroy(socket, 401, "Unauthorized");
+    return undefined;
+  }
+
+  if (liveAgent === undefined) {
+    writeRawResponseAndDestroy(socket, 501, "Not Implemented");
+    return undefined;
+  }
+
+  let sandbox: LiveAgentSandboxRef | null;
+  try {
+    sandbox = await liveAgent.getActiveSandbox(roleId, principal.tenantId);
+  } catch {
+    writeRawResponseAndDestroy(socket, 502, "Bad Gateway");
+    return undefined;
+  }
+  if (sandbox === null) {
+    // Empty state: no active/recent sandboxed run. The mobile client is
+    // expected to check GET /live-agent/status first and never open this
+    // socket in that case, but refuse cleanly regardless.
+    writeRawResponseAndDestroy(socket, 404, "Not Found");
+    return undefined;
+  }
+  return { sandbox };
+}
+
 async function handleUpgrade(
   req: IncomingMessage,
   socket: Socket,
@@ -401,35 +613,13 @@ async function handleUpgrade(
   }
   const roleId = decodeURIComponent(match[1]!);
 
-  const principal = authenticate({ authorization: req.headers.authorization, cookie: req.headers.cookie }, authToken);
-  if (principal === undefined) {
-    writeRawResponseAndDestroy(socket, 401, "Unauthorized");
-    return;
-  }
-
-  if (liveAgent === undefined) {
-    writeRawResponseAndDestroy(socket, 501, "Not Implemented");
-    return;
-  }
-
-  let sandbox: LiveAgentSandboxRef | null;
-  try {
-    sandbox = await liveAgent.getActiveSandbox(roleId, principal.tenantId);
-  } catch {
-    writeRawResponseAndDestroy(socket, 502, "Bad Gateway");
-    return;
-  }
-  if (sandbox === null) {
-    // Empty state: no active/recent sandboxed run. The mobile client is
-    // expected to check GET /live-agent/status first and never open this
-    // socket in that case, but refuse cleanly regardless.
-    writeRawResponseAndDestroy(socket, 404, "Not Found");
-    return;
-  }
+  const resolved = await authenticateAndResolveSandbox(req, socket, authToken, liveAgent, roleId);
+  if (resolved === undefined) return;
+  const { sandbox } = resolved;
 
   let endpoint: LiveAgentExecdEndpoint;
   try {
-    endpoint = await liveAgent.getPtyViewerEndpoint(sandbox.sandboxId);
+    endpoint = await liveAgent!.getPtyViewerEndpoint(sandbox.sandboxId);
   } catch {
     writeRawResponseAndDestroy(socket, 502, "Bad Gateway");
     return;
@@ -452,9 +642,72 @@ async function handleUpgrade(
   relay(roleId, sandbox.sandboxId, socket, upstream, onInputDiscarded);
 }
 
-/** Registers the live-agent status route and the raw PTY-viewer WS upgrade handler onto `app`. */
+/**
+ * TASK-228 — the write-capable counterpart to {@link handleUpgrade}.
+ * Refuses (`501`) exactly like the viewer does when `liveAgent` itself
+ * is absent, and additionally (also `501`) when the configured
+ * `LiveAgentPort` supports the read-only viewer but not takeover —
+ * `getPtyTakeoverEndpoint` is optional on the port precisely so an
+ * older or deliberately view-only deployment can decline this without
+ * throwing.
+ */
+async function handleTakeoverUpgrade(
+  req: IncomingMessage,
+  socket: Socket,
+  authToken: string,
+  liveAgent: LiveAgentPort | undefined,
+  dialUpstream: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>,
+  onInputForwarded: ((event: LiveAgentInputForwardedEvent) => void) | undefined,
+): Promise<void> {
+  const url = new URL(req.url ?? "", "http://live-agent.internal");
+  const match = TAKEOVER_PATH_PATTERN.exec(url.pathname);
+  if (match === null) {
+    socket.destroy();
+    return;
+  }
+  if ((req.headers.upgrade ?? "").toLowerCase() !== "websocket") {
+    writeRawResponseAndDestroy(socket, 400, "Bad Request");
+    return;
+  }
+  const roleId = decodeURIComponent(match[1]!);
+
+  const resolved = await authenticateAndResolveSandbox(req, socket, authToken, liveAgent, roleId);
+  if (resolved === undefined) return;
+  const { sandbox } = resolved;
+
+  if (liveAgent!.getPtyTakeoverEndpoint === undefined) {
+    writeRawResponseAndDestroy(socket, 501, "Not Implemented");
+    return;
+  }
+
+  let endpoint: LiveAgentExecdEndpoint;
+  try {
+    endpoint = await liveAgent!.getPtyTakeoverEndpoint(sandbox.sandboxId);
+  } catch {
+    writeRawResponseAndDestroy(socket, 502, "Bad Gateway");
+    return;
+  }
+
+  let upstream: UpstreamConnection;
+  try {
+    upstream = await dialUpstream(endpoint);
+  } catch {
+    writeRawResponseAndDestroy(socket, 502, "Bad Gateway");
+    return;
+  }
+
+  if (!acceptUpgrade(req, socket)) {
+    upstream.close();
+    socket.destroy();
+    return;
+  }
+
+  relayTakeover(roleId, sandbox.sandboxId, socket, upstream, onInputForwarded);
+}
+
+/** Registers the live-agent status route and the raw PTY-viewer/takeover WS upgrade handlers onto `app`. */
 export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterLiveAgentRoutesOptions): void {
-  const { authToken, liveAgent, dialUpstream = defaultDialUpstream, onInputDiscarded } = options;
+  const { authToken, liveAgent, dialUpstream = defaultDialUpstream, onInputDiscarded, onInputForwarded } = options;
 
   app.get("/roles/:roleId/live-agent/status", async (request, reply) => {
     if (liveAgent === undefined) {
@@ -471,12 +724,18 @@ export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterL
   });
 
   app.server.on("upgrade", (req: IncomingMessage, socket: Socket, _head: Buffer) => {
-    handleUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputDiscarded).catch(() => {
+    const pathname = new URL(req.url ?? "", "http://live-agent.internal").pathname;
+    const onSocketError = (): void => {
       try {
         socket.destroy();
       } catch {
         // Already destroyed.
       }
-    });
+    };
+    if (TAKEOVER_PATH_PATTERN.test(pathname)) {
+      handleTakeoverUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputForwarded).catch(onSocketError);
+      return;
+    }
+    handleUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputDiscarded).catch(onSocketError);
   });
 }
