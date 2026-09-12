@@ -27,6 +27,15 @@ an API prefix; where one path does (`/workspace/summary`), it is mounted exactly
 
 ## Build
 
+**Node version (found 2026-09-12):** the repo requires Node 22 (`.nvmrc`, CLAUDE.md) and
+`.npmrc` sets `engine-strict=true`, but the workstation has only Node 23.10 and no
+version manager. `pnpm install --frozen-lockfile` therefore refuses on
+`eslint-visitor-keys@5.0.1` (engines exclude odd-numbered 23). Until Node 22 is
+installed on the host (a TASK-249 host-preparation item), install with
+`pnpm install --frozen-lockfile --config.engine-strict=false` — the mismatch is a
+lint-only devDependency, not a runtime one, and the services have run on 23.10 all
+along. Do not commit an `.npmrc` change to hide this.
+
 ```powershell
 # from the repo root, on the commit you intend to release
 git rev-parse --short HEAD                      # record as CANDIDATE_SHA
