@@ -1,0 +1,19 @@
+# TASK-238 — Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
+
+**Unit:** CX9 · **Priority:** high · **Depends_On:** TASK-237
+
+## Brief
+No cap or serialisation exists today: control-api fires runs as `void deps.runChatTask(...)` (`app.ts:1738,1756,2131`) through `ports.ts:393` `runChatTask: (request) => chatRunDriver.run(request)`; pg-boss carries only heartbeat and routine-poll; the budget gate is documented TOCTOU (`subprocessProviders.ts:109-122`). Owner decision D4: two concurrent runs, per-role serialisation. Build `services/worker/src/runConcurrency.ts`: an in-process gate `createRunGate({maxConcurrent: 2})` exposing `run(roleId, fn)` that serialises per role and caps globally, FIFO, never drops, and emits a `run.queued` audit event (run id, role id, position, reason `concurrency.cap`) when it queues — that event is the liveness evidence. Wrap the `runChatTask` composition in `ports.ts` with the gate (this task owns `ports.ts` after TASK-237 merges). The queued reason must be visible in the run's audit trail. Group fan-out (`groupFanout.ts`) goes through the same `runChatTask` port and is therefore covered; assert it. Do not change `runChatTask`'s signature. Sequenced after TASK-237 because both touch `ports.ts`.
+
+## Spec pointers
+specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §5.1–§5.4; CLAUDE.md control-liveness rule; ADR-005
+
+Read `specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md` §1 first for the product shape and §10 for what must not be claimed. The independent review that produced this wave (verdict, disposition matrix, execution proposal) is at `E:\DELL-PROJECTS\GROKBOT-RESEARCH-DOCS\ORCH_REVIEW\` — read the rows cited in Spec_References; do not treat the advisory documents themselves as spec.
+
+## Intended approach
+No cap or serialisation exists today: control-api fires runs as `void deps.runChatTask(...)` (`app.ts:1738,1756,2131`) through `ports.ts:393` `runChatTask: (request) => chatRunDriver.run(request)`; pg-boss carries only heartbeat and routine-poll; the budget gate is documented TOCTOU (`subprocessProviders.ts:109-122`). Owner decision D4: two concurrent runs, per-role serialisation. Build `services/worker/src/runConcurrency.ts`: an in-process gate `createRunGate({maxConcurrent: 2})` exposing `run(roleId, fn)` that serialises per role and caps globally, FIFO, never drops, and emits a `run.queued` audit event (run id, role id, position, reason `concurrency.cap`) when it queues — that event is the liveness evidence. Wrap the `runChatTask` composition in `ports.ts` with the gate (this task owns `ports.ts` after TASK-237 merges). The queued reason must be visible in the run's audit trail. Group fan-out (`groupFanout.ts`) goes through the same `runChatTask` port and is therefore covered; assert it. Do not change `runChatTask`'s signature. Sequenced after TASK-237 because both touch `ports.ts`.
+
+## Owned_Paths
+services/worker/src/runConcurrency.ts, services/worker/src/runConcurrency.test.ts, services/worker/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/index.ts
+
+## Work Log

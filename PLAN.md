@@ -1,8 +1,8 @@
 ---
-plan_version: 29.28
-last_updated: 2026-09-12T11:00:00Z
+plan_version: 30.0
+last_updated: 2026-09-12T10:10:00Z
 overall_status: in_progress
-orchestrator_notes: "BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. THREE credential-drift/exposure incidents this session, all self-caught or user-reported, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. (3) 2026-09-08 a Fable verification subagent reset the local dev Postgres `oikonomos` role's password (to make DB-backed tests connect — the documented one had stopped authenticating, cause not established) without asking, leaving the persisted User-scope `DATABASE_URL` env var stale; user flagged it, ORCH re-rotated the password directly (`ALTER ROLE`, dev container, no value ever printed), updated the persisted env var to match, and verified a genuinely fresh connection succeeds. Not a credential-exposure incident like (1)/(2) — no value was ever printed — but a real unannounced state change against a shared local resource, recorded for the same reason. All three credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\", and now also: no unannounced state changes to shared local infra) is unconditional and was still touched; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's recorded incidents prove is easy to get wrong even when actively trying to be careful; (8) 2026-09-08, refining (5): even within one genuinely fresh `powershell.exe -NoProfile` invocation, `$env:DATABASE_URL` returned a STALE value immediately after `[Environment]::SetEnvironmentVariable(..., 'User')` had just written a new one, while `[Environment]::GetEnvironmentVariable('DATABASE_URL', 'User')` in an equally fresh process correctly read the new value straight after — confirmed by a live connection test that failed against the `$env:`-sourced value and succeeded against the registry-direct one. `$env:X` reads whatever environment block the process was handed at spawn, which can apparently still be stale even for a brand-new process on this machine; `[Environment]::GetEnvironmentVariable(name, 'User')` reads the registry directly and was reliable both times it mattered. Prefer the explicit registry-read form for anything just rotated. NEW 2026-09-09T17:21Z: TASK-229/230/231/232/233/234 filed — infrastructure and mobile follow-up gaps surfaced while diagnosing a live outage (control-api stale build + worker never started; root broker fail-closed cause was this session's own uncommitted capability-registration miss, fixed same session) and while answering a direct user request for a full untracked-work inventory. TASK-229 (no process supervision) and TASK-230 (no latency monitoring) are the two most consequential — both are the kind of gap that looks fine until it silently is not. UPDATE 2026-09-11T21:05Z: TASK-229/230/231/232/233 executed and verified live per the user's explicit \"EXECUTE THESE\" directive (229/230/231/232/233 done, 234 blocked on two independent upstream/scope reasons — see its own Blocked_Reason). Backlog is now just TASK-228 and TASK-234. Two new, real findings surfaced during execution, both recorded in their own tasks rather than silently worked around: (1) the live worker process and the test suite now contend for the same pg-boss queue in the shared dev database (TASK-229's Progress_Notes, relevant to TASK-162/231); (2) TASK-231's cleanup is deliberately conservative and does not eliminate the shared \"basileia\"-tenant test pollution, only the unambiguously-fixture-shaped remainder. CRITICAL, FOUND 2026-09-12T10:15Z: the global capability kill-switch (\"OIKONOMOS_CAPABILITIES_ENABLED\", checked first in every broker decision) was unset everywhere in this environment, meaning every governed tool call in production had been silently denied (\"capability.disabled\") system-wide, not just for TASK-214 -- see TASK-214's own Progress_Notes for the full account. Set persistently at User scope and both live services restarted onto it. If tool use still looks broken after this, check that value first before assuming a new defect."
+orchestrator_notes: "WAVE Workspace-1 FILED 2026-09-12T10:10:00Z: TASK-236..249 from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md (owner accepted ORCH review of the CX advisory; NO release date, full scope, max quality -- never propose scope cuts for a calendar). Roster from 2026-09-13 is CX9 + S5 only (CX/GB subscriptions lapsed; renew end of month); ORCH executes TASK-240/245 directly. First dispatch wave: TASK-236 (S5) and TASK-237 (CX9) in parallel, ORCH on TASK-240. Then TASK-239 (S5) after 236+237; TASK-238 (CX9) after 237; TASK-241 (S5) after 239; TASK-242 (CX9) after 238; TASK-243 (S5) after 239+242; TASK-244 (CX9, PROTECTED harness-factory -- adversarial different-model review) after 242 or whenever CX9 is free; TASK-245 (ORCH) after 236-240. Backlog 246-249 need ADRs/evidence first. Owner decisions in force: D3 acceptance paid-inference allowance R60 hard stop; D4 concurrency cap 2; D5 workstation hosting, 24/7 claim withheld; D6 roster as above. Every review: pnpm -r test against the isolated DB from TASK-240 once it exists. Templates/Project/manager-bot specs (Fable brief) are being written by ORCH in parallel and are NOT part of this wave. BUDGET: R350/month hard ceiling (corrected 2026-09-06 from an earlier R30,000 figure), enforced via `DEFAULT_PLATFORM_CEILING_ZAR` in `services/worker/src/subprocessProviders.ts`. ACTIVE (2026-09-07T01:35Z): TASK-185 (G-08 egress) is the critical-path item — CX9 has landed the real implementation (policy resolver, sandbox-client translation, chatRunDriver wiring, live allowlist-only denial proven) and is now blocked on ORCH deploying the rebuilt `oikonomos-office-base` image to clawsrv (new root-owned marker entrypoint) before the live marker-refusal liveness proof and final merge. TASK-163/164/186/188/202/203 are all gated on TASK-185 landing (Depends_On or direct Owned_Paths conflict on chatRunDriver.ts/pnpm-lock.yaml) — no other builder has independently-ready work until it merges. TASK-162 (flaky Postgres pool-exhaustion flake) stays `blocked`/low-priority — TASK-199's shared-pool fix reduced but did not eliminate it, re-confirmed 2026-09-07. THREE credential-drift/exposure incidents this session, all self-caught or user-reported, disclosed, and remediated in full — record kept here, values never included: (1) 2026-09-06 the live OpenSandbox API key was printed via an unguarded `cat` of `sandbox.toml` over SSH — rotated on the server, restarted, new value verified working before resuming. (2) 2026-09-07 the local dev Postgres `DATABASE_URL` (password included) was printed via an unguarded `$env:` read — rotated (`ALTER ROLE`) on the local container, new value verified working via a fresh connection; the plaintext-password backup file made during rotation was deleted immediately after verification. (3) 2026-09-08 a Fable verification subagent reset the local dev Postgres `oikonomos` role's password (to make DB-backed tests connect — the documented one had stopped authenticating, cause not established) without asking, leaving the persisted User-scope `DATABASE_URL` env var stale; user flagged it, ORCH re-rotated the password directly (`ALTER ROLE`, dev container, no value ever printed), updated the persisted env var to match, and verified a genuinely fresh connection succeeds. Not a credential-exposure incident like (1)/(2) — no value was ever printed — but a real unannounced state change against a shared local resource, recorded for the same reason. All three credentials are dev/Tailscale-local, not public-internet-reachable, but the rule (\"no credentials in prompts, logs, audit payloads, or fixtures — ever\", and now also: no unannounced state changes to shared local infra) is unconditional and was still touched; recorded honestly rather than minimized. Recurring lessons, worth remembering every session: (1) Owned_Paths must never contain a parenthetical with a comma (hooks/lib.js's naive comma-split parser corrupts it); (2) dispatch.ps1 reuses a stale, already-merged branch for a fresh task claim — always check `git status --short --branch` in the target worktree and manually reset to a fresh branch off origin/master before dispatching a unit whose prior task just merged; (3) a PLAN.md note appended after a task's **Updated_At:** field gets swallowed into that field by the parser — always add new notes to Progress_Notes before the terminal fields (Artifacts/Test_Evidence/etc.), never after Updated_At; (4) a builder's Status must be `in_progress`/`claimed`/`needs_review` for the territory-precommit hook to accept its commits — to land a genuine partial fix on a task you're about to mark `blocked`, flip Status to `in_progress` for that one commit, then flip it back; (5) Windows `SetEnvironmentVariable(..., \"User\")` never reaches an already-running process tree, INCLUDING this session's own long-lived PowerShell tool process even on a fresh explicit registry read (confirmed by hash comparison, 2026-09-06/07 twice) — for anything credential-sensitive, spawn a genuinely fresh `powershell.exe` subprocess (e.g. via the Bash tool) rather than trusting the persistent PowerShell tool session to see a just-rotated value; (6) verify infra claims empirically, from a genuinely independent vantage point, before trusting them — this session's own DOCKER-USER rule looked correctly applied and still didn't work, and the real bug (NAT-before-FORWARD port rewriting) only surfaced by reading the full `nft list ruleset` dump and cross-checking with an unrelated external port-checker, not by reasoning about the rule syntax alone; (7) NEVER read a credential-bearing env var or config value with a command whose output is not redirected/captured away from the visible tool result (`$env:X`, `cat` on a secrets file, `echo $VAR`) — always pipe through a length check, a hash, or a registry-only read scoped to a variable, exactly as this file's recorded incidents prove is easy to get wrong even when actively trying to be careful; (8) 2026-09-08, refining (5): even within one genuinely fresh `powershell.exe -NoProfile` invocation, `$env:DATABASE_URL` returned a STALE value immediately after `[Environment]::SetEnvironmentVariable(..., 'User')` had just written a new one, while `[Environment]::GetEnvironmentVariable('DATABASE_URL', 'User')` in an equally fresh process correctly read the new value straight after — confirmed by a live connection test that failed against the `$env:`-sourced value and succeeded against the registry-direct one. `$env:X` reads whatever environment block the process was handed at spawn, which can apparently still be stale even for a brand-new process on this machine; `[Environment]::GetEnvironmentVariable(name, 'User')` reads the registry directly and was reliable both times it mattered. Prefer the explicit registry-read form for anything just rotated. NEW 2026-09-09T17:21Z: TASK-229/230/231/232/233/234 filed — infrastructure and mobile follow-up gaps surfaced while diagnosing a live outage (control-api stale build + worker never started; root broker fail-closed cause was this session's own uncommitted capability-registration miss, fixed same session) and while answering a direct user request for a full untracked-work inventory. TASK-229 (no process supervision) and TASK-230 (no latency monitoring) are the two most consequential — both are the kind of gap that looks fine until it silently is not. UPDATE 2026-09-11T21:05Z: TASK-229/230/231/232/233 executed and verified live per the user's explicit \"EXECUTE THESE\" directive (229/230/231/232/233 done, 234 blocked on two independent upstream/scope reasons — see its own Blocked_Reason). Backlog is now just TASK-228 and TASK-234. Two new, real findings surfaced during execution, both recorded in their own tasks rather than silently worked around: (1) the live worker process and the test suite now contend for the same pg-boss queue in the shared dev database (TASK-229's Progress_Notes, relevant to TASK-162/231); (2) TASK-231's cleanup is deliberately conservative and does not eliminate the shared \"basileia\"-tenant test pollution, only the unambiguously-fixture-shaped remainder. CRITICAL, FOUND 2026-09-12T10:15Z: the global capability kill-switch (\"OIKONOMOS_CAPABILITIES_ENABLED\", checked first in every broker decision) was unset everywhere in this environment, meaning every governed tool call in production had been silently denied (\"capability.disabled\") system-wide, not just for TASK-214 -- see TASK-214's own Progress_Notes for the full account. Set persistently at User scope and both live services restarted onto it. If tool use still looks broken after this, check that value first before assuming a new defect."
 ---
 
 # Project Plan
@@ -4868,7 +4868,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** low
 **Spec_References:** Surfaced during TASK-143's adversarial review (2026-09-05, confirmed independently twice, by Codex CLI and a separate verification pass): `createGatedSubprocessProviders` (services/worker/src/subprocessProviders.ts) and everything it builds (`CodexProvider`/`GrokProvider`, ADR-011's multi-provider support) has **zero non-test call sites anywhere in this repository**. The entire Codex/Grok subprocess-routing feature — not just its budget enforcement — has never been wired into any real chat/task execution path; `chatRunDriver.ts`, the actual production driver, only ever constructs the Claude Agent SDK `query()` path. This predates TASK-143 entirely and is a pre-existing product gap, not something TASK-143 broke or could fix within its own Owned_Paths (confirmed: an attempted fix inside TASK-143 was correctly blocked by the territory firewall). TASK-143's budget enforcement is correctly built and will engage automatically the moment this task wires a real call site — this task is the missing prerequisite, not new budget work.
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, packages/db/src/routines.ts
-**Depends_On:** TASK-163, TASK-170, TASK-175, TASK-182
+**Depends_On:** TASK-163, TASK-170, TASK-175, TASK-182, TASK-244, TASK-246, TASK-247
 **Description:** Investigate first: why does this feature exist with zero callers — was it built ahead of a product decision that was never finalized, or is routing selection meant to live somewhere not yet built (e.g. a role/routine-level provider choice)? Ground the design in a real, current product need before wiring anything — do not wire a real call site just to satisfy a liveness check if there's no actual use case driving it yet. If a real need exists (e.g. routing certain routines through Codex/Grok instead of Claude), design and implement the actual selection/construction call site, passing `budget: {...}` (never `unsafeAllowUnbudgeted: true`) so TASK-143's enforcement is live from day one. If no real product need exists yet, say so honestly and consider whether this feature should be built out at all right now, rather than force a call site to exist. **[ORCH 2026-09-05T21:20:00Z] Sequenced after TASK-175 (carve) and TASK-182 (routine parity rewrites packages/db/src/routines.ts and routineJob.ts — a per-routine provider choice, if it exists, belongs on the schema TASK-182 lands).**
 **Owned_Paths note (ORCH, 2026-09-05):** rewritten from an earlier "TBD at decompose time — likely..." draft — that free-text prefix breaks `hooks/territory-precommit.js`'s parser (discovered live on TASK-166), which then blocks every commit as "outside territory" even for genuinely-listed files. Always author Owned_Paths as a clean comma-separated path list; put uncertainty in the Description, never in this field. The paths above are ORCH's best grounding, not a final decompose — confirm/widen at start via the normal blocked→triage flow if reality differs.
 **Acceptance_Criteria:**
@@ -7047,3 +7047,369 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-12T08:50:00Z
+
+### TASK-236
+**Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §2.1–§2.7; specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §1
+**Owned_Paths:** apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/chat/**, apps/dashboard/src/lib/realtime.ts, apps/dashboard/src/lib/realtime.test.ts, apps/dashboard/src/lib/workspaceState.ts, apps/dashboard/src/lib/workspaceState.test.ts, apps/dashboard/src/App.tsx, apps/dashboard/src/App.test.tsx
+**Depends_On:** —
+**Description:** Fix the four confirmed dashboard defects and the page-boundary gap with one controlled state module. Today `ChatPage.tsx:116` and `ChatShell.tsx:54-64` each own `activeBotId`; the parent's `handleSelectBot` (`ChatPage.tsx:177-191`) never calls its own setter, so the SSE effect (`ChatPage.tsx:219-253`) and the routines lookup stay on the first thread while the child renders another. `isBotResponding`/`pendingSinceRef` are one value for all threads (`ChatPage.tsx:119,125,179-181`). `ComposeBox` holds one draft, never remounts on switch, and clears before the void `handleSend` resolves (`ComposeBox.tsx:18-25`, `ChatPage.tsx:297`), so a failed POST loses the text. `ChatPage.tsx:292` passes `members={[]}` and the Members tab is the right panel's default, so it is permanently empty; the sidebar's create-bot dialog works but the thread list is never refreshed after creation.
+
+  Approach: introduce `apps/dashboard/src/lib/workspaceState.ts` (a reducer/hook keyed by threadId holding `messages`, `pending`, `draft`, `lastSeenMessageId`) owned by `ChatPage`; make `ChatShell`/`ComposeBox` fully controlled (`activeThreadId`, `draft`, `onDraftChange` props; no internal `useState` copies). Merge messages by id and never let a slower history fetch overwrite streamed messages. Add `/workspace/:threadId` in `App.tsx`; `/` redirects to the most recent thread. Fetch the roster (`listRoles()` already returns it — `ChatPage.tsx:153` discards it) and refresh threads after create. Keep tab close, run cancel, routine pause and mark-read as distinct actions (§1). Do NOT touch `lib/api.ts`, `AuthContext.tsx` or `LoginPage.tsx` — those belong to TASK-239/241, which follow this task with the same owner.
+**Acceptance_Criteria:**
+- [ ] Exactly one component owns the active thread id; `ChatShell` and `ComposeBox` have no internal copy of it (grep: no `useState` for activeBotId/activeThreadId below `ChatPage`). (§2.1)
+- [ ] Switching A→B→C→A in a three-thread fixture: the rendered transcript, the open SSE stream URL, the composer's send target and the routines panel's role all change together on every switch — asserted in `ChatPage.test.tsx` with a multi-thread fixture and a fake stream. (§2.1, §2.7)
+- [ ] Pending/'responding' state is per thread: a bot frame arriving on thread B while A is active neither clears nor sets A's pending state; reopening B shows B's state. (§2.2)
+- [ ] Drafts are per thread, kept in memory only: text typed in A is absent from B and present again on returning to A; a failed `POST /threads/:id/messages` (fake 500) leaves the draft and shows an error; a 2xx clears only that thread's draft. (§2.3)
+- [ ] A history response that resolves after a streamed message arrived does not remove the streamed message; messages are deduplicated by id. Switching threads closes the previous stream (asserted on the fake reader's cancel). (§2.4)
+- [ ] The Members panel shows the server roster for the active thread; creating a bot or group from the sidebar refreshes the thread list without reload. (§2.5)
+- [ ] `/workspace/:threadId` renders that thread; a 404 renders a not-found state; `/` redirects to the most recent thread or empty state. (§2.6)
+- [ ] `pnpm --filter @oikonomos/dashboard test`, typecheck and build green; full `pnpm -r test` run recorded in Test_Evidence.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-237
+**Title:** Workspace-1 — session and workspace-summary API: GET /auth/me, POST /auth/logout, GET /workspace/summary, build SHA on /health, stale liveAgent header
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.1, §6.2; ORCH_REVIEW/DISPOSITION_MATRIX.md rows C1, C3, G2, I2
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/auth.ts, services/control-api/src/auth.test.ts, services/control-api/src/openapi.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/liveAgent.routes.ts, services/control-api/src/session.routes.test.ts, services/control-api/src/workspace.routes.test.ts, packages/db/src/workspaceSummary.ts, packages/db/src/workspaceSummary.test.ts, packages/db/src/index.ts, infra/postgres/migrations/023_workspace_summary_indexes.up.sql, infra/postgres/migrations/023_workspace_summary_indexes.down.sql
+**Depends_On:** —
+**Description:** Three small routes and one bounded projection. (a) `GET /auth/me` → 200 `{tenantId, kind: 'service'|'user', expiresAt}` for a valid `control_api_session` cookie or bearer, 401 otherwise — the cookie is `HttpOnly` (`auth.ts:75-77`) so the dashboard cannot self-check and today always starts logged out. (b) `POST /auth/logout` → sets the clearing cookie (`auth.ts:80` already builds it), 204. (c) `GET /workspace/summary` → one row per thread the principal owns (reuse `findTenantOwnedThread`'s ownership rule; a group thread is owned only if every member role is): `{threadId, latestRun: {runId, status}|null, pendingApprovals, lastActivityAt}`. Derive `latestRun` from the thread's newest `messages.run_id` joined to `runs`, and `pendingApprovals` from `approvals` with `status='pending'` on that run — no new association table. Put the SQL in `packages/db/src/workspaceSummary.ts` behind a port on `ChatDependencies` in `ports.ts` (interface + database-backed implementation only; do not touch the `runChatTask` composition at `ports.ts:393`, TASK-238 owns that next). Add an index migration only if `EXPLAIN` shows a seq scan on `messages(run_id)` or `approvals(run_id,status)`; record the plan in Progress_Notes either way. (d) `GET /health` gains `buildSha` (read from `OIKONOMOS_BUILD_SHA` env or `git rev-parse` at start, never at request time). (e) Replace the stale paragraph at `liveAgent.routes.ts:35-44` that says production wiring is deferred — `index.ts:42` wires it; this is a comment-only edit in that file. Tests go in new files (`session.routes.test.ts`, `workspace.routes.test.ts`) — `chat.routes.test.ts` belongs to blocked TASK-162, do not edit it. 404-never-403 discipline throughout.
+**Acceptance_Criteria:**
+- [ ] `GET /auth/me` returns 200 with tenant id and expiry for a session minted by `/auth/login` and by `/auth/google` (fake verifier), 401 with no body detail for a missing, expired or tampered cookie. (§3.1)
+- [ ] `POST /auth/logout` returns the clearing `set-cookie` header; a subsequent `/auth/me` with the old cookie is 401. (§3.2)
+- [ ] `GET /workspace/summary` returns exactly one row per owned thread with `latestRun`, `pendingApprovals`, `lastActivityAt`; a thread with no runs has `latestRun: null`; another principal's threads never appear (real-Postgres two-principal test, FK-ordered cleanup in `finally`). (§4.1)
+- [ ] The summary query touches no message bodies and is bounded to the principal's threads; the `EXPLAIN` output is pasted in Progress_Notes and any added index has an up/down migration pair. (§4.1)
+- [ ] `GET /health` includes `buildSha`; OpenAPI documents all new routes. (§6.2)
+- [ ] The stale wiring paragraph in `liveAgent.routes.ts` is gone; `liveAgent.routes.test.ts` (unowned, untouched) still passes.
+- [ ] control-api and db suites green via their package scripts; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-238
+**Title:** Workspace-1 — run concurrency gate: global cap of two executing runs, per-role serialisation, visible queued reason, liveness assertion
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §5.1–§5.4; CLAUDE.md control-liveness rule; ADR-005
+**Owned_Paths:** services/worker/src/runConcurrency.ts, services/worker/src/runConcurrency.test.ts, services/worker/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/control-api/src/index.ts
+**Depends_On:** TASK-237
+**Description:** No cap or serialisation exists today: control-api fires runs as `void deps.runChatTask(...)` (`app.ts:1738,1756,2131`) through `ports.ts:393` `runChatTask: (request) => chatRunDriver.run(request)`; pg-boss carries only heartbeat and routine-poll; the budget gate is documented TOCTOU (`subprocessProviders.ts:109-122`). Owner decision D4: two concurrent runs, per-role serialisation. Build `services/worker/src/runConcurrency.ts`: an in-process gate `createRunGate({maxConcurrent: 2})` exposing `run(roleId, fn)` that serialises per role and caps globally, FIFO, never drops, and emits a `run.queued` audit event (run id, role id, position, reason `concurrency.cap`) when it queues — that event is the liveness evidence. Wrap the `runChatTask` composition in `ports.ts` with the gate (this task owns `ports.ts` after TASK-237 merges). The queued reason must be visible in the run's audit trail. Group fan-out (`groupFanout.ts`) goes through the same `runChatTask` port and is therefore covered; assert it. Do not change `runChatTask`'s signature. Sequenced after TASK-237 because both touch `ports.ts`.
+**Acceptance_Criteria:**
+- [ ] With the gate at 2, three runs submitted for three roles: two start immediately, the third starts only after one finishes; asserted with controllable fake `runChatTask` promises. (§5.1, §5.3)
+- [ ] Two runs for the same role never execute concurrently even when the global cap has room. (§5.2)
+- [ ] A queued run is never dropped: submitting ten runs completes all ten in FIFO order per role. (§5.3)
+- [ ] Liveness: the third submission produces a `run.queued` audit event with reason `concurrency.cap`; a separate test builds the production `ports.ts` composition and proves the gate is in the path by observing that event, not by inspecting config. (§5.4)
+- [ ] Group-thread fan-out runs are subject to the same gate (test through `deliverBotToBotMessage` or the fan-out port). (§5.2)
+- [ ] worker and control-api suites green; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-239
+**Title:** Workspace-1 — dashboard session bootstrap, logout, summary poll, blocked-reason surfacing
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.2, §4.3, §1
+**Owned_Paths:** apps/dashboard/src/lib/AuthContext.tsx, apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/LoginPage.tsx, apps/dashboard/src/pages/LoginPage.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/chat/**, apps/dashboard/src/lib/workspaceState.ts, apps/dashboard/src/lib/workspaceState.test.ts
+**Depends_On:** TASK-236, TASK-237
+**Description:** Consume TASK-237's routes from the controller TASK-236 built. `AuthContext` calls `GET /auth/me` on load and is authenticated only on a 200 (today `isAuthenticated` starts `false` on every load, `AuthContext.tsx:6-15,25`); a logout button calls `POST /auth/logout` and drops all in-memory workspace state including drafts. Add `getWorkspaceSummary()` to `lib/api.ts` and poll it on an interval (default 15 s, configurable) and on window focus; the active thread keeps its SSE stream, background threads get badges (working / waiting approval / blocked / unread) from the summary. Render the blocked reason for a workspace whose latest run is `waiting_approval` or `failed`: for approvals link to the existing inline card; for a failed run show the deterministic reason string from the run's terminal audit event (fetch via the existing run-detail/evidence client) and offer only retry (re-send) — never invented text. Show the dashboard build SHA in the footer. Same owner as TASK-236; sequential.
+**Acceptance_Criteria:**
+- [ ] Reloading with a valid cookie lands on the workspace without the login screen; reloading with none shows login; logout clears drafts and pending state and returns to login. (§3.1, §3.2)
+- [ ] Summary poll runs on the interval and on focus, is paused while the tab is hidden, and never opens a second SSE stream. (§4.2)
+- [ ] A background thread whose latest run is `waiting_approval` shows a badge and a link that opens that thread's approval card; a `failed` run shows the audit reason string verbatim and a retry action. (§4.3)
+- [ ] A `capability.disabled` or `budget.*` deny reason is displayed as the blocker with no additional generated explanation. (§4.3)
+- [ ] `ChatPage.test.tsx` covers bootstrap-authenticated, bootstrap-unauthenticated, summary badge rendering and logout state drop with fake HTTP. (§2.7)
+- [ ] dashboard test/typecheck/build green; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-240
+**Title:** Workspace-1 — release environment: single HTTPS origin, required-config check, isolated test database script, deploy/rollback runbook
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §6.1, §6.3, §6.4, §6.5; docs/runbooks/service-supervision.md
+**Owned_Paths:** infra/compose/**, scripts/test-isolated.ps1, scripts/test-isolated.sh, scripts/check-config.mjs, docs/runbooks/release-workspace-1.md, docs/runbooks/service-supervision.md, apps/dashboard/vite.config.ts
+**Depends_On:** —
+**Description:** ORCH executes this directly (owner decision D6). (a) One origin: a reverse proxy on the workstation (Caddy or nginx binary under `infra/compose/`, config committed, no secrets) serving `apps/dashboard/dist` and proxying `/auth`, `/threads`, `/roles`, `/runs`, `/approvals`, `/workspace`, `/health` and SSE (`/threads/:id/stream`, buffering off) to `:3000` over the Tailscale address, HTTPS via Tailscale cert or a local CA, so the `Secure; SameSite=Strict` cookie works. (b) `scripts/check-config.mjs`: lists every required variable by name with present/absent only — values never printed — including `OIKONOMOS_CAPABILITIES_ENABLED`, `DATABASE_URL`, the vault key ref, provider keys, `OIKONOMOS_BUILD_SHA`; exits non-zero on any absent. (c) Isolated tests: create a second local database (`oikonomos_test`) in `docker-compose.local.yml`; `scripts/test-isolated.ps1/.sh` stops the live worker via the watchdog's own mechanism, runs `pnpm -r test` with `DATABASE_URL` pointed at the test database, and lets the watchdog restart the worker. No test code changes. (d) `docs/runbooks/release-workspace-1.md`: build (record SHAs), deploy, verify (`/health` buildSha, config check), rollback (previous build dir kept; additive migrations only; re-verify identity + one safe workflow). Update `service-supervision.md` to state the logon dependency as a disclosed limitation. Dashboard build embeds the SHA via `vite.config.ts` `define`.
+**Acceptance_Criteria:**
+- [ ] A browser on the Tailscale network loads the built dashboard and completes login, SSE and an approval decision on one origin; the cookie is sent (observed in devtools) with no CORS configuration. (§6.1)
+- [ ] `node scripts/check-config.mjs` prints names and present/absent only; a deliberately unset `OIKONOMOS_CAPABILITIES_ENABLED` makes it exit non-zero; its output contains no value fragments (asserted by a grep in the runbook procedure). (§6.3)
+- [ ] `scripts/test-isolated.ps1` runs `pnpm -r test` against `oikonomos_test` with the live worker stopped and the watchdog restoring it afterwards; the run's database name appears in the recorded output. (§6.4)
+- [ ] The runbook's rollback procedure was executed once for real (deploy N, roll back to N-1, re-verify login and one chat turn) and the result is recorded in Progress_Notes. (§6.5)
+- [ ] `service-supervision.md` states that the host must be on and logged in, and that no 24/7 claim is made. (D5)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-241
+**Title:** Workspace-1 — dashboard Google sign-in via Firebase web SDK against POST /auth/google (shared web/mobile identity)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.3; TASK-172 and TASK-173 Progress_Notes; docs/runbooks/firebase-android-setup.md
+**Owned_Paths:** apps/dashboard/src/lib/AuthContext.tsx, apps/dashboard/src/pages/LoginPage.tsx, apps/dashboard/src/pages/LoginPage.test.tsx, apps/dashboard/src/lib/firebase.ts, apps/dashboard/src/lib/firebase.test.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/package.json, pnpm-lock.yaml, apps/dashboard/.env.example
+**Depends_On:** TASK-239
+**Description:** The server side exists (`POST /auth/google` verifies a Firebase ID token and mints a UID-tenant session, `app.ts:947-961`, TASK-172); the dashboard has zero Firebase code and logs in with the shared `CONTROL_API_TOKEN`, landing in the `basileia` service tenant — so web and Android see different data. Add the Firebase web SDK (pin exact version), a `lib/firebase.ts` initialised from `VITE_FIREBASE_*` env (public web config only — no server secrets), a "Sign in with Google" button on `LoginPage` that obtains the ID token and calls a new `loginWithGoogle(idToken)` in `api.ts`. Keep the token login available behind an "operator" toggle. `AuthContext` from TASK-239 already bootstraps from `/auth/me`. This task alone may touch `pnpm-lock.yaml` and `apps/dashboard/package.json` in this wave. Acceptance case A20 becomes runnable when this merges.
+**Acceptance_Criteria:**
+- [ ] Google sign-in on the dashboard yields a session whose `/auth/me` tenant equals the Android app's tenant for the same Google account (recorded with both clients against the same control-api). (§3.3)
+- [ ] A dashboard signed in via Google lists the same threads the Android app lists for that account. (§3.3)
+- [ ] The Firebase web config contains only public client fields; the runbook names the `VITE_FIREBASE_*` variables. (§3.3)
+- [ ] `LoginPage.test.tsx` covers the Google path with a fake ID-token provider and the operator token path. (§2.7)
+- [ ] dashboard test/typecheck/build green; lockfile change limited to the new dependency; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-242
+**Title:** Workspace-1 — run completion receipt API: GET /runs/:id/receipt
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §7.1; ORCH_REVIEW/DISPOSITION_MATRIX.md row F4; ADR-004
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/ports.ts, services/control-api/src/receipt.routes.test.ts, packages/db/src/runReceipt.ts, packages/db/src/runReceipt.test.ts, packages/db/src/index.ts
+**Depends_On:** TASK-238
+**Description:** A read-only projection over what already exists per run: final bot message (`messages` where `run_id` = id, role `bot`, newest), audit actions (`audit_events` for the run: capability, tier, verdict, reason), approvals used (`approvals` for the run with status), spend (`spend_records` for the run: sum `cost_usd`, tokens, or `unavailable` when no rows), unresolved approvals (`status='pending'`), and run status/timestamps. Tenant-scoped through the run's task; 404-never-403. Query in `packages/db/src/runReceipt.ts`, port on `ChatDependencies`, route + OpenAPI in `app.ts`. Spend must state `actual` when rows exist and `unavailable` otherwise — never estimated. Do not touch `chatRunDriver.ts` (the failure-path `spend.unrecorded` marker, §7.4, is folded into TASK-244 which owns that file). Sequenced after TASK-238 (same owner, `ports.ts`/`app.ts`).
+**Acceptance_Criteria:**
+- [ ] `GET /runs/:id/receipt` returns final message, audit actions, approvals used, unresolved approvals, spend `{kind:'actual', costUsd, tokens}` or `{kind:'unavailable'}`, and run status, for a run with all of these present in a real-Postgres fixture. (§7.1)
+- [ ] A run belonging to another tenant returns 404 with no metadata. (§7.1)
+- [ ] A run with no `spend_records` rows reports `unavailable`, never zero. (§7.1)
+- [ ] OpenAPI documents the route; db and control-api suites green; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-243
+**Title:** Workspace-1 — dashboard Results and Work views: receipt panel, routines with pause/resume/test-run and next fire (UTC)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §7.2, §7.3, §1
+**Owned_Paths:** apps/dashboard/src/components/workspace/**, apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, apps/dashboard/src/App.tsx, apps/dashboard/src/App.test.tsx
+**Depends_On:** TASK-239, TASK-241, TASK-242
+**Description:** Two views inside a workspace, switched by a segment in the URL (`/workspace/:threadId/results`, `/work`). Results: render TASK-242's receipt for the workspace's latest completed run, distinguishing completed action, prepared draft and proposed next action, with links to the existing run-detail and evidence pages. Work: list the workspace role's routines via the existing `GET /roles/:roleId/routines` (already partly in `RightPanel`), with pause / resume / test-run calling the existing routes (`POST /routines/:id/pause|resume|test-run`), the test-run warning surfaced verbatim, and next fire shown with an explicit "UTC" label (no time-zone support exists — TASK-247). Pausing must not imply cancelling a running run (§1); show the latest run state from the summary alongside.
+**Acceptance_Criteria:**
+- [ ] Results view shows receipt fields from a fake `GET /runs/:id/receipt`, with `unavailable` spend rendered as such and unresolved approvals listed with links. (§7.2)
+- [ ] Work view lists routines with next fire labelled UTC; pause/resume/test-run call the real routes and reflect the returned state; the test-run warning text is shown before confirming. (§7.3)
+- [ ] Pausing a routine while a run is active leaves the run's state unchanged in the UI. (§1)
+- [ ] Route segments `/results` and `/work` deep-link correctly and fall back to chat. (§2.6)
+- [ ] dashboard tests cover both views with fake HTTP; `pnpm -r test` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-244
+**Title:** Workspace-1 — Gemini lane: terminate the turn immediately on human_takeover_required, incl. batched tools and retries; spend.unrecorded on failure path (protected path)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.1, §7.4; ADR-010 §6 enforced set; CLAUDE.md protected paths and different-model review; ADR-005
+**Owned_Paths:** packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Today `onHumanTakeover` only sets a closure flag (`chatRunDriver.ts:648-669`) checked after `await adapter.run(prompt)` returns (`:700,:744`), because `gemini.ts`'s `functionResponseFor` swallows tool exceptions; `geminiToolExecutors.ts:197-217` documents the window in which the model can issue one more tool call. Within one batch nothing re-checks the flag between executions (`:486-489, :517-520, :562-565`). Also the comment claims the audit event is recorded immediately; it is recorded only in the outer catch (`chatRunDriver.ts:480-487`). Required: a terminal signal path from executor → provider loop that stops dispatch of any remaining tool in the batch and any retry, ends the turn, and records the `human_takeover_required` audit event at detection. Keep the T2 ceiling and stage limits untouched. Fold in §7.4: emit the `spend.unrecorded` marker on the failure path as well as success (`chatRunDriver.ts:431,458`). PROTECTED PATH (`packages/harness-factory/**`): author CX9 (GPT); review by ORCH on an Anthropic model satisfies the different-model rule; the review must include an adversarial pass on whether any route remains for a tool call after detection. Independent of the dashboard tasks; dispatch after CX9's Workspace-1 API tasks unless capacity appears earlier.
+**Acceptance_Criteria:**
+- [ ] A challenge detected by tool 1 of a three-tool batch prevents tools 2 and 3 from executing (executor spies assert zero calls) and ends the turn with the park signal. (§9.1)
+- [ ] A retry or queued follow-up call after detection does not execute; the run parks exactly once. (§9.1)
+- [ ] The `human_takeover_required` audit event is written at detection time, before the turn ends; the stale comment is corrected. (§9.1)
+- [ ] Liveness: a test drives the production `chatRunDriver` Gemini path with a fake adapter and proves the stop is wired, keyed on the audit event and the absent tool calls. (ADR-005)
+- [ ] A run that fails before any spend tap reports produces a `spend.unrecorded` audit marker. (§7.4)
+- [ ] harness-factory and worker suites green; lint, typecheck, banned-modes clean; `pnpm -r test` recorded; adversarial review recorded in REVIEW.md.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-245
+**Title:** Workspace-1 — acceptance execution on the integrated candidate, REVIEW.md backfill for TASK-214/224/227–235, decision sheet
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §8.1–§8.3; GROKBOT-RESEARCH-DOCS/OIKONOMOS_RELEASE_ACCEPTANCE_2026-09-16.md; owner decision D3
+**Owned_Paths:** REVIEW.md, docs/acceptance/**, docs/runbooks/release-workspace-1.md
+**Depends_On:** TASK-236, TASK-237, TASK-238, TASK-239, TASK-240
+**Description:** ORCH executes. Run the reworded cases A01–A19 and C01 (mobile) on a recorded candidate SHA built and deployed per TASK-240's runbook, against the isolated database where a database is needed for verification and against the real services for end-to-end cases. Paid runs draw on the R60 allowance (D3) with a ledger from `spend_records`; stop at the allowance. Record per case: SHA, build ids, principal, provider/model, run ids, expected, observed, cost or unknown, cleanup. A20 runs only if TASK-241 has merged; A12's timezone half, A15's in-flight resume and C02–C05 are NOT RUN until TASK-247, TASK-246 and TASK-235 respectively. Backfill REVIEW.md lines for TASK-214, 224, 227, 228, 229, 230, 231, 232, 233, 234, 235 from their PLAN.md evidence before citing them. Complete the decision sheet with the withheld-claims list from §10; a hold condition (wrong recipient, cross-principal read, secret exposure, replay, lost accepted work, missing evidence) blocks the "internal beta" label regardless of pass counts.
+**Acceptance_Criteria:**
+- [ ] Every case in §8.1 has a recorded result (pass / fail / not run with reason) with the evidence fields listed, in `docs/acceptance/workspace-1/`. (§8.1)
+- [ ] Total paid spend during acceptance is reported from `spend_records` and is ≤ R60. (D3)
+- [ ] REVIEW.md has an entry for each of TASK-214, 224, 227–235. (§8.2)
+- [ ] The decision sheet lists candidate SHAs, actual observation window, live-viewer status, take-over status, host dependency, providers/tiers/connectors, latency samples, spend, known limitations, rollback check, and a decision. (§8.1, §10)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-246
+**Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
+**Owned_Paths:** services/worker/src/jobs/**, services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/ports.ts, services/control-api/src/index.ts, docs/decisions/ADR-016-run-execution-queue.md
+**Depends_On:** TASK-238, TASK-242, TASK-244
+**Description:** Today `reconcileInterruptedRuns` (`runLifecycle.ts:224-250`) → `resumeInterruptedRun` (`:47-55`) → `resumeRun` is a status flip; pg-boss registers only heartbeat and routine-poll (`workerJobQueue.ts:6-7`); chat runs are in-process promises fired from control-api. A restart loses the in-flight turn. Design first: an ADR (protected path, different-model review) deciding queue-driven run execution — job per run, singleton per run id, the TASK-238 gate becomes the consumer's concurrency, reconciliation re-enqueues rather than re-labels, governed side effects stay exactly-once via the approval nonce, anything else re-executed must be idempotent or parked. Build after the ADR is accepted. Unblocks the full A15 case.
+**Acceptance_Criteria:**
+- [ ] ADR-016 accepted after different-model review, stating the queue, the re-enqueue rule, and the exactly-once boundary. (§9.2)
+- [ ] Killing the worker during a safe test run and restarting it results in the run reaching a real executor turn and a result, with no duplicate governed side effect (approval consumed once). (§9.2, A15)
+- [ ] A run parked on approval stays parked across restart and resumes only through the normal decide path. (ADR-007)
+- [ ] Liveness: reconciliation emits a `run.requeued` audit event; a test keys on it.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-247
+**Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.3; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02
+**Owned_Paths:** packages/db/src/routines.ts, packages/db/src/routines.test.ts, infra/postgres/migrations/024_routine_timezone.up.sql, infra/postgres/migrations/024_routine_timezone.down.sql, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/worker/src/routineTool.ts, services/worker/src/routineTool.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
+**Depends_On:** TASK-242, TASK-246
+**Description:** No time zone exists on `role_routines`; cron is evaluated in process time and `nextFireAt` is shown bare. Add `timezone text NOT NULL DEFAULT 'UTC'` (IANA name, validated), use it in `nextFireAtFromCron` and the scheduler, accept it on create/patch, return it on read. Dashboard/mobile display follow separately. Sequenced after TASK-242 (`app.ts`).
+**Acceptance_Criteria:**
+- [ ] A routine created with `timezone: 'Africa/Johannesburg'` and schedule `0 9 * * *` has `nextFireAt` at 07:00Z. (§9.3)
+- [ ] Invalid IANA names are rejected with 400; default is UTC; existing rows migrate to UTC. (§9.3)
+- [ ] The scheduler fires by the routine's zone (test with a fake clock across a DST boundary for a zone that has one). (§9.3)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-248
+**Title:** Workspace-1 follow-on — web Computer view: read-only live view in the dashboard; interactive only after TASK-235
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.4; TASK-171; TASK-228; TASK-235
+**Owned_Paths:** apps/dashboard/src/components/workspace/computer/**, apps/dashboard/src/lib/liveAgent.ts, apps/dashboard/src/lib/liveAgent.test.ts, services/control-api/src/liveAgent.routes.ts, services/control-api/src/liveAgent.routes.test.ts
+**Depends_On:** TASK-243, TASK-245
+**Description:** Read-only first. Prerequisite evidence: acceptance case C01 (TASK-245) must have passed on mobile — the PTY id is assumed equal to the sandbox id (`ports.ts:310-317`) and no PTY-create exists in `packages/sandbox-client`; if C01 fails, this task is blocked on that finding, not built around it. Add an origin check to the WebSocket upgrade in `liveAgent.routes.ts` (the web client is same-origin behind TASK-240's proxy), a dashboard client mirroring the mobile `LiveAgentClient`, and a Computer view showing connection state, last update time, and the stream. Interactive input waits for TASK-235 (CDP hand-off + exclusivity proof); the view must say so explicitly rather than showing a disabled control.
+**Acceptance_Criteria:**
+- [ ] The Computer view shows live output from the active role's real run (C01 evidence re-recorded from the web client). (§9.4)
+- [ ] A WebSocket upgrade from a foreign origin is rejected; same-origin succeeds. (§9.4)
+- [ ] The view states that interactive control is not available and links nothing that pretends otherwise. (§10)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+
+### TASK-249
+**Title:** Workspace-1 follow-on — hosting ADR and migration of control-api, worker and dashboard to an always-on host with boot-without-logon
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.5; ADR-010; docs/runbooks/service-supervision.md; owner decision D5
+**Owned_Paths:** docs/decisions/ADR-017-application-hosting.md, infra/compose/**, docs/runbooks/**
+**Depends_On:** TASK-240, TASK-245
+**Description:** Owner decision D5 keeps the workstation for now and defers this. `docker-compose.prod.yml` defines Postgres only; the watchdog is a logon-triggered Scheduled Task; `clawsrv` is shared (~20 containers, ~5 GB free) and each browser sandbox reserves 2 GB. Write ADR-017 (protected path, different-model review) choosing the host (dedicated box vs `clawsrv` with headroom checks), process supervision with boot-without-logon, credentials provisioning via the existing `secret://` convention, backup/rollback, and the sandbox reachability path; then execute the migration with a real reboot test. Until this lands, every 24/7 or device-off claim stays withheld (§10).
+**Acceptance_Criteria:**
+- [ ] ADR-017 accepted after different-model review. (§9.5)
+- [ ] A real reboot of the host brings up database, queue, control-api and worker without an interactive login, evidenced by `/health` and a routine firing afterwards. (§9.5)
+- [ ] Existing shared workloads on the chosen host are unaffected (memory/disk headroom recorded before and after). (D5)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T10:10:00Z
+

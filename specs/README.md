@@ -15,3 +15,4 @@ and section numbers (referenced by `Acceptance_Criteria`).
 
 - `OIKONOMOS_CHAT_SURFACE_v1.0.md` — Wave Chat-1 (done) and the Chat-2 deferred list (§8).
 - `OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md` — 2026-09-05 disposition of every Grok Bot capability (have / in-flight / gap G-01…G-09 / defer / reject); decompose input for Wave Office-1. Evidence lives in `docs/research/grok-bot-*`.
+- `OIKONOMOS_WORKSPACE_WAVE_v1.0.md` — 2026-09-12 Wave Workspace-1 (TASK-236…249): web workspace controller, session, summary, concurrency gate, release environment, results/work views, then Gemini immediate-stop, run queue, routine tz, web Computer view, hosting. Derived from the ORCH review of the CX advisory (`GROKBOT-RESEARCH-DOCS/ORCH_REVIEW/`); no release date, full scope.

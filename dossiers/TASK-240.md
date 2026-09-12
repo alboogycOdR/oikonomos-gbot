@@ -1,0 +1,19 @@
+# TASK-240 — Workspace-1 — release environment: single HTTPS origin, required-config check, isolated test database script, deploy/rollback runbook
+
+**Unit:** TBD · **Priority:** high · **Depends_On:** —
+
+## Brief
+ORCH executes this directly (owner decision D6). (a) One origin: a reverse proxy on the workstation (Caddy or nginx binary under `infra/compose/`, config committed, no secrets) serving `apps/dashboard/dist` and proxying `/auth`, `/threads`, `/roles`, `/runs`, `/approvals`, `/workspace`, `/health` and SSE (`/threads/:id/stream`, buffering off) to `:3000` over the Tailscale address, HTTPS via Tailscale cert or a local CA, so the `Secure; SameSite=Strict` cookie works. (b) `scripts/check-config.mjs`: lists every required variable by name with present/absent only — values never printed — including `OIKONOMOS_CAPABILITIES_ENABLED`, `DATABASE_URL`, the vault key ref, provider keys, `OIKONOMOS_BUILD_SHA`; exits non-zero on any absent. (c) Isolated tests: create a second local database (`oikonomos_test`) in `docker-compose.local.yml`; `scripts/test-isolated.ps1/.sh` stops the live worker via the watchdog's own mechanism, runs `pnpm -r test` with `DATABASE_URL` pointed at the test database, and lets the watchdog restart the worker. No test code changes. (d) `docs/runbooks/release-workspace-1.md`: build (record SHAs), deploy, verify (`/health` buildSha, config check), rollback (previous build dir kept; additive migrations only; re-verify identity + one safe workflow). Update `service-supervision.md` to state the logon dependency as a disclosed limitation. Dashboard build embeds the SHA via `vite.config.ts` `define`.
+
+## Spec pointers
+specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §6.1, §6.3, §6.4, §6.5; docs/runbooks/service-supervision.md
+
+Read `specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md` §1 first for the product shape and §10 for what must not be claimed. The independent review that produced this wave (verdict, disposition matrix, execution proposal) is at `E:\DELL-PROJECTS\GROKBOT-RESEARCH-DOCS\ORCH_REVIEW\` — read the rows cited in Spec_References; do not treat the advisory documents themselves as spec.
+
+## Intended approach
+ORCH executes this directly (owner decision D6). (a) One origin: a reverse proxy on the workstation (Caddy or nginx binary under `infra/compose/`, config committed, no secrets) serving `apps/dashboard/dist` and proxying `/auth`, `/threads`, `/roles`, `/runs`, `/approvals`, `/workspace`, `/health` and SSE (`/threads/:id/stream`, buffering off) to `:3000` over the Tailscale address, HTTPS via Tailscale cert or a local CA, so the `Secure; SameSite=Strict` cookie works. (b) `scripts/check-config.mjs`: lists every required variable by name with present/absent only — values never printed — including `OIKONOMOS_CAPABILITIES_ENABLED`, `DATABASE_URL`, the vault key ref, provider keys, `OIKONOMOS_BUILD_SHA`; exits non-zero on any absent. (c) Isolated tests: create a second local database (`oikonomos_test`) in `docker-compose.local.yml`; `scripts/test-isolated.ps1/.sh` stops the live worker via the watchdog's own mechanism, runs `pnpm -r test` with `DATABASE_URL` pointed at the test database, and lets the watchdog restart the worker. No test code changes. (d) `docs/runbooks/release-workspace-1.md`: build (record SHAs), deploy, verify (`/health` buildSha, config check), rollback (previous build dir kept; additive migrations only; re-verify identity + one safe workflow). Update `service-supervision.md` to state the logon dependency as a disclosed limitation. Dashboard build embeds the SHA via `vite.config.ts` `define`.
+
+## Owned_Paths
+infra/compose/**, scripts/test-isolated.ps1, scripts/test-isolated.sh, scripts/check-config.mjs, docs/runbooks/release-workspace-1.md, docs/runbooks/service-supervision.md, apps/dashboard/vite.config.ts
+
+## Work Log
