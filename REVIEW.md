@@ -939,3 +939,13 @@ Attacked, with result:
 5. T2 ceiling and stage limits untouched (`STAGE_TWO_MAXIMUM_TOOL_TIER`, `ABSOLUTE_MAXIMUM_TOOL_TIER` unchanged).
 
 Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0 (harness-factory and worker suites included); lint/banned-modes run as part of the recursive scripts.
+
+## TASK-241 | S5 | approved | first-pass: yes (two AC items deferred to acceptance, see below)
+
+Scope: `git diff master...task/TASK-241-s5` — 10 files, all inside Owned_Paths (`firebase.ts`/`.test.ts`, `LoginPage`, `AuthContext`, `api.ts`, `.env.example`, `package.json`, `pnpm-lock.yaml`, dossier). No PLAN.md edits. Convention miss, non-blocking: commit subjects lack the `[TASK-241]` suffix (only the trailer carries authorship).
+
+Checked against §3.3: `firebase` pinned exactly (12.19.0); `lib/firebase.ts` reads only the four public `VITE_FIREBASE_*` fields and fails with a named `FirebaseConfigError` when any is absent; `signInWithGooglePopup` returns the ID token, which `loginWithGoogle` exchanges at the existing `POST /auth/google`; the operator token login remains behind a toggle (starts open — the builder's documented deviation to keep TASK-236/239's tests, outside its territory, green; accepted). Eight `LoginPage` tests cover the Google path with a fake provider, popup cancellation, server rejection, the operator path, and deep-link return.
+
+Verified, not taken on trust (ORCH): `pnpm install --frozen-lockfile` clean; dashboard typecheck/build green, 124/124. Full `pnpm -r test` on a detached trial merge of master into the branch (the branch predates TASK-238's merge, so its own worktree could not build control-api): green except `packages/db` — one run a `deadlock detected` in `threadContext.test.ts`, the next run the capability-count assertion in `database.test.ts`; both intra-package parallel-file races, both reproduce without this branch (added to TASK-251).
+
+Deferred, not failed: AC1/AC2 (same tenant on web and Android) and AC3's runbook line cannot be proven here — no Firebase **Web app** is registered for the project yet, so the `VITE_FIREBASE_*` values do not exist. ORCH added the variables to `check-config.mjs` and the runbook (7de63ea). The cross-device proof is acceptance case A20 in TASK-245 once the owner provisions the web app; until then the Google button reports `FirebaseConfigError` and the operator login is the supported path.
