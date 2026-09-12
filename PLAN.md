@@ -7050,7 +7050,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §2.1–§2.7; specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §1
@@ -7068,16 +7068,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] The Members panel shows the server roster for the active thread; creating a bot or group from the sidebar refreshes the thread list without reload. (§2.5)
 - [ ] `/workspace/:threadId` renders that thread; a 404 renders a not-found state; `/` redirects to the most recent thread or empty state. (§2.6)
 - [ ] `pnpm --filter @oikonomos/dashboard test`, typecheck and build green; full `pnpm -r test` run recorded in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-236-s5
+**Started_At:** 2026-09-12T10:13:07Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T10:13:07Z
 
 ### TASK-237
 **Title:** Workspace-1 — session and workspace-summary API: GET /auth/me, POST /auth/logout, GET /workspace/summary, build SHA on /health, stale liveAgent header
