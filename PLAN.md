@@ -7050,7 +7050,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §2.1–§2.7; specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §1
@@ -7060,14 +7060,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
   Approach: introduce `apps/dashboard/src/lib/workspaceState.ts` (a reducer/hook keyed by threadId holding `messages`, `pending`, `draft`, `lastSeenMessageId`) owned by `ChatPage`; make `ChatShell`/`ComposeBox` fully controlled (`activeThreadId`, `draft`, `onDraftChange` props; no internal `useState` copies). Merge messages by id and never let a slower history fetch overwrite streamed messages. Add `/workspace/:threadId` in `App.tsx`; `/` redirects to the most recent thread. Fetch the roster (`listRoles()` already returns it — `ChatPage.tsx:153` discards it) and refresh threads after create. Keep tab close, run cancel, routine pause and mark-read as distinct actions (§1). Do NOT touch `lib/api.ts`, `AuthContext.tsx` or `LoginPage.tsx` — those belong to TASK-239/241, which follow this task with the same owner.
 **Acceptance_Criteria:**
-- [ ] Exactly one component owns the active thread id; `ChatShell` and `ComposeBox` have no internal copy of it (grep: no `useState` for activeBotId/activeThreadId below `ChatPage`). (§2.1)
-- [ ] Switching A→B→C→A in a three-thread fixture: the rendered transcript, the open SSE stream URL, the composer's send target and the routines panel's role all change together on every switch — asserted in `ChatPage.test.tsx` with a multi-thread fixture and a fake stream. (§2.1, §2.7)
-- [ ] Pending/'responding' state is per thread: a bot frame arriving on thread B while A is active neither clears nor sets A's pending state; reopening B shows B's state. (§2.2)
-- [ ] Drafts are per thread, kept in memory only: text typed in A is absent from B and present again on returning to A; a failed `POST /threads/:id/messages` (fake 500) leaves the draft and shows an error; a 2xx clears only that thread's draft. (§2.3)
-- [ ] A history response that resolves after a streamed message arrived does not remove the streamed message; messages are deduplicated by id. Switching threads closes the previous stream (asserted on the fake reader's cancel). (§2.4)
-- [ ] The Members panel shows the server roster for the active thread; creating a bot or group from the sidebar refreshes the thread list without reload. (§2.5)
-- [ ] `/workspace/:threadId` renders that thread; a 404 renders a not-found state; `/` redirects to the most recent thread or empty state. (§2.6)
-- [ ] `pnpm --filter @oikonomos/dashboard test`, typecheck and build green; full `pnpm -r test` run recorded in Test_Evidence.
+- [x] Exactly one component owns the active thread id; `ChatShell` and `ComposeBox` have no internal copy of it (grep: no `useState` for activeBotId/activeThreadId below `ChatPage`). (§2.1)
+- [x] Switching A→B→C→A in a three-thread fixture: the rendered transcript, the open SSE stream URL, the composer's send target and the routines panel's role all change together on every switch — asserted in `ChatPage.test.tsx` with a multi-thread fixture and a fake stream. (§2.1, §2.7)
+- [x] Pending/'responding' state is per thread: a bot frame arriving on thread B while A is active neither clears nor sets A's pending state; reopening B shows B's state. (§2.2)
+- [x] Drafts are per thread, kept in memory only: text typed in A is absent from B and present again on returning to A; a failed `POST /threads/:id/messages` (fake 500) leaves the draft and shows an error; a 2xx clears only that thread's draft. (§2.3)
+- [x] A history response that resolves after a streamed message arrived does not remove the streamed message; messages are deduplicated by id. Switching threads closes the previous stream (asserted on the fake reader's cancel). (§2.4)
+- [x] The Members panel shows the server roster for the active thread; creating a bot or group from the sidebar refreshes the thread list without reload. (§2.5)
+- [x] `/workspace/:threadId` renders that thread; a 404 renders a not-found state; `/` redirects to the most recent thread or empty state. (§2.6)
+- [x] `pnpm --filter @oikonomos/dashboard test`, typecheck and build green; full `pnpm -r test` run recorded in Test_Evidence.
 **Branch:** task/TASK-236-s5
 **Started_At:** 2026-09-12T10:13:07Z
 **Progress_Notes:**
@@ -7075,10 +7075,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T11:08:33Z] [SV:S5] Fixed all four dashboard defects + page-boundary gap with one controlled state module. ChatPage is now the single owner of activeThreadId (sourced from new /workspace/:threadId route), workspaceState.ts (new) owns per-thread messages/pending/draft with merge-by-id, ChatShell/ComposeBox are fully controlled (no internal useState), Members panel resolves the roster from listRoles(), and bot/group creation refreshes without a full reload. apps/dashboard: 19 files/107 tests green, typecheck clean, build clean. Full pnpm -r test run: all packages green after building pre-existing unbuilt workspace deps (build-order artifact in this fresh worktree, unrelated to this task); one residual services/worker flake (live-Postgres timeouts/budget test, outside Owned_Paths, reproduced as flaky not code-related) flagged for ORCH triage in the dossier rather than fixed.
 **Artifacts:** apps/dashboard/src/lib/workspaceState.ts, apps/dashboard/src/lib/workspaceState.test.ts, apps/dashboard/src/components/chat/ComposeBox.tsx, apps/dashboard/src/components/chat/ComposeBox.test.tsx, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/ChatShell.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, apps/dashboard/src/components/chat/preview/main.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/App.tsx
 **Test_Evidence:** pnpm --filter @oikonomos/dashboard test: 19 files / 107 tests pass. pnpm --filter @oikonomos/dashboard typecheck: clean. pnpm --filter @oikonomos/dashboard build (tsc+vite): clean. pnpm -r test (full recursive, per CLAUDE.md DEVDEPARTMENT amendment): all 16 other workspace packages/services green after building previously-unbuilt deps (@oikonomos/db, shared, approvals, workspace, worker, gateway-telegram ΓÇö pre-existing build-order gap, zero source edits, none in TASK-236 Owned_Paths); services/worker retains 1-7 intermittent live-Postgres timeout/budget failures reproduced as flaky even in isolation (chatRunDriver.test.ts alone went 44/44 on a clean rerun) ΓÇö documented in dossiers/TASK-236.md for ORCH, not fixed (out of territory).
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH, 2026-09-12T11:30:00Z, REVIEW.md). Territory clean; every §2 criterion verified against the diff and the three-thread test; dashboard 107/107, typecheck/build green; full pnpm -r test green on the isolated DB (worker 242/242, control-api 261/261).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-12T11:08:33Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-12T11:30:00Z
 
 ### TASK-237
 **Title:** Workspace-1 — session and workspace-summary API: GET /auth/me, POST /auth/logout, GET /workspace/summary, build SHA on /health, stale liveAgent header

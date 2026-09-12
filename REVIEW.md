@@ -862,3 +862,13 @@ LOW / non-gating
 - R4 Test_Evidence says "pnpm -r test completed successfully" while the dossier says the db suite was "launched ... before output truncation". Do not claim a full run you did not observe; ORCH runs it anyway.
 
 Approved parts stand; rework is R1 + R2 only. Same branch, same territory.
+
+## TASK-236 | S5 | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-236-s5` — 16 files, all inside Owned_Paths (+ own dossier); two commits with the `[TASK-236]` suffix; no PLAN.md edits on the branch. Territory clean.
+
+Checked against the spec text, not the summary: §2.1 one owner — the active thread is the route param (`/workspace/:threadId`), `ChatShell` and `ComposeBox` are fully controlled and hold no copy (`useState` gone from both; `preview/main.tsx` updated). §2.2 per-thread pending in the `workspaceState` reducer; a bot frame on another thread cannot clear the active one's pending (test). §2.3 drafts per thread in memory, cleared only by `message-sent` after the POST resolves; the failed-send test keeps the draft and shows the error. §2.4 `mergeMessages` by id with stable ordering; history never replaces streamed messages; the A→B→C→A test asserts an `AbortController.abort` on every switch and no history refetch on return. §2.5 roster from `listRoles()` (previously discarded) for single and group threads; `onThreadCreated` refreshes and navigates. §2.6 not-found state derived from the owned thread list (server 404-never-403 preserved), `/` redirects to the most recent thread or the empty state. §2.7 three-thread fixture with a fake stream at the network boundary.
+
+Verified, not taken on trust (ORCH, isolated database via `scripts/test-isolated.ps1 -Root <worktree>`): dashboard typecheck clean, 107/107 (was 84), build green; full `pnpm -r test` green across all 21 packages including worker 242/242 and control-api 261/261.
+
+Non-blocking notes for the next owner (TASK-239, same builder): `draft-changed` dispatches on every keystroke and re-renders the page — fine at this size, watch it when the summary poll lands; `loadedThreadsRef` loads history once per thread and relies on `last-event-id` resume for gaps, which is the intended §2.4 behaviour.
