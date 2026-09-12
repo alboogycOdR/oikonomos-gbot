@@ -7479,7 +7479,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-252
 **Title:** Adversarial review of ADR-018 (bot templates) and ADR-019 (Project entity + manager role) by a non-Anthropic model, per the protected-path rule for docs/decisions/**
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; docs/decisions/ADR-019-project-entity-and-manager-role.md; specs/OIKONOMOS_TEMPLATES_v1.0.md; specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md; CLAUDE.md protected paths; docs/decisions/ADR-014-dynamic-secret-vault.md (review-section format to mirror); docs/decisions/ADR-015-review-fable-2026-09-06.md (format precedent)
@@ -7494,9 +7494,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T12:32:50Z
 **Progress_Notes:**
 - [2026-09-12T11:05:00Z] [ORCH] Filed so the protected-path different-model rule is satisfied before either ADR moves to Accepted. Dispatch after TASK-237's rework and before TASK-238 if CX9 has a gap, else after TASK-242.
+- [2026-09-12T12:49:47Z] [SV:CX9] Both adversarial review files are complete and remain uncommitted in the task worktree; the mandatory territory hook rejects their exact Owned_Paths as protected paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** TOOLING_FAILURE: territory-precommit rejects both exact TASK-252 Owned_Paths as hard-prohibited protected paths; reconcile the protected-review exception or use an authorised protected-path commit mechanism.
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T12:32:50Z
+**Updated_At:** 2026-09-12T12:49:47Z
