@@ -924,3 +924,18 @@ Checked against §7.1: `getRunReceipt` scopes ownership through `runs → tasks.
 Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0. Tests: route test with a tenant-rejecting port stub; two real-Postgres integration tests (populated receipt with actual spend; no-spend → unavailable).
 
 Note for TASK-243's owner: `finalMessage` is null for a run whose reply was never persisted; the UI must render that state, not assume a body.
+
+## TASK-244 | CX9 (GPT author) / ORCH on Claude Fable 5.1 (adversarial reviewer, different model) | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-244-cx9` — gemini.ts (+30), gemini.test.ts (+34), chatRunDriver.ts (+47), chatRunDriver.test.ts (+21), dossier. All inside Owned_Paths; `[TASK-244]` suffix; no PLAN.md edits. PROTECTED PATH `packages/harness-factory/**`: this review is the different-model adversarial review CLAUDE.md requires.
+
+Mechanism: each executor response carries a `stopped` flag (stripped before it is sent to Gemini); a result with `human_takeover_required === true` sets it, and `runTurn` returns `{stopped: true}` **before** dispatching the next function call of the batch and without sending a follow-up request. The detecting Steel executor now records the `human_takeover_required` audit event itself (awaited) before returning; the driver's outer catch no longer records a second event for Gemini. §7.4: `noteFailureUnrecordedSpend` emits `spend.unrecorded` on the failure path when no tap report exists.
+
+Attacked, with result:
+1. Can a challenge reach the loop by a path that does not set `stopped`? Every Steel executor (`steel_navigate`/`_snapshot`/`_act`, `geminiToolExecutors.ts:488-489, 519-520, 564-565`) *returns* the takeover record; none throws `HumanTakeoverRequiredError` into `functionResponseFor`'s catch (which would produce `stopped: false`). Verified by reading, not by the test alone.
+2. Can a later batch member run? No: the loop returns on the first stopped response; `gemini.test.ts` asserts executors two and three are never called and `fetch` is called once (no retry round-trip).
+3. Can the driver retry after the stop? `chatRunDriver` still throws `GeminiHumanTakeoverSignal` after `adapter.run` and parks; the driver test asserts the sandbox is not released after take-over. No retry loop exists around `adapter.run`.
+4. Is the stop key robust? It is duck-typed (`result.human_takeover_required === true`) across two packages, mirrored by hand like the detection patterns (`geminiToolExecutors.ts:221`). Acceptable now; a shared constant/type exported from one place is the right follow-up (fold into TASK-235's "kept in sync manually" cleanup).
+5. T2 ceiling and stage limits untouched (`STAGE_TWO_MAXIMUM_TOOL_TIER`, `ABSOLUTE_MAXIMUM_TOOL_TIER` unchanged).
+
+Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` exit 0 (harness-factory and worker suites included); lint/banned-modes run as part of the recursive scripts.
