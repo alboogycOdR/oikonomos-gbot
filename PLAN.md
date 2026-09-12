@@ -7277,7 +7277,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-244
 **Title:** Workspace-1 — Gemini lane: terminate the turn immediately on human_takeover_required, incl. batched tools and retries; spend.unrecorded on failure path (protected path)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.1, §7.4; ADR-010 §6 enforced set; CLAUDE.md protected paths and different-model review; ADR-005
@@ -7291,16 +7291,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Liveness: a test drives the production `chatRunDriver` Gemini path with a fake adapter and proves the stop is wired, keyed on the audit event and the absent tool calls. (ADR-005)
 - [ ] A run that fails before any spend tap reports produces a `spend.unrecorded` audit marker. (§7.4)
 - [ ] harness-factory and worker suites green; lint, typecheck, banned-modes clean; `pnpm -r test` recorded; adversarial review recorded in REVIEW.md.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-244-cx9
+**Started_At:** 2026-09-12T12:13:18Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-12T12:13:18Z
 
 ### TASK-245
 **Title:** Workspace-1 — acceptance execution on the integrated candidate, REVIEW.md backfill for TASK-214/224/227–235, decision sheet
