@@ -7143,7 +7143,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-239
 **Title:** Workspace-1 — dashboard session bootstrap, logout, summary poll, blocked-reason surfacing
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §3.1, §3.2, §4.2, §4.3, §1
@@ -7161,12 +7161,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-12T11:17:14Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-12T11:48:33Z] [SV:S5] Implemented dashboard session bootstrap (GET /auth/me), logout (POST /auth/logout), workspace-summary polling with badges (working/waiting_approval/blocked/unread), failed-run blocked-reason banner with retry, and build-SHA footer. AuthContext bootstraps on mount without gating render (kept App.test.tsx's synchronous unowned assertion intact); LoginPage holds off the form once authenticated instead. Full details/rationale in dossiers/TASK-239.md.
+**Artifacts:** apps/dashboard/src/lib/AuthContext.tsx, apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/LoginPage.tsx, apps/dashboard/src/pages/LoginPage.test.tsx, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ChatShell.tsx, apps/dashboard/src/components/chat/types.ts, dossiers/TASK-239.md
+**Test_Evidence:** pnpm --filter @oikonomos/dashboard typecheck/build: clean. pnpm --filter @oikonomos/dashboard test: 20 files/116 tests pass (107 pre-existing + 9 new), zero regressions. Full isolated-DB run via scripts/test-isolated.ps1 -Root <worktree>: dashboard 20/20 files 116/116 tests exit 0; full pnpm -r --workspace-concurrency=1 test has 4 pre-existing failures all in packages/db and services/worker (outside Owned_Paths, zero changes made there) matching orchestrator_notes' documented flakes (TASK-250/251) ΓÇö registerCapabilities idempotency timeout, inboxTriage e2e live-Gmail timeout, workerJobQueue pg-boss race, chatRunDriver per-phase-timing liveness flake.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-12T11:17:14Z
+**Updated_At:** 2026-09-12T11:48:33Z
 
 ### TASK-240
 **Title:** Workspace-1 — release environment: single HTTPS origin, required-config check, isolated test database script, deploy/rollback runbook
