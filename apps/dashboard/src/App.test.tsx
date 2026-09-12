@@ -34,6 +34,29 @@ describe("App auth flow", () => {
     expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
   });
 
+  /**
+   * TASK-243 (spec §2.6, §7) — `/workspace/:threadId/results` and
+   * `.../work` are new routes this task adds; they must be guarded by
+   * `RequireAuth` exactly like every other workspace route, not
+   * accidentally left public.
+   */
+  it("redirects an unauthenticated visit to /workspace/:threadId/results or /work to the login screen", () => {
+    render(
+      <MemoryRouter initialEntries={["/workspace/thread-1/results"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
+    cleanup();
+
+    render(
+      <MemoryRouter initialEntries={["/workspace/thread-1/work"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
+  });
+
   it("logs in against POST /auth/login and then loads the run list", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
