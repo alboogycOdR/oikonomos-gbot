@@ -7552,7 +7552,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-253
 **Title:** Connector minters cannot consume a dynamically-vaulted secret — per-role/run-scoped minter resolution design + implementation (ADR-014 Amendment 2026-09-14, phase 2)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, Amendment 2026-09-14; TASK-250 Progress_Notes and dossier (full live evidence already gathered — read before re-deriving it)
