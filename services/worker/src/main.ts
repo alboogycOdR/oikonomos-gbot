@@ -3,8 +3,9 @@ import { fileURLToPath } from "node:url";
 import { createWorkerJobQueue } from "./jobs/workerJobQueue.js";
 import { createChatRunDriver, type CreateChatRunDriverOptions } from "./chatRunDriver.js";
 import { createRunGate } from "./runConcurrency.js";
-import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent } from "@oikonomos/db";
-import { failTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
+import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, listMessages } from "@oikonomos/db";
+import { failTaskRun, parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
+import { deliverBotToBotMessage } from "./groupFanout.js";
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -68,6 +69,15 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
       if (run === null || run.status === "waiting_approval" || run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
       const task = await getTask(database, run.taskId);
       if (task === null) throw new Error(`run ${run.runId} references a missing task.`);
+      if (task.execution == null) {
+        await failTaskRun(database, run.runId, "execution_unresolvable");
+        await insertAuditEvent(database, {
+          tenantId: run.tenantId, runId: run.runId, actor: "system:run-execution",
+          eventType: "run.execution_unresolvable", payload: { reason: "missing_execution" },
+        });
+        return;
+      }
+      const executionCommand = task.execution;
       const thread = await getOrCreateThreadForRole(database, { roleId: task.roleId });
       await gate.run(task.roleId, async (execution) => {
         if (execution.queued !== null) {
@@ -75,6 +85,25 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
             tenantId: run.tenantId, runId: run.runId, actor: "system:run-concurrency", eventType: "run.queued",
             payload: { taskId: task.taskId, roleId: task.roleId, position: execution.queued.position, reason: "consumer_gate" },
           });
+        }
+        if (executionCommand.kind === "fanout") {
+          const source = (await listMessages(database, executionCommand.threadId)).find(
+            (message) => message.id === executionCommand.sourceMessageId,
+          );
+          if (source === undefined) {
+            await failTaskRun(database, run.runId, "execution_unresolvable");
+            await insertAuditEvent(database, {
+              tenantId: run.tenantId, runId: run.runId, actor: "system:run-execution",
+              eventType: "run.execution_unresolvable", payload: { reason: "source_message_missing" },
+            });
+            return;
+          }
+          const result = await deliverBotToBotMessage(database, {
+            fromRoleId: "human", toRoleIds: [executionCommand.recipientRoleId], body: source.body,
+            runId: run.runId, tenantId: run.tenantId,
+          });
+          if (!result.delivered) await parkTaskRun(database, run.runId);
+          return;
         }
         // The run row is created by the API before it enqueues this
         // reference.  Always retain that identity: a missing session ref

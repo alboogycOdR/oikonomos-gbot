@@ -13,6 +13,7 @@ import { join } from "node:path";
 import {
   Database,
   createTask as dbCreateTask,
+  createTaskExecutionRun as dbCreateTaskExecutionRun,
   createRoutine as dbCreateRoutine,
   createRole as dbCreateRole,
   createGroupThread as dbCreateGroupThread,
@@ -55,6 +56,7 @@ import {
   type Capability,
   type DatabaseOptions,
   type NewTask,
+  type TaskExecution,
   type NewRoutine,
   type NewRole,
   type NewThread,
@@ -138,6 +140,13 @@ const EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN";
  */
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
+  /**
+   * Persist a reference-only worker command and its initial run together,
+   * then durably enqueue that run.  New chat submission must use this port;
+   * retaining separate task/run writes would let a worker observe a run with
+   * no command to execute after an API-process failure.
+   */
+  submitTaskExecution?(input: { task: NewTask; execution: TaskExecution }): Promise<{ task: Task; runId: string }>;
   createRoutine(input: NewRoutine): Promise<Routine>;
   createRole(input: NewRole): Promise<Role>;
   listCapabilities(): Promise<Capability[]>;
@@ -462,6 +471,25 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     await recordQueuedRun({ runId: run.runId, taskId: request.task.taskId, tenantId: request.task.tenantId, roleId: request.task.roleId, position: 0, reason: "submission" });
     await enqueueRunExecution(options.connectionString, run.runId);
   };
+  const submitTaskExecution: NonNullable<ControlApiDeps["submitTaskExecution"]> = async ({ task, execution }) => {
+    const role = await dbGetRole(options, task.roleId);
+    if (role === null) throw new Error(`Cannot queue task execution: role ${task.roleId} not found.`);
+    const persisted = await dbCreateTaskExecutionRun(options, {
+      task,
+      execution,
+      provider: resolveRoleRuntime(role).provider,
+    });
+    await recordQueuedRun({
+      runId: persisted.runId,
+      taskId: persisted.task.taskId,
+      tenantId: persisted.task.tenantId,
+      roleId: persisted.task.roleId,
+      position: 0,
+      reason: "submission",
+    });
+    await enqueueRunExecution(options.connectionString, persisted.runId);
+    return persisted;
+  };
   const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
     runChatTask,
     listRuns: (filter) => dbListRuns(options, filter),
@@ -471,6 +499,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
   });
   return {
     createTask: (input) => dbCreateTask(options, input),
+    submitTaskExecution,
     createRoutine: async (input) => dbCreateRoutine(options, input),
     createRole: (input) => dbCreateRole(options, input),
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),

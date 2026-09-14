@@ -1,11 +1,12 @@
 import { Pool } from "pg";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { getRun, type DatabaseOptions } from "@oikonomos/db";
+import { createTaskExecutionRun, getAuditEventsForRun, getRun, listRuns, type DatabaseOptions } from "@oikonomos/db";
 
 import { purgePgBossQueue, withPgBossQueueLock } from "./jobs/pgBossTestCleanup.js";
 import { WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, WORKER_RUN_EXECUTION_JOB } from "./jobs/workerJobQueue.js";
-import { startTaskRun } from "./runLifecycle.js";
+import { parkTaskRun } from "./runLifecycle.js";
 import { runWorker } from "./main.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -36,19 +37,23 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
   });
 
   it(
-    "boots and re-drives a run orphaned by a prior process's death — not just that reconcileInterruptedRuns " +
-      "works in isolation (already covered by runLifecycle.test.ts), but that the REAL entrypoint invokes it",
+    "re-drives an interrupted safe run through real pg-boss and records its liveness audit",
     async () => {
-      // Constructed directly rather than actually killing a process, matching
-      // TASK-133's own established convention (runLifecycle.test.ts) — a
-      // `started` run with no live process behind it is indistinguishable,
-      // from the database's point of view, from one truly orphaned.
-      const orphan = await startTaskRun(options, {
-        taskId,
-        provider: "claude-code",
-        sessionRef: "task-226-boot-session-1",
+      // A persisted started row with no worker is indistinguishable from a
+      // run interrupted by a process kill. The injected SDK stream is a safe
+      // local executor: no provider call or governed side effect occurs.
+      const persisted = await createTaskExecutionRun(options, {
+        task: {
+          roleId: "inbox-triage",
+          title: "TASK-246 restart-safe execution",
+          goal: "Return the safe test result.",
+          requestedBy: "test:task-246-worker-restart",
+        },
+        execution: { version: 1, kind: "chat", threadId: "00000000-0000-0000-0000-000000000001" },
+        provider: "claude",
       });
-      expect(orphan.status).toBe("started");
+      const orphan = await getRun(options, persisted.runId);
+      expect(orphan?.status).toBe("started");
 
       await withPgBossQueueLock(pool, async () => {
         await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
@@ -61,13 +66,29 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
           // cleanly with nothing to do — this test is about the reconciliation
           // sweep, not routine-poll behaviour (already covered elsewhere).
           tenantId: "task-226-boot-tenant-with-no-routines",
-          reconcileFilter: { taskId },
+          reconcileFilter: { taskId: persisted.task.taskId },
           onLog: (message) => logs.push(message),
+          chatRunDriverOptions: {
+            manifests: [],
+            platformCeilingZar: 1_000_000,
+            queryFn: async function* () {
+              yield { type: "result", subtype: "success", result: "restart-safe result" };
+            },
+          },
         });
         try {
-          const persisted = await getRun(options, orphan.runId);
-          expect(persisted?.status).toBe("resumed");
-          expect(persisted?.sessionRef).toBe("task-226-boot-session-1");
+          let replacementStatus: string | undefined;
+          for (let attempt = 0; attempt < 120; attempt += 1) {
+            const runs = await listRuns(options, { taskId: persisted.task.taskId, limit: 10 });
+            replacementStatus = runs.runs.find((run) => run.runId !== persisted.runId)?.status;
+            if (replacementStatus === "completed") break;
+            await delay(100);
+          }
+          const oldRun = await getRun(options, persisted.runId);
+          expect(oldRun).toMatchObject({ status: "failed", failureNote: "worker_restart" });
+          expect(replacementStatus).toBe("completed");
+          const audit = await getAuditEventsForRun(options, (await listRuns(options, { taskId: persisted.task.taskId, limit: 10 })).runs.find((run) => run.runId !== persisted.runId)!.runId);
+          expect(audit.some((event) => event.eventType === "run.requeued" && event.payload.mode === "new_run" && event.payload.previous_run_id === persisted.runId)).toBe(true);
           expect(logs.some((line) => line.includes("reconciled 1 interrupted run"))).toBe(true);
           expect(logs.some((line) => line.includes("worker started"))).toBe(true);
         } finally {
@@ -75,7 +96,7 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
         }
       });
     },
-    20_000,
+    30_000,
   );
 
   it("boots cleanly with nothing to reconcile (no orphaned runs is not an error)", async () => {
@@ -93,6 +114,46 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
       try {
         expect(logs.some((line) => line.startsWith("reconciled"))).toBe(false);
         expect(logs.some((line) => line.includes("worker started"))).toBe(true);
+      } finally {
+        await worker.stop();
+      }
+    });
+  }, 20_000);
+
+  it("leaves an approval-parked durable command untouched at worker boot", async () => {
+    const persisted = await createTaskExecutionRun(options, {
+      task: {
+        roleId: "inbox-triage",
+        title: "TASK-246 parked command",
+        goal: "This must not execute before a normal approval decision.",
+        requestedBy: "test:task-246-parked-restart",
+      },
+      execution: { version: 1, kind: "chat", threadId: "00000000-0000-0000-0000-000000000002" },
+      provider: "claude",
+    });
+    await parkTaskRun(options, persisted.runId);
+    let executorCalls = 0;
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
+      await purgePgBossQueue(pool, WORKER_ROUTINE_POLL_JOB);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const worker = await runWorker({
+        connectionString: connectionString!,
+        tenantId: "task-246-parked-tenant-with-no-routines",
+        reconcileFilter: { taskId: persisted.task.taskId },
+        chatRunDriverOptions: {
+          manifests: [],
+          platformCeilingZar: 1_000_000,
+          queryFn: async function* () {
+            executorCalls += 1;
+            yield { type: "result", subtype: "success", result: "must not run" };
+          },
+        },
+      });
+      try {
+        await delay(500);
+        expect((await getRun(options, persisted.runId))?.status).toBe("waiting_approval");
+        expect(executorCalls).toBe(0);
       } finally {
         await worker.stop();
       }
