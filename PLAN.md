@@ -7456,7 +7456,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7468,16 +7468,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Either fulfilment writes a `secret_values` row and a connector minter resolves it through `resolveSecretValue` in the production composition, proven by a liveness test keyed on `secret_vault.write` + `secret_vault.read` audit events; or ADR-014 gains a dated note explaining why the vault remains unwired and what triggers wiring it.
 - [ ] `scripts/check-config.mjs` moves `OIK_SECRET_VAULT_KEY` to required once it is read in production.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-250-cx9
+**Started_At:** 2026-09-14T19:08:40Z
 **Progress_Notes:**
 - [2026-09-12T10:50:00Z] [ORCH] Filed from TASK-240's finding.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T19:08:40Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
