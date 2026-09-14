@@ -972,3 +972,13 @@ BLOCKING
 Verified, not taken on trust (ORCH, isolated database, serialised): full `pnpm -r test` — worker 247/247, control-api 269/269 (the actual owned code, fully green). Two unrelated failures elsewhere, both provably outside this diff (confirmed against `git diff --stat`, which touches no dashboard file and not `spend.ts`): `apps/dashboard` (3 files, Firebase env vars still unprovisioned, already known from TASK-241's review) and `packages/db/src/spend.test.ts` (one test, a shared-database cumulative-sum race matching the TASK-251 family exactly — added there). The suite passing on the owned code corroborates the R1 finding rather than contradicting it: nothing in this codebase's tests exercises `createTaskExecutionRun` under concurrent load, so a transaction-atomicity bug here is invisible to them by construction.
 
 Not blocking, worth a one-line fix alongside R1: the `OPEN_RUN_STATUSES` fetch-then-skip for `waiting_approval` (§ above) is fine to leave, but a comment at the `continue` would save the next reader re-deriving why it's fetched at all.
+
+## TASK-246 rework (a48a7e4, merge) | CX9 | approved | first-pass: no (rework round 1)
+
+Scope: `git diff 36428a2..a48a7e4` — `packages/db/src/tasks.ts` only (+8/-2). Territory clean (already-widened Owned_Paths).
+
+R1 verified fixed by reading the diff directly, not the dossier's claim: `createTaskExecutionRun` now does `const client = await pool.connect()`, every statement (`BEGIN`, both `INSERT`s, `COMMIT`/`ROLLBACK`) runs on that single `client`, and `client.release()` is in a `finally` — matches `capabilities.ts:65-70`'s established pattern exactly. The transaction is now genuinely atomic.
+
+Verified, not taken on trust (ORCH, isolated database, serialised, independent run): worker 247/247, control-api 269/269 — TASK-246's actual owned code, fully green on both this run and the prior one. Two unrelated failures again, this time `threadContext.test.ts` instead of `spend.test.ts` in the same db-package parallel-file race (nondeterministic which file loses; same root cause, already tracked under TASK-251) and the same known dashboard Firebase-env gap from TASK-241. Neither touches a file in this diff.
+
+TASK-246 is done: the durable run-execution queue, ADR-016 decisions 1-7 and both amendments, is real, wired into production, and now correct under concurrency.
