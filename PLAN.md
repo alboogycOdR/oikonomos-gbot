@@ -7457,7 +7457,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7475,12 +7475,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T10:50:00Z] [ORCH] Filed from TASK-240's finding.
 - [2026-09-14T19:29:02Z] [SV:CX9] Investigation confirms the vault and audit events have no production callers; control-api secret routes are unconfigured (501) and connector minters use only environment resolvers.
 - [2026-09-14T21:35:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to the confirmed minimum territory named in the dossier, plus secretRequests.ts/.test.ts (your own finding that fulfilment never writes secret_values means that file needs editing too, not just secretVault.ts). No conflict with TASK-235's active territory. A dedicated host-side resolver adapter, if it turns out to need a genuinely new file/package, is a further request — narrow it once the design is clear, same pattern as this round. Resume on task/TASK-250-cx9.
+- [2026-09-14T19:48:41Z] [SV:CX9] Confirmed dynamic secret refs have no transport to the fixed-ref, shared connector minters; dossier records exact live evidence and required scope/ADR decision.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T21:35:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: completing AC2 requires connector-minter/resolver composition paths outside Owned_Paths, or ORCH must add the permitted ADR-014 dated deferral note.
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T19:48:41Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
