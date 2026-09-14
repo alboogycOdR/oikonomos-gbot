@@ -7023,7 +7023,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-235
 **Title:** G-07 part 2b — Steel/CDP interactive browser hand-off, plus wiring TakeoverCard into a real screen
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-228's own Progress_Notes (the shell/PTY half this splits from — read that first, same pattern applies); `packages/connectors/src/steelSession.ts` (the agent's own CDP handle, currently never paused/handed off); TASK-225's CDP research (`services/worker/src/geminiToolExecutors.ts`'s `runSteelCdp`/`Target.attachToTarget` pattern — the vocabulary this needs, NOT assumed to be directly reusable); ADR-010 Amendment enforced set.
@@ -7044,12 +7044,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T18:40:00Z] [ORCH] Dispatched now: no Owned_Paths overlap with TASK-246's current (in_progress) territory. TASK-227 and TASK-250 are held instead — both name services/control-api/src/{app.ts,index.ts,ports.ts} as likely territory, which TASK-246 is actively modifying right now; dispatching either concurrently risks a real collision the moment their own investigation confirms those files. Will dispatch both once TASK-246 merges.
 - [2026-09-14T18:49:06Z] [SV:S5] Completed a real CDP/hand-off research pass (Steel's browser-level CDP socket + flatten-attach pattern from runSteelCdp, confirmed the park/return in chatRunDriver.ts already ends the worker's execution so there is no live CDP-issuing process to evict once parked, confirmed every current human_takeover_required kind is Steel/browser-only). Drafted the backend relay (browserTakeover.routes.ts) but the territory firewall blocked the write: TASK-235's Owned_Paths is the literal placeholder '—', not a hint list like TASK-228's own investigation-first task had, so there is zero territory to write into yet. In control.mode=strict I cannot widen PLAN.md myself. Full research trail and the exact requested path list are recorded in dossiers/TASK-235.md's latest Work Log entry.
 - [2026-09-14T21:15:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: carved to the exact list requested from real research (dossier). app.ts was held until TASK-246 merged (done); no other active task now touches it. Resume on task/TASK-235-s5, start at browserTakeover.routes.ts per your own stated next_step.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-14T19:48:41Z] [SV:S5] Implemented both halves of G-07 part 2b. Backend: services/control-api/src/browserTakeover.routes.ts (new) - GET /runs/:id/browser-takeover raw WS relay to Steel's CDP endpoint, mirroring liveAgent.routes.ts's relayTakeover() shape but genuinely bidirectional and with its own connect-time defense-in-depth pending gate; additive app.ts wiring. Mobile: browser_takeover_client.dart (real CDP flatten-attach + screencast decode/ack + input dispatch), browser_takeover_screen.dart (live view + tap/type input), api_client.dart/models.dart additions, and TakeoverCard wired into chat_screen.dart with kind-based routing (browser kinds -> new screen, fallback -> existing shell TakeoverScreen). All 5 acceptance criteria addressed; research (AC1/AC2) was completed in a prior session and is recorded in the dossier.
+**Artifacts:** services/control-api/src/browserTakeover.routes.ts, services/control-api/src/browserTakeover.routes.test.ts, services/control-api/src/app.ts, apps/mobile/lib/api/browser_takeover_client.dart, apps/mobile/test/api/browser_takeover_client_test.dart, apps/mobile/lib/screens/browser_takeover_screen.dart, apps/mobile/test/screens/browser_takeover_screen_test.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/api/api_client_test.dart
+**Test_Evidence:** Backend: pnpm --filter @oikonomos/control-api exec vitest run src/browserTakeover.routes.test.ts - 15/15 pass; full control-api suite 274/274 (later 284/284 in full run) pass; typecheck clean; eslint clean. Full recursive pnpm -r test via scripts/test-isolated.sh against isolated Postgres test DB (per CLAUDE.md DEVDEPARTMENT amendment, not package-scoped): all 18 tested workspace packages green (dashboard 21/21, agent-providers 11/11, db 40/40, memory 4/4, policy 7/7, sandbox-client 5/5, shared 9/9, approvals 16/16, audit 8/8, connectors 16/16, harness-factory 18/18, workspace 4/4, evals-golden 1/1, broker 15/15, gateway-telegram 7/7, evals-harness 13/13, worker 29/29, control-api 22/22). Mobile: flutter test (full suite) 168/168 pass; flutter analyze clean. Full details incl. flagged pre-existing profile_facts test-DB fixture dirtiness (not caused by this task, not touched) in dossiers/TASK-235.md.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T21:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T19:48:41Z
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
