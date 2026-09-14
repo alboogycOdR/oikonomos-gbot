@@ -7579,8 +7579,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-254
 **Title:** `packages/db`'s TASK-119 role-grants test cleanup leaves an orphaned `capabilities` row on an FK violation, poisoning every later suite in the same isolated-DB script run
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/db/src/database.test.ts:79-95` (the "Database role grants — list/upsert/revoke (TASK-119)" integration suite and its `cleanup()` helper); `packages/broker/src/capabilityRegistry.ts:136`'s `StaleCapabilityRowError` (the downstream symptom, working as designed, not itself a bug)
 **Owned_Paths:** packages/db/src/database.test.ts
@@ -7591,8 +7591,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `cleanup()` (and any equivalent pattern elsewhere in this file, e.g. the TASK-140 suite immediately below it) made resilient to a pre-existing FK-referencing row — either scope the capability delete correctly so it never contends, or make the whole cleanup idempotent/order-safe regardless of what state a prior run left behind.
 - [ ] A single serialized `scripts/test-isolated.ps1` run, executed twice in a row without manual intervention between runs, produces zero `StaleCapabilityRowError` cascades in `evals/harness`/`services/worker`.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-254-s5
+**Started_At:** 2026-09-15T00:20:00Z
 **Progress_Notes:**
 - [2026-09-14T22:05:00Z] [ORCH] Filed after two independent, identity-confirmed review agents (TASK-227's and TASK-253's) reproduced the identical cascade on separate, freshly-serialized runs. See REVIEW.md's TASK-227 and TASK-253 entries for the full corroborating detail from each run.
 **Artifacts:** —
@@ -7600,4 +7600,4 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-14T22:05:00Z
+**Updated_At:** 2026-09-15T00:20:00Z
