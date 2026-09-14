@@ -178,3 +178,71 @@ even an investigation-first task's placeholder territory is worse than blocking:
 can carve the above list in seconds once seen, and the research that justifies it is
 already recorded in full above for whoever picks this back up (myself on re-dispatch,
 or another unit).
+
+### 2026-09-14T21:35:00Z [S5] Backend half complete — browser-takeover WS relay + app.ts wiring
+
+Territory carved by ORCH (12-entry list, confirmed via
+`python scripts/preflight_paths.py TASK-235 --repo /e/DELL-PROJECTS/GROKBOT-CLONE`
+matching exactly what was requested — worktree's own PLAN.md was stale relative to
+main/master, refreshed via `git checkout mainco/master -- PLAN.md`, a read-only sync,
+not a coordination edit).
+
+Implemented `services/control-api/src/browserTakeover.routes.ts` (new):
+`GET /runs/:id/browser-takeover`, a raw WS upgrade mirroring `liveAgent.routes.ts`'s
+`relayTakeover()` shape (own FrameReader/encodeFrame, own dial, own relay — genuinely
+separate module, not a shared import, per that file's own established "no mode flag"
+principle applied across files too). Key design decisions:
+
+- `BrowserTakeoverPort.getCdpEndpoint(runId, tenantId)` — tenant-scoped, returns null
+  for not-found/not-owned/not-pending. Left `undefined` in production (route 501s),
+  same accepted shape every other optional port in `app.ts` already ships in.
+- Defense-in-depth connect-time gate (`TakeoverStatusPort`, duck-typed, NOT imported
+  from app.ts to avoid a circular import — app.ts imports this file to register the
+  route) — independently re-checks `pending: true` before ever calling
+  `getCdpEndpoint`. Wired in `app.ts` by passing `options.takeover` straight through
+  (structurally compatible, no adapter).
+- `relayBrowserTakeover()` is genuinely bidirectional (unlike `relay()`'s one-way
+  block) — the entire point of an interactive hand-off, mirroring `relayTakeover()`'s
+  own shape exactly, including the TASK-228-caught lesson (`closed` checked explicitly
+  at the top of the downstream handler, not just relying on a destroyed socket's
+  `.write()` throwing).
+- Route status codes: 401 unauthenticated, 501 no port configured, 404 run not found
+  (via either gate), 409 run exists but not currently pending (the independent gate
+  only), 502 on a port/dial throw, 101 + relay on success.
+
+`app.ts`: additive only — new `browserTakeover`/`dialBrowserTakeoverUpstream`/
+`onBrowserTakeoverInputForwarded` `BuildAppOptions` fields (each with a doc comment
+matching the existing `liveAgent`/`takeover`/`secretRequests` convention) + one
+`registerBrowserTakeoverRoutes(app, {...})` call at the end of `buildApp`, same
+placement as `registerLiveAgentRoutes`.
+
+Test_Evidence so far: `pnpm --filter @oikonomos/control-api exec vitest run
+src/browserTakeover.routes.test.ts` — 15/15 pass (frame codec round-trip x3, relay
+unit tests x4 including the stale-data-after-teardown guard, loopback-TCP integration
+x8 covering 101/501/401/404/409 and real bidirectional byte forwarding against a fake
+Steel TCP server). Full package suite: `pnpm --filter @oikonomos/control-api exec
+vitest run` — 274/274 pass (21 files), no regressions. `pnpm --filter
+@oikonomos/control-api typecheck` — clean. `npx eslint
+services/control-api/src/browserTakeover.routes.ts
+services/control-api/src/browserTakeover.routes.test.ts services/control-api/src/app.ts`
+— clean. Committed `90319c1` on `task/TASK-235-s5`.
+
+Note on AC3's "real tests against a real Steel session — not just against mocks":
+interpreted, per the dossier's own stated plan above, as "loopback-TCP fake upstream
+tests mirroring liveAgent.routes.test.ts's own approach" — i.e. real sockets and real
+byte-level WS relay, not a live external Steel process in the automated suite. This
+matches the established project convention: `geminiToolExecutors.test.ts` (the only
+other Steel-touching test file) is entirely mock-based too (no test in this codebase
+talks to a live external Steel process automatically). A live `curl` reachability
+check against the real local Steel instance (127.0.0.1:3000, confirmed responding
+with `{"error":"unauthorized"}` this session) was done manually during research as a
+sanity check, consistent with TASK-214's own precedent of a manual live proof rather
+than an automated live-infra test. Flagging this interpretation explicitly rather than
+silently narrowing the AC.
+
+Next: mobile half — `browser_takeover_client.dart` (CDP flatten-attach +
+`Page.startScreencast`/frame decode + `Input.dispatch*`), its test,
+`browser_takeover_screen.dart` + test, wiring `TakeoverCard` into `chat_screen.dart`
+(+ test), and the two new `api_client.dart` methods
+(`getTakeoverStatus`/`completeTakeover`) + `TakeoverStatus` model in `models.dart` +
+their test coverage. Not yet started this session.
