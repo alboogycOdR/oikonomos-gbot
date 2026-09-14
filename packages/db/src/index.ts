@@ -69,11 +69,14 @@ export {
 } from "./runs.js";
 export {
   createTask,
+  createTaskExecutionRun,
   getTask,
   listTasks,
   taskStatuses,
   type NewTask,
+  type NewTaskExecutionRun,
   type Task,
+  type TaskExecution,
   type TaskListFilter,
   type TaskListPage,
   type TaskStatus,

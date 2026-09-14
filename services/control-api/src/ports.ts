@@ -13,11 +13,13 @@ import { join } from "node:path";
 import {
   Database,
   createTask as dbCreateTask,
+  createTaskExecutionRun as dbCreateTaskExecutionRun,
   createRoutine as dbCreateRoutine,
   createRole as dbCreateRole,
   createGroupThread as dbCreateGroupThread,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
   getTask as dbGetTask,
+  getRole as dbGetRole,
   insertMessage as dbInsertMessage,
   insertAuditEvent as dbInsertAuditEvent,
   getAuditEventsForRun as dbGetAuditEventsForRun,
@@ -45,7 +47,6 @@ import {
   listEnabledForRole as dbListEnabledForRole,
   getOrInitThreadContext as dbGetOrInitThreadContext,
   startFreshEpoch as dbStartFreshEpoch,
-  getRole as dbGetRole,
   getRoleSandbox as dbGetRoleSandbox,
   getRoutine as dbGetRoutine,
   setRoutinePaused as dbSetRoutinePaused,
@@ -55,6 +56,7 @@ import {
   type Capability,
   type DatabaseOptions,
   type NewTask,
+  type TaskExecution,
   type NewRoutine,
   type NewRole,
   type NewThread,
@@ -85,6 +87,7 @@ import {
   type SkillListFilter,
   type UpdateSkill,
   type WorkspaceSummary,
+  resolveRoleRuntime,
 } from "@oikonomos/db";
 import {
   decideApproval as approvalsDecideApproval,
@@ -96,9 +99,9 @@ import {
 } from "@oikonomos/approvals";
 import {
   completeTaskRun,
-  createChatRunDriver,
   createTierZeroProvider,
   createRunGate,
+  enqueueRunExecution,
   deliverBotToBotMessage,
   failTaskRun,
   parkTaskRun,
@@ -137,6 +140,13 @@ const EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN";
  */
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
+  /**
+   * Persist a reference-only worker command and its initial run together,
+   * then durably enqueue that run.  New chat submission must use this port;
+   * retaining separate task/run writes would let a worker observe a run with
+   * no command to execute after an API-process failure.
+   */
+  submitTaskExecution?(input: { task: NewTask; execution: TaskExecution }): Promise<{ task: Task; runId: string }>;
   createRoutine(input: NewRoutine): Promise<Routine>;
   createRole(input: NewRole): Promise<Role>;
   listCapabilities(): Promise<Capability[]>;
@@ -240,7 +250,7 @@ interface QueuedRunAudit {
   readonly tenantId: string;
   readonly roleId: string;
   readonly position: number;
-  readonly reason: "concurrency.cap";
+  readonly reason: "concurrency.cap" | "submission" | "consumer_gate";
 }
 
 /** The production chat wrapper: liveness tests observe its emitted queue evidence. */
@@ -441,9 +451,7 @@ export async function notifyAfterChatRun(
  * touches a `Pool` directly, only the two packages' public functions.
  */
 export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
-  const chatRunDriver: ChatRunDriver = createChatRunDriver({ ...options, ...options.chatRunDriverOptions });
   const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
-  const runGate = createRunGate({ maxConcurrent: 2, onQueued: options.onRunQueued });
   const recordQueuedRun = async (event: QueuedRunAudit): Promise<void> => {
     await dbInsertAuditEvent(options, {
       tenantId: event.tenantId,
@@ -453,9 +461,35 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       payload: { taskId: event.taskId, roleId: event.roleId, position: event.position, reason: event.reason },
     });
   };
-  const runChatTask = createGatedChatRunTask(chatRunDriver, {
-    recordQueuedRun,
-  }, runGate);
+  const runChatTask: ControlApiDeps["runChatTask"] = async (request) => {
+    const role = await dbGetRole(options, request.task.roleId);
+    if (role === null) throw new Error(`Cannot queue chat task: role ${request.task.roleId} not found.`);
+    const run = request.resume === undefined
+      ? await startTaskRun(options, { taskId: request.task.taskId, tenantId: request.task.tenantId, provider: resolveRoleRuntime(role).provider })
+      : await dbGetRun(options, request.resume.runId);
+    if (run === null) throw new Error(`Cannot queue unknown chat run ${request.resume?.runId}.`);
+    await recordQueuedRun({ runId: run.runId, taskId: request.task.taskId, tenantId: request.task.tenantId, roleId: request.task.roleId, position: 0, reason: "submission" });
+    await enqueueRunExecution(options.connectionString, run.runId);
+  };
+  const submitTaskExecution: NonNullable<ControlApiDeps["submitTaskExecution"]> = async ({ task, execution }) => {
+    const role = await dbGetRole(options, task.roleId);
+    if (role === null) throw new Error(`Cannot queue task execution: role ${task.roleId} not found.`);
+    const persisted = await dbCreateTaskExecutionRun(options, {
+      task,
+      execution,
+      provider: resolveRoleRuntime(role).provider,
+    });
+    await recordQueuedRun({
+      runId: persisted.runId,
+      taskId: persisted.task.taskId,
+      tenantId: persisted.task.tenantId,
+      roleId: persisted.task.roleId,
+      position: 0,
+      reason: "submission",
+    });
+    await enqueueRunExecution(options.connectionString, persisted.runId);
+    return persisted;
+  };
   const notify = (input: { task: Task; threadId: string }) => notifyAfterChatRun(input, {
     runChatTask,
     listRuns: (filter) => dbListRuns(options, filter),
@@ -465,6 +499,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
   });
   return {
     createTask: (input) => dbCreateTask(options, input),
+    submitTaskExecution,
     createRoutine: async (input) => dbCreateRoutine(options, input),
     createRole: (input) => dbCreateRole(options, input),
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
@@ -521,8 +556,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     runChatTask: notify,
     requestGroupFanout: async ({ task, memberRoleIds, body }) => {
       const run = await startTaskRun(options, { taskId: task.taskId, provider: "chat-group", tenantId: task.tenantId });
-      const result = await runGatedGroupFanout(runGate, task.roleId, async () => {
-        return deliverBotToBotMessage(options, {
+      const result = await deliverBotToBotMessage(options, {
         // The fan-out gate's sender label is audit data, not a role FK. The
         // persisted group-thread message remains correctly unattributed
         // (`senderRoleId: null`) because its author is the human user.
@@ -531,13 +565,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         body,
         runId: run.runId,
           tenantId: task.tenantId,
-        });
-      }, async (queued) => recordQueuedRun({
-        runId: run.runId,
-        taskId: task.taskId,
-        tenantId: task.tenantId,
-        ...queued,
-      }));
+      });
       // TASK-205: a fan-out (2+ recipients) issues a real pending approval
       // via `deliverBotToBotMessage` but never parked the run — the caller
       // never checked `result.delivered`, so `runs.status` stayed `started`

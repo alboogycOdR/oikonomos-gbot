@@ -12,7 +12,7 @@ import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { purgePgBossQueue, withPgBossQueueLock } from "./pgBossTestCleanup.js";
-import { createWorkerJobQueue, WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, type WorkerJobQueue } from "./workerJobQueue.js";
+import { createWorkerJobQueue, WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, WORKER_RUN_EXECUTION_JOB, type WorkerJobQueue } from "./workerJobQueue.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -125,6 +125,39 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
       await waitForNoConnections(pool, applicationName);
     });
   });
+
+  it("coalesces duplicate durable run references and never invokes their consumer concurrently", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const runId = crypto.randomUUID();
+      let executions = 0;
+      let active = 0;
+      let release: (() => void) | undefined;
+      const started = new Promise<void>((resolve) => {
+        queue = createWorkerJobQueue({
+          connectionString: connectionString!,
+          applicationName: `oikonomos-worker-run-execution-${crypto.randomUUID()}`,
+          onRunExecution: async () => {
+            executions += 1;
+            active += 1;
+            expect(active).toBe(1);
+            resolve();
+            await new Promise<void>((unblock) => { release = unblock; });
+            active -= 1;
+          },
+        });
+      });
+      await queue!.start();
+      await queue!.enqueueRunExecution(runId);
+      await started;
+      await expect(queue!.enqueueRunExecution(runId)).resolves.toMatch(/^[0-9a-f-]{36}$/i);
+      release!();
+      await delay(500);
+      expect(executions).toBe(1);
+      await queue!.stop();
+      queue = undefined;
+    });
+  }, 20_000);
 
   // Explicit timeout: must comfortably clear waitFor's own budget (see its comment) —
   // Vitest's 5000ms default would otherwise kill the test before waitFor gets to try.

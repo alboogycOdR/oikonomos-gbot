@@ -103,7 +103,7 @@ integration("@oikonomos/worker reconcileInterruptedRuns (TASK-133 / OIK-106)", (
     await pool.end();
   });
 
-  it("finds a run left in an open status (simulating a killed process) and resumes it", async () => {
+  it("re-enqueues a run left in an open status without falsely changing its status", async () => {
     // Construct the persisted state directly rather than actually killing a
     // process (per the task's own instruction): a `started` run with no
     // live process behind it is indistinguishable, from the database's
@@ -115,12 +115,17 @@ integration("@oikonomos/worker reconcileInterruptedRuns (TASK-133 / OIK-106)", (
     });
     expect(orphan.status).toBe("started");
 
-    const outcomes = await reconcileInterruptedRuns(options, { taskId });
+    const enqueued: string[] = [];
+    const outcomes = await reconcileInterruptedRuns(options, { taskId }, async (run) => {
+      enqueued.push(run.runId);
+      return { runId: run.runId, mode: "resume" };
+    });
     const mine = outcomes.find((o) => o.runId === orphan.runId);
-    expect(mine).toEqual({ runId: orphan.runId, outcome: "resumed" });
+    expect(mine).toEqual({ runId: orphan.runId, outcome: "requeued" });
+    expect(enqueued).toEqual([orphan.runId]);
 
     const persisted = await getRun(options, orphan.runId);
-    expect(persisted?.status).toBe("resumed");
+    expect(persisted?.status).toBe("started");
     expect(persisted?.sessionRef).toBe("reconcile-session-1");
   });
 
@@ -134,7 +139,7 @@ integration("@oikonomos/worker reconcileInterruptedRuns (TASK-133 / OIK-106)", (
     const cancelledRun = await startTaskRun(options, { taskId, provider: "claude-code" });
     await cancelTaskRun(options, cancelledRun.runId);
 
-    const outcomes = await reconcileInterruptedRuns(options, { taskId });
+    const outcomes = await reconcileInterruptedRuns(options, { taskId }, async (run) => ({ runId: run.runId, mode: "resume" }));
     const touchedIds = new Set(outcomes.map((o) => o.runId));
 
     // If the reconciliation scan's status filter were removed (matching
@@ -155,8 +160,8 @@ integration("@oikonomos/worker reconcileInterruptedRuns (TASK-133 / OIK-106)", (
     expect(cancelledAfter?.status).toBe("cancelled");
   });
 
-  it("is callable independently of any worker-process boot sequence (AC3): a bare call against real Postgres just works", async () => {
-    await expect(reconcileInterruptedRuns(options, { taskId })).resolves.toBeInstanceOf(Array);
+  it("is callable independently of worker boot when given its durable enqueue port", async () => {
+    await expect(reconcileInterruptedRuns(options, { taskId }, async (run) => ({ runId: run.runId, mode: "resume" }))).resolves.toBeInstanceOf(Array);
   });
 });
 
@@ -202,7 +207,7 @@ integration("@oikonomos/worker durable resume vs. pending approvals (TASK-135 / 
   });
 
   it(
-    "resuming a run parked mid-approval-wait never re-invokes the governed tool, and the original nonce still completes the run",
+    "a run parked mid-approval-wait is not re-enqueued and its original nonce still completes the run",
     async () => {
       // 1. A real run reaches an external-effect tool call that requires
       // approval. The broker denies *before* the tool's side effect runs
@@ -256,21 +261,16 @@ integration("@oikonomos/worker durable resume vs. pending approvals (TASK-135 / 
       // 2. The worker process is killed (not actually killed — this is
       // the same testing convention TASK-133 established) and a fresh
       // process boots and reconciles orphaned runs.
-      const outcomes = await reconcileInterruptedRuns(options, { taskId });
+      const outcomes = await reconcileInterruptedRuns(options, { taskId }, async (candidate) => ({ runId: candidate.runId, mode: "resume" }));
       const mine = outcomes.find((outcome) => outcome.runId === run.runId);
-      expect(mine).toEqual({ runId: run.runId, outcome: "resumed" });
+      expect(mine).toBeUndefined();
 
       const afterReconcile = await getRun(options, run.runId);
-      expect(afterReconcile?.status).toBe("resumed");
+      expect(afterReconcile?.status).toBe("waiting_approval");
       expect(afterReconcile?.sessionRef).toBe("oik-107-session-1");
 
-      // The proof AC1 actually cares about: reconciliation is a pure
-      // `@oikonomos/db` status transition (`reconcileInterruptedRuns` /
-      // `resumeInterruptedRun` import nothing from the harness, the
-      // broker, or any tool adapter — see runLifecycle.ts's import list)
-      // and therefore cannot have invoked the governed tool a second
-      // time. Not "no error was thrown" — the actual call counter proves
-      // it stayed at zero across the entire resume.
+      // Reconciliation excludes the durable approval boundary and therefore
+      // cannot invoke the governed tool a second time.
       expect(sideEffectInvocations).toBe(0);
 
       // The pending approval itself is untouched by reconciliation — same
@@ -329,7 +329,7 @@ integration("@oikonomos/worker durable resume vs. pending approvals (TASK-135 / 
     await verifyAndConsume(waitSignal.nonce, { database: options });
     await completeTaskRun(options, run.runId);
 
-    const outcomes = await reconcileInterruptedRuns(options, { taskId });
+    const outcomes = await reconcileInterruptedRuns(options, { taskId }, async (candidate) => ({ runId: candidate.runId, mode: "resume" }));
     expect(outcomes.some((outcome) => outcome.runId === run.runId)).toBe(false);
 
     const replay = await verifyAndConsume(waitSignal.nonce, { database: options });

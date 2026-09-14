@@ -5,6 +5,13 @@ import { type RoutinePollingOptions, runDueRoutinePoll } from "./routineJob.js";
 /** The first production queue; future routine jobs are registered separately. */
 export const WORKER_HEARTBEAT_JOB = "worker.heartbeat";
 export const WORKER_ROUTINE_POLL_JOB = "worker.routine-poll";
+/** Durable, reference-only work item. No prompt, credential, or approval crosses this boundary. */
+export const WORKER_RUN_EXECUTION_JOB = "worker.run-execution";
+
+export interface RunExecutionJob {
+  readonly version: 1;
+  readonly runId: string;
+}
 
 export interface WorkerHeartbeatJob {
   requestedAt: string;
@@ -17,6 +24,8 @@ export interface CreateWorkerJobQueueOptions {
   onHeartbeat?(job: Job<WorkerHeartbeatJob>): Promise<void> | void;
   /** Enables the durable routine poller when its tenant configuration is supplied. */
   routinePolling?: RoutinePollingOptions;
+  /** The worker-owned executor. API processes only enqueue these jobs. */
+  onRunExecution?(job: Job<RunExecutionJob>): Promise<void> | void;
   /**
    * TASK-221: pg-boss's own 'error' event, and any error thrown inside a
    * `work()` handler, is otherwise completely silent — a job just fails (or
@@ -45,6 +54,16 @@ const routinePollQueueOptions = {
   retryDelay: 1,
   retryBackoff: true,
   expireInSeconds: 60,
+  retentionSeconds: 86_400,
+  deleteAfterSeconds: 604_800,
+} as const;
+
+const runExecutionQueueOptions = {
+  policy: "singleton",
+  retryLimit: 3,
+  retryDelay: 1,
+  retryBackoff: true,
+  expireInSeconds: 300,
   retentionSeconds: 86_400,
   deleteAfterSeconds: 604_800,
 } as const;
@@ -85,6 +104,17 @@ export class WorkerJobQueue {
       await boss.work<WorkerHeartbeatJob>(WORKER_HEARTBEAT_JOB, async (jobs) => {
         for (const job of jobs) await this.options.onHeartbeat?.(job);
       });
+      if (this.options.onRunExecution !== undefined) {
+        await boss.createQueue(WORKER_RUN_EXECUTION_JOB, runExecutionQueueOptions);
+        await boss.work<RunExecutionJob>(WORKER_RUN_EXECUTION_JOB, async (jobs) => {
+          for (const job of jobs) {
+            if (job.data.version !== 1 || typeof job.data.runId !== "string" || job.data.runId.trim().length === 0) {
+              throw new Error("worker.run-execution received an invalid payload.");
+            }
+            await this.options.onRunExecution!(job);
+          }
+        });
+      }
       if (this.options.routinePolling !== undefined) {
         await boss.createQueue(WORKER_ROUTINE_POLL_JOB, routinePollQueueOptions);
         await boss.work(WORKER_ROUTINE_POLL_JOB, async () => {
@@ -130,6 +160,17 @@ export class WorkerJobQueue {
     return id;
   }
 
+  public async enqueueRunExecution(runId: string): Promise<string> {
+    if (this.boss === undefined) throw new Error("Worker job queue must be started before jobs can be enqueued.");
+    const normalizedRunId = runId.trim();
+    if (normalizedRunId.length === 0) throw new Error("runId must not be empty.");
+    const id = await this.boss.send(WORKER_RUN_EXECUTION_JOB, { version: 1, runId: normalizedRunId }, {
+      singletonKey: normalizedRunId,
+    });
+    if (id === null) throw new Error("pg-boss did not create the run execution job.");
+    return id;
+  }
+
   public async stop(): Promise<void> {
     const boss = this.boss;
     this.boss = undefined;
@@ -139,4 +180,27 @@ export class WorkerJobQueue {
 
 export function createWorkerJobQueue(options: CreateWorkerJobQueueOptions): WorkerJobQueue {
   return new WorkerJobQueue(options);
+}
+
+/**
+ * API-facing producer: opens no executor and carries only the run reference.
+ * pg-boss persists the job before this function returns, then the short-lived
+ * producer connection is closed; the worker owns consumption.
+ */
+export async function enqueueRunExecution(connectionString: string, runId: string): Promise<string> {
+  assertConnectionString(connectionString);
+  const normalizedRunId = runId.trim();
+  if (normalizedRunId.length === 0) throw new Error("runId must not be empty.");
+  const boss = new PgBoss({ connectionString, application_name: "oikonomos-run-enqueuer" });
+  try {
+    await boss.start();
+    await boss.createQueue(WORKER_RUN_EXECUTION_JOB, runExecutionQueueOptions);
+    const id = await boss.send(WORKER_RUN_EXECUTION_JOB, { version: 1, runId: normalizedRunId }, {
+      singletonKey: normalizedRunId,
+    });
+    if (id === null) throw new Error("pg-boss did not create the run execution job.");
+    return id;
+  } finally {
+    await boss.stop({ close: true }).catch(() => undefined);
+  }
 }

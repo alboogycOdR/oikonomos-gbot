@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
 /**
- * TASK-221/TASK-226: `WORKER_HEARTBEAT_JOB`/`WORKER_ROUTINE_POLL_JOB` are
+ * TASK-221/TASK-226/TASK-246: worker queue names are
  * fixed literal pg-boss queue names, shared by every test that starts a real
  * `WorkerJobQueue` — `workerJobQueue.test.ts` and `main.test.ts` alike, now
  * that TASK-226 added a second real caller. Confirmed by direct experiment

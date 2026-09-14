@@ -1686,8 +1686,8 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // not (see dossiers/TASK-136.md).
       expect(run.status).toBe("completed");
 
-      // AC2 — TASK-133's reconcileInterruptedRuns finds and correctly
-      // handles a chat run parked this way. Fabricate an orphaned run using
+      // ADR-016 — boot reconciliation must leave a chat run parked this way
+      // untouched. Fabricate an orphaned run using
       // the exact same typed `parkTaskRun` accessor this driver calls (no
       // raw SQL), simulating a worker process that died after parking but
       // before ever reaching completeTaskRun/failTaskRun.
@@ -1702,10 +1702,10 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const parkedRow = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
       expect(parkedRow.rows[0]?.status).toBe("waiting_approval");
 
-      const outcomes = await reconcileInterruptedRuns(options, { taskId: orphanTask.taskId });
-      expect(outcomes).toEqual([{ runId: orphanRun.runId, outcome: "resumed" }]);
-      const resumedRow = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
-      expect(resumedRow.rows[0]?.status).toBe("resumed");
+      const outcomes = await reconcileInterruptedRuns(options, { taskId: orphanTask.taskId }, async (candidate) => ({ runId: candidate.runId, mode: "resume" }));
+      expect(outcomes).toEqual([]);
+      const parkedAfterBoot = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
+      expect(parkedAfterBoot.rows[0]?.status).toBe("waiting_approval");
     },
     120_000,
   );

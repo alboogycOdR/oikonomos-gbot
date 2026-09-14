@@ -1,7 +1,11 @@
 import { fileURLToPath } from "node:url";
 
 import { createWorkerJobQueue } from "./jobs/workerJobQueue.js";
-import { reconcileInterruptedRuns } from "./runLifecycle.js";
+import { createChatRunDriver, type CreateChatRunDriverOptions } from "./chatRunDriver.js";
+import { createRunGate } from "./runConcurrency.js";
+import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, listMessages } from "@oikonomos/db";
+import { failTaskRun, parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
+import { deliverBotToBotMessage } from "./groupFanout.js";
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -45,32 +49,89 @@ export interface RunWorkerOptions {
    * already established for the function itself.
    */
   reconcileFilter?: { tenantId?: string; taskId?: string };
+  /** Test seam; production uses the normal worker chat-driver composition. */
+  chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, "connectionString">;
 }
 
 export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Promise<void> }> {
   const log = options.onLog ?? ((message: string) => console.log(message));
 
-  const reconciled = await reconcileInterruptedRuns(
-    { connectionString: options.connectionString },
-    options.reconcileFilter ?? {},
-  );
-  if (reconciled.length > 0) {
-    const failed = reconciled.filter((outcome) => outcome.outcome === "resume_failed");
-    log(
-      `reconciled ${reconciled.length} interrupted run(s) at boot: ${reconciled.length - failed.length} resumed, ${failed.length} failed to resume.`,
-    );
-    for (const outcome of failed) {
-      console.error(`failed to resume interrupted run ${outcome.runId}: ${outcome.error ?? "unknown error"}`);
-    }
-  }
-
+  const database = { connectionString: options.connectionString };
+  const driver = createChatRunDriver({ ...database, ...options.chatRunDriverOptions });
+  const gate = createRunGate({ maxConcurrent: 2 });
   const queue = createWorkerJobQueue({
     connectionString: options.connectionString,
     onHeartbeat: () => log("heartbeat"),
     routinePolling: { connectionString: options.connectionString, tenantId: options.tenantId },
     onError: (error, context) => console.error(`worker job queue error (${context.job}):`, error),
+    onRunExecution: async (job) => {
+      const run = await getRun(database, job.data.runId);
+      if (run === null || run.status === "waiting_approval" || run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
+      const task = await getTask(database, run.taskId);
+      if (task === null) throw new Error(`run ${run.runId} references a missing task.`);
+      if (task.execution == null) {
+        await failTaskRun(database, run.runId, "execution_unresolvable");
+        await insertAuditEvent(database, {
+          tenantId: run.tenantId, runId: run.runId, actor: "system:run-execution",
+          eventType: "run.execution_unresolvable", payload: { reason: "missing_execution" },
+        });
+        return;
+      }
+      const executionCommand = task.execution;
+      const thread = await getOrCreateThreadForRole(database, { roleId: task.roleId });
+      await gate.run(task.roleId, async (execution) => {
+        if (execution.queued !== null) {
+          await insertAuditEvent(database, {
+            tenantId: run.tenantId, runId: run.runId, actor: "system:run-concurrency", eventType: "run.queued",
+            payload: { taskId: task.taskId, roleId: task.roleId, position: execution.queued.position, reason: "consumer_gate" },
+          });
+        }
+        if (executionCommand.kind === "fanout") {
+          const source = (await listMessages(database, executionCommand.threadId)).find(
+            (message) => message.id === executionCommand.sourceMessageId,
+          );
+          if (source === undefined) {
+            await failTaskRun(database, run.runId, "execution_unresolvable");
+            await insertAuditEvent(database, {
+              tenantId: run.tenantId, runId: run.runId, actor: "system:run-execution",
+              eventType: "run.execution_unresolvable", payload: { reason: "source_message_missing" },
+            });
+            return;
+          }
+          const result = await deliverBotToBotMessage(database, {
+            fromRoleId: "human", toRoleIds: [executionCommand.recipientRoleId], body: source.body,
+            runId: run.runId, tenantId: run.tenantId,
+          });
+          if (!result.delivered) await parkTaskRun(database, run.runId);
+          return;
+        }
+        // The run row is created by the API before it enqueues this
+        // reference.  Always retain that identity: a missing session ref
+        // means "start this persisted run", not "create another run".
+        // A non-empty Claude session ref additionally selects the provider
+        // continuation path inside the driver.
+        const resume = run.provider === "claude" && run.sessionRef !== null
+          ? { runId: run.runId, sessionRef: run.sessionRef }
+          : { runId: run.runId };
+        await driver.run({ task, threadId: thread.id, resume });
+      });
+    },
   });
   await queue.start();
+  const reconciled = await reconcileInterruptedRuns(database, options.reconcileFilter ?? {}, async (run) => {
+    if (run.provider === "claude" && run.sessionRef !== null) {
+      await queue.enqueueRunExecution(run.runId);
+      return { runId: run.runId, mode: "resume" };
+    }
+    // A provider with no resumable session is never relabelled "resumed".
+    // Close the interrupted turn, then enqueue exactly one fresh run on the
+    // same persisted task; the driver rebuilds its prompt from thread state.
+    await failTaskRun(database, run.runId, "worker_restart");
+    const replacement = await startTaskRun(database, { taskId: run.taskId, tenantId: run.tenantId, provider: run.provider });
+    await queue.enqueueRunExecution(replacement.runId);
+    return { runId: replacement.runId, mode: "new_run" };
+  });
+  if (reconciled.length > 0) log(`reconciled ${reconciled.length} interrupted run(s) at boot: queued for execution.`);
   log("worker started: heartbeat + routine polling live.");
 
   return { stop: () => queue.stop() };

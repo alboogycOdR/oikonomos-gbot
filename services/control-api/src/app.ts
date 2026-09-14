@@ -1770,23 +1770,56 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           const recipients = routing.route.recipients;
           if (recipients.length === 0) throw new Error("group routing selected no recipients.");
           if (recipients.length > 1) {
-            const dispatchRoleId = recipients[0]!.roleId;
-            const task = await deps.createTask({
-              roleId: dispatchRoleId,
-              title: `Group chat: ${titleSource.slice(0, 120)}`,
-              goal,
-              requestedBy: `chat:thread:${thread.id}`,
-            });
-            const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: recipients.map((member) => member.roleId), body: goal });
+            if (deps.submitTaskExecution === undefined) {
+              // Test/backwards-compatible seam. Production always supplies
+              // submitTaskExecution, whose durable worker command prevents
+              // this API process from running the fan-out.
+              const task = await deps.createTask({
+                roleId: recipients[0]!.roleId,
+                title: `Group chat: ${titleSource.slice(0, 120)}`,
+                goal,
+                requestedBy: `chat:thread:${thread.id}`,
+              });
+              const { runId } = await deps.requestGroupFanout({ task, memberRoleIds: recipients.map((member) => member.roleId), body: goal });
+              const message = await deps.insertMessage({
+                threadId: thread.id,
+                role: "user",
+                body,
+                runId,
+                senderRoleId: null,
+                attachments: publicAttachments,
+              });
+              await reply.code(201).send(shapePostedMessage(message));
+              return;
+            }
             const message = await deps.insertMessage({
               threadId: thread.id,
               role: "user",
               body,
-              runId,
               senderRoleId: null,
               attachments: publicAttachments,
             });
-            await reply.code(201).send(shapePostedMessage(message));
+            const taskInputs = recipients.map((recipient) => ({
+              roleId: recipient.roleId,
+              title: `Group chat: ${titleSource.slice(0, 120)}`,
+              goal,
+              requestedBy: `chat:thread:${thread.id}`,
+            }));
+            const submissions = await Promise.all(taskInputs.map((task, index) =>
+              deps.submitTaskExecution!({
+                task,
+                execution: {
+                  version: 1,
+                  kind: "fanout",
+                  threadId: thread.id,
+                  sourceMessageId: message.id,
+                  recipientRoleId: recipients[index]!.roleId,
+                },
+              }),
+            ));
+            // A group message is represented by one source row; attach the
+            // first recipient run for existing transcript/receipt links.
+            await reply.code(201).send(shapePostedMessage({ ...message, runId: submissions[0]!.runId }));
             return;
           }
           const selected = recipients[0]!;
@@ -1798,13 +1831,19 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             senderRoleId: null,
             attachments: publicAttachments,
           });
-          const task = await deps.createTask({
+          const taskInput = {
             roleId: selected.roleId,
             title: `Group chat: ${titleSource.slice(0, 120)}`,
             goal,
             requestedBy: `chat:thread:${thread.id}`,
-          });
-          void deps.runChatTask({ task, threadId: thread.id }).catch((error: unknown) => {
+          };
+          const submit = deps.submitTaskExecution === undefined
+            ? (async () => {
+                const task = await deps.createTask(taskInput);
+                await deps.runChatTask({ task, threadId: thread.id });
+              })()
+            : deps.submitTaskExecution({ task: taskInput, execution: { version: 1, kind: "chat", threadId: thread.id } });
+          void submit.catch((error: unknown) => {
             request.log.error(error, "group chat run failed after message acceptance");
           });
           await reply.code(201).send(shapePostedMessage(message));
@@ -1816,13 +1855,19 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           body,
           attachments: publicAttachments,
         });
-        const task = await deps.createTask({
+        const taskInput = {
           roleId: thread.roleId,
           title: `Chat: ${titleSource.slice(0, 120)}`,
           goal,
           requestedBy: `chat:thread:${thread.id}`,
-        });
-        void deps.runChatTask({ task, threadId: thread.id }).catch((error: unknown) => {
+        };
+        const submit = deps.submitTaskExecution === undefined
+          ? (async () => {
+              const task = await deps.createTask(taskInput);
+              await deps.runChatTask({ task, threadId: thread.id });
+            })()
+          : deps.submitTaskExecution({ task: taskInput, execution: { version: 1, kind: "chat", threadId: thread.id } });
+        void submit.catch((error: unknown) => {
           request.log.error(error, "chat run failed after message acceptance");
         });
         await reply.code(201).send(shapePostedMessage(message));
