@@ -7335,7 +7335,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7367,12 +7367,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T11:39:00Z] [ORCH] Dispatched session (11:28:57Z) ran out of budget mid-work with no devteam-control block and no .done marker — first time this session that the harness itself left no end-state record (S5's earlier interruptions at least got an UNREPORTED marker). Real WIP left uncommitted in the worktree: app.ts, ports.ts, main.ts (all in Owned_Paths) — wiring submission to the atomic execution-context helper, per its own stated next_step. The session also ran the full isolated suite itself and found 4 pre-flagged ADR-obsolete failures in runLifecycle.test.ts (old assertions expect `outcome: 'resumed'` from `reconcileInterruptedRuns`; ADR-016 correctly changes this to `outcome: 'requeued'` since reconciliation now re-enqueues rather than flip-and-hope) — this is expected test debt already named as remaining work, not a regression. Watchdog was correctly re-enabled by the script's own finally block this time. Resuming CX9 on the same branch/worktree.
 - [2026-09-14T11:49:01Z] [SV:CX9] Committed persisted chat/fan-out queue wiring and real pg-boss restart/singleton/parked-run coverage (9718f6f). Two ADR-obsolete assertions remain in unowned services/worker/test/runLifecycle.test.ts; no territory violation made. NEXT: Supervisor should update or grant ownership for the two obsolete lifecycle assertions, then review final queued fan-out source-message association and acceptance coverage.
 - [2026-09-14T11:52:00Z] [ORCH] Real gap, not the same file twice: `services/worker/test/runLifecycle.test.ts` (top-level test/ dir) is genuinely distinct from `services/worker/src/runLifecycle.test.ts` in Owned_Paths (my own earlier widening missed the actual location of the ADR-obsolete assertions). No other task is active — widened directly, no conflict.
+- [2026-09-14T12:09:08Z] [SV:CX9] Committed durable reconciliation semantics and updated owned worker lifecycle assertions. Worker isolated suite passes; control-api tests need their API-process expectations updated for the durable worker queue.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** ADR-016 ACCEPTED-WITH-CHANGES (ORCH on Claude Fable 5.1, different model from the CX9/GPT author; 2026-09-12T13:25:00Z; docs/decisions/ADR-016-run-execution-queue.md). Implement against the committed ADR text, not the dossier draft. Three binding changes: R1 group fan-out (`deliverBotToBotMessage`) enqueues through the same port — no run starts from the API process; R2 re-drive semantics: resume the run only when `session_ref` exists and the provider supports it, otherwise close it `failed` (`failure_note` worker_restart) and start a new run on the same task from persisted thread state, both audited `run.requeued {reason, mode, previous_run_id}`; R3 keep TASK-238's enqueue-time `run.queued` at submission and add a consumer-side one with reason consumer_gate. Test obligations listed in the ADR; register the new queue in `jobs/pgBossTestCleanup.ts`. ADDENDUM 2026-09-12T14:30:00Z: your second block was a genuine ADR gap, resolved as ADR-016 Amendment 1a (read it): `tasks.execution jsonb` written in the same transaction as the task/run at submission — `{version:1, kind:'chat', threadId}` or `{version:1, kind:'fanout', threadId, sourceMessageId, recipientRoleId}` — identifiers only; job payload stays `{runId}`; consumer resolves run → task → execution and fails a run with no execution with audit `run.execution_unresolvable`; fan-out routing stays at submission (one run per recipient, as today). Territory widened accordingly (worker index.ts, db tasks.ts + test, migration 025 — 024 is reserved by TASK-247). Continue on `task/TASK-246-cx9`; commit the nine staged files first (the stale index.lock was removed twice by ORCH; if it reappears, the holder is gone — delete it).
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T11:52:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/chat.routes.test.ts is required to update four obsolete API-process execution expectations for durable queue semantics, but is outside TASK-246 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T12:09:08Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
