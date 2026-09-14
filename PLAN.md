@@ -7024,7 +7024,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-235
 **Title:** G-07 part 2b — Steel/CDP interactive browser hand-off, plus wiring TakeoverCard into a real screen
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-228's own Progress_Notes (the shell/PTY half this splits from — read that first, same pattern applies); `packages/connectors/src/steelSession.ts` (the agent's own CDP handle, currently never paused/handed off); TASK-225's CDP research (`services/worker/src/geminiToolExecutors.ts`'s `runSteelCdp`/`Target.attachToTarget` pattern — the vocabulary this needs, NOT assumed to be directly reusable); ADR-010 Amendment enforced set.
 **Owned_Paths:** — (investigation-first, matching TASK-228's own precedent — CDP research must come before any design here)
@@ -7041,12 +7041,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** —
 **Progress_Notes:**
 - [2026-09-12T08:50:00Z] [ORCH] Split from TASK-228 when the shell/PTY half was completed for real and this half was confirmed to still need genuine, unresearched CDP investigation — bundling the two any longer would have meant either rushing this half's design or holding the shell half's real, working, tested build hostage to it. See TASK-228's own Progress_Notes for the full context this splits from.
+- [2026-09-14T18:40:00Z] [ORCH] Dispatched now: no Owned_Paths overlap with TASK-246's current (in_progress) territory. TASK-227 and TASK-250 are held instead — both name services/control-api/src/{app.ts,index.ts,ports.ts} as likely territory, which TASK-246 is actively modifying right now; dispatching either concurrently risks a real collision the moment their own investigation confirms those files. Will dispatch both once TASK-246 merges.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-12T08:50:00Z
+**Updated_At:** 2026-09-14T18:40:00Z
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
