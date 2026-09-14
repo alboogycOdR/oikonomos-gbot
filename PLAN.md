@@ -7456,7 +7456,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7472,12 +7472,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-14T19:08:40Z
 **Progress_Notes:**
 - [2026-09-12T10:50:00Z] [ORCH] Filed from TASK-240's finding.
+- [2026-09-14T19:29:02Z] [SV:CX9] Investigation confirms the vault and audit events have no production callers; control-api secret routes are unconfigured (501) and connector minters use only environment resolvers.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: TASK-250 has no concrete Owned_Paths; implementation requires an explicit widening, detailed in dossiers/TASK-250.md.
 **Updated_By:** SV
-**Updated_At:** 2026-09-14T19:08:40Z
+**Updated_At:** 2026-09-14T19:29:02Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
