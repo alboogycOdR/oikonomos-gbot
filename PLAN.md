@@ -7457,7 +7457,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
 **Owned_Paths:** — (investigation-first; likely services/control-api/src/index.ts and ports.ts for composition and packages/connectors/src/mcp/*.ts for the minter-side resolver call — confirm before widening)
