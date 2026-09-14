@@ -7333,7 +7333,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7357,12 +7357,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T14:08:29Z] [SV:CX9] Implemented durable queue core and recorded checkpoint in dossier; worker/control-api typechecks pass. Commit is blocked by a stale git index lock held by git PID 17372. NEXT: Clear the stale worktree index lock, commit the staged changes, then add real pg-boss restart/duplicate/approval/audit coverage and complete ADR-016 R1 fan-out queuing.
 - [2026-09-12T14:25:26Z] [SV:CX9] Recorded stopping point in TASK-246 dossier; durable-queue changes remain uncommitted.
 - [2026-09-12T14:30:00Z] [ORCH] Second OWNERSHIP_CONFLICT resolved: ADR-016 Amendment 1a (persisted execution context on tasks) + territory widened; index.lock cleared again; resumed.
+- [2026-09-14T10:23:42Z] [SV:CX9] Corrected durable consumer run identity; both worker and control-api typechecks pass. Uncommitted queue work remains in the task worktree.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** ADR-016 ACCEPTED-WITH-CHANGES (ORCH on Claude Fable 5.1, different model from the CX9/GPT author; 2026-09-12T13:25:00Z; docs/decisions/ADR-016-run-execution-queue.md). Implement against the committed ADR text, not the dossier draft. Three binding changes: R1 group fan-out (`deliverBotToBotMessage`) enqueues through the same port — no run starts from the API process; R2 re-drive semantics: resume the run only when `session_ref` exists and the provider supports it, otherwise close it `failed` (`failure_note` worker_restart) and start a new run on the same task from persisted thread state, both audited `run.requeued {reason, mode, previous_run_id}`; R3 keep TASK-238's enqueue-time `run.queued` at submission and add a consumer-side one with reason consumer_gate. Test obligations listed in the ADR; register the new queue in `jobs/pgBossTestCleanup.ts`. ADDENDUM 2026-09-12T14:30:00Z: your second block was a genuine ADR gap, resolved as ADR-016 Amendment 1a (read it): `tasks.execution jsonb` written in the same transaction as the task/run at submission — `{version:1, kind:'chat', threadId}` or `{version:1, kind:'fanout', threadId, sourceMessageId, recipientRoleId}` — identifiers only; job payload stays `{runId}`; consumer resolves run → task → execution and fails a run with no execution with audit `run.execution_unresolvable`; fan-out routing stays at submission (one run per recipient, as today). Territory widened accordingly (worker index.ts, db tasks.ts + test, migration 025 — 024 is reserved by TASK-247). Continue on `task/TASK-246-cx9`; commit the nine staged files first (the stale index.lock was removed twice by ORCH; if it reappears, the holder is gone — delete it).
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-12T14:30:00Z
+**Blocked_Reason:** TOOLING_FAILURE: stale zero-byte worktree index.lock prevents git staging; environment rejected removal of E:\DELL-PROJECTS\GROKBOT-CLONE\.git\worktrees\wt-codex9-GROKBOT-CLONE\index.lock.
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T10:23:42Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
