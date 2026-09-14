@@ -69,8 +69,11 @@ export {
   createWorkerJobQueue,
   WorkerJobQueue,
   WORKER_HEARTBEAT_JOB,
+  WORKER_RUN_EXECUTION_JOB,
+  enqueueRunExecution,
   type CreateWorkerJobQueueOptions,
   type WorkerHeartbeatJob,
+  type RunExecutionJob,
 } from "./jobs/workerJobQueue.js";
 
 if (import.meta.vitest) {

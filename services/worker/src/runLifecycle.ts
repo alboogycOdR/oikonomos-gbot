@@ -185,7 +185,7 @@ const OPEN_RUN_STATUSES: readonly RunStatus[] = [
 
 export interface ReconcileOutcome {
   runId: string;
-  outcome: "resumed" | "resume_failed";
+  outcome: "requeued" | "resume_failed";
   /** Present only when `outcome` is `"resume_failed"`. */
   error?: string;
 }
@@ -225,6 +225,7 @@ export interface ReconcileOutcome {
 export async function reconcileInterruptedRuns(
   options: DatabaseOptions,
   filter: { tenantId?: string; taskId?: string } = {},
+  enqueue?: (run: Run) => Promise<{ runId: string; mode: "resume" | "new_run" }>,
 ): Promise<ReconcileOutcome[]> {
   const orphaned: Run[] = [];
   for (const status of OPEN_RUN_STATUSES) {
@@ -238,9 +239,23 @@ export async function reconcileInterruptedRuns(
 
   const outcomes: ReconcileOutcome[] = [];
   for (const run of orphaned) {
+    // Approval is a durable human decision boundary, never boot work.
+    if (run.status === "waiting_approval") continue;
     try {
-      await resumeInterruptedRun(options, run.runId);
-      outcomes.push({ runId: run.runId, outcome: "resumed" });
+      if (enqueue === undefined) {
+        // Compatibility for the lifecycle unit seam; production always
+        // supplies the durable queue producer from runWorker.
+        await resumeInterruptedRun(options, run.runId);
+      } else {
+        const queued = await enqueue(run);
+        await recordAuditEvent(options, {
+          tenantId: run.tenantId, runId: queued.runId,
+          actor: "system:run-lifecycle",
+          eventType: "run.requeued",
+          payload: { reason: "worker_restart", mode: queued.mode, previous_run_id: run.runId },
+        });
+      }
+      outcomes.push({ runId: run.runId, outcome: "requeued" });
     } catch (error) {
       outcomes.push({
         runId: run.runId,

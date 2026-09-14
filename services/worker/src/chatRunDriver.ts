@@ -17,6 +17,7 @@ import {
 } from "@oikonomos/connectors";
 import {
   Database,
+  getRun,
   getPlatformSpendUsd,
   getRoleSandbox,
   getLatestThreadSummary,
@@ -82,7 +83,7 @@ export interface ChatRunRequest {
   readonly task: Task;
   readonly threadId: string;
   /** Continue this persisted Agent SDK session instead of starting a new run. */
-  readonly resume?: { readonly runId: string; readonly sessionRef: string };
+  readonly resume?: { readonly runId: string; readonly sessionRef?: string };
 }
 export interface ChatRunDriver { run(request: ChatRunRequest): Promise<void>; }
 export interface CreateChatRunDriverOptions extends DatabaseOptions {
@@ -343,12 +344,17 @@ async function runChatTask(
       runId = run.runId;
     } else {
       runId = request.resume.runId;
-      if (request.resume.sessionRef.trim().length === 0) {
-        throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is empty.`);
-      }
-      run = await resumeInterruptedRun(options, runId);
-      if (run.sessionRef === null) {
-        throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
+      if (request.resume.sessionRef === undefined) {
+        // Queue admission created this run already. It has no provider
+        // session yet, so execute this persisted run rather than creating a
+        // second one or manufacturing a resume token.
+        const existing = await getRun(options, runId);
+        if (existing === null) throw new Error(`Cannot execute unknown chat run ${runId}.`);
+        run = existing;
+      } else {
+        if (request.resume.sessionRef.trim().length === 0) throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is empty.`);
+        run = await resumeInterruptedRun(options, runId);
+        if (run.sessionRef === null) throw new Error(`Cannot resume chat run ${runId}: persisted session_ref is missing.`);
       }
     }
     // A RESUMED run stays on the provider it actually started on
@@ -1468,7 +1474,7 @@ export function finalText(events: readonly unknown[]): string {
 function assertRequest(request: ChatRunRequest): void {
   if (typeof request?.threadId !== "string" || request.threadId.trim().length === 0) throw new Error("chat run requires threadId.");
   if (typeof request?.task?.taskId !== "string" || request.task.taskId.trim().length === 0) throw new Error("chat run requires task.");
-  if (request.resume !== undefined && (typeof request.resume.runId !== "string" || request.resume.runId.trim().length === 0 || typeof request.resume.sessionRef !== "string")) {
+  if (request.resume !== undefined && (typeof request.resume.runId !== "string" || request.resume.runId.trim().length === 0 || (request.resume.sessionRef !== undefined && typeof request.resume.sessionRef !== "string"))) {
     throw new Error("chat run resume requires a runId and sessionRef.");
   }
 }

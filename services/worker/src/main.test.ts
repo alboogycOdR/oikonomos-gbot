@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getRun, type DatabaseOptions } from "@oikonomos/db";
 
 import { purgePgBossQueue, withPgBossQueueLock } from "./jobs/pgBossTestCleanup.js";
-import { WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB } from "./jobs/workerJobQueue.js";
+import { WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, WORKER_RUN_EXECUTION_JOB } from "./jobs/workerJobQueue.js";
 import { startTaskRun } from "./runLifecycle.js";
 import { runWorker } from "./main.js";
 
@@ -36,7 +36,7 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
   });
 
   it(
-    "boots and resumes a run orphaned by a prior process's death — not just that reconcileInterruptedRuns " +
+    "boots and re-drives a run orphaned by a prior process's death — not just that reconcileInterruptedRuns " +
       "works in isolation (already covered by runLifecycle.test.ts), but that the REAL entrypoint invokes it",
     async () => {
       // Constructed directly rather than actually killing a process, matching
@@ -53,6 +53,7 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
       await withPgBossQueueLock(pool, async () => {
         await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
         await purgePgBossQueue(pool, WORKER_ROUTINE_POLL_JOB);
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
         const logs: string[] = [];
         const worker = await runWorker({
           connectionString: connectionString!,
@@ -81,6 +82,7 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
     await withPgBossQueueLock(pool, async () => {
       await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
       await purgePgBossQueue(pool, WORKER_ROUTINE_POLL_JOB);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
       const logs: string[] = [];
       const worker = await runWorker({
         connectionString: connectionString!,
