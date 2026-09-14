@@ -7023,7 +7023,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-235
 **Title:** G-07 part 2b — Steel/CDP interactive browser hand-off, plus wiring TakeoverCard into a real screen
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-228's own Progress_Notes (the shell/PTY half this splits from — read that first, same pattern applies); `packages/connectors/src/steelSession.ts` (the agent's own CDP handle, currently never paused/handed off); TASK-225's CDP research (`services/worker/src/geminiToolExecutors.ts`'s `runSteelCdp`/`Target.attachToTarget` pattern — the vocabulary this needs, NOT assumed to be directly reusable); ADR-010 Amendment enforced set.
@@ -7037,8 +7037,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Implementation mirroring TASK-228's own shape: a separate code path from any existing relay (not a mode flag), a mirror-image liveness proof (input genuinely reaches the browser only during an authorized hand-off window), real tests against a real Steel session — not just against mocks.
 - [ ] Wire `TakeoverCard` into a real screen (most likely `chat_screen.dart`): poll `GET /runs/:id/takeover` for the thread's active/parked runs, render the card when one needs a human, `onTakeOver` opens `TakeoverScreen` (shell case, already built by TASK-228) or the new browser hand-off view (this task's case) depending on `kind`, `onDone` calls `POST /runs/:id/takeover/complete`.
 - [ ] Full suites, lint, typecheck, flutter analyze/test clean.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-235-s5
+**Started_At:** 2026-09-14T18:35:47Z
 **Progress_Notes:**
 - [2026-09-12T08:50:00Z] [ORCH] Split from TASK-228 when the shell/PTY half was completed for real and this half was confirmed to still need genuine, unresearched CDP investigation — bundling the two any longer would have meant either rushing this half's design or holding the shell half's real, working, tested build hostage to it. See TASK-228's own Progress_Notes for the full context this splits from.
 - [2026-09-14T18:40:00Z] [ORCH] Dispatched now: no Owned_Paths overlap with TASK-246's current (in_progress) territory. TASK-227 and TASK-250 are held instead — both name services/control-api/src/{app.ts,index.ts,ports.ts} as likely territory, which TASK-246 is actively modifying right now; dispatching either concurrently risks a real collision the moment their own investigation confirms those files. Will dispatch both once TASK-246 merges.
@@ -7046,8 +7046,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T18:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T18:35:47Z
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
