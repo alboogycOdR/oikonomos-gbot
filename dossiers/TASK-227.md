@@ -215,3 +215,63 @@ packages/policy/test/role-constraints.test.ts
 (investigation framing stays in `Description`, which the firewall doesn't parse for paths). Once that lands, the
 build above can proceed directly from this dossier — every file, every insertion point, and the resolution
 direction for each half are already nailed down; no further investigation should be needed.
+
+### 2026-09-14 (session 3)
+
+**Resumed per §10a active-task pointer + resolved stale checkpoint.** `.devteam/CHECKPOINT.md` pointed at this task's
+session-1 stopping point (already superseded). Worktree's local `PLAN.md` was stale — 5-entry `Owned_Paths`
+(`preflight_paths.py` confirmed), missing session 2's build commits' own follow-up and ORCH's 23:05:00Z note
+widening territory to include `packages/broker/test/pretooluse.test.ts`. Synced via
+`git fetch mainco && git checkout mainco/master -- PLAN.md` (working-tree read only — control.mode=strict means
+this file is never committed by me either way; restored to branch `HEAD` after reading, confirmed via
+`git status --short` showing only the test file staged before commit). Re-ran preflight against the synced copy:
+
+```
+[preflight] TASK-227 Owned_Paths inspected in E:/DELL-PROJECTS/wt-s5-GROKBOT-CLONE
+[preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  FILE   packages/broker/src/index.ts  -> exists, 800 line(s), 28064 bytes
+  FILE   packages/broker/src/capabilityRegistry.ts  -> exists, 173 line(s), 7869 bytes
+  FILE   services/control-api/src/app.ts  -> exists, 2675 line(s), 114079 bytes
+  FILE   packages/policy/src/index.ts  -> exists, 130 line(s), 4233 bytes
+  FILE   packages/policy/test/role-constraints.test.ts  -> exists, 58 line(s), 2214 bytes
+  FILE   packages/broker/test/pretooluse.test.ts  -> exists, 519 line(s), 21583 bytes
+```
+
+Also found and discarded the same class of stray working-tree noise as session 2 (`AUTOPILOT_LOG.md`, a
+hook/checkpoint artifact, not authored by me, outside `Owned_Paths`) via `git checkout -- AUTOPILOT_LOG.md` before
+starting.
+
+**Work done — closed the AC-3 gap exactly as ORCH's 23:05:00Z note directed.** Added a new `describe` block,
+"TASK-227 — role_grants.constraints.rate_per_hour", to `packages/broker/test/pretooluse.test.ts` (the file ORCH
+named, already existing, already exercising the real `handlePreToolUse`/`decidePreToolUse` call site) with 4 tests
+committing exactly the cases session 2's throwaway `/tmp` proof already validated manually:
+1. Two calls under a `rate_per_hour: 2` ceiling both allow.
+2. A third call at the ceiling denies `constraint.rate_per_hour`; a subsequent fourth call also denies (proves a
+   denied call doesn't itself count toward the next attempt, matching `recordRateLimitUsage`'s own doc comment).
+3. A grant with no `rate_per_hour` set is unaffected across 5 calls (regression guard for the pre-existing,
+   unconstrained path).
+4. Usage is tracked per `roleId+capabilityId` (`rateLimitKey`'s own documented shape), not globally — a different
+   `roleId` against the same dependency composition gets its own window.
+
+Each test uses distinct `toolUseId`s per call so the ADR-007 L1-to-L3 replay cache (keyed on
+`tenantId/roleId/toolUseId/toolName/actionDigest`) never short-circuits the real rate-limit gate under test —
+confirmed by reading `packages/broker/src/index.ts`'s replay-cache doc comment and `rateLimitKey`/`extractRatePerHour`
+directly before writing the assertions, not inferred from the dossier's session-2 description alone.
+
+**Test evidence:**
+- `pnpm --filter @oikonomos/broker test`: **170/170 passed** (166 pre-existing + 4 new), 15 test files.
+- `pnpm exec eslint packages/broker/test/pretooluse.test.ts`: clean, zero output.
+- `scripts/test-isolated.ps1 -Root .` (full recursive suite against the isolated `oikonomos_test` DB, per CLAUDE.md's
+  own amendment — never only the task's own package): `packages/db` (all tests), `services/control-api`
+  (284/284), and every other package green. `services/worker`'s `chatRunDriver.ts` suite failed 1/247 —
+  **re-ran twice more**, a *different* test failed each time (`FK constraint on thread_members` /
+  `provider-cap denial` / `per-phase timing row`), i.e. non-deterministic across runs — confirmed unrelated to
+  this session's diff by `git diff --stat` showing only `packages/broker/test/pretooluse.test.ts` touched (no
+  `services/worker` or `packages/db` file in this session's changes at all). Consistent with the shared-DB
+  concurrent-test-pollution pattern PLAN.md's own orchestrator_notes and this task's own session-2 dossier entry
+  already document (pg-boss timing flake, cleanup-ordering races against `thread_members`/`threads` FKs) —
+  not a regression this session introduced.
+
+**Status:** all of Acceptance_Criteria's four bullets are now fully closed, including AC-3's literal "through the
+real `decidePreToolUse` call site" wording — the gap flagged at the end of session 2 is resolved. Sending to
+`needs_review`.
