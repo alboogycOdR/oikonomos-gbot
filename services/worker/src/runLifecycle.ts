@@ -194,13 +194,13 @@ export interface ReconcileOutcome {
  * Boot-time reconciliation (OIK-106): find every run left in an open,
  * non-terminal status with no live process still executing it — the
  * fingerprint of a run orphaned by a prior worker process's death — and
- * resume each one via `resumeInterruptedRun`.
+ * enqueue each executable one through the durable worker queue.
  *
  * Deliberately callable on its own (AC3): a real worker-process entrypoint
  * calls this once at startup, but nothing here depends on process boot, so
  * it is fully testable in isolation against a real database.
  *
- * A run whose resume fails (e.g. a concurrent transition already moved it
+ * A run whose enqueue fails (e.g. a concurrent transition already moved it
  * to a terminal status between the scan and the resume attempt) is recorded
  * as `resume_failed` rather than thrown — one orphaned run's failure must
  * not stop reconciliation of the rest. Completed/failed/cancelled runs are
@@ -213,8 +213,8 @@ export interface ReconcileOutcome {
  * resume the same run. `resumeRun`'s underlying `UPDATE ... WHERE status IN
  * (...)` is still atomic per-row (only one of the two racing calls can
  * actually flip the row), so a race cannot corrupt state, but nothing here
- * prevents the redundant attempt. Multi-instance coordination is out of
- * this task's scope (single-worker-instance deployment only).
+ * prevents the redundant attempt. The queue's singleton key provides the
+ * production coalescing boundary.
  *
  * `filter.tenantId`/`filter.taskId` narrow the scan the same way they
  * narrow `listRuns` itself — real worker boot always calls this
@@ -225,7 +225,7 @@ export interface ReconcileOutcome {
 export async function reconcileInterruptedRuns(
   options: DatabaseOptions,
   filter: { tenantId?: string; taskId?: string } = {},
-  enqueue?: (run: Run) => Promise<{ runId: string; mode: "resume" | "new_run" }>,
+  enqueue: (run: Run) => Promise<{ runId: string; mode: "resume" | "new_run" }>,
 ): Promise<ReconcileOutcome[]> {
   const orphaned: Run[] = [];
   for (const status of OPEN_RUN_STATUSES) {
@@ -242,19 +242,13 @@ export async function reconcileInterruptedRuns(
     // Approval is a durable human decision boundary, never boot work.
     if (run.status === "waiting_approval") continue;
     try {
-      if (enqueue === undefined) {
-        // Compatibility for the lifecycle unit seam; production always
-        // supplies the durable queue producer from runWorker.
-        await resumeInterruptedRun(options, run.runId);
-      } else {
-        const queued = await enqueue(run);
-        await recordAuditEvent(options, {
-          tenantId: run.tenantId, runId: queued.runId,
-          actor: "system:run-lifecycle",
-          eventType: "run.requeued",
-          payload: { reason: "worker_restart", mode: queued.mode, previous_run_id: run.runId },
-        });
-      }
+      const queued = await enqueue(run);
+      await recordAuditEvent(options, {
+        tenantId: run.tenantId, runId: queued.runId,
+        actor: "system:run-lifecycle",
+        eventType: "run.requeued",
+        payload: { reason: "worker_restart", mode: queued.mode, previous_run_id: run.runId },
+      });
       outcomes.push({ runId: run.runId, outcome: "requeued" });
     } catch (error) {
       outcomes.push({
@@ -295,7 +289,7 @@ if (import.meta.vitest) {
 
     it("reconcileInterruptedRuns propagates the connectionString guard", async () => {
       await expect(
-        reconcileInterruptedRuns({ connectionString: "   " }),
+        reconcileInterruptedRuns({ connectionString: "   " }, {}, async (run) => ({ runId: run.runId, mode: "resume" })),
       ).rejects.toThrow(/connectionString/);
     });
   });
