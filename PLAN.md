@@ -7457,11 +7457,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault write path has no production composition site — wire createSecretVault into control-api fulfilment, with real write-side audit (connector-minter consumption split to TASK-253)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
-**Owned_Paths:** services/control-api/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, scripts/check-config.mjs, packages/db/src/secretVault.ts, packages/db/src/secretVault.test.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts
+**Owned_Paths:** services/control-api/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, scripts/check-config.mjs, packages/db/src/secretVault.ts, packages/db/src/secretVault.test.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts, packages/db/src/index.ts
 **Depends_On:** TASK-242
 **Description:** Found by TASK-240's config check on 2026-09-12: `OIK_SECRET_VAULT_KEY` is unset in every scope and nothing breaks, because a grep for createSecretVault/resolveSecretValue under services/ returns zero non-test hits. TASK-192 built the vault (`packages/db/src/secretVault.ts`, migration 019) and TASK-187 built the fulfilment route, but the path that decrypts a fulfilled value for a connector minter (ADR-014 §1: the only legitimate callers are host-side connector session minters and the future OIK-045a injector) has no production caller. Same shape as TASK-224's skills finding: a real subsystem with zero production call sites. Investigate first: does `POST /secret-requests/:id/fulfil` write a `secret_values` row in production or only flip `secret_requests.status`? Does any minter resolve a vault-minted `secret://<ref>`? Then wire the missing half with a control-liveness test keyed on the `secret_vault.read` audit event, or record in ADR-014 why it stays unwired. control-api index.ts/ports.ts are owned by TASK-238/242 first; sequence after.
 **Acceptance_Criteria:**
@@ -7481,12 +7481,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T19:48:41Z] [SV:CX9] Confirmed dynamic secret refs have no transport to the fixed-ref, shared connector minters; dossier records exact live evidence and required scope/ADR decision.
 - [2026-09-14T22:35:00Z] [ORCH] Architectural decision made (ORCH): scope split, not widened. ADR-014 amended (docs/decisions/ADR-014-dynamic-secret-vault.md, 'Amendment 2026-09-14') recording that connector-minter consumption of a dynamically-vaulted secret is genuinely separate work — chatRunDriver.ts's minter pools are shared and role-agnostic per your own finding, so binding a per-role/run resolver is a connector-composition change, not a vault change. TASK-250's acceptance bar is revised to the write-path-plus-audit half only (still a hard requirement, not optional); TASK-253 is filed for the connector-consumption half. Resume on task/TASK-250-cx9 against the revised AC list.
 - [2026-09-14T20:08:44Z] [SV:CX9] Revised write-side scope assessed; implementation requires the DB package export surface to expose new tenant-scoped secret-request APIs.
+- [2026-09-14T22:12:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to packages/db/src/index.ts (the db package's own barrel export — distinct from services/control-api/src/index.ts already owned). No conflict with TASK-227's active territory. Resume on task/TASK-250-cx9.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts is required to export the new list/decline secret-request APIs but is outside TASK-250 Owned_Paths.
-**Updated_By:** SV
-**Updated_At:** 2026-09-14T20:08:44Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-14T22:12:00Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
