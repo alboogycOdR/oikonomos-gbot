@@ -7460,7 +7460,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault write path has no production composition site — wire createSecretVault into control-api fulfilment, with real write-side audit (connector-minter consumption split to TASK-253)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7487,12 +7487,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T22:12:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to packages/db/src/index.ts (the db package's own barrel export — distinct from services/control-api/src/index.ts already owned). No conflict with TASK-227's active territory. Resume on task/TASK-250-cx9.
 - [2026-09-14T20:28:51Z] [SV:CX9] Committed write-side vault production composition and real-Postgres liveness coverage in eda8bd8; only config enforcement remains.
 - [2026-09-14T22:35:00Z] [ORCH] scripts/check-config.mjs is protected (scripts/** — builders can never touch it, same rule as docs/**). Applied the one-line change directly: OIK_SECRET_VAULT_KEY moved from OPTIONAL to REQUIRED under control-api, matching your own AC. Resume on task/TASK-250-cx9 to record the full-suite evidence and close out; the unrelated dashboard firebase/app failure is the same known TASK-241 gap, not yours to fix.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-14T20:51:58Z] [SV:CX9] Committed TASK-250 production vault fulfilment and recorded fresh validation in the dossier; config requirement was applied by the supervisor on main.
+**Artifacts:** services/control-api/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, packages/db/src/secretRequests.ts, packages/db/src/index.ts, dossiers/TASK-250.md
+**Test_Evidence:** PASS: db build; control-api typecheck; focused ports.test.ts 8/8; isolated control-api 270/270. Isolated db exercised secret-vault/request tests but failed overall 201 pass/1 unrelated roles.test.ts deadlock/2 skipped. Full isolated suite recorded: unrelated dashboard firebase/app resolution failure (3 suites/5 tests); agent-providers passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T22:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T20:51:58Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
