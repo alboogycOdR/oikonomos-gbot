@@ -7552,7 +7552,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-253
 **Title:** Connector minters cannot consume a dynamically-vaulted secret — per-role/run-scoped minter resolution design + implementation (ADR-014 Amendment 2026-09-14, phase 2)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, Amendment 2026-09-14; TASK-250 Progress_Notes and dossier (full live evidence already gathered — read before re-deriving it)
@@ -7569,9 +7569,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-14T22:35:00Z] [ORCH] Filed from TASK-250's investigation and ADR-014's 2026-09-14 amendment. Read TASK-250's dossier before starting — the live evidence (which files, which line ranges) is already gathered and should not be re-derived.
 - [2026-09-14T21:28:16Z] [SV:CX9] Recorded the design-first no-consumer conclusion and safe future per-run scope in dossiers/TASK-253.md; no production code is warranted until an approved manifest declares a dynamic-secret-backed connector capability. NEXT: After the existing shared-database test processes finish, run one serial powershell -ExecutionPolicy Bypass -File scripts/test-isolated.ps1, record its final result in the dossier, then hand off for review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-14T21:48:16Z] [SV:CX9] Confirmed no current connector manifest consumes a dynamically vaulted secret; design-only per-run scope and follow-up trigger are documented and committed.
+**Artifacts:** dossiers/TASK-253.md
+**Test_Evidence:** Serial scripts/test-isolated.ps1 recorded: 15 projects passed; exit 1 from pre-existing shared-DB isolation cascade (DB 2 failures, then evals-harness/worker contamination). Control API passed 285/285. Full evidence is in the TASK-253 dossier.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-14T21:28:16Z
+**Updated_At:** 2026-09-14T21:48:16Z
