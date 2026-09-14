@@ -431,6 +431,42 @@ class ApiClient {
     return true;
   }
 
+  /// TASK-235 (G-07 part 2b) — `GET /runs/:id/takeover`. A `501` (no
+  /// `TakeoverPort` configured server-side — see that route's own doc
+  /// comment) and a `404` (run not found/not owned) are both treated as
+  /// "nothing pending" rather than surfaced as errors: from the caller's
+  /// perspective (polling for a card to show) both mean the same thing.
+  Future<TakeoverStatus> getTakeoverStatus(String runId) async {
+    final uri = Uri.parse('$baseUrl/runs/${Uri.encodeComponent(runId)}/takeover');
+    final response = await _client.get(uri, headers: _headers(json: false));
+    _captureCookie(response);
+    if (response.statusCode == 501 || response.statusCode == 404) {
+      return const TakeoverStatus(pending: false);
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return TakeoverStatus.fromJson(decoded);
+  }
+
+  /// TASK-235 (G-07 part 2b) — `POST /runs/:id/takeover/complete`. A `409`
+  /// means the run was no longer pending (already handed back, or never
+  /// was) — returns `false` rather than throwing, same "disable the
+  /// action, don't show an error" contract [decideApproval] established.
+  Future<bool> completeTakeover(String runId) async {
+    final uri = Uri.parse(
+      '$baseUrl/runs/${Uri.encodeComponent(runId)}/takeover/complete',
+    );
+    final response = await _client.post(uri, headers: _headers());
+    _captureCookie(response);
+    if (response.statusCode == 409) return false;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    return true;
+  }
+
   Future<List<Routine>> listRoutines(String roleId) async {
     final json = await _request(
       'GET',

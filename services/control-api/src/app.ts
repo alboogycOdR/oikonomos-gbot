@@ -12,6 +12,13 @@ import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
 import { registerLiveAgentRoutes, type LiveAgentPort, type LiveAgentExecdEndpoint, type LiveAgentInputDiscardedEvent, type UpstreamConnection } from "./liveAgent.routes.js";
 import {
+  registerBrowserTakeoverRoutes,
+  type BrowserTakeoverPort,
+  type BrowserTakeoverEndpoint,
+  type BrowserTakeoverInputForwardedEvent,
+  type UpstreamConnection as BrowserTakeoverUpstreamConnection,
+} from "./browserTakeover.routes.js";
+import {
   ATTACHMENT_ALLOWED_CONTENT_TYPES,
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_COUNT,
@@ -161,6 +168,24 @@ export interface BuildAppOptions {
    * `liveAgent`/`secretRequests`.
    */
   takeover?: TakeoverPort;
+  /**
+   * TASK-235 (G-07 part 2b) — the browser-flavoured counterpart to
+   * `takeover` above: `GET /runs/:id/browser-takeover`, a raw WS relay to
+   * Steel's CDP endpoint for a run's parked browser session. A plain port
+   * defined in `browserTakeover.routes.ts` (not a `ControlApiDeps` method)
+   * for the same reason `takeover`/`liveAgent` are: real wiring needs
+   * Steel session tracking this package does not have yet (no
+   * `packages/db` table maps a run to its Steel session id — confirmed by
+   * reading `packages/db/src/index.ts`'s exports). Left `undefined` in
+   * production until that follow-up task exists; the route 501s rather
+   * than fabricating state, same shape as `takeover`/`liveAgent`/
+   * `secretRequests`/`threadContext` above.
+   */
+  browserTakeover?: BrowserTakeoverPort;
+  /** Test-only: injects a fake upstream dial for `GET /runs/:id/browser-takeover` instead of a real socket. */
+  dialBrowserTakeoverUpstream?: (endpoint: BrowserTakeoverEndpoint) => Promise<BrowserTakeoverUpstreamConnection>;
+  /** Test-only: observes the liveness assertion (fires whenever a browser-takeover connection's input genuinely reaches Steel). */
+  onBrowserTakeoverInputForwarded?: (event: BrowserTakeoverInputForwardedEvent) => void;
 }
 
 /** One secret request awaiting a human's decision — the `GET /secret-requests` list shape. */
@@ -2221,6 +2246,20 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     liveAgent: options.liveAgent,
     dialUpstream: options.dialLiveAgentUpstream,
     onInputDiscarded: options.onLiveAgentInputDiscarded,
+  });
+
+  // TASK-235 (G-07 part 2b) — Steel/CDP interactive browser hand-off: raw
+  // WS relay to a run's parked Steel session. `takeoverStatus:
+  // options.takeover` reuses the SAME `TakeoverPort` `/runs/:id/takeover`
+  // already depends on for this route's own connect-time defense-in-depth
+  // pending gate (see browserTakeover.routes.ts's file header, point 2) —
+  // structurally compatible (duck-typed `getStatus`), not duplicated.
+  registerBrowserTakeoverRoutes(app, {
+    authToken,
+    browserTakeover: options.browserTakeover,
+    takeoverStatus: options.takeover,
+    dialUpstream: options.dialBrowserTakeoverUpstream,
+    onInputForwarded: options.onBrowserTakeoverInputForwarded,
   });
 
   return app;

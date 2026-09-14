@@ -679,5 +679,65 @@ void main() {
         throwsA(isA<UnauthorizedError>()),
       );
     });
+
+    test(
+      'getTakeoverStatus parses a real pending status',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {
+          'pending': true,
+          'kind': 'captcha',
+          'detail': 'detected captcha page',
+        });
+
+        final status = await client.getTakeoverStatus('run-1');
+        expect(status.pending, isTrue);
+        expect(status.kind, 'captcha');
+        expect(status.detail, 'detected captcha page');
+        expect(fake.requests.last.url.path, '/runs/run-1/takeover');
+      },
+    );
+
+    test(
+      'getTakeoverStatus treats a 501 (no TakeoverPort configured) as nothing pending, not an error',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(501, {'error': 'take-over is not configured'});
+
+        final status = await client.getTakeoverStatus('run-1');
+        expect(status.pending, isFalse);
+      },
+    );
+
+    test(
+      'getTakeoverStatus treats a 404 (run not found/not owned) as nothing pending, not an error',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(404, {'error': 'run not found'});
+
+        final status = await client.getTakeoverStatus('run-1');
+        expect(status.pending, isFalse);
+      },
+    );
+
+    test(
+      'completeTakeover posts to the complete endpoint and handles the 409 no-op',
+      () async {
+        final fake = FakeHttpClient();
+        final client = await loggedIn(fake);
+        fake.queueJson(200, {'completed': true});
+        fake.queueJson(409, {'completed': false, 'reason': 'not_pending'});
+
+        expect(await client.completeTakeover('run-1'), isTrue);
+        expect(await client.completeTakeover('run-1'), isFalse);
+
+        final first = fake.requests[1] as http.Request;
+        expect(first.url.path, '/runs/run-1/takeover/complete');
+        expect(first.method, 'POST');
+      },
+    );
   });
 }
