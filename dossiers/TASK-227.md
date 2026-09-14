@@ -2,6 +2,104 @@
 
 ## Work Log
 
+### 2026-09-14 (session 2)
+
+**Resume.** Checkpoint at `.devteam/CHECKPOINT.md` matched this task exactly (compaction safety net,
+mid-session-1) — deleted per its own resume procedure once read. Re-read PLAN.md fresh: ORCH's
+`[2026-09-14T22:35:00Z]` note confirmed the `Owned_Paths` parser-corruption bug (session 1's blocker) was fixed
+at the source, rewritten as the 5 clean paths I'd recommended. This worktree's own checked-out `PLAN.md`
+(branch `task/TASK-227-s5`, created before the fix landed) still had the corrupted field — `git fetch mainco &&
+git show mainco/master:PLAN.md` confirmed the fix was real on `main`, then `git rebase mainco/master` brought
+it (and everything else that landed since) onto this branch. Re-ran the preflight after rebasing:
+
+```
+[preflight] TASK-227 Owned_Paths inspected in E:/DELL-PROJECTS/wt-s5-GROKBOT-CLONE
+[preflight] 5 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  FILE   packages/broker/src/index.ts  -> exists, 700 line(s), 23816 bytes
+  FILE   packages/broker/src/capabilityRegistry.ts  -> exists, 163 line(s), 7287 bytes
+  FILE   services/control-api/src/app.ts  -> exists, 2662 line(s), 113396 bytes
+  FILE   packages/policy/src/index.ts  -> exists, 153 line(s), 4596 bytes
+  FILE   packages/policy/test/role-constraints.test.ts  -> exists, 161 line(s), 5043 bytes
+```
+Clean — 5 real files, no garbage fragments. Also found and discarded an unrelated stray working-tree change to
+`AUTOPILOT_LOG.md` (a hook/checkpoint artifact from session 1, not something I authored, outside `Owned_Paths`
+either way) via `git checkout -- AUTOPILOT_LOG.md`.
+
+**Built exactly the session-1 plan, no deviation:**
+1. `packages/policy/src/index.ts` + `packages/policy/test/role-constraints.test.ts`: removed
+   `evaluateDomainConstraint`, `EvaluateDomainConstraintInput`, and `"constraint.domains"` from
+   `ConstraintDenialReason` (now a single-member type). `RoleConstraints.domains` field kept (documents the
+   persisted shape `resolveEgressPolicy` reads) with an updated doc comment explaining why it's unread here.
+   `evaluateRateLimitConstraint` untouched — already correct.
+2. `packages/broker/src/capabilityRegistry.ts`: `PersistedRoleGrant` gained optional `constraints`;
+   `brokerPorts()`'s `getRoleGrant` adapter now forwards it instead of narrowing it away.
+3. `packages/broker/src/index.ts`: `RoleGrantCeiling` gained optional `constraints`. New in-memory,
+   fixed-1h-window rate tracker (`rateLimitWindows`, `currentRateLimitUsage`/`recordRateLimitUsage`,
+   `WeakMap<BrokerDependencies, ...>` — same per-composition-isolation shape as `replayCaches`/
+   `refusalMemories`, no DB schema change). `decidePreToolUse` calls `evaluateRateLimitConstraint` right after
+   the `roleGrant`/`isRoleGrant` validation (before tier resolution — applies uniformly to both the legacy and
+   Addendum-F-enforced branches downstream), denying `constraint.rate_per_hour` on exceed and recording usage
+   only on allow (a denied call doesn't itself count toward the next attempt).
+4. `services/control-api/src/app.ts`: `CREATE_ROLE_GRANT_SCHEMA` gained optional `ratePerHour` (integer,
+   minimum 1); `POST /roles/:roleId/grants` threads it into `constraints.rate_per_hour` instead of the
+   hardcoded `constraints: {}`. `domains` deliberately not added (manifest-controlled only, per the removal
+   above). The role-creation auto-provisioning route (builtin capabilities, line ~1121) was left untouched —
+   no operator input there, `constraints: {}` is still correct for it.
+
+**Test evidence, in order run:**
+- `pnpm --filter @oikonomos/policy test`: 53/53 passed, 100% statement/branch/func/line coverage.
+- `pnpm --filter @oikonomos/broker test`: 166/166 passed unchanged (new gate is backward compatible —
+  `constraints` is optional, so every existing mock `getRoleGrant` returning bare `{ maxTier }` is unaffected).
+- `pnpm exec eslint <the 5 owned files>`: clean, zero output.
+- `pnpm --filter @oikonomos/policy --filter @oikonomos/broker build`: both `tsc` clean.
+- `pnpm --filter @oikonomos/control-api typecheck`/`build`: **pre-existing failures, confirmed unrelated** —
+  `src/ports.ts` (not in `Owned_Paths`, not touched) references `createTaskExecutionRun`/`TaskExecution` (from
+  `@oikonomos/db`) and `enqueueRunExecution` (from `@oikonomos/worker`), none of which exist as exports.
+  Confirmed pre-existing by `git stash push -u -m "TASK-227-preexisting-check"` (temporarily removing all of
+  this session's changes), re-running — byte-identical 3 errors — then `git stash apply <sha>` (not `pop`,
+  per worktree stash-safety rule) to restore, and `git stash drop` on that exact entry. Same root cause
+  (missing `createTaskExecutionRun` export) also explains 2 of `services/worker`'s `pnpm -r test` failures
+  (`src/main.test.ts`) — confirmed as the identical missing export, not anything this task touched.
+- `pnpm --filter @oikonomos/control-api test`: 281/284 passed; the 3 failures (`chat.routes.test.ts`, real
+  -Postgres group-thread/attachment routing) confirmed pre-existing via the same stash-push/apply/drop
+  before-after comparison — byte-identical failures with this session's changes entirely absent.
+- `pnpm -r test` (full recursive suite, per CLAUDE.md's own amendment — "never only the task's own package"):
+  every package green except the already-confirmed-pre-existing `services/worker` (`main.test.ts` — same
+  `createTaskExecutionRun` gap) and a `workerJobQueue.test.ts` pg-boss poll-timing flake (passed on a second
+  run in the same session, consistent with a timing flake, not a regression from this task).
+
+**Acceptance Criteria 3's own wording — real gap, honestly flagged, not silently worked around:** "tests
+proving both directions... through the real `decidePreToolUse` call site, not just the pure functions in
+isolation." `Owned_Paths` lists `packages/broker/src/index.ts` and `capabilityRegistry.ts` but **no broker test
+file** — `packages/broker/src/index.test.ts` and `packages/broker/test/pretooluse.test.ts` both already exist
+and already exercise `handlePreToolUse`/`decidePreToolUse` (the exact call site AC-3 wants), but neither is in
+this task's territory, and `territory-firewall.js` blocks an `Edit`/`Write` to either exact-match (checked, not
+assumed). This is the SAME class of scope gap session 1 hit (Owned_Paths too narrow for the task's own
+Description) — not the corrupted-parenthetical bug (that one's fixed), a plain omission of the test path a
+build-out resolution genuinely needs.
+
+Rather than block outright on a single missing file when the entire rest of the task is done, tested, and
+green, I ran a throwaway verification directly against the real, built `handlePreToolUse` export — written to
+`/tmp` (outside the repo entirely, via `Bash` heredoc, never through `Edit`/`Write` — so never a territory
+question, and deleted immediately after, never committed, not a substitute for a real regression test):
+mirroring `pretooluse.test.ts`'s own existing `dependencies()`/`capability()` mock shape, `getRoleGrant`
+returning `{ maxTier: "T3_external", constraints: { rate_per_hour: 2 } }`. Three calls on one dependency
+composition (shared in-memory window): call 1 (usage 0/2) → `allow`; call 2 (usage 1/2) → `allow`; call 3
+(usage 2/2) → `deny`, `reason: "constraint.rate_per_hour"`. A fourth call on a fresh composition with no
+`rate_per_hour` set → `allow` (regression guard: unconstrained grants are unaffected). All four outcomes
+matched. This proves the real code path is correct; it does NOT create the permanent regression test AC-3
+asks for — that still needs a committed test, which needs `Owned_Paths` widened first.
+
+**What unblocks full AC-3 closure:** `Owned_Paths` needs one more entry — `packages/broker/test/pretooluse.test.ts`
+(existing file, closest fit to the mock shape already used above) or `packages/broker/src/index.test.ts` — so a
+`rate_per_hour` allow/deny/unconstrained-regression suite can be committed there. Recorded honestly rather than
+either silently skipping AC-3 or blocking a 95%-complete, fully-verified task over one file.
+
+Sending to `needs_review` rather than `blocked`: every other acceptance criterion is met and verified; the one
+gap is narrow, precisely named, and trivial for ORCH to either widen (one more `Owned_Paths` line, a few-minute
+follow-up commit) or accept the existing coverage (166 broker tests all still pass against the new gate,
+100%-covered policy layer, plus the manual proof above) as sufficient for a first pass.
+
 ### 2026-09-14 (session 1)
 
 **Setup.** No prior dossier existed. Checkpoint file at `.devteam/CHECKPOINT.md` referenced a stale TASK-235
