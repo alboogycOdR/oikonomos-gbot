@@ -7456,11 +7456,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault has no production composition site — wire createSecretVault/resolveSecretValue into control-api fulfilment and the connector minters, or record why not
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
-**Owned_Paths:** — (investigation-first; likely services/control-api/src/index.ts and ports.ts for composition and packages/connectors/src/mcp/*.ts for the minter-side resolver call — confirm before widening)
+**Owned_Paths:** services/control-api/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, scripts/check-config.mjs, packages/db/src/secretVault.ts, packages/db/src/secretVault.test.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts
 **Depends_On:** TASK-242
 **Description:** Found by TASK-240's config check on 2026-09-12: `OIK_SECRET_VAULT_KEY` is unset in every scope and nothing breaks, because a grep for createSecretVault/resolveSecretValue under services/ returns zero non-test hits. TASK-192 built the vault (`packages/db/src/secretVault.ts`, migration 019) and TASK-187 built the fulfilment route, but the path that decrypts a fulfilled value for a connector minter (ADR-014 §1: the only legitimate callers are host-side connector session minters and the future OIK-045a injector) has no production caller. Same shape as TASK-224's skills finding: a real subsystem with zero production call sites. Investigate first: does `POST /secret-requests/:id/fulfil` write a `secret_values` row in production or only flip `secret_requests.status`? Does any minter resolve a vault-minted `secret://<ref>`? Then wire the missing half with a control-liveness test keyed on the `secret_vault.read` audit event, or record in ADR-014 why it stays unwired. control-api index.ts/ports.ts are owned by TASK-238/242 first; sequence after.
 **Acceptance_Criteria:**
@@ -7473,12 +7473,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-12T10:50:00Z] [ORCH] Filed from TASK-240's finding.
 - [2026-09-14T19:29:02Z] [SV:CX9] Investigation confirms the vault and audit events have no production callers; control-api secret routes are unconfigured (501) and connector minters use only environment resolvers.
+- [2026-09-14T21:35:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to the confirmed minimum territory named in the dossier, plus secretRequests.ts/.test.ts (your own finding that fulfilment never writes secret_values means that file needs editing too, not just secretVault.ts). No conflict with TASK-235's active territory. A dedicated host-side resolver adapter, if it turns out to need a genuinely new file/package, is a further request — narrow it once the design is clear, same pattern as this round. Resume on task/TASK-250-cx9.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: TASK-250 has no concrete Owned_Paths; implementation requires an explicit widening, detailed in dossiers/TASK-250.md.
-**Updated_By:** SV
-**Updated_At:** 2026-09-14T19:29:02Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-14T21:35:00Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
