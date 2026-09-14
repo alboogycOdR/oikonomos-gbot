@@ -516,4 +516,79 @@ describe("handlePreToolUse — Handover §4.1", () => {
     })).resolves.toEqual({ consumed: false, rowCount: 0 });
     expect(row.status).toBe("invalidated");
   });
+
+  describe("TASK-227 — role_grants.constraints.rate_per_hour", () => {
+    it("allows calls while usage stays under the grant's rate_per_hour ceiling", async () => {
+      const deps = dependencies({
+        getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external", constraints: { rate_per_hour: 2 } })),
+      });
+
+      await expect(handlePreToolUse({ ...request, toolUseId: "rate-1" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+        tier: "T1_draft",
+      });
+      await expect(handlePreToolUse({ ...request, toolUseId: "rate-2" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+        tier: "T1_draft",
+      });
+    });
+
+    it("denies with constraint.rate_per_hour once usage reaches the grant's ceiling", async () => {
+      const deps = dependencies({
+        getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external", constraints: { rate_per_hour: 2 } })),
+      });
+
+      await expect(handlePreToolUse({ ...request, toolUseId: "ceiling-1" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+      });
+      await expect(handlePreToolUse({ ...request, toolUseId: "ceiling-2" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+      });
+      await expect(handlePreToolUse({ ...request, toolUseId: "ceiling-3" }, deps)).resolves.toEqual({
+        decision: "deny",
+        reason: "constraint.rate_per_hour",
+        auditEventId: "42",
+      });
+      expect(deps.recordDecision).toHaveBeenCalledWith(expect.objectContaining({
+        verdict: "deny",
+        reason: "constraint.rate_per_hour",
+      }));
+      // A denied call must not itself count toward the next attempt's usage.
+      await expect(handlePreToolUse({ ...request, toolUseId: "ceiling-4" }, deps)).resolves.toEqual({
+        decision: "deny",
+        reason: "constraint.rate_per_hour",
+        auditEventId: "42",
+      });
+    });
+
+    it("is unaffected by a role grant with no rate_per_hour constraint (regression guard)", async () => {
+      const deps = dependencies({
+        getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external" })),
+      });
+
+      for (let index = 0; index < 5; index += 1) {
+        await expect(handlePreToolUse({ ...request, toolUseId: `unconstrained-${index}` }, deps)).resolves.toMatchObject({
+          decision: "allow",
+        });
+      }
+    });
+
+    it("tracks rate-limit usage per roleId+capabilityId, not globally", async () => {
+      const deps = dependencies({
+        getRoleGrant: vi.fn(async () => ({ maxTier: "T3_external", constraints: { rate_per_hour: 1 } })),
+      });
+
+      await expect(handlePreToolUse({ ...request, toolUseId: "scoped-role-a-1" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+      });
+      await expect(handlePreToolUse({ ...request, toolUseId: "scoped-role-a-2" }, deps)).resolves.toMatchObject({
+        decision: "deny",
+        reason: "constraint.rate_per_hour",
+      });
+      // A different role against the same dependency composition has its own window.
+      await expect(handlePreToolUse({ ...request, toolUseId: "scoped-role-b-1", roleId: "other-role" }, deps)).resolves.toMatchObject({
+        decision: "allow",
+      });
+    });
+  });
 });
