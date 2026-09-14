@@ -6791,7 +6791,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-227
 **Title:** Grant-level `domains`/`rate_per_hour` constraints are stored and pure-function-tested but never evaluated by the broker, and never exposed by any write API
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/policy/src/index.ts`'s `evaluateDomainConstraint`/`evaluateRateLimitConstraint` (pure, tested, real semantics: per-grant domain allowlist and hourly rate cap) — zero call sites anywhere outside their own test file, including nowhere in `packages/broker/src/index.ts`'s real `decidePreToolUse` decision path. `role_grants.constraints` (the JSONB column these would read) — `services/control-api/src/app.ts`'s real grant-creation routes always pass `constraints: {}` hardcoded; there is no API surface that lets an operator set a real `domains`/`rate_per_hour` value at all.
 **Owned_Paths:** (investigation-first — see Description; likely `packages/broker/src/index.ts`, `services/control-api/src/app.ts` if built out, or `packages/policy/src/index.ts` + its test if removed)
