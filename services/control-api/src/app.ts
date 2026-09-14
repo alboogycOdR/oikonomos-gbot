@@ -343,6 +343,15 @@ const CREATE_GROUP_THREAD_SCHEMA = {
  * is validated against the real `riskTiers` enum so a malformed/forged
  * client value can never be persisted as a grant ceiling.
  */
+/**
+ * TASK-227: `ratePerHour` is the first real write surface for
+ * `role_grants.constraints` — every route below this one hardcoded
+ * `constraints: {}`, so no operator could previously set a value the broker
+ * would ever read. `domains` is deliberately NOT added here: it is
+ * controlled via connector manifests only (`resolveEgressPolicy`'s
+ * network-layer allowlist), and this schema is for the ad hoc "Always
+ * Allow" grant path, not manifest authoring.
+ */
 const CREATE_ROLE_GRANT_SCHEMA = {
   type: "object",
   required: ["capabilityId", "maxTier"],
@@ -350,6 +359,7 @@ const CREATE_ROLE_GRANT_SCHEMA = {
   properties: {
     capabilityId: { type: "string", minLength: 1 },
     maxTier: { type: "string", enum: riskTiers },
+    ratePerHour: { type: "integer", minimum: 1 },
   },
 } as const;
 
@@ -1172,7 +1182,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
    * (no `public: true`). Capability+tier scoped only, deliberately not
    * destination-scoped (v1 simplification, see PLAN.md TASK-118).
    */
-  app.post<{ Params: { roleId: string }; Body: { capabilityId: string; maxTier: (typeof riskTiers)[number] } }>(
+  app.post<{ Params: { roleId: string }; Body: { capabilityId: string; maxTier: (typeof riskTiers)[number]; ratePerHour?: number } }>(
     "/roles/:roleId/grants",
     { schema: { body: CREATE_ROLE_GRANT_SCHEMA } },
     async (request, reply) => {
@@ -1181,7 +1191,10 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           roleId: request.params.roleId,
           capabilityId: request.body.capabilityId,
           maxTier: request.body.maxTier,
-          constraints: {},
+          constraints:
+            request.body.ratePerHour === undefined
+              ? {}
+              : { rate_per_hour: request.body.ratePerHour },
         });
         await reply.code(201).send(grant);
       } catch (error) {

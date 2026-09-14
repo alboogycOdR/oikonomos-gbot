@@ -32,6 +32,13 @@ export interface PersistedCapability {
 
 export interface PersistedRoleGrant {
   readonly maxTier: RiskTier;
+  /**
+   * TASK-227: the persisted `role_grants.constraints` JSONB, forwarded
+   * (not narrowed) so `brokerPorts()` no longer silently drops it. Optional
+   * so an older `PersistedCapabilityReader` implementation that never
+   * returns it isn't broken.
+   */
+  readonly constraints?: Readonly<Record<string, unknown>>;
 }
 
 export interface PersistedCapabilityReader {
@@ -156,7 +163,10 @@ export class CapabilityRegistry {
       },
       getRoleGrant: async (roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null> => {
         const row = await persisted.getRoleGrant(roleId, capabilityId);
-        return row === null ? null : { maxTier: row.maxTier };
+        // TASK-227: previously dropped `constraints` here, which is why
+        // `rate_per_hour` was persisted (real connector manifests, e.g.
+        // gmail.yaml's inbox-triage grant) but never reached the broker.
+        return row === null ? null : { maxTier: row.maxTier, constraints: row.constraints };
       },
     };
   }

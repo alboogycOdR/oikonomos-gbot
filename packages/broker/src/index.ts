@@ -6,6 +6,7 @@ import {
 } from "@oikonomos/approvals";
 import { type DecisionAuditEvent } from "@oikonomos/audit";
 import {
+  evaluateRateLimitConstraint,
   resolveCapabilityTier,
   riskTiers,
   type EnforcedActionClass,
@@ -140,6 +141,15 @@ export interface RegisteredCapability extends CapabilityTier {
  */
 export interface RoleGrantCeiling {
   maxTier: RiskTier;
+  /**
+   * TASK-227: optional per-grant governance constraints from
+   * `role_grants.constraints`. Only `rate_per_hour` is enforced here —
+   * `domains` is deliberately left unread; it is already enforced at the
+   * network layer by `resolveEgressPolicy` (packages/policy/src/egress.ts),
+   * reading this same field, so an app-level duplicate would be redundant
+   * and driftable rather than protective.
+   */
+  constraints?: Readonly<Record<string, unknown>>;
 }
 
 export interface BrokerDependencies {
@@ -230,6 +240,69 @@ function refusalMemoryFor(dependencies: BrokerDependencies): RefusalMemory {
     refusalMemories.set(dependencies, memory);
   }
   return memory;
+}
+
+/**
+ * TASK-227: in-memory, fixed-hour-window usage counter for
+ * `constraints.rate_per_hour`. Same "one map per dependency composition,
+ * WeakMap avoids retaining a service on teardown" shape as
+ * {@link replayCaches} above, and the same single-workstation-deployment,
+ * no-DB-schema-change precedent already established by
+ * `brokerHttpRoute.ts`'s own in-memory rate limiter (`BROKER_RATE_LIMIT_MAX`).
+ * Keyed by `roleId\0capabilityId` — deliberately NOT per-toolUseId, since a
+ * rate limit governs call frequency for a role+capability pair over time,
+ * not a single request's replay identity (that's `replayKey`'s job).
+ */
+interface RateLimitWindow {
+  windowStartMs: number;
+  count: number;
+}
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const rateLimitWindows = new WeakMap<BrokerDependencies, Map<string, RateLimitWindow>>();
+
+function rateLimitWindowsFor(dependencies: BrokerDependencies): Map<string, RateLimitWindow> {
+  let windows = rateLimitWindows.get(dependencies);
+  if (windows === undefined) {
+    windows = new Map();
+    rateLimitWindows.set(dependencies, windows);
+  }
+  return windows;
+}
+
+function rateLimitKey(roleId: string, capabilityId: string): string {
+  return `${roleId}\0${capabilityId}`;
+}
+
+/** Reads the current window's usage without mutating it (pure read). */
+function currentRateLimitUsage(dependencies: BrokerDependencies, key: string, now: number): number {
+  const window = rateLimitWindowsFor(dependencies).get(key);
+  if (window === undefined || now - window.windowStartMs >= RATE_LIMIT_WINDOW_MS) {
+    return 0;
+  }
+  return window.count;
+}
+
+/**
+ * Records one more call against the current (or a freshly-rolled) window.
+ * Only called after {@link evaluateRateLimitConstraint} has already allowed
+ * the call — a denied call must not itself count toward the next attempt's
+ * usage.
+ */
+function recordRateLimitUsage(dependencies: BrokerDependencies, key: string, now: number): void {
+  const windows = rateLimitWindowsFor(dependencies);
+  const window = windows.get(key);
+  if (window === undefined || now - window.windowStartMs >= RATE_LIMIT_WINDOW_MS) {
+    windows.set(key, { windowStartMs: now, count: 1 });
+    return;
+  }
+  window.count += 1;
+}
+
+/** Type-guards `constraints.rate_per_hour`; any other shape ⇒ unconstrained. */
+function extractRatePerHour(constraints: Readonly<Record<string, unknown>> | undefined): number | undefined {
+  if (constraints === undefined) return undefined;
+  const value = constraints.rate_per_hour;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function tierRank(tier: RiskTier): number {
@@ -572,6 +645,33 @@ async function decidePreToolUse(
   if (!isRoleGrant(roleGrant)) {
     return deny(dependencies, request, "broker.malformed_response", capability.capabilityId, capability.defaultTier);
   }
+
+  // TASK-227: `rate_per_hour` fixed-floor gate, same position class as the
+  // secret-path/steel-session guards above — evaluated before tier
+  // resolution/allow-rules so a grant's own hourly cap can never be widened
+  // by anything downstream. Deliberately does NOT apply to `domains`: that
+  // constraint is already enforced at the network layer (see
+  // `RoleGrantCeiling.constraints`'s own doc comment).
+  const ratePerHour = extractRatePerHour(roleGrant.constraints);
+  if (ratePerHour !== undefined) {
+    const key = rateLimitKey(request.roleId, capability.capabilityId);
+    const now = Date.now();
+    const rateLimitDecision = evaluateRateLimitConstraint({
+      ratePerHour,
+      currentUsageCount: currentRateLimitUsage(dependencies, key, now),
+    });
+    if (rateLimitDecision.decision === "deny") {
+      return deny(
+        dependencies,
+        request,
+        rateLimitDecision.reason,
+        capability.capabilityId,
+        capability.defaultTier,
+      );
+    }
+    recordRateLimitUsage(dependencies, key, now);
+  }
+
   const resolution = resolveCapabilityTier({
     toolName: request.toolName,
     capabilities: [capability],

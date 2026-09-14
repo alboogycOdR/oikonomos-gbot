@@ -55,6 +55,15 @@ export type CapabilityTierResolution =
 /**
  * Shape of `role_grants.constraints` (Handover §4.4 / Synthesis §5.1).
  * Keys match the persisted JSON exactly — do not rename at this boundary.
+ *
+ * `domains` is deliberately NOT enforced here (TASK-227): it is already
+ * enforced at the network layer by `resolveEgressPolicy`/
+ * `toOpenSandboxNetworkPolicy`, reading this exact same `constraints.domains`
+ * field and wired into production (`services/worker/src/chatRunDriver.ts`).
+ * A second, app-level allow/deny check against the same field would be a
+ * redundant, driftable duplicate of live enforcement (CLAUDE.md's
+ * control-liveness rule / ADR-005) — the field is kept here only as
+ * documentation of the persisted shape the egress layer reads.
  */
 export interface RoleConstraints {
   rate_per_hour?: number;
@@ -62,9 +71,7 @@ export interface RoleConstraints {
 }
 
 /** Stable audit reasons — one per constraint, never collapsed. */
-export type ConstraintDenialReason =
-  | "constraint.rate_per_hour"
-  | "constraint.domains";
+export type ConstraintDenialReason = "constraint.rate_per_hour";
 
 export type ConstraintDecision =
   | { decision: "allow" }
@@ -78,13 +85,6 @@ export interface EvaluateRateLimitInput {
    * Caller-supplied plain data — no clock or DB access here.
    */
   currentUsageCount: number;
-}
-
-export interface EvaluateDomainConstraintInput {
-  /** From `role_grants.constraints.domains`; omitted ⇒ no domain constraint. */
-  allowedDomains: readonly string[] | undefined;
-  /** Target domain extracted by the caller from tool input. */
-  targetDomain: string;
 }
 
 /**
@@ -127,27 +127,4 @@ export function evaluateRateLimitConstraint(
   }
 
   return { decision: "allow" };
-}
-
-/**
- * Enforces `domains` independently of rate limits.
- * `"*"` allows any target; otherwise exact membership is required.
- * An empty allowlist denies (fail closed).
- */
-export function evaluateDomainConstraint(
-  input: EvaluateDomainConstraintInput,
-): ConstraintDecision {
-  if (input.allowedDomains === undefined) {
-    return { decision: "allow" };
-  }
-
-  if (input.allowedDomains.includes("*")) {
-    return { decision: "allow" };
-  }
-
-  if (input.allowedDomains.includes(input.targetDomain)) {
-    return { decision: "allow" };
-  }
-
-  return { decision: "deny", reason: "constraint.domains" };
 }
