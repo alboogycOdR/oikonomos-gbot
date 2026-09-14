@@ -7568,9 +7568,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-14T23:50:00Z
 **Progress_Notes:**
 - [2026-09-14T22:35:00Z] [ORCH] Filed from TASK-250's investigation and ADR-014's 2026-09-14 amendment. Read TASK-250's dossier before starting — the live evidence (which files, which line ranges) is already gathered and should not be re-derived.
+- [2026-09-14T21:28:16Z] [SV:CX9] Recorded the design-first no-consumer conclusion and safe future per-run scope in dossiers/TASK-253.md; no production code is warranted until an approved manifest declares a dynamic-secret-backed connector capability. NEXT: After the existing shared-database test processes finish, run one serial powershell -ExecutionPolicy Bypass -File scripts/test-isolated.ps1, record its final result in the dossier, then hand off for review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T23:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T21:28:16Z
