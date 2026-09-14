@@ -7457,7 +7457,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault write path has no production composition site — wire createSecretVault into control-api fulfilment, with real write-side audit (connector-minter consumption split to TASK-253)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7480,12 +7480,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T21:35:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to the confirmed minimum territory named in the dossier, plus secretRequests.ts/.test.ts (your own finding that fulfilment never writes secret_values means that file needs editing too, not just secretVault.ts). No conflict with TASK-235's active territory. A dedicated host-side resolver adapter, if it turns out to need a genuinely new file/package, is a further request — narrow it once the design is clear, same pattern as this round. Resume on task/TASK-250-cx9.
 - [2026-09-14T19:48:41Z] [SV:CX9] Confirmed dynamic secret refs have no transport to the fixed-ref, shared connector minters; dossier records exact live evidence and required scope/ADR decision.
 - [2026-09-14T22:35:00Z] [ORCH] Architectural decision made (ORCH): scope split, not widened. ADR-014 amended (docs/decisions/ADR-014-dynamic-secret-vault.md, 'Amendment 2026-09-14') recording that connector-minter consumption of a dynamically-vaulted secret is genuinely separate work — chatRunDriver.ts's minter pools are shared and role-agnostic per your own finding, so binding a per-role/run resolver is a connector-composition change, not a vault change. TASK-250's acceptance bar is revised to the write-path-plus-audit half only (still a hard requirement, not optional); TASK-253 is filed for the connector-consumption half. Resume on task/TASK-250-cx9 against the revised AC list.
+- [2026-09-14T20:08:44Z] [SV:CX9] Revised write-side scope assessed; implementation requires the DB package export surface to expose new tenant-scoped secret-request APIs.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T22:35:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts is required to export the new list/decline secret-request APIs but is outside TASK-250 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T20:08:44Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
