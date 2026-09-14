@@ -30,6 +30,11 @@ export interface NewTask {
   requestedBy: string;
 }
 
+/** Reference-only command material consumed by the durable worker queue. */
+export type TaskExecution =
+  | { readonly version: 1; readonly kind: "chat"; readonly threadId: string }
+  | { readonly version: 1; readonly kind: "fanout"; readonly threadId: string; readonly sourceMessageId: string; readonly recipientRoleId: string };
+
 export interface Task {
   taskId: string;
   tenantId: string;
@@ -39,6 +44,8 @@ export interface Task {
   status: TaskStatus;
   routineId: string | null;
   requestedBy: string;
+  /** Absent only in legacy test fixtures; persisted rows expose null or a command. */
+  execution?: TaskExecution | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +59,7 @@ interface TaskRow extends QueryResultRow {
   status: TaskStatus;
   routine_id: string | null;
   requested_by: string;
+  execution: TaskExecution | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -60,7 +68,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const taskColumns = `task_id, tenant_id, role_id, title, goal, status,
-       routine_id, requested_by, created_at, updated_at`;
+       routine_id, requested_by, execution, created_at, updated_at`;
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -103,6 +111,7 @@ function toTask(row: TaskRow): Task {
     status: row.status,
     routineId: row.routine_id,
     requestedBy: row.requested_by,
+    execution: row.execution,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -137,6 +146,61 @@ export async function createTask(
       throw new Error("createTask did not return a persisted row.");
     }
     return toTask(row);
+  });
+}
+
+export interface NewTaskExecutionRun {
+  readonly task: NewTask;
+  readonly execution: TaskExecution;
+  readonly provider: string;
+}
+
+/**
+ * Atomically persist the queue consumer's reference-only command and its
+ * initial run.  A worker can therefore never observe a run whose execution
+ * context was lost between separate API-process writes.
+ */
+export async function createTaskExecutionRun(
+  options: DatabaseOptions,
+  input: NewTaskExecutionRun,
+): Promise<{ task: Task; runId: string }> {
+  const roleId = requireNonEmpty(input.task.roleId, "task.roleId");
+  const title = requireNonEmpty(input.task.title, "task.title");
+  const goal = requireNonEmpty(input.task.goal, "task.goal");
+  const requestedBy = requireNonEmpty(input.task.requestedBy, "task.requestedBy");
+  const provider = requireNonEmpty(input.provider, "provider");
+  const execution = input.execution;
+  if (execution.version !== 1 || (execution.kind !== "chat" && execution.kind !== "fanout") ||
+      !("threadId" in execution) || execution.threadId.trim().length === 0) {
+    throw new Error("execution must be a version 1 chat or fanout command with a threadId.");
+  }
+  if (execution.kind === "fanout" && (execution.sourceMessageId.trim().length === 0 || execution.recipientRoleId.trim().length === 0)) {
+    throw new Error("fanout execution requires sourceMessageId and recipientRoleId.");
+  }
+  const routineId = input.task.routineId == null ? null : requireUuid(input.task.routineId, "task.routineId");
+  return withPool(options, async (pool) => {
+    await pool.query("BEGIN");
+    try {
+      const taskResult = await pool.query<TaskRow>(
+        `INSERT INTO tasks (tenant_id, role_id, title, goal, routine_id, requested_by, execution)
+         VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5, $6, $7::jsonb)
+         RETURNING ${taskColumns}`,
+        [input.task.tenantId ?? null, roleId, title, goal, routineId, requestedBy, JSON.stringify(execution)],
+      );
+      const taskRow = taskResult.rows[0];
+      if (taskRow === undefined) throw new Error("createTaskExecutionRun did not return a persisted task.");
+      const runResult = await pool.query<{ run_id: string }>(
+        `INSERT INTO runs (task_id, tenant_id, provider) VALUES ($1, $2, $3) RETURNING run_id`,
+        [taskRow.task_id, taskRow.tenant_id, provider],
+      );
+      const run = runResult.rows[0];
+      if (run === undefined) throw new Error("createTaskExecutionRun did not return a persisted run.");
+      await pool.query("COMMIT");
+      return { task: toTask(taskRow), runId: run.run_id };
+    } catch (error) {
+      await pool.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
   });
 }
 
