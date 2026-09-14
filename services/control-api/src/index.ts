@@ -19,7 +19,9 @@ export {
 
 import { buildApp } from "./app.js";
 import { buildDatabaseBrokerHttpApp } from "./brokerHttpRoute.js";
-import { createDatabaseBackedDeps, createDatabaseBackedLiveAgent, createDatabaseBackedThreadContext } from "./ports.js";
+import { createSecretVault, resolveSecretVaultKey } from "@oikonomos/db";
+
+import { createDatabaseBackedDeps, createDatabaseBackedLiveAgent, createDatabaseBackedSecretRequests, createDatabaseBackedThreadContext } from "./ports.js";
 
 /**
  * Process entrypoint (not exercised by tests): read DATABASE_URL and PORT
@@ -36,10 +38,13 @@ export async function start(): Promise<void> {
     throw new Error("PORT and BROKER_PORT must be distinct positive integer ports.");
   }
   const dbOptions = { connectionString };
+  // Validate the vault key before accepting the first fulfilment request.
+  const secretVault = await createSecretVault({ resolveKey: resolveSecretVaultKey });
   const deps = createDatabaseBackedDeps(dbOptions);
   const app = buildApp(deps, {
     threadContext: createDatabaseBackedThreadContext(dbOptions),
     liveAgent: createDatabaseBackedLiveAgent(dbOptions),
+    secretRequests: createDatabaseBackedSecretRequests(dbOptions, secretVault),
   });
   const brokerApp = await buildDatabaseBrokerHttpApp({ connectionString });
   try {

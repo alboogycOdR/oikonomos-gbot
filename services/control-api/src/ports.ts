@@ -25,7 +25,9 @@ import {
   getAuditEventsForRun as dbGetAuditEventsForRun,
   getRunReceipt as dbGetRunReceipt,
   getRun as dbGetRun,
+  getPendingSecretRequest as dbGetPendingSecretRequest,
   listPendingApprovals as dbListPendingApprovals,
+  listPendingSecretRequests as dbListPendingSecretRequests,
   listMessages as dbListMessages,
   listWorkspaceSummary as dbListWorkspaceSummary,
   listRoles as dbListRoles,
@@ -51,6 +53,10 @@ import {
   getRoutine as dbGetRoutine,
   setRoutinePaused as dbSetRoutinePaused,
   updateRoutineSkill as dbUpdateRoutineSkill,
+  fulfillPendingSecretRequest as dbFulfillPendingSecretRequest,
+  declineSecretRequest as dbDeclineSecretRequest,
+  resumeRun as dbResumeRun,
+  SECRET_VAULT_WRITE_EVENT,
   RoutineLimitError,
   type AuditEvent,
   type Capability,
@@ -87,6 +93,7 @@ import {
   type SkillListFilter,
   type UpdateSkill,
   type WorkspaceSummary,
+  type SecretVault,
   resolveRoleRuntime,
 } from "@oikonomos/db";
 import {
@@ -122,7 +129,7 @@ import {
   type SandboxClient,
   type SecretResolver,
 } from "@oikonomos/sandbox-client";
-import type { ThreadContextPort } from "./app.js";
+import type { SecretRequestsPort, ThreadContextPort } from "./app.js";
 import type { LiveAgentExecdEndpoint, LiveAgentPort } from "./liveAgent.routes.js";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
 
@@ -642,6 +649,51 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     listSkills: (filter) => dbListSkills(options, filter),
     setSkillEnabledForRole: (roleId, skillId, enabled) => dbSetEnabledForRole(options, roleId, skillId, enabled),
     listEnabledSkillsForRole: (roleId) => dbListEnabledForRole(options, roleId),
+  };
+}
+
+/**
+ * Production composition for TASK-187's human-secret lifecycle. This is the
+ * sole control-api boundary that holds a submitted plaintext, and it passes
+ * that value directly to the ADR-014 vault before persisting only its ref.
+ */
+export function createDatabaseBackedSecretRequests(options: DatabaseOptions, vault: SecretVault): SecretRequestsPort {
+  return {
+    async listPending(tenantId) {
+      const requests = await dbListPendingSecretRequests(options, tenantId);
+      return requests.map((request) => ({
+        requestId: request.requestId,
+        runId: request.runId,
+        roleId: request.roleId,
+        label: request.label,
+        purpose: request.purpose,
+        createdAt: request.createdAt.toISOString(),
+      }));
+    },
+    async fulfil(requestId, tenantId, value) {
+      // Check ownership before encryption; the conditional update below also
+      // makes a concurrent fulfil/decline unable to overwrite the request.
+      const pending = await dbGetPendingSecretRequest(options, requestId, tenantId);
+      if (pending === null) return { found: false };
+      const { ref } = await vault.storeSecret(options, { tenantId, roleId: pending.roleId, value });
+      const fulfilled = await dbFulfillPendingSecretRequest(options, requestId, tenantId, `secret://${ref}`);
+      if (fulfilled === null) return { found: false };
+      await dbInsertAuditEvent(options, {
+        tenantId,
+        runId: pending.runId,
+        actor: "control-api:secret-fulfilment",
+        eventType: SECRET_VAULT_WRITE_EVENT,
+        payload: { ref, role_id: pending.roleId },
+      });
+      await dbResumeRun(options, pending.runId);
+      return { found: true, ref };
+    },
+    async decline(requestId, tenantId) {
+      const declined = await dbDeclineSecretRequest(options, requestId, tenantId);
+      if (declined === null) return { found: false };
+      await dbResumeRun(options, declined.runId);
+      return { found: true };
+    },
   };
 }
 

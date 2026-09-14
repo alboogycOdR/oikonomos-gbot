@@ -223,8 +223,12 @@ export {
 } from "./secretVault.js";
 export {
   createSecretRequest,
+  declineSecretRequest,
+  fulfillPendingSecretRequest,
   fulfillSecretRequest,
+  getPendingSecretRequest,
   getSecretRequest,
+  listPendingSecretRequests,
   secretRequestStatuses,
   SECRET_REQUEST_LABEL_MAX_CHARS,
   SECRET_REQUEST_PURPOSE_MAX_CHARS,
