@@ -105,3 +105,60 @@ export async function getSecretRequest(options: DatabaseOptions, requestId: stri
     return result.rows[0] === undefined ? null : toSecretRequest(result.rows[0]);
   });
 }
+
+/** Lists only pending requests visible to one tenant; values are never joined. */
+export async function listPendingSecretRequests(options: DatabaseOptions, tenantId: string): Promise<SecretRequest[]> {
+  const normalizedTenantId = text(tenantId, "tenantId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<SecretRequestRow>(
+      `SELECT ${columns} FROM secret_requests
+       WHERE tenant_id = $1 AND status = 'pending'
+       ORDER BY created_at ASC, request_id ASC`,
+      [normalizedTenantId],
+    );
+    return result.rows.map(toSecretRequest);
+  });
+}
+
+/** Reads a pending request only when it belongs to the caller's tenant. */
+export async function getPendingSecretRequest(options: DatabaseOptions, requestId: string, tenantId: string): Promise<SecretRequest | null> {
+  const normalizedRequestId = uuid(requestId, "requestId");
+  const normalizedTenantId = text(tenantId, "tenantId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<SecretRequestRow>(
+      `SELECT ${columns} FROM secret_requests
+       WHERE request_id = $1 AND tenant_id = $2 AND status = 'pending'`,
+      [normalizedRequestId, normalizedTenantId],
+    );
+    return result.rows[0] === undefined ? null : toSecretRequest(result.rows[0]);
+  });
+}
+
+/** Atomically associates a pre-created opaque vault ref with a tenant-owned pending request. */
+export async function fulfillPendingSecretRequest(options: DatabaseOptions, requestId: string, tenantId: string, secretRef: string): Promise<SecretRequest | null> {
+  const normalizedRequestId = uuid(requestId, "requestId");
+  const normalizedTenantId = text(tenantId, "tenantId");
+  const normalizedRef = text(secretRef, "secretRef");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<SecretRequestRow>(
+      `UPDATE secret_requests SET status = 'fulfilled', secret_ref = $3, fulfilled_at = now()
+       WHERE request_id = $1 AND tenant_id = $2 AND status = 'pending' RETURNING ${columns}`,
+      [normalizedRequestId, normalizedTenantId, normalizedRef],
+    );
+    return result.rows[0] === undefined ? null : toSecretRequest(result.rows[0]);
+  });
+}
+
+/** Atomically declines a tenant-owned pending request. */
+export async function declineSecretRequest(options: DatabaseOptions, requestId: string, tenantId: string): Promise<SecretRequest | null> {
+  const normalizedRequestId = uuid(requestId, "requestId");
+  const normalizedTenantId = text(tenantId, "tenantId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<SecretRequestRow>(
+      `UPDATE secret_requests SET status = 'declined'
+       WHERE request_id = $1 AND tenant_id = $2 AND status = 'pending' RETURNING ${columns}`,
+      [normalizedRequestId, normalizedTenantId],
+    );
+    return result.rows[0] === undefined ? null : toSecretRequest(result.rows[0]);
+  });
+}

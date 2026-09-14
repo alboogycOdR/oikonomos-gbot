@@ -2,9 +2,22 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Pool } from "pg";
 
-import { describe, expect, it, vi } from "vitest";
-import type { Approval, DeviceToken, Run, Task } from "@oikonomos/db";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  createRole,
+  createSecretRequest,
+  createSecretVault,
+  defaultPoolConfig,
+  getAuditEventsForRun,
+  getSecretRequest,
+  getRun,
+  type Approval,
+  type DeviceToken,
+  type Run,
+  type Task,
+} from "@oikonomos/db";
 
 import { CollectingPushTransport, type PushTransportPort } from "./pushTransport.js";
 import { buildApp } from "./app.js";
@@ -12,6 +25,7 @@ import {
   AttachmentStoreError,
   buildChatGoal,
   createDatabaseBackedDeps,
+  createDatabaseBackedSecretRequests,
   createFilesystemAttachmentStore,
   createGatedChatRunTask,
   runGatedGroupFanout,
@@ -150,6 +164,68 @@ describe("run concurrency production composition (TASK-238)", () => {
     expect(started).toEqual(["chat"]);
     await Promise.all([chat, fanout]);
     expect(started).toEqual(["chat", "fanout"]);
+  });
+});
+
+const connectionString = process.env.DATABASE_URL;
+const vaultIntegration = connectionString === undefined ? describe.skip : describe;
+
+vaultIntegration("secret-vault production composition (TASK-250)", () => {
+  const tenantId = "task-250-control-vault";
+  const roleId = "task-250-control-vault-role";
+  const runId = "25000000-0000-4000-8000-000000000250";
+  const options = { connectionString: connectionString! };
+  let pool: Pool;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM secret_values WHERE role_id = $1", [roleId]);
+    await pool.query("DELETE FROM secret_requests WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM audit_events WHERE run_id = $1", [runId]);
+    await pool.query("DELETE FROM runs WHERE run_id = $1", [runId]);
+    await pool.query("DELETE FROM tasks WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(options, { tenantId, roleId, name: "Vault control", title: "Vault control" });
+    const taskRow = await pool.query<{ task_id: string }>(
+      "INSERT INTO tasks (tenant_id, role_id, title, goal, requested_by) VALUES ($1, $2, 'vault', 'vault', 'test') RETURNING task_id",
+      [tenantId, roleId],
+    );
+    await pool.query(
+      "INSERT INTO runs (run_id, task_id, tenant_id, provider, status) VALUES ($1, $2, $3, 'test', 'waiting_approval')",
+      [runId, taskRow.rows[0]!.task_id, tenantId],
+    );
+  });
+
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  it("stores the submitted value, persists only its ref, and emits secret_vault.write", async () => {
+    const vault = await createSecretVault({
+      resolveKey: async () => Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(32))),
+    });
+    const port = createDatabaseBackedSecretRequests(options, vault);
+    const request = await createSecretRequest(options, {
+      tenantId, roleId, runId, label: "Deploy key", purpose: "deploy a release",
+    });
+    const value = "task-250-plaintext-must-not-be-audit";
+    const result = await port.fulfil(request.requestId, tenantId, value);
+
+    expect(result).toEqual({ found: true, ref: expect.any(String) });
+    if (!result.found) throw new Error("fulfilment unexpectedly failed");
+    const persisted = await getSecretRequest(options, request.requestId);
+    expect(persisted).toMatchObject({ status: "fulfilled", secretRef: `secret://${result.ref}` });
+    const stored = await pool.query<{ ciphertext: Buffer }>("SELECT ciphertext FROM secret_values WHERE ref = $1", [result.ref]);
+    expect(stored.rows[0]?.ciphertext.toString("utf8")).not.toContain(value);
+    const events = await getAuditEventsForRun(options, runId);
+    expect(events).toContainEqual(expect.objectContaining({
+      eventType: "secret_vault.write",
+      payload: { ref: result.ref, role_id: roleId },
+    }));
+    expect(JSON.stringify(events)).not.toContain(value);
+    expect(await getRun(options, runId)).toMatchObject({ status: "resumed" });
   });
 });
 
