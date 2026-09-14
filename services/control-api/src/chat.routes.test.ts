@@ -1156,10 +1156,10 @@ integration("Role routines — cron scheduling, real Postgres (TASK-134)", () =>
   });
 });
 
-integration("POST /approvals/:nonce/decide — continues a parked chat run, real Postgres (TASK-155)", () => {
+integration("POST /approvals/:nonce/decide — queues a parked chat continuation, real Postgres (TASK-155)", () => {
   const options = integrationOptions;
 
-  it("grants a real pending approval, resumes its persisted SDK session, and appends the continuation to the original thread", async () => {
+  it("grants a real pending approval and durably queues its persisted SDK session for the worker", async () => {
     const roleId = `task-155-${randomUUID()}`;
     const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
     let app: ReturnType<typeof buildApp> | undefined;
@@ -1216,19 +1216,23 @@ integration("POST /approvals/:nonce/decide — continues a parked chat run, real
       });
       expect(response.statusCode).toBe(200);
 
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const run = (await listRuns(options, { taskId: task.taskId })).runs[0];
-        if (run?.status === "completed") break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      expect(observedResume).toBe(sessionRef);
+      // ADR-016: the API process records and enqueues the continuation; only
+      // the worker is permitted to invoke the live driver. This isolated API
+      // suite intentionally has no worker consumer, so a direct SDK call
+      // here would be a regression rather than evidence of liveness.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(observedResume).toBeUndefined();
       expect((await listRuns(options, { taskId: task.taskId })).runs[0]).toMatchObject({
         runId: parked.runId,
-        status: "completed",
+        status: "waiting_approval",
         sessionRef,
       });
-      expect((await listMessages(options, resumedThreadId)).find((message) => message.runId === parked.runId)?.body)
-        .toBe("The resumed SDK session completed.");
+      const queuedAudit = await pool.query<{ event_type: string; reason: string }>(
+        "SELECT event_type, payload->>'reason' AS reason FROM audit_events WHERE run_id = $1 AND event_type = 'run.queued'",
+        [parked.runId],
+      );
+      expect(queuedAudit.rows).toEqual([expect.objectContaining({ event_type: "run.queued", reason: "submission" })]);
+      expect((await listMessages(options, resumedThreadId)).find((message) => message.runId === parked.runId)).toBeUndefined();
     } finally {
       if (app !== undefined) await app.close();
       await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
@@ -1346,35 +1350,22 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       const humanMessage = JSON.parse(posted.body) as { id: string; runId: string | null; senderRoleId: string | null };
       expect(humanMessage).toMatchObject({ senderRoleId: null, runId: expect.any(String) });
 
-      const pendingApproval = await pool.query<{ status: string; capability_id: string }>(
-        "SELECT status, capability_id FROM approvals WHERE run_id = $1",
-        [humanMessage.runId],
+      // ADR-016 Amendment 1a: one durable, reference-only fan-out command
+      // per recipient. The worker, not this API process, later evaluates the
+      // governed fan-out gate and creates any approval.
+      const queued = await pool.query<{ run_id: string; status: string; execution: unknown }>(
+        `SELECT runs.run_id, runs.status, tasks.execution
+         FROM runs JOIN tasks ON tasks.task_id = runs.task_id
+         WHERE tasks.requested_by = $1 ORDER BY runs.started_at ASC`,
+        [`chat:thread:${group.id}`],
       );
-      expect(pendingApproval.rows).toEqual([{ status: "pending", capability_id: "chat.bot_fanout" }]);
-
-      // POST returns before the detached chat driver has finished parking the
-      // run. Wait for that terminal point before fixture teardown so cleanup
-      // never races the driver's final database operations.
-      let runStatus: string | undefined;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        runStatus = (await pool.query<{ status: string }>(
-          "SELECT status FROM runs WHERE run_id = $1",
-          [humanMessage.runId],
-        )).rows[0]?.status;
-        if (runStatus === "waiting_approval") break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      expect(runStatus).toBe("waiting_approval");
-
-      // The shared TASK-122 gate must stop before its direct-delivery branch:
-      // this run may contain the human's group-thread message, but no newly
-      // created 1:1 recipient-thread message. Removing the gate's fan-out
-      // branch would make this assertion fail.
-      const runMessages = await pool.query<{ thread_id: string; role: string; sender_role_id: string | null }>(
-        "SELECT thread_id, role, sender_role_id FROM messages WHERE run_id = $1",
-        [humanMessage.runId],
-      );
-      expect(runMessages.rows).toEqual([{ thread_id: group.id, role: "user", sender_role_id: null }]);
+      expect(queued.rows).toHaveLength(2);
+      expect(queued.rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "started", execution: expect.objectContaining({ kind: "fanout", threadId: group.id, sourceMessageId: humanMessage.id, recipientRoleId: first.id }) }),
+        expect.objectContaining({ status: "started", execution: expect.objectContaining({ kind: "fanout", threadId: group.id, sourceMessageId: humanMessage.id, recipientRoleId: second.id }) }),
+      ]));
+      expect(queued.rows.map((row) => row.run_id)).toContain(humanMessage.runId);
+      expect((await pool.query("SELECT 1 FROM approvals WHERE run_id = ANY($1::uuid[])", [queued.rows.map((row) => row.run_id)])).rows).toEqual([]);
     } finally {
       try {
         await app.close();
@@ -1389,7 +1380,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
     }
   });
 
-  it("routes an unaddressed three-bot message through FreeLLMAPI, records its spend, and starts one real chat run", async () => {
+  it("routes an unaddressed three-bot message through FreeLLMAPI and durably queues the selected chat run", async () => {
     const observedPrompts: string[] = [];
     const app = buildApp(createDatabaseBackedDeps({
       ...options,
@@ -1446,10 +1437,10 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
           "SELECT provider, status FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1) ORDER BY started_at ASC",
           [`chat:thread:${group.id}`],
         )).rows;
-        if (runs.filter((run) => run.provider === "claude" && run.status === "completed").length === 1) break;
+        if (runs.filter((run) => run.provider === "claude" && run.status === "started").length === 1) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(runs.filter((run) => run.provider === "claude")).toEqual([{ provider: "claude", status: "completed" }]);
+      expect(runs.filter((run) => run.provider === "claude")).toEqual([{ provider: "claude", status: "started" }]);
       expect(runs.filter((run) => run.provider === "free-llm-api")).toEqual([{ provider: "free-llm-api", status: "completed" }]);
       expect(observedPrompts).toHaveLength(3);
       const spend = await pool.query<{ provider: string; cost_usd: string }>(
@@ -1472,7 +1463,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
         directRunRoleIds = (await pool.query<{ role_id: string }>(
           `SELECT tasks.role_id FROM runs
            JOIN tasks ON tasks.task_id = runs.task_id
-           WHERE tasks.requested_by = $1 AND runs.provider = 'claude' AND runs.status = 'completed'
+           WHERE tasks.requested_by = $1 AND runs.provider = 'claude' AND runs.status = 'started'
            ORDER BY runs.started_at ASC`,
           [`chat:thread:${group.id}`],
         )).rows.map((row) => row.role_id);
@@ -1488,10 +1479,10 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
   });
 });
 
-integration("POST /threads/:id/attachments — real Postgres + agent round trip (TASK-166)", () => {
+integration("POST /threads/:id/attachments — real Postgres durable submission (TASK-166)", () => {
   const options = integrationOptions;
 
-  it("persists a file, records it on the message, and the chat driver actually reads the contents", async () => {
+  it("persists a file, records it on the message, and stores the chat command for worker execution", async () => {
     const roleId = `task-166-${randomUUID()}`;
     const unique = `TASK-166-E2E-${randomUUID()}`;
     const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
@@ -1551,14 +1542,9 @@ integration("POST /threads/:id/attachments — real Postgres + agent round trip 
         expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt" }),
       ]);
 
-      for (let attempt = 0; attempt < 200; attempt += 1) {
-        const transcript = await listMessages(options, liveThreadId);
-        if (transcript.some((message) => message.role === "bot" && message.body.includes(unique))) break;
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-
-      expect(observedPrompt).toContain(unique);
-      expect(observedDiskContents).toBe(unique);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(observedPrompt).toBe("");
+      expect(observedDiskContents).toBe("");
       const transcript = await listMessages(options, liveThreadId);
       const userMessage = transcript.find((message) => message.role === "user");
       const botMessage = transcript.find((message) => message.role === "bot");
@@ -1566,7 +1552,12 @@ integration("POST /threads/:id/attachments — real Postgres + agent round trip 
         expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt", contentType: "text/plain" }),
       ]);
       expect(userMessage?.body).toBe("What does the attached file say?");
-      expect(botMessage?.body).toContain(unique);
+      expect(botMessage).toBeUndefined();
+      const execution = await pool.query<{ execution: { kind: string; threadId: string } }>(
+        "SELECT execution FROM tasks WHERE requested_by = $1",
+        [`chat:thread:${liveThreadId}`],
+      );
+      expect(execution.rows).toEqual([expect.objectContaining({ execution: { version: 1, kind: "chat", threadId: liveThreadId } })]);
 
       const listed = JSON.parse(
         (await app.inject({
