@@ -7023,7 +7023,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-235
 **Title:** G-07 part 2b — Steel/CDP interactive browser hand-off, plus wiring TakeoverCard into a real screen
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-228's own Progress_Notes (the shell/PTY half this splits from — read that first, same pattern applies); `packages/connectors/src/steelSession.ts` (the agent's own CDP handle, currently never paused/handed off); TASK-225's CDP research (`services/worker/src/geminiToolExecutors.ts`'s `runSteelCdp`/`Target.attachToTarget` pattern — the vocabulary this needs, NOT assumed to be directly reusable); ADR-010 Amendment enforced set.
@@ -7042,12 +7042,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-12T08:50:00Z] [ORCH] Split from TASK-228 when the shell/PTY half was completed for real and this half was confirmed to still need genuine, unresearched CDP investigation — bundling the two any longer would have meant either rushing this half's design or holding the shell half's real, working, tested build hostage to it. See TASK-228's own Progress_Notes for the full context this splits from.
 - [2026-09-14T18:40:00Z] [ORCH] Dispatched now: no Owned_Paths overlap with TASK-246's current (in_progress) territory. TASK-227 and TASK-250 are held instead — both name services/control-api/src/{app.ts,index.ts,ports.ts} as likely territory, which TASK-246 is actively modifying right now; dispatching either concurrently risks a real collision the moment their own investigation confirms those files. Will dispatch both once TASK-246 merges.
+- [2026-09-14T18:49:06Z] [SV:S5] Completed a real CDP/hand-off research pass (Steel's browser-level CDP socket + flatten-attach pattern from runSteelCdp, confirmed the park/return in chatRunDriver.ts already ends the worker's execution so there is no live CDP-issuing process to evict once parked, confirmed every current human_takeover_required kind is Steel/browser-only). Drafted the backend relay (browserTakeover.routes.ts) but the territory firewall blocked the write: TASK-235's Owned_Paths is the literal placeholder '—', not a hint list like TASK-228's own investigation-first task had, so there is zero territory to write into yet. In control.mode=strict I cannot widen PLAN.md myself. Full research trail and the exact requested path list are recorded in dossiers/TASK-235.md's latest Work Log entry.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Owned_Paths for TASK-235 is empty ('—'), not a hint list. Requesting: services/control-api/src/browserTakeover.routes.ts (new), services/control-api/src/browserTakeover.routes.test.ts (new), services/control-api/src/app.ts (additive), apps/mobile/lib/api/browser_takeover_client.dart (new), apps/mobile/test/api/browser_takeover_client_test.dart (new), apps/mobile/lib/screens/browser_takeover_screen.dart (new), apps/mobile/test/screens/browser_takeover_screen_test.dart (new), apps/mobile/lib/screens/chat_screen.dart (modify), apps/mobile/test/screens/chat_screen_test.dart (modify), apps/mobile/lib/api/api_client.dart (modify), apps/mobile/lib/api/models.dart (modify), apps/mobile/test/api/api_client_test.dart (modify). Full rationale for each path is in the dossier.
 **Updated_By:** SV
-**Updated_At:** 2026-09-14T18:35:47Z
+**Updated_At:** 2026-09-14T18:49:06Z
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
