@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -15,9 +16,25 @@ import '../widgets/context_meter.dart';
 import '../widgets/live_agent_button.dart';
 import '../widgets/secret_request_card.dart';
 import '../widgets/skill_picker.dart';
+import '../widgets/takeover_card.dart';
+import 'browser_takeover_screen.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
 import 'skills_screen.dart';
+import 'takeover_screen.dart';
+
+/// TASK-235 (G-07 part 2b) — every takeover `kind` any current producer
+/// emits (`packages/connectors/src/steelSession.ts`'s `HumanTakeoverKind`,
+/// confirmed by grep in this task's own research — see dossiers/TASK-235.md)
+/// is Steel/browser-only. Routed to [BrowserTakeoverScreen]; any other/
+/// future `kind` falls back to the existing shell [TakeoverScreen] rather
+/// than fabricating a browser trigger that does not exist today.
+const Set<String> _browserTakeoverKinds = {
+  'captcha',
+  'two_factor',
+  'login_wall',
+  'payment',
+};
 
 /// TASK-147 (Mobile Wave 1b) — message history + live updates for one
 /// bot's thread. Mirrors `apps/dashboard/src/pages/ChatPage.tsx`: an
@@ -62,6 +79,20 @@ class ChatScreenState extends State<ChatScreen> {
   String? _uploadError;
   bool _skillPickerOpen = false;
 
+  /// TASK-235 (G-07 part 2b) — [TakeoverCard] wiring. Polled rather than
+  /// pushed: there is no SSE event for "a run parked on a human-takeover
+  /// signal" today (confirmed — `subscribeToThreadMessages` only ever
+  /// delivers `ThreadMessage`s), and adding one is outside this task's
+  /// `Owned_Paths` (would touch the SSE stream's own event shape). Tracks
+  /// only the thread's MOST RECENT run with a non-null `runId` — a
+  /// disclosed simplification matching how this screen already treats
+  /// "the" in-flight run elsewhere (approvals/secret-requests are per
+  /// message, not per concurrent-run).
+  Timer? _takeoverPollTimer;
+  String? _takeoverRunId;
+  TakeoverStatus? _takeoverStatus;
+  bool _takeoverBusy = false;
+
   /// Exposed for tests: true once the SSE subscription has been opened
   /// (and not yet closed) for this screen instance.
   bool get hasOpenSubscription => _subscription != null;
@@ -71,6 +102,92 @@ class ChatScreenState extends State<ChatScreen> {
     super.initState();
     _load();
     _loadHandoffs();
+    _pollTakeover();
+    _takeoverPollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollTakeover(),
+    );
+  }
+
+  /// The thread's most recent message with a real run attached — see this
+  /// state's own field doc comment for the disclosed one-run-at-a-time
+  /// simplification.
+  String? _latestRunId() {
+    for (final message in _messages.reversed) {
+      if (message.runId != null) return message.runId;
+    }
+    return null;
+  }
+
+  Future<void> _pollTakeover() async {
+    final runId = _latestRunId();
+    if (runId == null) {
+      if (mounted && _takeoverStatus != null) {
+        setState(() {
+          _takeoverStatus = null;
+          _takeoverRunId = null;
+        });
+      }
+      return;
+    }
+    try {
+      final status = await widget.apiClient.getTakeoverStatus(runId);
+      if (!mounted) return;
+      setState(() {
+        _takeoverStatus = status;
+        _takeoverRunId = runId;
+      });
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // Supplemental: a failed poll must not hide chat.
+    }
+  }
+
+  void _openTakeover() {
+    final runId = _takeoverRunId;
+    if (runId == null) return;
+    final kind = _takeoverStatus?.kind;
+    if (kind != null && _browserTakeoverKinds.contains(kind)) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => BrowserTakeoverScreen(
+            apiClient: widget.apiClient,
+            runId: runId,
+          ),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TakeoverScreen(
+          apiClient: widget.apiClient,
+          roleId: widget.bot.roleId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _completeTakeover() async {
+    final runId = _takeoverRunId;
+    if (runId == null || _takeoverBusy) return;
+    setState(() => _takeoverBusy = true);
+    try {
+      await widget.apiClient.completeTakeover(runId);
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to complete hand-back.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _takeoverBusy = false);
+    }
+    await _pollTakeover();
   }
 
   Future<void> _confirmStartFresh() async {
@@ -119,6 +236,7 @@ class ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _subscription?.close();
     _subscription = null;
+    _takeoverPollTimer?.cancel();
     _composeController.dispose();
     super.dispose();
   }
@@ -227,6 +345,7 @@ class ChatScreenState extends State<ChatScreen> {
     if (!_seenMessageIds.add(message.id)) return;
     if (!mounted) return;
     setState(() => _messages.add(message));
+    if (message.runId != null) _pollTakeover();
   }
 
   Future<void> _load() async {
@@ -246,6 +365,7 @@ class ChatScreenState extends State<ChatScreen> {
           ..addAll(messages.map((m) => m.id));
         _loading = false;
       });
+      unawaited(_pollTakeover());
       _subscription = subscribeToThreadMessages(
         baseUrl: widget.apiClient.baseUrl,
         threadId: widget.bot.id,
@@ -454,6 +574,19 @@ class ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(child: _buildBody()),
+          if (_takeoverStatus?.pending == true && _takeoverRunId != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: TakeoverCard(
+                runId: _takeoverRunId!,
+                kind: _takeoverStatus!.kind ?? 'login_wall',
+                detail: _takeoverStatus!.detail ?? 'Needs a manual step.',
+                status: 'pending',
+                busy: _takeoverBusy,
+                onTakeOver: _openTakeover,
+                onDone: _completeTakeover,
+              ),
+            ),
           _buildComposeBox(),
         ],
       ),

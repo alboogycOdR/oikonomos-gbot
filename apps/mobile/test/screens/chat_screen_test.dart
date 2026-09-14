@@ -1366,4 +1366,136 @@ void main() {
       expect(find.byKey(const Key('date-divider-2')), findsNothing);
     },
   );
+
+  group('TASK-235 (G-07 part 2b) — TakeoverCard wiring', () {
+    Map<String, dynamic> runMessageJson(String id, {String? runId}) {
+      return {..._messageJson(id, body: 'working on it'), 'runId': runId};
+    }
+
+    testWidgets(
+      'shows TakeoverCard for the thread\'s latest run when it is pending, and hides it once resolved',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, [
+          runMessageJson('1', runId: 'run-1'),
+        ]);
+        fake.queueHangingStream(200);
+        fake.queueJsonFor('GET', '/runs/run-1/takeover', 200, {
+          'pending': true,
+          'kind': 'captcha',
+          'detail': 'detected captcha page',
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('takeover-card-run-1')), findsOneWidget);
+        expect(find.textContaining('Solve a CAPTCHA'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'does not show TakeoverCard when the thread has no run with a real runId',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, [
+          _messageJson('1', body: 'no run attached'),
+        ]);
+        fake.queueHangingStream(200);
+
+        await tester.pumpWidget(
+          MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          fake.requests.any((r) => r.url.path.contains('/takeover')),
+          isFalse,
+        );
+        expect(find.textContaining('Needs you'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Take over opens the browser hand-off screen for a browser-kind takeover',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, [
+          runMessageJson('1', runId: 'run-1'),
+        ]);
+        fake.queueHangingStream(200);
+        fake.queueJsonFor('GET', '/runs/run-1/takeover', 200, {
+          'pending': true,
+          'kind': 'login_wall',
+          'detail': 'sign in required',
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+        );
+        await tester.pumpAndSettle();
+
+        // A single pump: the navigation itself is synchronous
+        // (MaterialPageRoute push). `pumpAndSettle` is deliberately not
+        // used here — the pushed screen's own default connector attempts
+        // a real WebSocket dial (there is no fake server in this
+        // fixture), which never settles; that connection attempt's own
+        // failure handling is covered by browser_takeover_screen_test.dart
+        // instead, with an injected fake connector.
+        await tester.tap(find.byKey(const Key('takeover-take-over')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.text('Take over — browser'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Done calls the complete endpoint and the card disappears once resolved',
+      (tester) async {
+        final fake = FakeHttpClient();
+        final client = await _loggedIn(fake);
+        fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, [
+          runMessageJson('1', runId: 'run-1'),
+        ]);
+        fake.queueHangingStream(200);
+        fake.queueJsonFor('GET', '/runs/run-1/takeover', 200, {
+          'pending': true,
+          'kind': 'payment',
+          'detail': 'confirm payment',
+        });
+        fake.queueJsonFor(
+          'POST',
+          '/runs/run-1/takeover/complete',
+          200,
+          {'completed': true},
+        );
+        fake.queueJsonFor('GET', '/runs/run-1/takeover', 200, {
+          'pending': false,
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('takeover-card-run-1')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('takeover-done')));
+        await tester.pumpAndSettle();
+
+        expect(
+          fake.requests.any((r) =>
+              r.method == 'POST' &&
+              r.url.path == '/runs/run-1/takeover/complete'),
+          isTrue,
+        );
+        expect(find.byKey(const Key('takeover-card-run-1')), findsNothing);
+      },
+    );
+  });
 }

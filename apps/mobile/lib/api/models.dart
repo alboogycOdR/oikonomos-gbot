@@ -209,6 +209,31 @@ class SecretRequestRef {
   }
 }
 
+/// TASK-235 (G-07 part 2b) — `GET /runs/:id/takeover`'s response shape,
+/// mirroring `services/control-api/src/app.ts`'s `TakeoverStatus` interface
+/// exactly (camelCase — this route, unlike `ApprovalRef`/`SecretRequestRef`
+/// above, was never a nested nested-in-message shape with its own
+/// snake_case history; it is fetched directly).
+class TakeoverStatus {
+  const TakeoverStatus({required this.pending, this.kind, this.detail});
+
+  final bool pending;
+
+  /// One of `captcha` / `two_factor` / `login_wall` / `payment` when
+  /// [pending] is true — the same vocabulary [TakeoverCard] already
+  /// switches on.
+  final String? kind;
+  final String? detail;
+
+  factory TakeoverStatus.fromJson(Map<String, dynamic> json) {
+    return TakeoverStatus(
+      pending: json['pending'] as bool,
+      kind: json['kind'] as String?,
+      detail: json['detail'] as String?,
+    );
+  }
+}
+
 /// A scheduled routine returned by `GET /roles/:roleId/routines`.
 class Routine {
   const Routine({
