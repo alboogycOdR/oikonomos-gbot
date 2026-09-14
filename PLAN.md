@@ -6790,11 +6790,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-227
 **Title:** Grant-level `domains`/`rate_per_hour` constraints are stored and pure-function-tested but never evaluated by the broker, and never exposed by any write API
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/policy/src/index.ts`'s `evaluateDomainConstraint`/`evaluateRateLimitConstraint` (pure, tested, real semantics: per-grant domain allowlist and hourly rate cap) — zero call sites anywhere outside their own test file, including nowhere in `packages/broker/src/index.ts`'s real `decidePreToolUse` decision path. `role_grants.constraints` (the JSONB column these would read) — `services/control-api/src/app.ts`'s real grant-creation routes always pass `constraints: {}` hardcoded; there is no API surface that lets an operator set a real `domains`/`rate_per_hour` value at all.
-**Owned_Paths:** (investigation-first — see Description; likely `packages/broker/src/index.ts`, `services/control-api/src/app.ts` if built out, or `packages/policy/src/index.ts` + its test if removed)
+**Owned_Paths:** packages/broker/src/index.ts, packages/broker/src/capabilityRegistry.ts, services/control-api/src/app.ts, packages/policy/src/index.ts, packages/policy/test/role-constraints.test.ts
 **Depends_On:** —
 **Description:** Found in the same discovery sweep as TASK-226. Lower severity than that finding: because `services/control-api`'s real routes never expose a way to SET a meaningful `constraints` value (always hardcoded `{}`), no operator using the actual product surface could have configured a domain/rate constraint believing it was enforced — this is an END-TO-END inert feature (write path AND enforcement path both missing), not a case of the product actively lying about a control that partly works. Two legitimate resolutions, and this task is deliberately investigation-first rather than presupposing which: (a) this is a real, wanted feature (per-grant domain allowlists and rate limits are genuinely useful governance primitives) — build both halves out: a real control-api write path plus wiring `evaluateDomainConstraint`/`evaluateRateLimitConstraint` into `decidePreToolUse`; or (b) it was scaffolding for a feature that was later decided against or superseded (e.g., domain restriction may already be adequately covered at the network layer by `resolveEgressPolicy`'s connector-manifest-driven allowlist, a different and arguably more robust mechanism than an app-level per-call domain check) — if so, delete the dead pure functions and their test rather than leave governance-shaped code sitting unused where a future reader could mistake it for live enforcement.
 **Acceptance_Criteria:**
@@ -6808,12 +6808,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-08T20:35:00Z] [ORCH] Filed from the same discovery sweep as TASK-226. Also found in the same sweep, NOT filed as separate tasks (recording here instead, low priority, pure cleanup): `requiresHumanApproval` (`packages/broker/src/describe.ts`) is dead/duplicate code — the REAL T3+/T4 approval-tier check in `decidePreToolUse` is a separate, hand-rolled `tierRank(tier) < tierRank(APPROVAL_TIER)` comparison that doesn't call this function at all, so the two implementations could silently drift with nobody noticing (real enforcement is NOT missing, just implemented twice). `createTierZeroSummarizer` (`services/worker/src/contextCompaction.ts`) is similarly only ever called from its own test — production compaction actually uses a different function, `createTierZeroProvider` (`tierZeroProvider.ts`), for the same job. Both are candidates for straightforward deletion whenever someone is in the neighborhood; neither represents a live gap the way TASK-226 and this task do.
 - [2026-09-08T21:05:00Z] [ORCH] Completed the full sweep (102 exported functions across `services/worker/src` + `packages/broker|policy|approvals/src`, every count-0/count-1 candidate individually re-checked, self-file usage disambiguated from true orphans) — no further live gaps found beyond TASK-225/226/this task. Three more confirmed dead-but-harmless: `decideWithRefusalMemory` (`packages/broker/src/refusalMemory.ts`) is a thin convenience wrapper around `RefusalMemory.consult()`, which IS the real, wired production path (`packages/broker/src/index.ts:614`) — no drift risk since the wrapper just delegates, simply unused. `denialCopy` (`packages/broker/src/decision.ts`) is self-documented in its own comment as a test helper ("Look up catalog copy without constructing a decision (tests / TASK-073)") — working as designed, not a gap. `isDenyCode` (`packages/broker/src/decision.ts`) is an unused type guard with no current external-input call site that would need it (nothing parses an untrusted deny-code string today); harmless, flag for deletion alongside the other two whenever someone is in this file for other reasons. Discovery sweep is now complete; foundation for further build work is in place.
 - [2026-09-14T20:28:51Z] [SV:S5] Investigation complete: (1) domains ΓÇö confirmed already live-enforced by resolveEgressPolicy (network-layer allowlist, wired in chatRunDriver.ts, same constraints.domains field) ΓÇö recommend removing evaluateDomainConstraint as dead/redundant. (2) rate_per_hour ΓÇö confirmed genuinely inert AND genuinely configured in a live connector manifest (gmail.yaml's inbox-triage grant sets rate_per_hour:40, real write path via connector registration into role_grants, zero enforcement anywhere) ΓÇö an ADR-005 configured-but-inert finding, recommend building out. Full build plan (files, insertion points, no DB schema change needed) recorded in dossier. Blocked before any code could be written: TASK-227's own Owned_Paths field is one comma-filled parenthetical, which hooks/lib.js's known naive comma-split parser corrupts into 3 garbage fragments that match no real file ΓÇö territory-firewall.js mechanically blocks writes to packages/policy/src/index.ts, packages/broker/src/index.ts, and services/control-api/src/app.ts alike. Confirmed via preflight_paths.py output and a live blocked Edit attempt, both pasted in the dossier. This is the exact bug PLAN.md orchestrator_notes already documented as recurring lesson #1.
+- [2026-09-14T22:35:00Z] [ORCH] TOOLING_FAILURE confirmed and fixed at the source: Owned_Paths had a single comma-filled parenthetical, which hooks/lib.js's naive comma-split parser corrupts into unmatched fragments (recurring lesson #1, already documented in this file's own orchestrator_notes but never applied retroactively to this task from its original filing). Rewritten as clean comma-separated real paths, matching your own recommended list exactly. Your investigation is excellent and stands as-is: remove the redundant/dead evaluateDomainConstraint (domains already enforced via resolveEgressPolicy), build real rate_per_hour enforcement (genuinely configured live in gmail.yaml's inbox-triage grant at 40/hour, zero enforcement today — a real ADR-005 configured-but-inert gap). Resume on task/TASK-227-s5 against your own dossier's build plan.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE: TASK-227's Owned_Paths field is a single parenthetical containing multiple commas ('(investigation-first ΓÇö see Description; likely `packages/broker/src/index.ts`, `services/control-api/src/app.ts` if built out, or `packages/policy/src/index.ts` + its test if removed)'). hooks/lib.js's ownedPathsOf() does raw.split(/[,\n]/), splitting this one field into 3 non-path fragments; territory-firewall.js then blocks writes to all 3 intended real files since none exactly matches a fragment. Needs Owned_Paths rewritten as clean newline/comma-free path entries (suggested list in dossier) before any implementation can proceed ΓÇö this is a mechanical parser defect, not a scope or spec question.
-**Updated_By:** SV
-**Updated_At:** 2026-09-14T20:28:51Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-14T22:35:00Z
 
 ### TASK-228
 **Title:** G-07 part 2a — make human take-over genuinely INTERACTIVE via execd's PTY holder mode (shell half only — CDP/browser half split to TASK-235)
@@ -7438,7 +7439,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.5; ADR-010; docs/runbooks/service-supervision.md; owner decision D5
-**Owned_Paths:** infra/compose/**, docs/runbooks/** (runbooks are ORCH-executed; if a builder ever takes this task, the ADR-017 draft goes in its dossier and ORCH commits it)
+**Owned_Paths:** infra/compose/** docs/runbooks/** — runbooks are ORCH-executed; if a builder ever takes this task the ADR-017 draft goes in its dossier and ORCH commits it
 **Depends_On:** TASK-240, TASK-245
 **Description:** Owner decision D5 keeps the workstation for now and defers this. `docker-compose.prod.yml` defines Postgres only; the watchdog is a logon-triggered Scheduled Task; `clawsrv` is shared (~20 containers, ~5 GB free) and each browser sandbox reserves 2 GB. Write ADR-017 (protected path, different-model review) choosing the host (dedicated box vs `clawsrv` with headroom checks), process supervision with boot-without-logon, credentials provisioning via the existing `secret://` convention, backup/rollback, and the sandbox reachability path; then execute the migration with a real reboot test. Until this lands, every 24/7 or device-off claim stays withheld (§10).
 **Acceptance_Criteria:**
@@ -7458,7 +7459,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-250
 **Title:** ADR-014 dynamic secret vault write path has no production composition site — wire createSecretVault into control-api fulfilment, with real write-side audit (connector-minter consumption split to TASK-253)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, §4, §5; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-05; TASK-184/187/192 Progress_Notes
@@ -7484,12 +7485,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T20:08:44Z] [SV:CX9] Revised write-side scope assessed; implementation requires the DB package export surface to expose new tenant-scoped secret-request APIs.
 - [2026-09-14T22:12:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to packages/db/src/index.ts (the db package's own barrel export — distinct from services/control-api/src/index.ts already owned). No conflict with TASK-227's active territory. Resume on task/TASK-250-cx9.
 - [2026-09-14T20:28:51Z] [SV:CX9] Committed write-side vault production composition and real-Postgres liveness coverage in eda8bd8; only config enforcement remains.
+- [2026-09-14T22:35:00Z] [ORCH] scripts/check-config.mjs is protected (scripts/** — builders can never touch it, same rule as docs/**). Applied the one-line change directly: OIK_SECRET_VAULT_KEY moved from OPTIONAL to REQUIRED under control-api, matching your own AC. Resume on task/TASK-250-cx9 to record the full-suite evidence and close out; the unrelated dashboard firebase/app failure is the same known TASK-241 gap, not yours to fix.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: scripts/check-config.mjs is listed in TASK-250 but rejected as a protected path by the territory-precommit hook. ORCH must apply the one-line required-config update.
-**Updated_By:** SV
-**Updated_At:** 2026-09-14T20:28:51Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-14T22:35:00Z
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
@@ -7550,7 +7552,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, Amendment 2026-09-14; TASK-250 Progress_Notes and dossier (full live evidence already gathered — read before re-deriving it)
-**Owned_Paths:** — (design-first: this changes chatRunDriver.ts's minter composition from shared-pool to scoped-per-request, which needs a design decision before any file is touched — see Description)
+**Owned_Paths:** — design-first: this changes chatRunDriver.ts's minter composition from shared-pool to scoped-per-request; needs a design decision before any file is touched; see Description
 **Depends_On:** TASK-250
 **Description:** TASK-250 (phase 1) makes a human-fulfilled secret genuinely encrypted, stored, and audited via `secretVault`, but confirmed there is no way for a connector session minter to actually use one: `services/worker/src/chatRunDriver.ts:211-247` builds one shared, role-agnostic minter pool per connector at worker composition time, and each minter is wired to `packages/connectors/src/mcp/envSecretResolver.ts`, which only resolves fixed manifest-declared `secret://mcp/.../…` refs backed by static `OIK_SECRET_*` env vars. A vault-minted `secret://<uuid>` ref is bound to one role (and implicitly one request), so it cannot be cached into a pool shared across every run of every role without either (a) a real risk of cross-role/cross-run secret leakage if the pool is looked up by connector name alone, or (b) scoping the pool per (role, run) instead of per connector — a genuine architectural change to how `chatRunDriver.ts` composes minters, not a resolver addition. Design first: does a role-scoped resolver need to be constructed fresh per run (cost/latency of a new minter per turn) or can it be cached per (tenant, role) safely (what does "safely" require — a proof that a stale cached minter cannot outlive a revoked/rotated dynamic secret)? Which connector(s) are the first real consumer — likely none yet, since no manifest currently declares a role-grant expecting a dynamic secret; confirm whether this is genuinely needed before a connector's manifest asks for it, or whether it's premature to build.
 **Acceptance_Criteria:**

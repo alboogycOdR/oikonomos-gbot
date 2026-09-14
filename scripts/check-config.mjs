@@ -23,7 +23,11 @@ const REQUIRED = {
     "OIKONOMOS_CAPABILITIES_ENABLED", // kill-switch; must be "true" for any governed call to run
     "OIK_SECRET_BROKER_TOKEN_SIGNING_KEY",
   ],
-  "control-api": ["CONTROL_API_TOKEN"],
+  "control-api": [
+    "CONTROL_API_TOKEN",
+    // TASK-250: fulfilment now genuinely stores through secretVault in production.
+    "OIK_SECRET_VAULT_KEY",
+  ],
   worker: [
     "OIK_SANDBOX_BROKER_URL",
     "OIK_SECRET_OPENSANDBOX_API_KEY",
@@ -31,10 +35,8 @@ const REQUIRED = {
   ],
 };
 const OPTIONAL = [
-  // FIREBASE_PROJECT_ID defaults in app.ts:771; OIK_SECRET_VAULT_KEY is read only by
-  // packages/db/src/secretVault.ts, which has no production composition site as of
-  // 2026-09-12 (finding recorded in PLAN.md TASK-240 notes) — required once wired.
-  "FIREBASE_PROJECT_ID", "OIK_SECRET_VAULT_KEY",
+  // FIREBASE_PROJECT_ID defaults in app.ts:771.
+  "FIREBASE_PROJECT_ID",
   "PORT", "BROKER_PORT", "OIK_TENANT_ID", "OIK_ATTACHMENTS_DIR",
   "OIKONOMOS_HOST_MODEL", "OIKONOMOS_SANDBOX_MODEL", "OIKONOMOS_SANDBOX_IMAGE",
   "OIK_PROVIDER_CAP_USD_GEMINI", "USD_TO_ZAR_RATE",
