@@ -246,3 +246,85 @@ Next: mobile half — `browser_takeover_client.dart` (CDP flatten-attach +
 (+ test), and the two new `api_client.dart` methods
 (`getTakeoverStatus`/`completeTakeover`) + `TakeoverStatus` model in `models.dart` +
 their test coverage. Not yet started this session.
+
+### 2026-09-14T21:40:00Z [S5] Mobile half complete — session ready for needs_review
+
+Implemented the remaining scope:
+
+- `apps/mobile/lib/api/browser_takeover_client.dart` (new): real CDP client over the
+  new `GET /runs/:id/browser-takeover` relay — flatten-attach
+  (`Target.getTargets`→`Target.attachToTarget({flatten:true})`, mirroring
+  `runSteelCdp`'s own sequence), `Page.startScreencast` frame decode+ack,
+  `Input.dispatchMouseEvent`/`dispatchKeyEvent` for real tap/typeText/dispatchKey.
+  Input sent before attach completes is queued (re-invoked, not a stale pre-built
+  envelope) and flushed once a real `sessionId` exists — no dropped keystrokes for a
+  fast typist.
+- `apps/mobile/lib/screens/browser_takeover_screen.dart` (new): loading/live/error
+  states; live screencast image surface (tap → real CDP click at that position via
+  `LayoutBuilder`/`GestureDetector`); type field + send + a dedicated Enter key
+  button (2FA/CAPTCHA/login flows very often need Enter, not just typed text).
+- `apps/mobile/lib/api/api_client.dart`: `getTakeoverStatus`/`completeTakeover`
+  (501/404 on status → treated as not-pending, not an error; 409 on complete →
+  `false`, same "disable, don't error" contract as `decideApproval`).
+- `apps/mobile/lib/api/models.dart`: `TakeoverStatus` (mirrors `app.ts`'s interface).
+- `apps/mobile/lib/screens/chat_screen.dart`: polls the thread's latest
+  non-null-`runId` message's takeover status (on load, on every new message with a
+  runId, and every 5s via `Timer.periodic`, canceled in `dispose`); renders
+  `TakeoverCard` between the transcript and composer when pending; `onTakeOver`
+  routes by `kind` — all four current server kinds (`captcha`/`two_factor`/
+  `login_wall`/`payment`) are browser-only per this task's own research (point 5 in
+  the earlier Work Log entry), routed to `BrowserTakeoverScreen`; any other/future
+  kind falls back to the existing shell `TakeoverScreen` rather than fabricating a
+  shell trigger that doesn't exist today. `onDone` calls `completeTakeover` then
+  re-polls so the card clears once the server confirms hand-back.
+
+Test_Evidence:
+- `flutter test test/api/browser_takeover_client_test.dart` — 6/6 pass (flatten-attach
+  sequencing, frame decode+ack, tap/typeText/dispatchKey dispatch, pre-attach input
+  queuing+flush, close() stops further sends).
+- `flutter test test/screens/browser_takeover_screen_test.dart` — 4/4 pass
+  (loading→live with a real decoded 1x1 PNG fixture, tap-to-click, type-and-send,
+  transport-error state).
+- `flutter test test/screens/chat_screen_test.dart` — 39/39 pass (4 new TASK-235
+  cases: card shows/hides by polled status, no poll when no run attached, Take over
+  routes to the browser screen for a browser-kind takeover, Done calls complete and
+  the card clears).
+- `flutter test test/api/api_client_test.dart` — 32/32 pass (4 new cases: status
+  parsing, 501/404→not-pending, complete's 409→false).
+- `flutter test` (full suite) — 168/168 pass, no regressions.
+- `flutter analyze` — clean (fixed one `no_leading_underscores_for_local_identifiers`
+  lint in the new chat_screen_test.dart helper).
+
+Backend re-verified together with mobile: `bash scripts/test-isolated.sh` (full
+recursive `pnpm -r test` against the isolated Postgres test DB, per CLAUDE.md
+DEVDEPARTMENT amendment — never scoped to just this task's own package) — all 18
+tested workspace packages green (dashboard 21/21, agent-providers 11/11, db 40/40,
+memory 4/4, policy 7/7, sandbox-client 5/5, shared 9/9, approvals 16/16, audit 8/8,
+connectors 16/16, harness-factory 18/18, workspace 4/4, evals-golden 1/1, broker
+15/15, gateway-telegram 7/7, evals-harness 13/13, worker 29/29, control-api 22/22 =
+284/284). `apps/mobile` is not a pnpm workspace project (Flutter), covered separately
+above. Note: `scripts/test-isolated.sh --init`'s migration replay hit a pre-existing
+duplicate-key error on `profile_facts` (leftover fixture row from an earlier,
+apparently not-fully-cleaned session, unrelated to this task — `profile_facts` is not
+among the tables `scripts/db-cleanup.mjs` prunes) — ran `node scripts/db-cleanup.mjs
+--execute` (the project's own sanctioned posttest cleanup script) first, which is safe
+by design (fixture-tenant-scoped deletes only), then ran the suite WITHOUT `--init`
+since the schema was already fully applied from a prior session. Flagging the
+`profile_facts` dirty-fixture gap for ORCH — `db-cleanup.mjs`'s table list may need
+that table added — but did not touch it myself (destructive delete on shared infra
+outside this task's `Owned_Paths`).
+
+All 5 acceptance criteria addressed:
+- AC1 (CDP research against real Steel behavior): done in the prior Work Log entry —
+  research trail there, re-summarized in this session's TASK-235 findings.
+- AC2 (agent CDP handle pause design): done in the prior entry — no live writer to
+  evict once parked, defense-in-depth connect-time gate added regardless.
+- AC3 (separate code path, mirror liveness proof, real tests): implemented and
+  tested this session — see the two commits below.
+- AC4 (TakeoverCard wired into chat_screen.dart): implemented and tested this
+  session.
+- AC5 (full suites/lint/typecheck/flutter analyze/test clean): verified this
+  session — see Test_Evidence above.
+
+Branch `task/TASK-235-s5`, commits: `90319c1` (backend), `3831e7a` (dossier
+checkpoint), `635e9d1` (mobile). Handing off to `needs_review`.
