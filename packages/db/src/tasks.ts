@@ -179,9 +179,13 @@ export async function createTaskExecutionRun(
   }
   const routineId = input.task.routineId == null ? null : requireUuid(input.task.routineId, "task.routineId");
   return withPool(options, async (pool) => {
-    await pool.query("BEGIN");
+    // A transaction is scoped to one PostgreSQL connection.  `Pool.query()`
+    // may select a different connection for each statement, which can leave
+    // a task persisted without its run under concurrent load.
+    const client = await pool.connect();
     try {
-      const taskResult = await pool.query<TaskRow>(
+      await client.query("BEGIN");
+      const taskResult = await client.query<TaskRow>(
         `INSERT INTO tasks (tenant_id, role_id, title, goal, routine_id, requested_by, execution)
          VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5, $6, $7::jsonb)
          RETURNING ${taskColumns}`,
@@ -189,17 +193,19 @@ export async function createTaskExecutionRun(
       );
       const taskRow = taskResult.rows[0];
       if (taskRow === undefined) throw new Error("createTaskExecutionRun did not return a persisted task.");
-      const runResult = await pool.query<{ run_id: string }>(
+      const runResult = await client.query<{ run_id: string }>(
         `INSERT INTO runs (task_id, tenant_id, provider) VALUES ($1, $2, $3) RETURNING run_id`,
         [taskRow.task_id, taskRow.tenant_id, provider],
       );
       const run = runResult.rows[0];
       if (run === undefined) throw new Error("createTaskExecutionRun did not return a persisted run.");
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
       return { task: toTask(taskRow), runId: run.run_id };
     } catch (error) {
-      await pool.query("ROLLBACK").catch(() => undefined);
+      await client.query("ROLLBACK").catch(() => undefined);
       throw error;
+    } finally {
+      client.release();
     }
   });
 }

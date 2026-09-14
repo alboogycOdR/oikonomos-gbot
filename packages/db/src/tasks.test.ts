@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createRoutine, createTask, defaultPoolConfig, getTask, listTasks } from "./index.js";
+import { createRoutine, createTask, createTaskExecutionRun, defaultPoolConfig, getRun, getTask, listTasks } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -25,6 +25,10 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
   const tenantId = "task-061-tasks-suite";
 
   async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
     await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM role_routines WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
@@ -58,6 +62,34 @@ integration("packages/db tasks — read + CRUD (TASK-061 / OIK-084)", () => {
 
     const fetched = await getTask({ connectionString: connectionString! }, created.taskId);
     expect(fetched).toEqual(created);
+  });
+
+  it("atomically creates a durable execution command and its initial run", async () => {
+    const result = await createTaskExecutionRun(
+      { connectionString: connectionString! },
+      {
+        task: {
+          tenantId,
+          roleId,
+          title: "Durable chat execution",
+          goal: "Queue this prompt for the worker",
+          requestedBy: "task-246",
+        },
+        execution: { version: 1, kind: "chat", threadId: "task-246-thread" },
+        provider: "claude",
+      },
+    );
+
+    await expect(getTask({ connectionString: connectionString! }, result.task.taskId)).resolves.toMatchObject({
+      taskId: result.task.taskId,
+      execution: { version: 1, kind: "chat", threadId: "task-246-thread" },
+    });
+    await expect(getRun({ connectionString: connectionString! }, result.runId)).resolves.toMatchObject({
+      runId: result.runId,
+      taskId: result.task.taskId,
+      provider: "claude",
+      status: "started",
+    });
   });
 
   it("getTask returns null for an unknown taskId", async () => {
@@ -222,5 +254,19 @@ describe("listTasks ORDER BY — deterministic source-level tiebreak pin (review
     // variance to escape through.
     const src = readFileSync(new URL("./tasks.ts", import.meta.url), "utf8");
     expect(src).toMatch(/ORDER BY created_at DESC, task_id DESC/);
+  });
+});
+
+describe("createTaskExecutionRun transaction ownership (TASK-246 R1)", () => {
+  it("uses one checked-out client for BEGIN, both inserts, and COMMIT", () => {
+    const src = readFileSync(new URL("./tasks.ts", import.meta.url), "utf8");
+    const implementation = src.slice(src.indexOf("export async function createTaskExecutionRun"));
+    expect(implementation).toMatch(/const client = await pool\.connect\(\)/);
+    expect(implementation).toMatch(/await client\.query\("BEGIN"\)/);
+    expect(implementation).toMatch(/await client\.query<TaskRow>\(/);
+    expect(implementation).toMatch(/await client\.query<\{ run_id: string \}>\(/);
+    expect(implementation).toMatch(/await client\.query\("COMMIT"\)/);
+    expect(implementation).toMatch(/client\.release\(\)/);
+    expect(implementation).not.toMatch(/await pool\.query\(/);
   });
 });
