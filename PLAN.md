@@ -7595,9 +7595,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T00:20:00Z
 **Progress_Notes:**
 - [2026-09-14T22:05:00Z] [ORCH] Filed after two independent, identity-confirmed review agents (TASK-227's and TASK-253's) reproduced the identical cascade on separate, freshly-serialized runs. See REVIEW.md's TASK-227 and TASK-253 entries for the full corroborating detail from each run.
+- [2026-09-14T23:48:17Z] [SV:S5] Root-caused with live DB evidence (not assumed): services/control-api's POST /roles handler auto-grants every enabled sdk:builtin capability to whatever role it creates, and chat.routes.test.ts's TASK-117/TASK-156 fixtures never delete that role afterward ΓÇö a permanent leak (confirmed 112 orphaned role_grants rows under random-UUID 'Persona ...' role_ids referencing our fixture capabilities). Fixed within Owned_Paths: database.test.ts's TASK-119 and TASK-140 suite cleanup() now delete role_grants scoped by capability_id (not just our own roleId), making cleanup idempotent/order-safe regardless of which role holds a stray grant. Verified: scripts/test-isolated.ps1 -Filter @oikonomos/db run twice in a row, both 40/40 files green, zero StaleCapabilityRowError; orphaned rows confirmed self-healed to 0. Committed (45e0ce3). Full pnpm -r test via scripts/test-isolated.ps1 (no filter) launched in background per project convention (always full recursive suite) to close AC4 ΓÇö awaiting completion before final needs_review handoff. Dossier written with full investigation trail and an ORCH flag for the separate (out-of-territory) control-api leak bug. NEXT: Resume on background task notification, read full-suite output, append final Test_Evidence to dossier, then set status needs_review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T00:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T23:48:17Z
