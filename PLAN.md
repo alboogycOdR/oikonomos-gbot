@@ -7337,7 +7337,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-246
 **Title:** Workspace-1 follow-on — durable run-execution queue so a worker restart re-drives an interrupted run (restart resilience)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.2; ADR-007 replay window; ADR-001
@@ -7373,12 +7373,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-14T12:00:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: widened to services/control-api/src/chat.routes.test.ts — this file is also named in blocked TASK-162's scope, but 'blocked' is not an active status for territorial isolation (validate_plan.py ACTIVE_STATUSES = claimed/in_progress/needs_review only), so no live conflict. Note for whoever eventually resumes TASK-162: this file's API-process execution expectations were updated here for durable-queue semantics (4 obsolete assertions) — re-check TASK-162's flaky-test scope against the new version before resuming. Resume on task/TASK-246-cx9.
 - [2026-09-14T12:28:34Z] [SV:CX9] Completed durable queue implementation and aligned four obsolete control-api tests with queue-driven worker execution; branch is clean.
 - [2026-09-14T20:30:00Z] [ORCH] Review verdict REWORK — R1 (transaction atomicity bug in createTaskExecutionRun) is the only blocking finding; see Review_Findings. Same branch task/TASK-246-cx9; re-dispatching CX9.
-**Artifacts:** services/worker/src/jobs/workerJobQueue.ts, services/worker/src/runLifecycle.ts, services/worker/src/main.ts, services/worker/src/chatRunDriver.ts, services/worker/src/groupFanout.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, packages/db/src/tasks.ts, infra/postgres/migrations/025_task_execution.up.sql, dossiers/TASK-246.md
-**Test_Evidence:** pnpm --filter @oikonomos/{db,worker,control-api} typecheck: exit 0. scripts/test-isolated.ps1 -Filter @oikonomos/worker: pass, including real pg-boss restart, singleton, parked approval, and audit coverage. scripts/test-isolated.ps1 -Filter @oikonomos/control-api: 21 files, 269 tests passed. Full serial isolated suite reached unrelated dashboard failures because firebase/app is unresolved.
+- [2026-09-14T18:49:06Z] [SV:CX9] REWORK R1 fixed and committed as a48a7e4: task/run creation now uses one checked-out PostgreSQL client for its atomic transaction.
+**Artifacts:** packages/db/src/tasks.ts, packages/db/src/tasks.test.ts, dossiers/TASK-246.md
+**Test_Evidence:** pnpm --filter @oikonomos/db typecheck passed; focused isolated DB tasks test passed (7/7); worker/control-api typechecks passed; isolated worker and control-api suites passed. Full DB suite still has two unrelated shared-suite failures: roles migration-DDL deadlock and spend total contamination.
 **Review_Findings:** REWORK (ORCH, 2026-09-14T20:30:00Z, REVIEW.md). R1 BLOCKING: `createTaskExecutionRun` (packages/db/src/tasks.ts) calls `pool.query("BEGIN"/INSERT/"COMMIT")` directly on the shared Pool instead of a single checked-out client (`pool.connect()`), so the transaction Amendment 1a requires is not actually atomic under concurrent load on the shared pool. Fix by matching the established pattern in the same package: `packages/db/src/capabilities.ts:65-70` (client = await pool.connect(); try { BEGIN...COMMIT } finally { client.release() }), also used in messages.ts and threads.ts. Everything else verified sound: waiting_approval exclusion, resume-vs-new-run re-drive semantics, run.requeued/run.queued evidence, real production wiring (ports.ts calls the new helper, not dead code), fan-out source-message resolution. Territory clean across all three widenings.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-14T20:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T18:49:06Z
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
