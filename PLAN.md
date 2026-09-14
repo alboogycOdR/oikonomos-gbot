@@ -6790,7 +6790,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-227
 **Title:** Grant-level `domains`/`rate_per_hour` constraints are stored and pure-function-tested but never evaluated by the broker, and never exposed by any write API
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** `packages/policy/src/index.ts`'s `evaluateDomainConstraint`/`evaluateRateLimitConstraint` (pure, tested, real semantics: per-grant domain allowlist and hourly rate cap) — zero call sites anywhere outside their own test file, including nowhere in `packages/broker/src/index.ts`'s real `decidePreToolUse` decision path. `role_grants.constraints` (the JSONB column these would read) — `services/control-api/src/app.ts`'s real grant-creation routes always pass `constraints: {}` hardcoded; there is no API surface that lets an operator set a real `domains`/`rate_per_hour` value at all.
@@ -6802,8 +6802,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Decide and record which resolution applies (build out, or remove) — this is a real product-scope decision, not purely technical; a case can legitimately be made either way and it isn't ORCH's call to make unilaterally without checking whether anyone actually wants per-grant domain/rate constraints as a feature.
 - [ ] If built out: wired into the real decision path, a real write API, tests proving both directions (a role within its constraint is allowed; a role outside it is denied) through the real `decidePreToolUse` call site, not just the pure functions in isolation.
 - [ ] If removed: the dead functions, their test file, and the now-meaningless `constraints` JSONB shape assumptions are cleaned up or explicitly documented as reserved-but-unused, not left ambiguous.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-227-s5
+**Started_At:** 2026-09-14T20:02:32Z
 **Progress_Notes:**
 - [2026-09-08T20:35:00Z] [ORCH] Filed from the same discovery sweep as TASK-226. Also found in the same sweep, NOT filed as separate tasks (recording here instead, low priority, pure cleanup): `requiresHumanApproval` (`packages/broker/src/describe.ts`) is dead/duplicate code — the REAL T3+/T4 approval-tier check in `decidePreToolUse` is a separate, hand-rolled `tierRank(tier) < tierRank(APPROVAL_TIER)` comparison that doesn't call this function at all, so the two implementations could silently drift with nobody noticing (real enforcement is NOT missing, just implemented twice). `createTierZeroSummarizer` (`services/worker/src/contextCompaction.ts`) is similarly only ever called from its own test — production compaction actually uses a different function, `createTierZeroProvider` (`tierZeroProvider.ts`), for the same job. Both are candidates for straightforward deletion whenever someone is in the neighborhood; neither represents a live gap the way TASK-226 and this task do.
 - [2026-09-08T21:05:00Z] [ORCH] Completed the full sweep (102 exported functions across `services/worker/src` + `packages/broker|policy|approvals/src`, every count-0/count-1 candidate individually re-checked, self-file usage disambiguated from true orphans) — no further live gaps found beyond TASK-225/226/this task. Three more confirmed dead-but-harmless: `decideWithRefusalMemory` (`packages/broker/src/refusalMemory.ts`) is a thin convenience wrapper around `RefusalMemory.consult()`, which IS the real, wired production path (`packages/broker/src/index.ts:614`) — no drift risk since the wrapper just delegates, simply unused. `denialCopy` (`packages/broker/src/decision.ts`) is self-documented in its own comment as a test helper ("Look up catalog copy without constructing a decision (tests / TASK-073)") — working as designed, not a gap. `isDenyCode` (`packages/broker/src/decision.ts`) is an unused type guard with no current external-input call site that would need it (nothing parses an untrusted deny-code string today); harmless, flag for deletion alongside the other two whenever someone is in this file for other reasons. Discovery sweep is now complete; foundation for further build work is in place.
@@ -6811,8 +6811,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-08T20:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-14T20:02:32Z
 
 ### TASK-228
 **Title:** G-07 part 2a — make human take-over genuinely INTERACTIVE via execd's PTY holder mode (shell half only — CDP/browser half split to TASK-235)
