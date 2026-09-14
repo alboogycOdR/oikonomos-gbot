@@ -452,3 +452,100 @@ export async function createRoleGrant(
     body: JSON.stringify({ capabilityId, maxTier }),
   });
 }
+
+/**
+ * TASK-243 (spec §7.1/§7.2) — mirrors `GET /runs/:id/receipt`'s real,
+ * serialized shape exactly (TASK-242, `packages/db/src/runReceipt.ts` /
+ * `services/control-api/src/app.ts`): dates arrive as ISO-8601 strings over
+ * JSON (the server sends `Date` objects), `spend` is a discriminated union
+ * that is never estimated — `unavailable` when no `spend_records` rows
+ * exist for the run, `actual` otherwise.
+ */
+export interface RunReceiptAction {
+  capability: string | null;
+  tier: string | null;
+  verdict: string | null;
+  reason: string | null;
+}
+
+export interface RunReceiptApproval {
+  approvalId: string;
+  capabilityId: string;
+  actionRender: string;
+  destination: string;
+  status: ApprovalStatus;
+  requestedAt: string;
+  decidedAt: string | null;
+  consumedAt: string | null;
+}
+
+export type RunReceiptSpend =
+  | { kind: "actual"; costUsd: number; tokens: number | null }
+  | { kind: "unavailable" };
+
+export interface RunReceipt {
+  run: {
+    runId: string;
+    status: RunStatus;
+    startedAt: string;
+    endedAt: string | null;
+    failureNote: string | null;
+  };
+  finalMessage: { id: string; body: string; createdAt: string } | null;
+  actions: RunReceiptAction[];
+  approvals: RunReceiptApproval[];
+  unresolvedApprovals: RunReceiptApproval[];
+  spend: RunReceiptSpend;
+}
+
+export async function getRunReceipt(runId: string): Promise<RunReceipt> {
+  return request<RunReceipt>(`/runs/${encodeURIComponent(runId)}/receipt`);
+}
+
+/**
+ * TASK-243 (spec §7.3) — mirrors `packages/db/src/routines.ts`'s `Routine`
+ * shape exactly, as serialized by `GET /roles/:roleId/routines`,
+ * `POST /routines/:id/pause|resume|test-run` (`app.ts:1182-1235`). Dates
+ * arrive as ISO-8601 strings over JSON, same convention as every other
+ * type in this file.
+ */
+export type RoutineFireOutcome = "queued" | "missed" | "stopped" | "skipped_paused";
+
+export interface Routine {
+  routineId: string;
+  roleId: string;
+  tenantId: string;
+  name: string;
+  schedule: string | null;
+  lane: "user" | "agent" | "background";
+  enabled: boolean;
+  definition: Record<string, unknown>;
+  lastFireAt: string | null;
+  nextFireAt: string | null;
+  lastFireStatus: RoutineFireOutcome | null;
+  skillId?: string | null;
+  paused?: boolean;
+}
+
+export async function listRoutines(roleId: string): Promise<Routine[]> {
+  return request<Routine[]>(`/roles/${encodeURIComponent(roleId)}/routines`);
+}
+
+export async function pauseRoutine(routineId: string): Promise<Routine> {
+  return request<Routine>(`/routines/${encodeURIComponent(routineId)}/pause`, { method: "POST" });
+}
+
+export async function resumeRoutine(routineId: string): Promise<Routine> {
+  return request<Routine>(`/routines/${encodeURIComponent(routineId)}/resume`, { method: "POST" });
+}
+
+export interface TestRunRoutineResult {
+  routine: Routine;
+  warning: string;
+}
+
+export async function testRunRoutine(routineId: string): Promise<TestRunRoutineResult> {
+  return request<TestRunRoutineResult>(`/routines/${encodeURIComponent(routineId)}/test-run`, {
+    method: "POST",
+  });
+}

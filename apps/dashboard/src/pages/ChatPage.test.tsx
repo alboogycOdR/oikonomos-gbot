@@ -143,6 +143,9 @@ function renderPage(initialPath = "/") {
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/workspace/:threadId" element={<ChatPage />} />
+            {/* TASK-243 (spec §1/§7, §2.6) — same routing pattern App.tsx uses: both segments mount the same page. */}
+            <Route path="/workspace/:threadId/results" element={<ChatPage />} />
+            <Route path="/workspace/:threadId/work" element={<ChatPage />} />
           </Routes>
         </AuthedProbe>
       </MemoryRouter>
@@ -798,6 +801,167 @@ describe("ChatPage", () => {
 
       const researchRow = screen.getByRole("option", { name: /research assistant/i });
       expect(researchRow).not.toHaveTextContent(/approval|working|blocked|new/i);
+    });
+  });
+
+  /**
+   * TASK-243 (spec §7.2/§7.3, §1, §2.6) — Results and Work are segments of
+   * the same workspace route, switched by URL suffix. Base fetch handler
+   * shared by these tests covers the same threads/roles/summary/messages
+   * fixture as the rest of this file, plus the new receipt/routines
+   * endpoints this task owns.
+   */
+  describe("Results and Work views (spec §7)", () => {
+    const COMPLETED_SUMMARY = [
+      {
+        threadId: "thread-1",
+        latestRun: { runId: "run-9", status: "completed" },
+        pendingApprovals: 0,
+        lastActivityAt: "2026-09-03T10:00:05.000Z",
+      },
+    ];
+
+    const RECEIPT = {
+      run: { runId: "run-9", status: "completed", startedAt: "2026-09-03T09:59:00.000Z", endedAt: "2026-09-03T10:00:00.000Z", failureNote: null },
+      finalMessage: { id: "msg-final", body: "Sent the weekly report", createdAt: "2026-09-03T10:00:00.000Z" },
+      actions: [{ capability: "email.send", tier: "T3_external", verdict: "allow", reason: null }],
+      approvals: [
+        {
+          approvalId: "approval-resolved",
+          capabilityId: "email.send",
+          actionRender: "Send weekly report",
+          destination: "finance@example.com",
+          status: "consumed",
+          requestedAt: "2026-09-03T09:59:30.000Z",
+          decidedAt: "2026-09-03T09:59:40.000Z",
+          consumedAt: "2026-09-03T09:59:50.000Z",
+        },
+      ],
+      unresolvedApprovals: [
+        {
+          approvalId: "approval-pending",
+          capabilityId: "calendar.book",
+          actionRender: "Book a follow-up meeting",
+          destination: "calendar",
+          status: "pending",
+          requestedAt: "2026-09-03T10:00:01.000Z",
+          decidedAt: null,
+          consumedAt: null,
+        },
+      ],
+      spend: { kind: "unavailable" },
+    };
+
+    const ROUTINE = {
+      routineId: "routine-1",
+      roleId: "role-1",
+      tenantId: "basileia",
+      name: "Weekly digest",
+      schedule: "0 8 * * 1",
+      lane: "background",
+      enabled: true,
+      definition: {},
+      lastFireAt: null,
+      nextFireAt: "2030-01-06T08:00:00.000Z",
+      lastFireStatus: null,
+      skillId: null,
+      paused: false,
+    };
+
+    function baseHandler(overrides: (url: string, init?: RequestInit) => Response | undefined) {
+      return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const override = overrides(url, init);
+        if (override !== undefined) return override;
+        if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+        if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify(COMPLETED_SUMMARY), { status: 200 });
+        if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
+        if (url.includes("/threads/thread-1/stream")) return openStream();
+        if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/roles/role-1/routines")) return new Response(JSON.stringify([ROUTINE]), { status: 200 });
+        if (url.endsWith("/runs/run-9/receipt")) return new Response(JSON.stringify(RECEIPT), { status: 200 });
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }) as unknown as typeof fetch;
+    }
+
+    it("Results view renders the receipt: completed action, prepared draft, proposed next action, unavailable spend, links (§7.2)", async () => {
+      global.fetch = baseHandler(() => undefined);
+
+      renderPage("/workspace/thread-1/results");
+
+      await screen.findByText("Sent the weekly report");
+      expect(screen.getByText(/unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText("email.send")).toBeInTheDocument();
+
+      // Prepared draft (resolved approval)
+      expect(screen.getByText("Send weekly report")).toBeInTheDocument();
+      // Proposed next action (unresolved approval) with a link to decide it
+      expect(screen.getByText("Book a follow-up meeting")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /decide in approvals/i })).toHaveAttribute("href", "/ops/approvals");
+      expect(screen.getByRole("link", { name: /run detail/i })).toHaveAttribute("href", "/ops/runs/run-9");
+      expect(screen.getByRole("link", { name: /evidence/i })).toHaveAttribute("href", "/ops/evidence/run-9");
+    });
+
+    it("Work view lists routines with next fire labelled UTC, and the test-run warning is shown before confirming (§7.3)", async () => {
+      const calls: string[] = [];
+      global.fetch = baseHandler((url, init) => {
+        if (url.endsWith("/routines/routine-1/test-run") && init?.method === "POST") {
+          calls.push(url);
+          return new Response(
+            JSON.stringify({ routine: { ...ROUTINE, lastFireStatus: "queued" }, warning: "test run performs real work" }),
+            { status: 202 },
+          );
+        }
+        return undefined;
+      });
+
+      const user = userEvent.setup({ delay: null });
+      renderPage("/workspace/thread-1/work");
+
+      await screen.findByText("Weekly digest");
+      expect(screen.getByText(/UTC/)).toBeInTheDocument();
+
+      // The warning must be visible before the POST fires.
+      await user.click(screen.getByRole("button", { name: /test run/i }));
+      expect(screen.getByText("test run performs real work")).toBeInTheDocument();
+      expect(calls).toHaveLength(0);
+
+      await user.click(screen.getByRole("button", { name: /confirm test run/i }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+    });
+
+    it("pause/resume call the real routes and reflect the returned state, without changing the displayed run state (§7.3, §1)", async () => {
+      const calls: string[] = [];
+      global.fetch = baseHandler((url, init) => {
+        if (url.endsWith("/routines/routine-1/pause") && init?.method === "POST") {
+          calls.push(url);
+          return new Response(JSON.stringify({ ...ROUTINE, paused: true }), { status: 200 });
+        }
+        return undefined;
+      });
+
+      const user = userEvent.setup({ delay: null });
+      renderPage("/workspace/thread-1/work");
+
+      await screen.findByText("Weekly digest");
+      expect(screen.getByText(/latest run: completed/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /^pause$/i }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      await screen.findByRole("button", { name: /^resume$/i });
+
+      // The run-state line (spec §4, unrelated to the routine) is unchanged.
+      expect(screen.getByText(/latest run: completed/i)).toBeInTheDocument();
+    });
+
+    it("falls back to the chat view for the bare workspace route (§2.6)", async () => {
+      global.fetch = baseHandler(() => undefined);
+
+      renderPage("/workspace/thread-1");
+
+      await screen.findByRole("tab", { name: "Chat" });
+      expect(screen.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
     });
   });
 

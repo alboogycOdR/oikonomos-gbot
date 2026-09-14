@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ChatShell } from "../components/chat/ChatShell";
 import type {
@@ -9,6 +9,9 @@ import type {
   RoutineSummary,
   WorkspaceBadgeKind,
 } from "../components/chat/types";
+import { ResultsView } from "../components/workspace/ResultsView";
+import { WorkView } from "../components/workspace/WorkView";
+import { WorkspaceTabs, type WorkspaceView } from "../components/workspace/WorkspaceTabs";
 import {
   BUILD_SHA,
   getRun,
@@ -16,12 +19,14 @@ import {
   getWorkspaceSummary,
   isGroupThread,
   listRoles,
+  listRoutines,
   listThreadMessages,
   listThreads,
   sendThreadMessage,
   UnauthorizedError,
   type GroupThread,
   type Role,
+  type Routine,
   type Thread,
   type ThreadMessage,
   type WorkspaceSummaryEntry,
@@ -29,8 +34,6 @@ import {
 import { useAuth } from "../lib/AuthContext";
 import { subscribeToThreadMessages, type RealtimeMessage } from "../lib/realtime";
 import { useWorkspaceState, type WorkspaceMessage } from "../lib/workspaceState";
-
-const BASE_URL: string = (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
 
 /**
  * TASK-239 (spec §4.2) — "an interval (default 15 s, configurable)".
@@ -65,12 +68,6 @@ function computeWorkspaceBadge(
     return "unread";
   }
   return null;
-}
-
-interface ApiRoutine {
-  routineId: string;
-  name: string;
-  schedule: string | null;
 }
 
 /**
@@ -186,11 +183,28 @@ function toWorkspaceMessage(message: ThreadMessage): WorkspaceMessage {
 export function ChatPage() {
   const { markUnauthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { threadId: routeThreadId } = useParams<{ threadId?: string }>();
+
+  /**
+   * TASK-243 (spec §1/§7) — "two views inside a workspace, switched by a
+   * segment in the URL": `/workspace/:threadId/results` and `.../work`
+   * (routes added in `App.tsx`, both mounting this same page). Any other
+   * path (bare `/workspace/:threadId`, or anything unrecognized) falls
+   * back to the chat view (spec §2.6 acceptance: "fall back to chat").
+   */
+  const view: WorkspaceView = location.pathname.endsWith("/results")
+    ? "results"
+    : location.pathname.endsWith("/work")
+      ? "work"
+      : "chat";
 
   const [bots, setBots] = useState<GroupAwareBotSummary[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [routines, setRoutines] = useState<RoutineSummary[]>([]);
+  /** Full `Routine` rows (TASK-243) — the Members/Routines `RightPanel` tab only needs `RoutineSummary`, derived below via `useMemo`. */
+  const [workRoutines, setWorkRoutines] = useState<Routine[]>([]);
+  const [routinesLoading, setRoutinesLoading] = useState(false);
+  const [routinesError, setRoutinesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** TASK-239 (spec §4.1/§4.2) — latest `GET /workspace/summary` snapshot, keyed by threadId. */
@@ -442,6 +456,9 @@ export function ChatPage() {
   const activeSummary = activeThreadId !== undefined ? summaryByThreadId[activeThreadId] : undefined;
   const activeRunFailed = activeSummary?.latestRun?.status === "failed";
   const activeFailedRunId = activeRunFailed ? activeSummary?.latestRun?.runId : undefined;
+  /** TASK-243 (spec §7.2) — "the workspace's latest completed run": the summary's own `latestRun` is only used when it is actually `completed`; any other status means there is nothing to show yet (never a stale earlier run). */
+  const activeCompletedRunId =
+    activeSummary?.latestRun?.status === "completed" ? activeSummary.latestRun.runId : undefined;
 
   /**
    * TASK-239 (spec §4.3) — the active thread's deterministic failure
@@ -541,26 +558,52 @@ export function ChatPage() {
 
   const activeBot = bots.find((bot) => bot.id === activeThreadId);
 
+  /**
+   * TASK-243 (spec §7.3) — via `lib/api.ts`'s `listRoutines` (mirrors the
+   * real `Routine` shape, TASK-242/243), replacing the previous raw
+   * `fetch` that only kept `routineId`/`name`/`schedule`. Fetched once per
+   * active role regardless of which view is showing (small, already-paid
+   * cost) — the `RightPanel` Routines tab and the Work view both derive
+   * from this one list, never a second independent fetch.
+   */
   useEffect(() => {
     if (activeBot?.roleId === undefined) {
-      setRoutines([]);
+      setWorkRoutines([]);
+      setRoutinesError(null);
       return undefined;
     }
     let cancelled = false;
-    fetch(`${BASE_URL}/roles/${encodeURIComponent(activeBot.roleId)}/routines`, { credentials: "same-origin" })
-      .then(async (response) => {
-        if (response.status === 401) throw new UnauthorizedError();
-        if (!response.ok) throw new Error(`failed to load routines (${response.status})`);
-        return (await response.json()) as ApiRoutine[];
-      })
+    setRoutinesLoading(true);
+    setRoutinesError(null);
+    listRoutines(activeBot.roleId)
       .then((data) => {
-        if (!cancelled) setRoutines(data.map((routine) => ({ id: routine.routineId, name: routine.name, description: routine.schedule ?? undefined })));
+        if (!cancelled) setWorkRoutines(data);
       })
       .catch((err: unknown) => {
-        if (!cancelled && !handleAuthError(err)) setError(err instanceof Error ? err.message : "failed to load routines");
+        if (cancelled) return;
+        if (!handleAuthError(err)) {
+          setRoutinesError(err instanceof Error ? err.message : "failed to load routines");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRoutinesLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeBot?.roleId, handleAuthError]);
+
+  /** `RightPanel`'s Routines tab only needs the narrow `RoutineSummary` shape — derived here so there is exactly one fetch. */
+  const routines = useMemo<RoutineSummary[]>(
+    () => workRoutines.map((routine) => ({ id: routine.routineId, name: routine.name, description: routine.schedule ?? undefined })),
+    [workRoutines],
+  );
+
+  const handleRoutineChanged = useCallback((updated: Routine) => {
+    setWorkRoutines((current) =>
+      current.map((routine) => (routine.routineId === updated.routineId ? updated : routine)),
+    );
+  }, []);
 
   /** Members panel roster (spec §2.5) — resolved against `listRoles()`'s canonical roster, not re-derived from thread display strings. */
   const members = useMemo<MemberSummary[]>(() => {
@@ -613,8 +656,20 @@ export function ChatPage() {
     );
   }
 
+  /**
+   * TASK-243 (spec §1/§7) — switches the URL segment; `view` above then
+   * re-derives from `location.pathname` on the next render. No local
+   * "which view" state — same single-owner-of-selection discipline TASK-236
+   * already established for `activeThreadId`.
+   */
+  const handleSelectView = (nextView: WorkspaceView) => {
+    if (activeThreadId === undefined) return;
+    const base = `/workspace/${encodeURIComponent(activeThreadId)}`;
+    navigate(nextView === "chat" ? base : `${base}/${nextView}`);
+  };
+
   return (
-    <main className="h-screen w-full">
+    <main className="flex h-screen w-full flex-col bg-chrome">
       {loading && bots.length === 0 && (
         <p className="p-4 text-sm text-slate-400">Loading…</p>
       )}
@@ -623,25 +678,44 @@ export function ChatPage() {
           {error}
         </p>
       )}
+      {(!loading || bots.length > 0) && activeThreadId !== undefined ? (
+        <WorkspaceTabs active={view} onSelect={handleSelectView} />
+      ) : null}
       {!loading || bots.length > 0 ? (
-        <ChatShell
-          bots={botsWithStatus}
-          messagesByBotId={messagesByBotId}
-          members={members}
-          routines={routines}
-          activeBotId={activeThreadId}
-          isBotResponding={activeThread.pending}
-          draft={activeThread.draft}
-          onDraftChange={(value) => activeThreadId && handleDraftChange(activeThreadId, value)}
-          onSelectBot={handleSelectBot}
-          onSend={(botId, body) => void handleSend(botId, body)}
-          onThreadCreated={handleThreadCreated}
-          onUnauthorized={markUnauthenticated}
-          activeBlockedReason={activeRunFailed ? blockedReason : null}
-          onRetry={handleRetry}
-          onLogout={handleLogout}
-          buildSha={BUILD_SHA}
-        />
+        <div className="min-h-0 flex-1">
+          {view === "results" ? (
+            <ResultsView completedRunId={activeCompletedRunId} onUnauthorized={markUnauthenticated} />
+          ) : view === "work" ? (
+            <WorkView
+              routines={workRoutines}
+              loading={routinesLoading}
+              error={routinesError}
+              latestRunStatus={activeSummary?.latestRun?.status}
+              onRoutineChanged={handleRoutineChanged}
+              onUnauthorized={markUnauthenticated}
+              onError={setRoutinesError}
+            />
+          ) : (
+            <ChatShell
+              bots={botsWithStatus}
+              messagesByBotId={messagesByBotId}
+              members={members}
+              routines={routines}
+              activeBotId={activeThreadId}
+              isBotResponding={activeThread.pending}
+              draft={activeThread.draft}
+              onDraftChange={(value) => activeThreadId && handleDraftChange(activeThreadId, value)}
+              onSelectBot={handleSelectBot}
+              onSend={(botId, body) => void handleSend(botId, body)}
+              onThreadCreated={handleThreadCreated}
+              onUnauthorized={markUnauthenticated}
+              activeBlockedReason={activeRunFailed ? blockedReason : null}
+              onRetry={handleRetry}
+              onLogout={handleLogout}
+              buildSha={BUILD_SHA}
+            />
+          )}
+        </div>
       ) : null}
     </main>
   );

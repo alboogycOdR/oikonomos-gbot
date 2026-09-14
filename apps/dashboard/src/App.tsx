@@ -77,6 +77,26 @@ export function App() {
             </RequireAuth>
           }
         />
+        {/* TASK-243 (spec §1/§7, §2.6): Results and Work are segments of the
+            same workspace, not separate pages — both routes mount `ChatPage`,
+            which derives the active segment from `location.pathname` and
+            falls back to the chat view for anything else. */}
+        <Route
+          path="/workspace/:threadId/results"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/workspace/:threadId/work"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/ops/runs"
           element={
