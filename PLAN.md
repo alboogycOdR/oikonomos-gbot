@@ -7552,8 +7552,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-253
 **Title:** Connector minters cannot consume a dynamically-vaulted secret — per-role/run-scoped minter resolution design + implementation (ADR-014 Amendment 2026-09-14, phase 2)
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-014-dynamic-secret-vault.md §1, Amendment 2026-09-14; TASK-250 Progress_Notes and dossier (full live evidence already gathered — read before re-deriving it)
 **Owned_Paths:** — design-first: this changes chatRunDriver.ts's minter composition from shared-pool to scoped-per-request; needs a design decision before any file is touched; see Description
@@ -7564,8 +7564,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] If a real consumer exists: `chatRunDriver.ts`'s minter composition is changed to resolve a vault-minted ref for that connector, with a liveness test proving `secret_vault.read` fires and the resolved value reaches the connector session, never the model.
 - [ ] If no real consumer exists yet: record that finding plainly and close this task without speculative code, naming what would need to change (a manifest declaring a dynamic-secret-backed capability) to make it real.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-253-cx9
+**Started_At:** 2026-09-14T23:50:00Z
 **Progress_Notes:**
 - [2026-09-14T22:35:00Z] [ORCH] Filed from TASK-250's investigation and ADR-014's 2026-09-14 amendment. Read TASK-250's dossier before starting — the live evidence (which files, which line ranges) is already gathered and should not be re-derived.
 **Artifacts:** —
@@ -7573,4 +7573,4 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-14T22:35:00Z
+**Updated_At:** 2026-09-14T23:50:00Z
