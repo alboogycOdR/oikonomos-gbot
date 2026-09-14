@@ -7023,11 +7023,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-235
 **Title:** G-07 part 2b — Steel/CDP interactive browser hand-off, plus wiring TakeoverCard into a real screen
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** TASK-228's own Progress_Notes (the shell/PTY half this splits from — read that first, same pattern applies); `packages/connectors/src/steelSession.ts` (the agent's own CDP handle, currently never paused/handed off); TASK-225's CDP research (`services/worker/src/geminiToolExecutors.ts`'s `runSteelCdp`/`Target.attachToTarget` pattern — the vocabulary this needs, NOT assumed to be directly reusable); ADR-010 Amendment enforced set.
-**Owned_Paths:** — (investigation-first, matching TASK-228's own precedent — CDP research must come before any design here)
+**Owned_Paths:** services/control-api/src/browserTakeover.routes.ts, services/control-api/src/browserTakeover.routes.test.ts, services/control-api/src/app.ts, apps/mobile/lib/api/browser_takeover_client.dart, apps/mobile/test/api/browser_takeover_client_test.dart, apps/mobile/lib/screens/browser_takeover_screen.dart, apps/mobile/test/screens/browser_takeover_screen_test.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/api/api_client_test.dart
 **Description:** TASK-228 built and proved the shell/PTY half of genuinely interactive human take-over (execd's holder-mode + `takeover=1`, a full `relayTakeover`/`GET /roles/:roleId/live-agent/takeover` implementation, real tests). This task is the other half: when a run parks on a browser-side signal (CAPTCHA, a login wall inside Steel, a payment page), the human needs to drive the SAME Steel Browser session directly — not a shell, a real page. CDP has no obvious "evict the current holder" primitive the way execd's PTY does (confirmed by this project's own prior CDP work, TASK-225, which had to solve a different problem — attaching to a page target at all — and never touched hand-off). Assuming the PTY mechanism transfers would be guessing, which ADR-010's security stakes do not tolerate.
 
   Also folds in a real, separate finding from TASK-228: `apps/mobile/lib/widgets/takeover_card.dart` (TASK-188) has never been rendered by any real screen — confirmed by a direct grep, zero usages outside its own file and its own unit test. Neither this task's browser hand-off nor TASK-228's already-built shell take-over is reachable by a real user until the card (or an equivalent live-agent-required indicator) is actually wired into a real screen, most likely `chat_screen.dart`, polling `GET /runs/:id/takeover` for the active thread's parked runs and calling `POST /runs/:id/takeover/complete` on hand-back.
@@ -7043,12 +7043,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T08:50:00Z] [ORCH] Split from TASK-228 when the shell/PTY half was completed for real and this half was confirmed to still need genuine, unresearched CDP investigation — bundling the two any longer would have meant either rushing this half's design or holding the shell half's real, working, tested build hostage to it. See TASK-228's own Progress_Notes for the full context this splits from.
 - [2026-09-14T18:40:00Z] [ORCH] Dispatched now: no Owned_Paths overlap with TASK-246's current (in_progress) territory. TASK-227 and TASK-250 are held instead — both name services/control-api/src/{app.ts,index.ts,ports.ts} as likely territory, which TASK-246 is actively modifying right now; dispatching either concurrently risks a real collision the moment their own investigation confirms those files. Will dispatch both once TASK-246 merges.
 - [2026-09-14T18:49:06Z] [SV:S5] Completed a real CDP/hand-off research pass (Steel's browser-level CDP socket + flatten-attach pattern from runSteelCdp, confirmed the park/return in chatRunDriver.ts already ends the worker's execution so there is no live CDP-issuing process to evict once parked, confirmed every current human_takeover_required kind is Steel/browser-only). Drafted the backend relay (browserTakeover.routes.ts) but the territory firewall blocked the write: TASK-235's Owned_Paths is the literal placeholder '—', not a hint list like TASK-228's own investigation-first task had, so there is zero territory to write into yet. In control.mode=strict I cannot widen PLAN.md myself. Full research trail and the exact requested path list are recorded in dossiers/TASK-235.md's latest Work Log entry.
+- [2026-09-14T21:15:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: carved to the exact list requested from real research (dossier). app.ts was held until TASK-246 merged (done); no other active task now touches it. Resume on task/TASK-235-s5, start at browserTakeover.routes.ts per your own stated next_step.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: Owned_Paths for TASK-235 is empty ('—'), not a hint list. Requesting: services/control-api/src/browserTakeover.routes.ts (new), services/control-api/src/browserTakeover.routes.test.ts (new), services/control-api/src/app.ts (additive), apps/mobile/lib/api/browser_takeover_client.dart (new), apps/mobile/test/api/browser_takeover_client_test.dart (new), apps/mobile/lib/screens/browser_takeover_screen.dart (new), apps/mobile/test/screens/browser_takeover_screen_test.dart (new), apps/mobile/lib/screens/chat_screen.dart (modify), apps/mobile/test/screens/chat_screen_test.dart (modify), apps/mobile/lib/api/api_client.dart (modify), apps/mobile/lib/api/models.dart (modify), apps/mobile/test/api/api_client_test.dart (modify). Full rationale for each path is in the dossier.
-**Updated_By:** SV
-**Updated_At:** 2026-09-14T18:49:06Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-14T21:15:00Z
 
 ### TASK-236
 **Title:** Workspace-1 — dashboard workspace controller: single selection owner, per-thread pending/draft state, message merge, members roster, /workspace/:threadId route
