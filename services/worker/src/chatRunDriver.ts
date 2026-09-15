@@ -289,9 +289,9 @@ async function runChatTask(
   // timing-record failure must never fail the actual run (same principle
   // as "push is additive, never load-bearing" elsewhere in this codebase).
   const phaseStart = performance.now();
-  const recordTimingSafe = (targetRunId: string | undefined, phase: string, durationMs: number): void => {
+  const recordTimingSafe = async (targetRunId: string | undefined, phase: string, durationMs: number): Promise<void> => {
     if (targetRunId === undefined) return;
-    void recordRunPhaseTiming(options, { runId: targetRunId, phase, durationMs }).catch((error: unknown) => {
+    await recordRunPhaseTiming(options, { runId: targetRunId, phase, durationMs }).catch((error: unknown) => {
       console.error(`failed to record run phase timing (${phase}):`, error);
     });
   };
@@ -394,7 +394,7 @@ async function runChatTask(
     // Fail closed before any Claude tokens are spent: a ceiling already at
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
-    recordTimingSafe(runId, "setup", performance.now() - phaseStart);
+    void recordTimingSafe(runId, "setup", performance.now() - phaseStart);
     const modelStart = performance.now();
     let result;
     let botText: string | undefined;
@@ -462,7 +462,7 @@ async function runChatTask(
         if (acquiredConnector !== undefined) acquiredConnector.pool.release(acquiredConnector.handle);
       }
     }
-    recordTimingSafe(runId, "model_execution", performance.now() - modelStart);
+    void recordTimingSafe(runId, "model_execution", performance.now() - modelStart);
     const finalizeStart = performance.now();
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: botText ?? finalText(result?.events ?? []), runId: run.runId });
     // A run that reached here having accounted for nothing is unrecorded, not
@@ -470,7 +470,9 @@ async function runChatTask(
     if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
-    recordTimingSafe(runId, "finalize", performance.now() - finalizeStart);
+    // This is the run's final write. Unlike earlier, observational phase
+    // records, it must settle before run() resolves so readers never race it.
+    await recordTimingSafe(runId, "finalize", performance.now() - finalizeStart);
   } catch (error) {
     if (runId !== undefined) {
       // §7.4: a failed run with no spend tap report is unrecorded, not free.
