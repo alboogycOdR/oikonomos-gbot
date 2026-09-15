@@ -212,7 +212,17 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
         goal: "Compile the daily digest",
         requestedBy: `routine:${routine.routineId}`,
       });
-      const persisted = await getRoutine({ connectionString: connectionString! }, routine.routineId);
+      // TASK-258: a due fire now atomically creates the task/run and enqueues
+      // real work before `recordRoutineFire` persists `lastFireStatus` — the
+      // task row can be visible via listTasks a moment before that status
+      // write lands. Wait for the status the same way the sibling "missed"
+      // case below already does, rather than assume task-visibility implies
+      // fire-outcome-recording is complete.
+      const persisted = await waitFor(async () => {
+        if (pollErrors.length > 0) throw new Error(`routine poll errored: ${String(pollErrors[0])}`);
+        const candidate = await getRoutine({ connectionString: connectionString! }, routine.routineId);
+        return candidate?.lastFireStatus === "queued" ? candidate : undefined;
+      });
       expect(persisted).toMatchObject({
         lastFireStatus: "queued",
         nextFireAt: dueAt,
