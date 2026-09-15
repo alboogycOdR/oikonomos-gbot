@@ -1,6 +1,7 @@
 # TASK-245 acceptance — candidate record
 
-**Candidate commit:** `a83b892` (master, 2026-09-15)
+**Original candidate commit:** `a83b892` (master, 2026-09-15) — all cases A01-A19/C01 except A05 passed against this build.
+**Updated candidate commit:** `d9c2412` (master, 2026-09-15T10:33Z) — deployed live the same session after TASK-260 (critical logout fix) merged, given the security severity of leaving a known session-revocation defect live any longer than necessary. Dashboard-only change; control-api and worker untouched, no restart needed for those. A05 re-verified and now passes against this build; see `A05-session-logout.md`'s update section. No other case's evidence is affected — none of the other passing cases exercised the specific broken code path TASK-260 fixed.
 **Owner/reviewer:** ORCH (Claude Sonnet 5), user-authorized start 2026-09-15
 **Spec:** `specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md` §8.1–§8.3; `GROKBOT-RESEARCH-DOCS/OIKONOMOS_RELEASE_ACCEPTANCE_2026-09-16.md`
 
