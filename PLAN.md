@@ -7605,7 +7605,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-255
 **Title:** `services/worker/src/chatRunDriver.test.ts`'s own cleanup deletes `threads` before `thread_members`, violating an FK constraint — same class of bug as TASK-254, different file
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** `services/worker/src/chatRunDriver.test.ts` (its own per-test cleanup block, around the `DELETE FROM threads ... DELETE FROM thread_members` sequence)
@@ -7620,9 +7620,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T02:30:00Z
 **Progress_Notes:**
 - [2026-09-15T02:22:00Z] [ORCH] Filed from TASK-254's independent review verification. See REVIEW.md's TASK-254 entry.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-15T00:48:16Z] [SV:CX9] Centralized chat-run fixture thread cleanup so thread_members are deleted by target thread ID before threads, covering every teardown path.
+**Artifacts:** services/worker/src/chatRunDriver.test.ts, dossiers/TASK-255.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker typecheck passed; scripts/test-isolated.ps1 -Filter @oikonomos/worker passed 29 files/247 tests including chatRunDriver.test.ts 44/44; serialized scripts/test-isolated.ps1 completed successfully.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T02:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T00:48:16Z
