@@ -7817,3 +7817,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-15T12:15:00Z
+
+### TASK-263
+**Title:** Real live incident (2026-09-15T20:4x-20:57Z): Docker Desktop crashed, taking Postgres down, crash-looping control-api/worker every watchdog cycle; also fixed a real mobile-app connectivity bug found by the owner's own device test (wrong default API origin, never actually reachable from a real phone)
+**Status:** done
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** docs/runbooks/service-supervision.md; docs/runbooks/release-workspace-1.md (release origin = Tailscale Serve HTTPS, port 443, tailnet-only); apps/mobile/lib/main.dart (TASK-144's original default base URL)
+**Owned_Paths:** apps/mobile/lib/main.dart
+**Depends_On:** —
+**Description:** Two distinct real findings, surfaced together while the owner tested the freshly-built mobile release APK on a real device: (1) the app failed to sign in with `SocketException: Software caused connection abort ... address = 100.67.177.24, port = 42784, uri=http://100.67.177.24:3000/a` -- confirmed by direct investigation that this default base URL (`http://100.67.177.24:3000`, set in TASK-144) was never actually the supported client-facing path: TASK-240's release runbook established `https://studyworkstation.<tailnet>.ts.net` (Tailscale Serve, port 443, tailnet-only, reverse-proxying to `127.0.0.1:3000`) as the one real, tested origin -- raw port 3000 was reachable from `127.0.0.1` only, not from other tailnet peers including a real phone. No real mobile-device-over-tailnet test had ever actually been performed before this; C01's own acceptance evidence was gathered via existing dedicated tests, not a live device. (2) While investigating (1), found BOTH control-api and worker were actually down and crash-looping every watchdog cycle (2-minute restarts, repeatedly, since ~20:40Z) -- traced to Docker Desktop itself having stopped (`docker ps` failed with a named-pipe connection error), which took the `oikonomos-postgres-local` container down with it; both services correctly fail-fast on `ECONNREFUSED :5432` at boot, and the watchdog correctly kept restarting the process every cycle, but neither the watchdog nor anything else supervises Docker Desktop itself, so the restart loop could never succeed until a human noticed and restarted Docker Desktop directly. This is a real gap distinct from TASK-261 (watchdog's own re-enable reliability) -- here the watchdog behaved exactly as designed the whole time; the missing supervision layer is one level further down the dependency chain.
+**Acceptance_Criteria:**
+- [x] Mobile app's default `CONTROL_API_BASE_URL` points at the same real, supported HTTPS Tailscale Serve origin the dashboard already uses, not a raw port-3000 address.
+- [x] A real reproduction of the fix: `curl` against `https://studyworkstation.<tailnet>.ts.net/health` (the exact path the corrected app now uses) returns a real `200`.
+- [x] Docker Desktop, Postgres, control-api, and worker all confirmed healthy again live, with the watchdog's own log showing no further restart-loop entries after recovery.
+- [x] A fresh release APK built with the corrected default and delivered to the owner for re-test.
+**Branch:** — (ORCH direct fix, no active builder territory conflict: apps/mobile is untouched by TASK-261/257's own Owned_Paths)
+**Started_At:** 2026-09-15T20:49:00Z
+**Progress_Notes:**
+- [2026-09-15T20:57:31Z] [ORCH] Both findings resolved live. (1) Docker Desktop restarted (it has no start-on-boot/crash-supervision of its own on this workstation -- a real, disclosed limitation of the D5 workstation-hosting decision, worth naming explicitly rather than assuming Docker's own reliability); `oikonomos-postgres-local` came back healthy within seconds, control-api and worker both recovered on the watchdog's next natural cycle with no manual process restart needed. Confirmed via direct query: HTTPS origin returns real `200`/`{"status":"ok"}`. (2) Fixed `apps/mobile/lib/main.dart`'s hardcoded default from `http://100.67.177.24:3000` to `https://studyworkstation.tailbb9d39.ts.net`, with an updated doc comment explaining why the original reasoning (control-api binds 0.0.0.0, so it should be reachable) was true but incomplete -- reachability at the socket level is not the same as being the intended, firewalled-open client path. Rebuilt the release APK (all three ABI splits) with the fix; the arm64 build was re-sent to the owner for a real re-test. LESSON for docs/runbooks/service-supervision.md or a future task: nothing on this workstation currently supervises Docker Desktop's own process -- if it's ever added to Windows Task Scheduler startup (or an equivalent auto-restart-on-crash wrapper), this exact failure mode goes away at the root instead of needing a human to notice a phone couldn't sign in.
+**Artifacts:** apps/mobile/lib/main.dart, apps/mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk (rebuilt)
+**Test_Evidence:** Live: `curl -sk https://studyworkstation.tailbb9d39.ts.net/health` -> `200 {"status":"ok","buildSha":"a83b892"}`. `docker ps` shows `oikonomos-postgres-local` healthy. `tasklist` confirms both control-api and worker node processes alive post-recovery. Watchdog log shows the restart-loop entries stopping after Docker's recovery.
+**Review_Findings:** Self-reviewed (ORCH direct fix, single-line default value + doc comment, no logic change, zero risk of regression to any other client since the value is override-only via `--dart-define`). No builder territory conflict.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-15T20:57:31Z

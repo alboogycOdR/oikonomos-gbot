@@ -15,14 +15,19 @@ import 'screens/login_screen.dart';
 /// `localhost` never resolves to anything useful on a physical device —
 /// it means the device itself, not the machine running control-api — so a
 /// real device build always fails to connect regardless of network
-/// reachability. Defaults to the dev machine's own Tailscale address
-/// instead: control-api binds `0.0.0.0` (services/control-api/src/index.ts),
-/// so it's already reachable there once running, and every other client in
-/// this project (clawsrv, OpenSandbox, the worker) already addresses peers
-/// by their Tailscale IP, not `localhost`, for exactly this reason.
+/// reachability. This originally defaulted to the dev machine's raw
+/// Tailscale IP + control-api's own port (`http://100.67.177.24:3000`),
+/// reasoning that control-api binds `0.0.0.0` and is therefore reachable
+/// there directly. TASK-263 found that assumption false against a real
+/// device: TASK-240's release runbook established `https://studyworkstation.
+/// <tailnet>.ts.net` (Tailscale Serve, port 443, tailnet-only) as the one
+/// supported client-facing origin, and a real phone hitting the raw
+/// `:3000` address directly gets a connection abort — nothing about the
+/// port-3000 path was ever actually exercised end-to-end before. Point at
+/// the same HTTPS origin the dashboard already uses.
 const String _defaultBaseUrl = String.fromEnvironment(
   'CONTROL_API_BASE_URL',
-  defaultValue: 'http://100.67.177.24:3000',
+  defaultValue: 'https://studyworkstation.tailbb9d39.ts.net',
 );
 
 /// TASK-149 (Mobile Wave 2b) — the push config gate. No
