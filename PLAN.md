@@ -7668,7 +7668,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
 **Owned_Paths:** services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts
@@ -7772,7 +7772,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 ### TASK-261
 **Title:** `scripts/test-isolated.ps1`'s watchdog disable/re-enable is not reliably self-healing — has now left the watchdog stuck `Disabled` at least three times this session, with no independent safeguard
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `scripts/test-isolated.ps1:77-92` (`$watchdogWasReady` check, `schtasks /Change /TN $taskName /DISABLE` before the run, `/ENABLE` in the outer `finally`); `docs/runbooks/service-supervision.md` (the watchdog's own intended purpose — automatic recovery from exactly this kind of gap); PLAN.md orchestrator_notes' own recorded history of this recurring across TASK-245's acceptance session (2026-09-15) at least three times: once before A19's window opened, once mid-review, and once during TASK-260's own verification pass.
 **Owned_Paths:** scripts/test-isolated.ps1
