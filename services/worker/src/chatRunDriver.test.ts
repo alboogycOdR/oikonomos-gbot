@@ -94,6 +94,19 @@ function json(response: ServerResponse, value: unknown): void {
   response.end(JSON.stringify(value));
 }
 
+/**
+ * Remove membership rows before their fixture threads. `thread_members` has an
+ * FK to `threads`, and a role-scoped delete is not sufficient when another
+ * fixture role is a member of the thread being removed.
+ */
+async function deleteFixtureThreads(pool: Pool, roleIds: readonly string[]): Promise<void> {
+  await pool.query(
+    "DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
+    [roleIds],
+  );
+  await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [roleIds]);
+}
+
 describe("chat run driver governance helpers", () => {
   it("defaults to the sandbox path and constructs a scoped governed CLI command", () => {
     expect(chatExecutionMode({})).toBe("sandbox");
@@ -345,8 +358,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     // violates thread_members_thread_id_fkey. A stray pre-TASK-120 thread
     // left by an interrupted run got picked up by TASK-120's own one-time
     // migration backfill, which is exactly how this surfaced for real.
-    await pool.query(`DELETE FROM thread_members WHERE role_id = $1`, [roleId]);
-    await pool.query(`DELETE FROM threads WHERE role_id = $1`, [roleId]);
+    await deleteFixtureThreads(pool, [roleId]);
     await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
   }
@@ -569,7 +581,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [driftRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [driftRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [driftRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [driftRoleId]);
+    await deleteFixtureThreads(pool, [driftRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [driftRoleId]);
     await createRole(options, { roleId: driftRoleId, name: driftRoleId, title: "TASK-222 drift fixture", description: "" });
     const driftTask = await createTask(options, { roleId: driftRoleId, title: "TASK-222 fixture", goal: "Run `pwd`.", requestedBy: "task-222-suite" });
@@ -651,7 +663,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [driftRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [driftRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [driftRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [driftRoleId]);
+      await deleteFixtureThreads(pool, [driftRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [driftRoleId]);
     }
   });
@@ -678,7 +690,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [deadRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [deadRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [deadRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [deadRoleId]);
+    await deleteFixtureThreads(pool, [deadRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [deadRoleId]);
     await createRole(options, { roleId: deadRoleId, name: deadRoleId, title: "TASK-222 dead-sandbox fixture", description: "" });
     const deadTask = await createTask(options, { roleId: deadRoleId, title: "dead", goal: "Run `pwd`.", requestedBy: "task-222-suite" });
@@ -702,7 +714,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [deadRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [deadRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [deadRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [deadRoleId]);
+      await deleteFixtureThreads(pool, [deadRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [deadRoleId]);
     }
   });
@@ -743,7 +755,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     const geminiDenyRoleId = "task-220-gemini-deny";
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [geminiDenyRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [geminiDenyRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiDenyRoleId]);
+    await deleteFixtureThreads(pool, [geminiDenyRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiDenyRoleId]);
     await createRole(options, { roleId: geminiDenyRoleId, name: geminiDenyRoleId, title: "TASK-220 deny fixture", description: "" });
     await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [geminiDenyRoleId]);
@@ -775,7 +787,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [geminiDenyRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [geminiDenyRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiDenyRoleId]);
+      await deleteFixtureThreads(pool, [geminiDenyRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiDenyRoleId]);
     }
   });
@@ -795,7 +807,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [geminiRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [geminiRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [geminiRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiRoleId]);
+    await deleteFixtureThreads(pool, [geminiRoleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [geminiRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiRoleId]);
     await createRole(options, { roleId: geminiRoleId, name: geminiRoleId, title: "TASK-220 lane fixture", description: "" });
@@ -879,7 +891,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [geminiRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [geminiRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [geminiRoleId]);
+      await deleteFixtureThreads(pool, [geminiRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [geminiRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [geminiRoleId]);
     }
@@ -901,7 +913,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [browserRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [browserRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [browserRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [browserRoleId]);
+    await deleteFixtureThreads(pool, [browserRoleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [browserRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [browserRoleId]);
     await createRole(options, { roleId: browserRoleId, name: browserRoleId, title: "TASK-225 browser fixture", description: "" });
@@ -991,7 +1003,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [browserRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [browserRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [browserRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [browserRoleId]);
+      await deleteFixtureThreads(pool, [browserRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [browserRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [browserRoleId]);
     }
@@ -1009,7 +1021,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [takeoverRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [takeoverRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [takeoverRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [takeoverRoleId]);
+    await deleteFixtureThreads(pool, [takeoverRoleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [takeoverRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [takeoverRoleId]);
     await createRole(options, { roleId: takeoverRoleId, name: takeoverRoleId, title: "TASK-225 takeover fixture", description: "" });
@@ -1109,7 +1121,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [takeoverRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [takeoverRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [takeoverRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [takeoverRoleId]);
+      await deleteFixtureThreads(pool, [takeoverRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [takeoverRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [takeoverRoleId]);
     }
@@ -1127,7 +1139,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [costRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [costRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [costRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [costRoleId]);
+    await deleteFixtureThreads(pool, [costRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
     await createRole(options, { roleId: costRoleId, name: costRoleId, title: "TASK-220 cost fixture", description: "" });
     await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [costRoleId]);
@@ -1199,7 +1211,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [costRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [costRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [costRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [costRoleId]);
+      await deleteFixtureThreads(pool, [costRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
     }
   });
@@ -1216,7 +1228,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [exhaustRoleId]);
+    await deleteFixtureThreads(pool, [exhaustRoleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
     await createRole(options, { roleId: exhaustRoleId, name: exhaustRoleId, title: "TASK-220 exhaust fixture", description: "" });
@@ -1285,7 +1297,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [exhaustRoleId]);
+      await deleteFixtureThreads(pool, [exhaustRoleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
     }
@@ -1295,7 +1307,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     const unknownRoleId = "task-220-unknown-provider";
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [unknownRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [unknownRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [unknownRoleId]);
+    await deleteFixtureThreads(pool, [unknownRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [unknownRoleId]);
     await createRole(options, { roleId: unknownRoleId, name: unknownRoleId, title: "TASK-220 unknown-provider fixture", description: "" });
     await pool.query("UPDATE roles SET provider = 'grok' WHERE role_id = $1", [unknownRoleId]);
@@ -1309,7 +1321,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     } finally {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [unknownRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [unknownRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [unknownRoleId]);
+      await deleteFixtureThreads(pool, [unknownRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [unknownRoleId]);
     }
   });
@@ -1327,7 +1339,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [historyRoleId]);
     await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [historyRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [historyRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [historyRoleId]);
+    await deleteFixtureThreads(pool, [historyRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [historyRoleId]);
     await createRole(options, { roleId: historyRoleId, name: historyRoleId, title: "TASK-220 history fixture", description: "" });
     await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [historyRoleId]);
@@ -1395,7 +1407,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [historyRoleId]);
       await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [historyRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [historyRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [historyRoleId]);
+      await deleteFixtureThreads(pool, [historyRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [historyRoleId]);
     }
   });
@@ -1913,8 +1925,7 @@ integration("createChatRunDriver — send_to_role governed MCP run (TASK-131)", 
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [senderRoleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [senderRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [senderRoleId]);
-    await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
-    await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
+    await deleteFixtureThreads(pool, [senderRoleId, receiverRoleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
     await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[senderRoleId, receiverRoleId]]);
   }
@@ -1985,8 +1996,7 @@ integration("createChatRunDriver — self-rename governed MCP run (TASK-167)", (
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await deleteFixtureThreads(pool, [roleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
   }
@@ -2042,8 +2052,7 @@ integration("createChatRunDriver — create_routine governed MCP run (natural-la
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await deleteFixtureThreads(pool, [roleId]);
     await pool.query("DELETE FROM role_routines WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
@@ -2109,7 +2118,7 @@ integration("createChatRunDriver — create_routine governed MCP run (natural-la
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [ungrantedRoleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [ungrantedRoleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [ungrantedRoleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [ungrantedRoleId]);
+    await deleteFixtureThreads(pool, [ungrantedRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [ungrantedRoleId]);
     await createRole(options, { roleId: ungrantedRoleId, name: "No grant", title: "no grant fixture", description: "" });
     const ungrantedThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [ungrantedRoleId])).rows[0]!.id;
@@ -2129,7 +2138,7 @@ integration("createChatRunDriver — create_routine governed MCP run (natural-la
       await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [ungrantedRoleId]);
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [ungrantedRoleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [ungrantedRoleId]);
-      await pool.query("DELETE FROM threads WHERE role_id = $1", [ungrantedRoleId]);
+      await deleteFixtureThreads(pool, [ungrantedRoleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [ungrantedRoleId]);
     }
   });
@@ -2149,8 +2158,7 @@ integration("createChatRunDriver — live context compaction (TASK-193)", () => 
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await deleteFixtureThreads(pool, [roleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
   }
@@ -2251,8 +2259,7 @@ integration("createChatRunDriver — browser lane live-wiring (TASK-204)", () =>
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
-    await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+    await deleteFixtureThreads(pool, [roleId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
   }
