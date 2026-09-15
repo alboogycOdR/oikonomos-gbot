@@ -31,6 +31,7 @@ Fixed: watchdog re-enabled (`schtasks /Change /TN OIKONOMOS-ServiceWatchdog /ENA
 |---|---|---|---|---|
 | 2026-09-15T05:45Z | (mid-acceptance check) | — | — | $0.00 |
 | 2026-09-15T10:35-10:39Z | **unintended, disclosed** | claude (x2), gemini (x6) | $0.0274 | $0.0274 |
+| 2026-09-15T10:54-10:57Z | A12/A19 live fix verification (deliberate, minimal) | claude-haiku-4-5-20251001 (x1) | $0.0194 | $0.0468 |
 
 Updated as paid cases run. Source: `spend_records.cost_usd`, queried directly against the live database, never estimated. A19's own test routine fired once for real (2026-09-15T05:00:24Z) but never produced a run at all — root-caused to a real critical bug (TASK-258, see `A19-24h-observation.md`) in the scheduled-routine execution path itself, not a cost event. Confirmed **zero spend incurred** throughout the acceptance-testing work itself, including while auditing and clearing a large stale-queue backlog that briefly looked like it might pose a real risk (it did not, per the same file's full account) and a single genuine unguarded-risk subset (1,653 jobs) that was found and neutralized before it could be processed.
 
