@@ -7690,7 +7690,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** `services/worker/src/jobs/routineJob.ts:111-118` (the `createTask` port passed to `scheduler.fireRoutine`, calling only `@oikonomos/db`'s bare `createTask` -- no run, no queue enqueue); `services/control-api/src/ports.ts:531-541`'s `testRunRoutine` (the CORRECT reference implementation: creates the task, then calls `notify({task, threadId})`, which is what actually creates a real run and enqueues `worker.run-execution`); TASK-246/ADR-016 (`submitTaskExecution`, the atomic task+run+queue path this should have been wired through); GROKBOT-RESEARCH-DOCS/OIKONOMOS_RELEASE_ACCEPTANCE_2026-09-16.md's A19/A12 pass conditions ("Scheduled task produces actual work") and its own hold-condition list ("lost accepted work").
@@ -7706,12 +7706,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T10:15:00Z
 **Progress_Notes:**
 - [2026-09-15T05:45:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case after an extensive live investigation (see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full trail, including a separate, unrelated stale-pgboss-queue cleanup performed along the way that was NOT the actual root cause of this specific finding). This is a genuine hold-condition-class defect per the acceptance framework's own rules ("lost accepted work") -- flagging prominently, not just filing quietly.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-15T10:36:32Z] [SV:S5] Fixed routineJob.ts: scheduled fires now go through the atomic task+run+enqueue path (createTaskExecutionRun + enqueueRunExecution, mirroring control-api's testRunRoutine/submitTaskExecution) instead of a bare createTask INSERT with no run and no worker.run-execution enqueue. Confirmed live against the dev DB: 238,105/238,105 routine-scheduled tasks had zero matching run row since 2026-09-05 (remediation deferred per AC3's own scope). Added a real, non-mocked liveness test asserting an actual runs row and an actual pgboss.job row exist after a poll. Fixed two FK-violation bugs this exposed in routineJob.test.ts's own afterAll cleanup. Found and root-caused (via revert-and-reproduce) one deterministic collateral regression in services/worker/src/jobs/workerJobQueue.test.ts, caused by this fix's correct added latency exposing a pre-existing race in that test's own waitFor helper -- that file is outside this task's Owned_Paths so I did not edit it; flagged in dossier with a one-line recommended fix for ORCH.
+**Artifacts:** services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, dossiers/TASK-258.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker build: clean. routineJob.test.ts in isolation: 5/5 pass (664ms), including new TASK-258 liveness test. @oikonomos/worker full suite (test-isolated.ps1 -Init): 252/253 -- 1 known, out-of-territory collateral failure in workerJobQueue.test.ts, root-caused by reverting routineJob.ts to HEAD and reproducing a clean pass (7/7), confirming the regression is caused by this fix's now-realistic enqueue latency exposing a pre-existing race in that test's waitFor, not by incorrect behavior. Full recursive pnpm -r test (test-isolated.ps1 -Root, fresh -Init, 18 packages): 2 fails/16 passes -- the same worker collateral failure, plus one unrelated control-api chat.routes.test.ts flake (TASK-155 audit-row race) confirmed non-deterministic and pre-existing (passed 43/43 standalone immediately after; control-api never imports routineJob.ts and packages run sequentially under --workspace-concurrency=1). Zero other packages affected.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T10:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T10:36:32Z
 
 ### TASK-259
 **Title:** `GET /threads/:id/stream`'s SSE connection never re-validates its session after the initial handshake, so an expired session cannot be forced to stop an already-open stream
