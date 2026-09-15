@@ -4863,8 +4863,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-164
 **Title:** Wire Codex/Grok subprocess routing into a real production execution path
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** Surfaced during TASK-143's adversarial review (2026-09-05, confirmed independently twice, by Codex CLI and a separate verification pass): `createGatedSubprocessProviders` (services/worker/src/subprocessProviders.ts) and everything it builds (`CodexProvider`/`GrokProvider`, ADR-011's multi-provider support) has **zero non-test call sites anywhere in this repository**. The entire Codex/Grok subprocess-routing feature — not just its budget enforcement — has never been wired into any real chat/task execution path; `chatRunDriver.ts`, the actual production driver, only ever constructs the Claude Agent SDK `query()` path. This predates TASK-143 entirely and is a pre-existing product gap, not something TASK-143 broke or could fix within its own Owned_Paths (confirmed: an attempted fix inside TASK-143 was correctly blocked by the territory firewall). TASK-143's budget enforcement is correctly built and will engage automatically the moment this task wires a real call site — this task is the missing prerequisite, not new budget work.
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, packages/db/src/routines.ts
@@ -4876,15 +4876,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] If implemented: a genuine production call site constructs Codex/Grok providers with a real `budget` object — never the `unsafeAllowUnbudgeted` escape hatch — proven by an end-to-end test, not a unit test of the construction function alone
 - [ ] TASK-143's existing budget/enforcement tests remain unaffected
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-164-cx9
+**Started_At:** 2026-09-15T02:05:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-05T21:20:00Z
+**Updated_At:** 2026-09-15T02:05:00Z
 
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
