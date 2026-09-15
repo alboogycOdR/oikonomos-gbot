@@ -7500,7 +7500,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** TASK-230 (phase timings); TASK-221/229 (pg-boss routine poll); TASK-162/199 (prior flake work); docs/runbooks/release-workspace-1.md Isolated tests
@@ -7518,12 +7518,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-12T12:15:00Z] [ORCH] Third race, same family, observed 2026-09-12 on two serialised full-suite runs: `packages/db` `database.test.ts > Database capability enable switches (TASK-140) > flips every registered capability platform-wide` fails `expected 35 to be 36` (and 36 vs 37 earlier) — it counts `capabilities` rows while sibling files in the same package (`capabilities.test.ts` registration/skip tests) insert and delete rows in parallel vitest workers. Fix by scoping the assertion to rows the test itself created, or by `fileParallelism: false` for that file. Add `packages/db/src/database.test.ts` to this task's Owned_Paths when claimed.
 - [2026-09-12T13:05:00Z] [ORCH] Fourth occurrence, same family (2026-09-12, TASK-241 trial-merge run): `packages/db` `threadContext.test.ts` failed once with Postgres `deadlock detected`; the immediate re-run passed that file and failed `database.test.ts`'s capability count instead. Root cause for the whole family is vitest running the db package's real-Postgres files in parallel workers against shared tables; consider `fileParallelism: false` in `packages/db/vitest.config.ts` (cheap, deterministic) before per-test fixes. Add that file to Owned_Paths when claimed.
 - [2026-09-14T20:30:00Z] [ORCH] Fifth occurrence, same family, observed 2026-09-14 reviewing TASK-246 on the isolated database: `packages/db/src/spend.test.ts > sums platform-wide spend since a given instant, excluding older rows` failed `toBeCloseTo(before + 10)` by 0.012 — another test file inserted spend_records concurrently between the before/after reads. Add `packages/db/src/spend.test.ts` to this task's Owned_Paths when claimed.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-15T01:28:16Z] [SV:CX9] Awaited the final timing write and made pg-boss routine lifecycle tests clock-deterministic; committed 8d1e50b.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/jobs/workerJobQueue.test.ts, dossiers/TASK-251.md
+**Test_Evidence:** pnpm --filter @oikonomos/worker typecheck passed. Fresh scripts/test-isolated.ps1 -Init succeeded, followed by 5 consecutive scripts/test-isolated.ps1 -Filter @oikonomos/worker runs: all passed, 29 files / 247 tests each.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T01:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T01:28:16Z
 
 ### TASK-252
 **Title:** Adversarial review of ADR-018 (bot templates) and ADR-019 (Project entity + manager role) by a non-Anthropic model, per the protected-path rule for docs/decisions/**
