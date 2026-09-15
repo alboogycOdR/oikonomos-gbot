@@ -21,6 +21,8 @@ Before this window opened, the service watchdog was found `Disabled` and the wor
 | 2026-09-15T04:48:20Z | healthy (pid 796) | healthy (pid 16896) | healthy | Window start. |
 | 2026-09-15T05:00:24Z | — | — | — | Routine fired for real: `last_fire_at` recorded, a real task+run were created via the actual `worker.routine-poll` → task-creation path (not simulated). |
 | 2026-09-15T05:07:00Z | — | — | — | Cost-safety review (user prompted a check on spend). Confirmed `spend_records` shows **zero real spend** since deploy. Paused the routine (see below) to prevent 23 further hourly real-provider firings that would add cost without adding acceptance value — one real firing plus a real pause is sufficient to prove A19's pass condition. |
+| 2026-09-15T05:18:02Z | healthy (pid 796) | died, then restarted pid 17188 | healthy | Real dead-worker-recovery event (from A17's own test-isolated.ps1 run stopping it). Watchdog detected and restarted within one 2-minute cycle, confirmed healthy at 05:20:01Z. See A17/A19 write-ups. |
+| 2026-09-15T07:48:34Z | healthy (pid 796) | healthy (pid 17188, unchanged for 2.5h) | healthy | 3h into the 24h window. No incidents since the 05:18Z recovery — continuous, uninterrupted health for the remainder of this period. Spend confirmed still $0.00. |
 
 (Updated periodically through the remainder of the 24h window; see `infra/compose/logs/watchdog.log` for the continuous machine-readable record between manual check-ins.)
 
