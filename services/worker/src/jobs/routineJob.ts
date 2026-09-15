@@ -1,9 +1,11 @@
 import {
-  createTask,
+  createTaskExecutionRun,
+  getOrCreateThreadForRole,
   getRole,
   getSkill,
   listRoutines,
   recordRoutineFire,
+  resolveRoleRuntime,
   routineInputsAvailable,
   type DatabaseOptions,
   type Routine,
@@ -11,6 +13,7 @@ import {
 
 import { nextFireAtFromCron } from "../routineTool.js";
 import { RoleRunScheduler, type RoutineFire } from "../scheduler/scheduler.js";
+import { enqueueRunExecution } from "./workerJobQueue.js";
 
 export interface RoutinePollingOptions extends DatabaseOptions {
   tenantId: string;
@@ -68,6 +71,52 @@ async function toRoutineFire(options: DatabaseOptions, routine: Routine, now: Da
 }
 
 /**
+ * TASK-258 — the durable, atomic path a scheduled routine fire must go
+ * through so it actually produces work, not just a task row.
+ *
+ * Before this fix, the scheduler's `createTask` port called `@oikonomos/db`'s
+ * bare `createTask` directly: a plain INSERT with no run and no
+ * `worker.run-execution` enqueue. Nothing else in the system reconciles a
+ * run-less task (`reconcileInterruptedRuns` only recovers runs that already
+ * exist in an open status), so every automatically-scheduled fire was
+ * silently orphaned forever -- confirmed live against the dev database
+ * during this task: 238,105/238,105 `requested_by LIKE 'routine:%'` tasks
+ * had zero matching `runs` row, spanning 2026-09-05 through the live poll at
+ * the time of this fix (see dossiers/TASK-258.md for the query and full
+ * finding; remediation of those rows is a separate decision, out of this
+ * task's scope per its own Acceptance_Criteria).
+ *
+ * This mirrors `services/control-api/src/ports.ts`'s `testRunRoutine` /
+ * `submitTaskExecution` reference path: create the task and its initial run
+ * in one atomic transaction (`createTaskExecutionRun`, chat-kind execution
+ * against the role's own conversation thread), then enqueue the durable
+ * `worker.run-execution` job that actually drives it -- the same two steps
+ * a manual "test run" already performed correctly.
+ */
+async function createAndEnqueueRoutineRun(
+  options: DatabaseOptions,
+  input: { tenantId: string; roleId: string; title: string; goal: string; routineId: string },
+): Promise<void> {
+  const role = await getRole(options, input.roleId);
+  if (role === null) throw new Error(`Cannot fire routine: role '${input.roleId}' not found.`);
+  const thread = await getOrCreateThreadForRole(options, { roleId: input.roleId });
+  const { provider } = resolveRoleRuntime(role);
+  const { runId } = await createTaskExecutionRun(options, {
+    task: {
+      tenantId: input.tenantId,
+      roleId: input.roleId,
+      title: input.title,
+      goal: input.goal,
+      routineId: input.routineId,
+      requestedBy: `routine:${input.routineId}`,
+    },
+    execution: { version: 1, kind: "chat", threadId: thread.id },
+    provider,
+  });
+  await enqueueRunExecution(options.connectionString, runId);
+}
+
+/**
  * Fires all enabled routines whose persisted timestamp is due. Which
  * routines are due is decided purely from the already-stored `next_fire_at`
  * (OIK-109's scheduler-authoring concern; this worker does not parse
@@ -109,14 +158,7 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
       const outcome = await scheduler.fireRoutine(await toRoutineFire(options, routine, now), {
         environmentIsUp: async (roleId) => (await getRole(options, roleId))?.status === "active",
         createTask: async (input) => {
-          await createTask(options, {
-            tenantId: input.tenantId,
-            roleId: input.roleId,
-            title: input.title,
-            goal: input.goal,
-            routineId: input.routineId,
-            requestedBy: `routine:${input.routineId}`,
-          });
+          await createAndEnqueueRoutineRun(options, input);
         },
         recordFire: async (routineId, fireOutcome, nextFireAt) => {
           await recordRoutineFire(options, routineId, fireOutcome, nextFireAt);
