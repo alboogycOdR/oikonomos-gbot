@@ -7605,8 +7605,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-255
 **Title:** `services/worker/src/chatRunDriver.test.ts`'s own cleanup deletes `threads` before `thread_members`, violating an FK constraint — same class of bug as TASK-254, different file
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** `services/worker/src/chatRunDriver.test.ts` (its own per-test cleanup block, around the `DELETE FROM threads ... DELETE FROM thread_members` sequence)
 **Owned_Paths:** services/worker/src/chatRunDriver.test.ts
@@ -7616,8 +7616,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Cleanup in `chatRunDriver.test.ts` deletes `thread_members` before `threads` (or otherwise made order-safe/idempotent regardless of what a concurrent or prior run left behind).
 - [ ] A serialized `scripts/test-isolated.ps1` run of `services/worker` no longer shows this specific FK violation.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-255-cx9
+**Started_At:** 2026-09-15T02:30:00Z
 **Progress_Notes:**
 - [2026-09-15T02:22:00Z] [ORCH] Filed from TASK-254's independent review verification. See REVIEW.md's TASK-254 entry.
 **Artifacts:** —
@@ -7625,4 +7625,4 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-15T02:22:00Z
+**Updated_At:** 2026-09-15T02:30:00Z
