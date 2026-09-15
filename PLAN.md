@@ -7390,7 +7390,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.3; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02
@@ -7405,12 +7405,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T01:10:00Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-15T01:28:16Z] [SV:S5] Implemented IANA routine timezone: migration 024 (role_routines.timezone NOT NULL DEFAULT 'UTC'), packages/db validation via Intl.DateTimeFormat, mirrored nextFireAtFromCron(schedule, timezone?, currentDate?) in worker/routineTool.ts and control-api/app.ts, routineJob.ts now recomputes next_fire_at post-fire using the routine's own zone (fixed a pre-existing gap where next_fire_at never advanced), control-api create route + openapi.ts updated. All 3 AC verified incl. real DST-boundary Postgres test (America/New_York 2027 spring-forward). Scope note: PATCH-timezone not added ΓÇö needs services/control-api/src/ports.ts which is outside Owned_Paths (TASK-250 territory); not required by the AC list, flagged for ORCH as a possible follow-up.
+**Artifacts:** infra/postgres/migrations/024_routine_timezone.up.sql, infra/postgres/migrations/024_routine_timezone.down.sql, packages/db/src/routines.ts, packages/db/src/routines.test.ts, services/worker/src/routineTool.ts, services/worker/src/routineTool.test.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts, dossiers/TASK-247.md
+**Test_Evidence:** Builds clean (db/worker/control-api). Via scripts/test-isolated.ps1 against real Postgres (fresh -Init): @oikonomos/db 203/206 (1 pre-existing TASK-251-documented deadlock flake, unrelated); @oikonomos/worker 252/252 incl. routineTool.test.ts 14/14 and routineJob.test.ts 4/4 (DST test); @oikonomos/control-api 288/288 incl. routines.routes.test.ts 7/7. Full recursive pnpm -r test (fresh -Init, single pass): 2 pre-existing TASK-251-documented flakes only (db capability-count race, worker budget/spend-concurrency race), zero regressions from this change.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T01:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T01:28:16Z
 
 ### TASK-248
 **Title:** Workspace-1 follow-on — web Computer view: read-only live view in the dashboard; interactive only after TASK-235
