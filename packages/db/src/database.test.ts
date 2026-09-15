@@ -87,7 +87,29 @@ integration("Database role grants — list/upsert/revoke (TASK-119)", () => {
   const capabilityB = "task-119.grants-suite.capability-b";
 
   async function cleanup(): Promise<void> {
-    await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
+    // TASK-254: scope this delete by capability_id as well as by this
+    // suite's own roleId. Root cause (confirmed empirically against the
+    // isolated test DB, not assumed): services/control-api's POST /roles
+    // handler auto-grants every enabled `sdk:builtin` capability to
+    // whatever role it creates (see chat.routes.test.ts's "persists every
+    // registered sdk:builtin capability" and "Persona ..." fixtures), and
+    // those fixture roles are never deleted after their test runs. If this
+    // suite's beforeAll has inserted capabilityA/capabilityB (both
+    // `adapter: 'sdk:builtin', enabled: true`) at the moment one of those
+    // control-api tests runs against the same shared DATABASE_URL, the new
+    // role — an unrelated, randomly-generated role_id this suite has never
+    // seen — picks up a permanent grant on capabilityA/capabilityB that
+    // outlives the control-api test. A cleanup scoped only to our own
+    // roleId can never reach that row, so `DELETE FROM capabilities`
+    // below fails its FK check and poisons every later suite in the same
+    // `scripts/test-isolated.ps1` run (StaleCapabilityRowError cascade).
+    // Deleting by capability_id makes this idempotent and order-safe
+    // regardless of which role — ours or a stray one from elsewhere —
+    // currently holds a grant on these two fixture capabilities.
+    await pool.query(
+      `DELETE FROM role_grants WHERE role_id = $1 OR capability_id = ANY($2)`,
+      [roleId, [capabilityA, capabilityB]],
+    );
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM capabilities WHERE capability_id = ANY($1)`, [
       [capabilityA, capabilityB],
@@ -179,6 +201,12 @@ integration("Database capability enable switches (TASK-140)", () => {
   const capabilityB = "task-140.database-switch.b";
 
   async function cleanup(): Promise<void> {
+    // TASK-254: same class of bug as the TASK-119 suite above — a stray
+    // role_grants row from an unrelated package's leaked fixture role can
+    // reference these capability IDs (both `sdk:builtin`) and block this
+    // DELETE with the same FK violation. Clear any such grant first so this
+    // cleanup is resilient regardless of which role holds it.
+    await pool.query(`DELETE FROM role_grants WHERE capability_id = ANY($1)`, [[capabilityA, capabilityB]]);
     await pool.query(`DELETE FROM capabilities WHERE capability_id = ANY($1)`, [[capabilityA, capabilityB]]);
   }
 
