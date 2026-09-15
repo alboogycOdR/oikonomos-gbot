@@ -7740,7 +7740,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-260
 **Title:** Logout is completely broken in production — every real logout request fails with 400 before the route handler runs, so the session cookie is never actually revoked
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** `apps/dashboard/src/lib/api.ts:37-43`'s shared `request()` helper (unconditionally sets `content-type: application/json` on every call, including a bodyless request); `apps/dashboard/src/lib/api.ts:118-120`'s `logout()` (`POST /auth/logout` with no body at all); `services/control-api/src/app.ts:1078-1082`'s `/auth/logout` route (no schema, would work correctly if it were ever reached); Fastify's own default JSON body parser, which rejects a request declaring `content-type: application/json` with zero bytes of body as `400 FST_ERR_CTP_EMPTY_JSON_BODY` -- this happens in Fastify's own body-parsing hook, BEFORE the route handler (and therefore before `revokedSessionTokens.revoke(token)` and the expired-cookie response) ever runs; specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md's A05 acceptance case ("logout clears private UI state").
@@ -7757,9 +7757,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T10:15:00Z
 **Progress_Notes:**
 - [2026-09-15T06:10:00Z] [ORCH] Filed live during TASK-245's A05 acceptance case, confirmed with certainty via a direct curl reproduction matching the exact client request shape. See `docs/acceptance/workspace-1/A05-session-logout.md` for the full account, including the raw HTTP evidence (cookie presence before/after, direct GET /auth/me bypassing all client-side logic).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-15T10:28:17Z] [SV:CX9] Shared dashboard request helper now sends Content-Type: application/json only when a body exists, fixing logout, pause, resume, and test-run bodyless POSTs. Mobile audit found no /auth/logout HTTP request.
+**Artifacts:** apps/dashboard/src/lib/api.ts, dossiers/TASK-260.md
+**Test_Evidence:** Passed pnpm --filter @oikonomos/dashboard typecheck; dashboard Vitest: 21 files, 129 tests; full isolated workspace suite: powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T10:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T10:28:17Z
