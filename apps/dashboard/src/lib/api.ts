@@ -35,13 +35,18 @@ export const BUILD_SHA: string =
   typeof __OIKONOMOS_BUILD_SHA__ === "string" ? __OIKONOMOS_BUILD_SHA__ : "unknown";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  // Fastify rejects an empty request declared as JSON before it reaches the
+  // route handler. Only declare JSON when this helper is actually sending a
+  // body, while still preserving an explicit content type supplied by a
+  // caller.
+  if (init?.body !== undefined && init.body !== null && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
     credentials: "same-origin",
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
   if (response.status === 401) {
     throw new UnauthorizedError();
