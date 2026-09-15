@@ -7605,7 +7605,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-255
 **Title:** `services/worker/src/chatRunDriver.test.ts`'s own cleanup deletes `threads` before `thread_members`, violating an FK constraint — same class of bug as TASK-254, different file
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** `services/worker/src/chatRunDriver.test.ts` (its own per-test cleanup block, around the `DELETE FROM threads ... DELETE FROM thread_members` sequence)
@@ -7613,9 +7613,9 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Confirmed by an independent, identity-confirmed review agent while verifying TASK-254 (a genuinely fresh, serialized `scripts/test-isolated.ps1` run, not contention): `denies a Gemini turn before touching the sandbox when the provider cap is unset (TASK-220 R2)` fails with `error: update or delete on table "threads" violates foreign key constraint "thread_members_thread_id_fkey" on table "thread_members"`. Same class of ordering bug TASK-254 just fixed in `packages/db/src/database.test.ts` (a delete-order/scoping bug in test cleanup, not production code), just in a different file and against a different table pair. Low priority since it is an intermittent-looking test-only failure with no evidence yet of the wider cross-package cascade TASK-254's bug caused — but worth fixing before it does.
 **Acceptance_Criteria:**
-- [ ] Cleanup in `chatRunDriver.test.ts` deletes `thread_members` before `threads` (or otherwise made order-safe/idempotent regardless of what a concurrent or prior run left behind).
-- [ ] A serialized `scripts/test-isolated.ps1` run of `services/worker` no longer shows this specific FK violation.
-- [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
+- [x] Cleanup in `chatRunDriver.test.ts` deletes `thread_members` before `threads` (or otherwise made order-safe/idempotent regardless of what a concurrent or prior run left behind).
+- [x] A serialized `scripts/test-isolated.ps1` run of `services/worker` no longer shows this specific FK violation.
+- [x] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
 **Branch:** task/TASK-255-cx9
 **Started_At:** 2026-09-15T02:30:00Z
 **Progress_Notes:**
@@ -7623,7 +7623,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-15T00:48:16Z] [SV:CX9] Centralized chat-run fixture thread cleanup so thread_members are deleted by target thread ID before threads, covering every teardown path.
 **Artifacts:** services/worker/src/chatRunDriver.test.ts, dossiers/TASK-255.md
 **Test_Evidence:** pnpm --filter @oikonomos/worker typecheck passed; scripts/test-isolated.ps1 -Filter @oikonomos/worker passed 29 files/247 tests including chatRunDriver.test.ts 44/44; serialized scripts/test-isolated.ps1 completed successfully.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH, 2026-09-15T01:05:00Z, REVIEW.md). Fixed the whole class of bug repo-wide in this file (one shared deleteFixtureThreads helper, thread-scoped subquery) rather than just the one reported symptom. Independently re-verified: target test 44/44, services/worker 247/247. One unrelated packages/db deadlock (TASK-084, outside this diff) flagged by the review agent as plausibly its own transient lock contention, not asserted as real -- ORCH re-checking separately.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-15T00:48:16Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-15T01:05:00Z
