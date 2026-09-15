@@ -24,6 +24,7 @@ Before this window opened, the service watchdog was found `Disabled` and the wor
 | 2026-09-15T05:18:02Z | healthy (pid 796) | died, then restarted pid 17188 | healthy | Real dead-worker-recovery event (from A17's own test-isolated.ps1 run stopping it). Watchdog detected and restarted within one 2-minute cycle, confirmed healthy at 05:20:01Z. See A17/A19 write-ups. |
 | 2026-09-15T07:48:34Z | healthy (pid 796) | healthy (pid 17188, unchanged for 2.5h) | healthy | 3h into the 24h window. No incidents since the 05:18Z recovery — continuous, uninterrupted health for the remainder of this period. Spend confirmed still $0.00. |
 | 2026-09-15T08:28:34Z | healthy (pid 796) | healthy (pid 17188, unchanged for 3.2h) | healthy | 3h40m into the 24h window. No new incidents. Spend confirmed still $0.00. |
+| 2026-09-15T08:48:32Z | healthy (pid 796) | healthy (pid 17188, unchanged for 3.5h) | healthy | 4h into the 24h window. No new incidents. Spend confirmed still $0.00. |
 
 (Updated periodically through the remainder of the 24h window; see `infra/compose/logs/watchdog.log` for the continuous machine-readable record between manual check-ins.)
 
