@@ -13,7 +13,9 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assembleSystemPrompt } from "../promptAssembly.js";
+import { purgePgBossQueue, withPgBossQueueLock } from "./pgBossTestCleanup.js";
 import { runDueRoutinePoll } from "./routineJob.js";
+import { WORKER_RUN_EXECUTION_JOB } from "./workerJobQueue.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -27,9 +29,18 @@ integration("routine parity poller (TASK-182)", () => {
   });
 
   afterAll(async () => {
+    // TASK-258: a scheduled fire now atomically creates a real `runs` row
+    // alongside its task, so cleanup must delete the dependent `runs` row
+    // first — deleting `tasks` directly would violate `runs_task_id_fkey`.
+    await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM role_routines WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM role_skills WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
+    // TASK-258: a scheduled fire now also gets-or-creates the role's own
+    // thread (`getOrCreateThreadForRole`), so that must be cleared before
+    // the role itself — deleting `roles` directly would violate
+    // `threads_role_id_fkey`.
+    await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM roles WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM skills WHERE tenant_id = $1`, [tenantId]);
     await pool.end();
@@ -143,5 +154,55 @@ integration("routine parity poller (TASK-182)", () => {
       [routine.routineId],
     );
     expect(refetched.rows[0]?.next_fire_at.toISOString()).toBe("2027-03-14T13:00:00.000Z");
+  });
+
+  it("TASK-258: a due routine fire creates a real run and enqueues a real worker.run-execution job, not just a task row", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+
+      const roleId = `task-258-real-run-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "Real run", title: "Real run" });
+      const routine = await createRoutine({ connectionString: connectionString! }, {
+        roleId,
+        tenantId,
+        name: "Produces a real run",
+        definition: { goal: "This must actually execute" },
+        nextFireAt: new Date(Date.now() - 1_000),
+      });
+
+      await expect(runDueRoutinePoll({ connectionString: connectionString!, tenantId })).resolves.toContainEqual({
+        routineId: routine.routineId,
+        outcome: "queued",
+      });
+
+      const task = (await listTasks({ connectionString: connectionString! }, { tenantId })).tasks.find(
+        (candidate) => candidate.routineId === routine.routineId,
+      );
+      expect(task).toBeDefined();
+      // Before TASK-258, `routineJob.ts` only ever inserted a bare task row —
+      // this is the exact regression check: a real `runs` row must exist for
+      // it, not merely that some `createTask`-shaped port was invoked.
+      const runs = await pool.query<{ run_id: string; task_id: string }>(
+        `SELECT run_id, task_id FROM runs WHERE task_id = $1`,
+        [task!.taskId],
+      );
+      expect(runs.rows).toHaveLength(1);
+      const runId = runs.rows[0]!.run_id;
+
+      // And a real pg-boss `worker.run-execution` job must be enqueued for
+      // that exact run — the second half of "genuinely creates a run AND
+      // enqueues worker.run-execution" (AC2). Querying `pgboss.job` directly
+      // (rather than mocking the queue) is what makes this a liveness check:
+      // it fails if the enqueue call is ever silently dropped or swapped for
+      // a stub, not just if `routineJob.ts`'s own function is never called.
+      const jobs = await pool.query<{ data: { runId: string; version: number } }>(
+        `SELECT data FROM pgboss.job WHERE name = $1 AND data->>'runId' = $2`,
+        [WORKER_RUN_EXECUTION_JOB, runId],
+      );
+      expect(jobs.rows).toHaveLength(1);
+      expect(jobs.rows[0]!.data).toMatchObject({ version: 1, runId });
+
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+    });
   });
 });
