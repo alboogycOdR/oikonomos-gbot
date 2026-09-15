@@ -1072,3 +1072,15 @@ Both fixes match the filing's own prescribed approach exactly, read directly: (1
 Full isolated suite independently re-run: `services/worker/src/jobs/workerJobQueue.test.ts` fully green (7/7), including all four "pg-boss lifecycle against PostgreSQL" tests this task specifically targeted. One failure surfaced (`packages/db/src/roles.test.ts`'s TASK-084 backfill-guard "deadlock detected"), outside this branch's diff entirely (it doesn't touch `packages/db`) and confirmed by the reviewing agent, correctly, to be the same well-documented pre-existing Postgres lock-contention flake already cited repeatedly in this file and PLAN.md — a clean isolated rerun of just `packages/db` came back 40/40.
 
 TASK-251 is approved and merged.
+
+## TASK-164 | CX9 | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-164-cx9 --stat` — `dossiers/TASK-164.md` only (17 lines). One commit `4538117`, `[TASK-164]`-suffixed. No PLAN.md edits, no code changed.
+
+Investigation-first task, correctly closed without speculative code — the AC explicitly allows this outcome and the finding is genuine, not a shortcut. ORCH independently re-verified the two load-bearing claims rather than taking the dossier on trust: (1) `chatRunDriver.ts` genuinely fail-closes on any provider besides `claude`/Gemini — read directly at the `if (effectiveProvider !== "claude" && effectiveProvider !== GEMINI_PROVIDER_ID) throw ...` gate, with its own comment explaining why (a silent fallback would produce audit records that lie about which provider actually ran). (2) `createGatedSubprocessProviders` genuinely has zero production call sites — grepped every non-test reference across `services/worker` and `services/control-api`: only its own definition, `index.ts`'s re-export, and `executeRun.ts`'s optional parameter *type* (never actually supplied a value by any real caller). Both claims check out exactly as the dossier states.
+
+The dossier's reasoning is sound: wiring the factory now would mean inventing an unsupported role/routine selection contract with no named product need behind it, and would require weakening the driver's own deliberate fail-closed allowlist — building that now would be exactly the kind of "wire a call site just to satisfy a liveness check" the task's own filing explicitly warned against. The recorded follow-up trigger (a future task needs a named use case, selection scope, credential ownership, and an end-to-end test, with `budget:` always supplied and `unsafeAllowUnbudgeted` never used) gives a concrete, checkable bar for reopening this rather than leaving it vague.
+
+No suite re-run needed beyond the builder's own `pnpm -r build`/`pnpm lint` (both clean; the reported `pnpm -r test` migration mismatch is a pre-existing shared-DB staleness issue, not this branch's concern) since no code was touched — this diff cannot regress anything.
+
+TASK-164 is approved and closed at this deferred outcome.
