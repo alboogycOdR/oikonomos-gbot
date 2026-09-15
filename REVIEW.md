@@ -1084,3 +1084,97 @@ The dossier's reasoning is sound: wiring the factory now would mean inventing an
 No suite re-run needed beyond the builder's own `pnpm -r build`/`pnpm lint` (both clean; the reported `pnpm -r test` migration mismatch is a pre-existing shared-DB staleness issue, not this branch's concern) since no code was touched — this diff cannot regress anything.
 
 TASK-164 is approved and closed at this deferred outcome.
+
+## TASK-214 | ORCH | approved | first-pass: no (backfilled retroactively for TASK-245 acceptance per §8.2; this is a direct-execution ORCH task, not a builder dispatch, so "review" here means the standing bar of independent, live, non-mocked verification this file's own convention requires — genuinely met)
+
+Scope: `evals/golden/suites/gemini-browser` plus the fixes it forced along the way (`services/worker/src/geminiToolExecutors.ts`, its test file, and the host-level `OIKONOMOS_CAPABILITIES_ENABLED` env var). All work recorded directly in PLAN.md's own Progress_Notes across three sessions (2026-09-08 through 2026-09-12) since this is ORCH-executed, not a builder branch to diff.
+
+This is one of the highest-value findings in the whole project's history, not a routine task. Driving a REAL, paid-tier, non-mocked Gemini browser run surfaced and fixed three previously-unknown production bugs that no test suite had ever caught: (1) the global capability kill-switch had never been set anywhere in this environment, meaning every governed tool call in production was silently denied system-wide — found only because a live run's model output ("capabilities are disabled") triggered investigation, not because any alarm fired; (2) a Steel-session response-parsing bug (`steelRest`) misread a genuinely successful session-create as a failure due to a chunk-boundary edge case in streamed execd output, fixed with a regression test reproducing the exact no-newline shape; (3) the CDP browser tools had never once successfully attached to a page session at all — sending `Page.enable` on a browser-level (not page-level) websocket, silently meaning the Gemini browser lane had never actually browsed anything since it was built, fixed with the standard flatten-attach CDP pattern.
+
+Verified, not taken on trust: all three bugs are independently confirmable from the task's own record — bug 1 via a direct `[Environment]::GetEnvironmentVariable` check across scopes plus the live control-api process; bug 2 via the sandbox's own container logs contradicting the code's conclusion; bug 3 via the literal `'Page.enable' wasn't found` CDP error. The final proof (real Steel session create → navigate → snapshot → navigate → snapshot → release, reproduced twice) is read from the sandbox's own container logs, not the bot's self-reported claim — the correct verification standard for an anti-fabrication test. The one run that hit a real login wall (Fox News) correctly PARKED for human review rather than fabricating a workaround — exactly the ADR-010 discipline this task exists to prove, not a defect.
+
+TASK-214 is approved. All four acceptance criteria are met with real, live, twice-reproduced evidence; nothing here is simulated or asserted without a verifiable trace.
+
+## TASK-224 | ORCH | approved | first-pass: yes (backfilled retroactively for TASK-245 acceptance per §8.2)
+
+Scope: one call-site change in `services/worker/src/chatRunDriver.ts` (the single shared `systemPrompt` assignment reached by both the Claude and Gemini lanes) plus two new in-source control-liveness tests. Recorded directly in PLAN.md's Progress_Notes.
+
+Correctly scoped: rather than wiring the fuller `assembleChatPrompt` (persona+skills+history), which would have introduced a second, competing history-threading implementation alongside the lanes' own already-working ones, only `assembleSystemPrompt` (skills into the system prompt) was wired — a deliberate, justified narrowing of the fix to exactly the gap that existed. The AC1 investigation is genuine, not assumed: grepped the mobile client's skill picker and confirmed it inserts a literal `/name` token into the sent message body with nothing server-side ever expanding it — a real, live UX gap, not a hypothetical one.
+
+The two new liveness tests are the right kind of proof: one creates a real skill, enables it for a role, sends a task with the token in its goal, runs a real local-queryFn chat turn, and asserts the ACTUAL captured model prompt contains the expected skill block — proving the wiring is live, not just that `promptAssembly.ts`'s own pre-existing unit tests still pass (which they always did, and proved nothing about whether any execution lane called them). The live worker process was rebuilt and restarted onto the fix so it took effect in production immediately, not just in source.
+
+TASK-224 is approved. Full `services/worker` suite 241/241 passing, typecheck clean.
+
+## TASK-228 | ORCH | approved, with one condition folded into TASK-235 | first-pass: yes (backfilled retroactively for TASK-245 acceptance per §8.2)
+
+Scope: `services/control-api/src/liveAgent.routes.ts` (new write-capable `relayTakeover`/`handleTakeoverUpgrade` path, deliberately separate from the read-only `relay`/`handleUpgrade`), `LiveAgentPort.getPtyTakeoverEndpoint`, `apps/mobile/lib/api/live_agent_client.dart`'s `takeover()`, and the new `TakeoverScreen`.
+
+The task's own filing description turned out to be partly wrong, and this was caught and corrected rather than assumed: `LiveAgentPort`'s read-only production wiring (which the filing claimed was still missing) was found, on direct code trace, to already be live in `services/control-api/src/index.ts`'s real `start()` — a stale doc comment in `liveAgent.routes.ts` had claimed otherwise. Good practice: verified by tracing the actual entrypoint, not by trusting either the code comment or the task filing.
+
+The security-critical design choice here is sound: the write-capable takeover path is built as a structurally separate function from the read-only viewer, not a shared function with a mode flag — explicitly reasoned as avoiding exactly the class of bug where "input can never reach execd before authorization" degrades from a hard guarantee to a soft, flag-dependent one. A real defense-in-depth gap was caught by this task's OWN new test suite during development, not by inspection afterward: a fake-socket test modeling Node's real event-delivery semantics (a `'data'` event can still fire after `.destroy()`) found a race where a post-teardown frame could still reach execd; fixed with an explicit `closed` check, so the guarantee now holds by code rather than by an accident of `net.Socket`'s implementation.
+
+The one incomplete AC (browser/CDP handoff half) was honestly NOT attempted here — correctly split into a new task (TASK-235) rather than rushed, since no CDP "holder eviction" primitive exists the way execd's PTY has one, and TASK-235 (reviewed separately, approved with a required follow-up condition) closed that gap.
+
+TASK-228 is approved at its real, bounded scope. 27/27 new backend tests, full control-api suite 261/261, 5/5 new mobile tests, `flutter test` 150/150, `dart analyze` clean.
+
+## TASK-229 | ORCH | approved | first-pass: no (pm2 was tried first and correctly rejected on real evidence, not on theory)
+
+Scope: `infra/compose/service-watchdog.ps1` (new), `docs/runbooks/service-supervision.md` (new), Windows Scheduled Task `OIKONOMOS-ServiceWatchdog` (host-level).
+
+This closed a genuinely critical, live incident (a bot silently unresponsive because neither service had any supervision) with real, verified evidence rather than a plausible-looking fix. The pm2 attempt was tried, found to accept both apps as "online" with 0 restarts while neither actually bound a port or logged a single line — a real, reproducible failure mode, not assumed broken — and was rejected with its config deleted rather than left as misleading tooling. The native PowerShell/Scheduled-Task alternative avoids that class of false-positive entirely.
+
+A real bug was caught during the task's OWN verification, not before it: the worker health-check's first version matched on "worker" appearing in the process command line, which turned out to come from the working directory rather than the command line itself (`Win32_Process.CommandLine` doesn't include it) — a false negative that spawned a second, uncoordinated worker process alongside a real live one, confirmed by direct reproduction (two PIDs both running `dist/main.js`). Fixed to match the unambiguous `dist/main.js` entrypoint instead, then re-verified idempotent.
+
+Verification standard is exactly right: two independent kill-and-revive cycles, the second through the ACTUAL deployed Scheduled Task (`schtasks /Run`, not a manual script invocation) — proving the real, deployed mechanism works, not just the script it wraps. A genuinely healthy pair was re-checked afterward and confirmed idempotent (0 restarts).
+
+TASK-229 is approved. A related, real side-effect this task's own success exposed (the live worker and the test suite now contend for one shared pg-boss queue) was correctly recorded for TASK-162/231 rather than silently absorbed into this task's own scope.
+
+## TASK-230 | ORCH | approved, with an honest gap disclosed | first-pass: yes (backfilled retroactively for TASK-245 acceptance per §8.2)
+
+Scope: migration `022_run_phase_timings`, `packages/db/src/runPhaseTimings.ts`, `services/worker/src/chatRunDriver.ts` instrumentation, `GET /internal/run-latency`.
+
+The instrumentation itself is correctly built as best-effort and non-load-bearing (`recordTimingSafe` swallows and logs its own failures) — a timing-write bug must never fail a real chat run, consistent with this codebase's existing "push is additive, never load-bearing" convention seen elsewhere (e.g. TASK-227's rate-limit gate). The liveness test genuinely proves the instrumentation is live: it runs a real chat turn against real Postgres and asserts real rows landed for that run's actual `run_id`.
+
+Honest limitation, correctly disclosed rather than glossed over: the baseline measurement recorded is from the liveness test's own local-queryFn stub, not a real external-LLM-call latency number — because, per TASK-229's own incident, no chat run had completed successfully in this environment before that session. This means AC3 (a baseline measurement) is technically satisfied by the letter but the number itself is not yet representative of real production latency; the `GET /internal/run-latency` endpoint is correctly identified as where to look once real traffic accumulates. This should be checked again as part of TASK-245's own acceptance run, which will be the first source of genuine production-shaped latency data.
+
+TASK-230 is approved. Full `services/worker` suite 239/239 passing, typecheck clean across `packages/db`/`services/worker`/`services/control-api`.
+
+## TASK-231 | ORCH | approved, deliberately incomplete by design | first-pass: no (first candidate selection rule was tested and rejected before any delete ran)
+
+Scope: `scripts/db-cleanup.mjs` (new), `package.json`'s `posttest` script.
+
+The selection-rule discipline here is exactly right for an irreversible, shared-database operation: the first candidate rule (UUID-shaped `role_id`) was tested against real data BEFORE any delete ran and found unreliable (many real test fixtures use a UUID role_id with a descriptive name), so it was rejected in favor of a `tenant_id`-shape rule verified to cleanly separate real tenants (`"basileia"`, real Firebase UIDs) from unambiguous test fixtures (`task-<N>-<uuid>`). The stated governing principle — under-deleting is the accepted failure mode, never over-deleting — is the correct posture for a shared, hard-to-reverse database mutation, and CLAUDE.md's own credential/state-change disclosure norm was explicitly invoked as the reason this wasn't done as a quick unannounced fix.
+
+Execution was dry-run first (498 fixture roles and their dependents, computed via a live `information_schema` FK-dependency query, zero touching real tenants), then executed for real inside one transaction, with jeff and maestro (the real bots) directly re-queried afterward to confirm they survived.
+
+Honestly disclosed, not claimed as fully solved: the structural fix (`posttest` cleanup hook) only reaches the safely-identifiable fixture shape: rows under the shared, ambiguous `"basileia"` tenant continue to accumulate and are deliberately never touched by this rule, confirmed by the backlog count actually going UP again later in the same session. The task's own record is explicit that the problem is bounded, not eliminated, and correctly names the real fix (per-test-file tenant randomization) as future, out-of-scope work rather than pretending it's done.
+
+TASK-231 is approved at its real, disclosed scope.
+
+## TASK-232 | ORCH | approved, with one honest limitation disclosed | first-pass: no (a real defect was caught and fixed during its own build: `PushRegistrar.dispose()` previously left `_initialized` permanently latched `true`, blocking any second `initialize()` call)
+
+Scope: `apps/mobile/lib/push/notification_preference.dart` (new, `shared_preferences`-backed), `push_registrar.dart` (dispose fix), `roster_screen.dart`, `settings_screen.dart`.
+
+The persistence default is handled correctly and deliberately: new preference reads default to enabled, explicitly reasoned as necessary because push has always been opt-out, not opt-in, and a naive default could have silently flipped that on first read for existing users. The widget test proves persistence at the right level — reading straight from the store after a toggle, rather than remounting the widget and trusting it doesn't just cache its own last-set value, which would be a weaker and potentially self-fooling proof.
+
+Honest limitation, correctly disclosed rather than silently left implicit: no backend unregister route (`DELETE /devices`) exists, so turning notifications off stops this session's foreground handling and any future registration attempt, but does not retroactively unregister an already-registered device token server-side. This is out of the task's mobile-only Owned_Paths as scoped, and is recorded as a real, named gap rather than an assumed non-issue.
+
+TASK-232 is approved. `flutter test` 145/145 (up from 143), `dart analyze` clean.
+
+## TASK-233 | ORCH | approved | first-pass: no (a real `MissingPluginException`-shaped failure surfaced a missed test file, `roster_screen_test.dart`, before it was fixed)
+
+Scope: `settings_screen.dart` (`PackageInfo.fromPlatform()` wiring, `kAppVersion` constant fully removed rather than left as dead code), `pubspec.yaml`.
+
+Correctly deferred a stale-if-forgotten value to the real build artifact rather than a hand-maintained constant, and did so hermetically for tests via the package's own built-in mock helper (`PackageInfo.setMockInitialValues`) rather than inventing a bespoke fake. The version-pin choice (`^8.0.0`, deliberately not the latest major) is grounded in a real, cross-referenced constraint conflict discovered in TASK-234's own investigation (a later major conflicts with `file_picker` over a shared transitive `win32` version) — a good example of one task's finding correctly informing another's implementation rather than each being investigated in isolation.
+
+TASK-233 is approved. Covered by TASK-232's shared `flutter test` run: 145/145 passing, 0 analyzer issues.
+
+## TASK-234 | ORCH | investigated, correctly NOT force-closed | still blocked, two independent real reasons, both disclosed with a concrete resume path
+
+Scope: attempted `apps/mobile/pubspec.yaml`/`android/**` changes, reverted.
+
+This is the one backfilled task that is genuinely still `blocked`, not `done` — recorded here honestly rather than papered over for a clean acceptance sheet. The investigation itself is real and thorough, not a token attempt: `file_picker` was bumped to `^12.3.0` and directly confirmed (not assumed) to drop the KGP warning for its half, but the bump was also directly confirmed to break the real build (`Member not found: 'platform'` at the exact call site depending on the removed API) — both the fix's partial success and its real cost are demonstrated by actually running `flutter build apk --release`, not inferred from a changelog read alone. `firebase_auth`/`firebase_core` were confirmed via `flutter pub outdated` to have no newer version at all to move to — a hard external blocker, not a missed effort.
+
+The decision to revert rather than ship a half-fix is correct: landing an untested `channel_file_picker.dart` API migration under a broad "execute these" directive, with no chance to verify the real device file-attach flow, would have traded a low-priority build warning for a real regression risk to a working feature. `Blocked_Reason` records the exact resume path (the proven `file_picker ^12.3.0` + `package_info_plus ^10.2.1` combination, plus which file needs migrating and what to re-verify) precisely enough that whoever picks this up next does not need to re-derive any of tonight's findings.
+
+TASK-234 remains blocked, correctly. No change to its status from this backfill; recorded per §8.2 for TASK-245's own acceptance bookkeeping.
