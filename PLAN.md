@@ -7633,8 +7633,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Updated_At:** 2026-09-15T01:05:00Z
 
 ### TASK-256
-**Title:** No real API surface lets an operator pause a routine, even though `setRoutinePaused` is fully built and tested
-**Status:** pending
+**Title:** RETRACTED — real pause/resume route already existed; ORCH's own filing was a mistake caused by an incomplete grep pattern
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** medium
 **Spec_References:** `packages/db/src/routines.ts`'s `setRoutinePaused` (fully implemented, exported, used by `services/worker/src/jobs/routineJob.ts`'s own poll-skip logic); `services/control-api/src/app.ts`'s `/roles/:roleId/routines` routes (only POST create and GET list exist today); specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md's A12 acceptance case ("pause prevents future firing" is a required, testable pass condition with no real way for an operator to trigger it).
@@ -7652,10 +7652,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** RETRACTED (ORCH, 2026-09-15T05:25:00Z): this task's own premise was wrong. `POST /routines/:id/pause`/`resume` genuinely exist in services/control-api/src/app.ts, are already covered by a real HTTP-level test in routines.routes.test.ts, and are already documented in openapi.ts. The original finding's search only grepped paths starting with `/roles/:roleId/routines`, which missed this separate top-level `/routines/:id/pause` route -- an incomplete search, not a real product gap. Confirmed directly afterward: both POST /routines/:id/resume and /pause were called against the live acceptance candidate and worked correctly (real 200 responses, real paused-state changes persisted). No code change is needed. Recorded honestly as ORCH's own mistake rather than quietly deleted.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-15T05:15:00Z
+**Updated_At:** 2026-09-15T05:25:00Z
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
