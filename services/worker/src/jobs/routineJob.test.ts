@@ -115,4 +115,33 @@ integration("routine parity poller (TASK-182)", () => {
     expect(prompt).toContain("## Skill: weekly-export");
     expect(prompt).toContain("Gather the week's data and export it.");
   });
+
+  it("TASK-247 / §9.3: advances next_fire_at using the routine's IANA timezone across a DST boundary", async () => {
+    const roleId = `task-247-dst-${crypto.randomUUID()}`;
+    await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "DST routine", title: "DST routine" });
+    // 2027-03-13 09:00 America/New_York is EST (UTC-5) == 14:00Z. The next
+    // 9am-local occurrence, 2027-03-14, falls the day DST springs forward,
+    // so it is EDT (UTC-4) == 13:00Z — one hour earlier in UTC despite an
+    // identical local wall-clock time.
+    const dueAt = new Date("2027-03-13T14:00:00.000Z");
+    const routine = await createRoutine({ connectionString: connectionString! }, {
+      roleId,
+      tenantId,
+      name: "DST-crossing routine",
+      schedule: "0 9 * * *",
+      timezone: "America/New_York",
+      definition: { goal: "Cross the DST boundary" },
+      nextFireAt: dueAt,
+    });
+
+    await expect(
+      runDueRoutinePoll({ connectionString: connectionString!, tenantId, now: () => new Date(dueAt.getTime() + 1_000) }),
+    ).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+
+    const refetched = await pool.query<{ next_fire_at: Date }>(
+      `SELECT next_fire_at FROM role_routines WHERE routine_id = $1`,
+      [routine.routineId],
+    );
+    expect(refetched.rows[0]?.next_fire_at.toISOString()).toBe("2027-03-14T13:00:00.000Z");
+  });
 });

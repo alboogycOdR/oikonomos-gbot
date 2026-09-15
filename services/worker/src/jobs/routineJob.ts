@@ -9,6 +9,7 @@ import {
   type Routine,
 } from "@oikonomos/db";
 
+import { nextFireAtFromCron } from "../routineTool.js";
 import { RoleRunScheduler, type RoutineFire } from "../scheduler/scheduler.js";
 
 export interface RoutinePollingOptions extends DatabaseOptions {
@@ -37,7 +38,22 @@ async function routineGoal(options: DatabaseOptions, routine: Routine): Promise<
   return `/${skill.name} ${base}`;
 }
 
-async function toRoutineFire(options: DatabaseOptions, routine: Routine): Promise<RoutineFire> {
+/**
+ * TASK-247 / §9.3 — the routine's own IANA `timezone` is what
+ * `nextFireAtFromCron` uses to advance the schedule, so a fire in
+ * `America/New_York` lands on the correct UTC instant on both sides of a
+ * DST transition. The base instant for "next" is the fire that just
+ * happened (`routine.nextFireAt`, the exact instant this poll matched
+ * against), not wall-clock `now` — a late poll must not compound drift into
+ * the following occurrence. A `null` schedule (no recurrence) advances
+ * nothing, matching the pre-TASK-247 behaviour for such routines.
+ */
+function computeNextFireAt(routine: Routine, now: Date): Date | null {
+  if (routine.schedule === null) return null;
+  return nextFireAtFromCron(routine.schedule, routine.timezone, routine.nextFireAt ?? now);
+}
+
+async function toRoutineFire(options: DatabaseOptions, routine: Routine, now: Date): Promise<RoutineFire> {
   return {
     routineId: routine.routineId,
     roleId: routine.roleId,
@@ -47,13 +63,18 @@ async function toRoutineFire(options: DatabaseOptions, routine: Routine): Promis
       goal: await routineGoal(options, routine),
       tenantId: routine.tenantId,
     },
+    nextFireAt: computeNextFireAt(routine, now),
   };
 }
 
 /**
- * Fires all enabled routines whose persisted timestamp is due. Computing the
- * following timestamp remains the scheduler-authoring concern (OIK-109), so
- * this worker consumes the stored next_fire_at without parsing schedule text.
+ * Fires all enabled routines whose persisted timestamp is due. Which
+ * routines are due is decided purely from the already-stored `next_fire_at`
+ * (OIK-109's scheduler-authoring concern; this worker does not parse
+ * schedule text to select what is due). TASK-247 / §9.3: once a due routine
+ * is actually handed to the scheduler, this file DOES parse its `schedule`
+ * (respecting its `timezone`) to compute the *following* `next_fire_at`
+ * before the current fire is recorded — see `computeNextFireAt` above.
  */
 export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise<RoutinePollResult[]> {
   const tenantId = requireNonEmpty(options.tenantId, "tenantId");
@@ -85,7 +106,7 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
         await recordRoutineFire(options, routine.routineId, "stopped", routine.nextFireAt, unavailableReason);
         return { routineId: routine.routineId, outcome: "stopped" as const };
       }
-      const outcome = await scheduler.fireRoutine(await toRoutineFire(options, routine), {
+      const outcome = await scheduler.fireRoutine(await toRoutineFire(options, routine, now), {
         environmentIsUp: async (roleId) => (await getRole(options, roleId))?.status === "active",
         createTask: async (input) => {
           await createTask(options, {

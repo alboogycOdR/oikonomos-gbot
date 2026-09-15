@@ -6,7 +6,7 @@ import type { ControlApiDeps } from "./ports.js";
 
 const token = "task-182-token";
 const headers = { authorization: `Bearer ${token}` };
-const routine = (overrides: Partial<Routine> = {}): Routine => ({ routineId: randomUUID(), roleId: "role", tenantId: "basileia", name: "Daily", schedule: "0 8 * * *", lane: "background", enabled: true, definition: {}, lastFireAt: null, nextFireAt: null, lastFireStatus: null, skillId: null, onMissingSource: "report_and_stop", notifyThreshold: "changes_only", paused: false, ...overrides });
+const routine = (overrides: Partial<Routine> = {}): Routine => ({ routineId: randomUUID(), roleId: "role", tenantId: "basileia", name: "Daily", schedule: "0 8 * * *", lane: "background", enabled: true, definition: {}, lastFireAt: null, nextFireAt: null, lastFireStatus: null, skillId: null, onMissingSource: "report_and_stop", notifyThreshold: "changes_only", paused: false, timezone: "UTC", ...overrides });
 
 function deps(overrides: Partial<ControlApiDeps>): ControlApiDeps {
   return {
@@ -72,6 +72,59 @@ describe("Routine parity routes (TASK-182)", () => {
     const app = buildApp(deps({ createRoutine: async () => { throw new RoutineLimitError(); } }), { authToken: token, logger: false });
     const response = await app.inject({ method: "POST", url: "/roles/role/routines", headers, payload: { name: "n", schedule: "0 8 * * *" } });
     expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("TASK-247 / §9.3: creates a routine with an explicit IANA timezone and its next fire lands at the correct UTC instant", async () => {
+    const calls: unknown[] = [];
+    const app = buildApp(deps({
+      createRoutine: async (input) => {
+        calls.push(input);
+        return routine({ timezone: input.timezone, nextFireAt: input.nextFireAt ?? null });
+      },
+    }), { authToken: token, logger: false });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/roles/role/routines",
+      headers,
+      payload: { name: "Morning digest", schedule: "0 9 * * *", timezone: "Africa/Johannesburg" },
+    });
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body) as Routine;
+    expect(body.timezone).toBe("Africa/Johannesburg");
+    // 09:00 in Africa/Johannesburg (UTC+2, no DST) is 07:00Z, regardless of
+    // calendar date — assert the UTC hour rather than a specific date.
+    expect((body.nextFireAt as unknown as string)).toMatch(/T07:00:00/);
+    expect(calls).toEqual([expect.objectContaining({ timezone: "Africa/Johannesburg" })]);
+    await app.close();
+  });
+
+  it("TASK-247: rejects an invalid IANA timezone with 400, before ever calling deps.createRoutine", async () => {
+    const calls: unknown[] = [];
+    const app = buildApp(deps({ createRoutine: async (input) => { calls.push(input); return routine(); } }), { authToken: token, logger: false });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/roles/role/routines",
+      headers,
+      payload: { name: "Bad tz", schedule: "0 9 * * *", timezone: "Not/AZone" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({ error: expect.stringMatching(/valid IANA time zone name/) });
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("TASK-247: omitting timezone defaults the computed nextFireAt to UTC evaluation", async () => {
+    const app = buildApp(deps({
+      createRoutine: async (input) => routine({ timezone: input.timezone ?? "UTC", nextFireAt: input.nextFireAt ?? null }),
+    }), { authToken: token, logger: false });
+
+    const response = await app.inject({ method: "POST", url: "/roles/role/routines", headers, payload: { name: "UTC default", schedule: "0 9 * * *" } });
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body) as Routine;
+    expect(body.timezone).toBe("UTC");
     await app.close();
   });
 });

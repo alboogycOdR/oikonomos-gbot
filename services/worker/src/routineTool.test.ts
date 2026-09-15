@@ -39,6 +39,33 @@ describe("nextFireAtFromCron — mirrors control-api's own validation exactly", 
   it("rejects a syntactically-5-field but semantically invalid expression", () => {
     expect(() => nextFireAtFromCron("99 99 * * *")).toThrow(/5-field cron/);
   });
+
+  it("TASK-247: defaults to UTC when no timezone is given", () => {
+    const currentDate = new Date("2027-01-01T00:00:00.000Z");
+    expect(nextFireAtFromCron("0 9 * * *", undefined, currentDate).toISOString()).toBe("2027-01-01T09:00:00.000Z");
+    expect(nextFireAtFromCron("0 9 * * *", "  ", currentDate).toISOString()).toBe("2027-01-01T09:00:00.000Z");
+  });
+
+  it("TASK-247 / §9.3: evaluates a fixed-offset zone against the IANA database (Africa/Johannesburg has no DST)", () => {
+    const currentDate = new Date("2027-01-01T00:00:00.000Z");
+    const result = nextFireAtFromCron("0 9 * * *", "Africa/Johannesburg", currentDate);
+    expect(result.toISOString()).toBe("2027-01-01T07:00:00.000Z");
+  });
+
+  it("TASK-247: rejects an unrecognised IANA timezone name", () => {
+    expect(() => nextFireAtFromCron("0 9 * * *", "Not/AZone")).toThrow(/valid IANA time zone name/);
+  });
+
+  it("TASK-247: crosses a DST boundary correctly for a zone that observes it (America/New_York, 2027 spring-forward)", () => {
+    // 2027-03-13 09:00 America/New_York is EST (UTC-5) == 14:00Z. The next
+    // occurrence after that instant is 2027-03-14 09:00 America/New_York,
+    // which is EDT (UTC-4) == 13:00Z — one hour earlier in UTC despite the
+    // local wall-clock time being identical, because the offset itself
+    // changed under the routine's feet overnight.
+    const beforeTransition = new Date("2027-03-13T14:00:00.000Z");
+    const result = nextFireAtFromCron("0 9 * * *", "America/New_York", beforeTransition);
+    expect(result.toISOString()).toBe("2027-03-14T13:00:00.000Z");
+  });
 });
 
 describe("parseCreateRoutineInput — the tool's own input validation", () => {

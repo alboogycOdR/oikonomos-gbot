@@ -372,6 +372,10 @@ const CREATE_ROUTINE_SCHEMA = {
     schedule: { type: "string", minLength: 1 },
     definition: { type: "object" },
     skillId: { type: "string", format: "uuid" },
+    // TASK-247 / §9.3: IANA time zone name; defaults to UTC. Format shape
+    // only here — actual IANA-database validity is checked in
+    // `nextFireAtFromCron`/`createRoutine`, which have the real tz data.
+    timezone: { type: "string", minLength: 1 },
   },
 } as const;
 
@@ -742,13 +746,40 @@ function isTaskStatus(value: string): value is TaskStatus {
   return (taskStatuses as readonly string[]).includes(value);
 }
 
-function nextFireAtFromCron(schedule: string): Date {
+/**
+ * TASK-247 / §9.3 — validated against the runtime's own IANA tz database via
+ * `Intl.DateTimeFormat`. `cron-parser`'s `tz` option does not validate the
+ * name itself (an unrecognised zone is silently accepted), so this is the
+ * only thing standing between a typo and a routine that fires at the wrong
+ * instant forever. Mirrors `services/worker/src/routineTool.ts`'s own copy.
+ */
+function isValidIanaTimeZone(timezone: string): boolean {
+  try {
+    // eslint-disable-next-line no-new -- constructor throws RangeError for an unknown zone; that's the check.
+    new Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `timezone` defaults to 'UTC', matching the platform's pre-TASK-247
+ * behaviour of evaluating cron in process time (every deployed environment
+ * runs as UTC). Mirrors `services/worker/src/routineTool.ts`'s own copy.
+ */
+function nextFireAtFromCron(schedule: string, timezone?: string): Date {
   const normalized = schedule.trim();
   if (normalized.split(/\s+/).length !== 5) {
     throw new Error("schedule must be a valid 5-field cron expression.");
   }
+  const trimmedTimezone = timezone?.trim();
+  const tz = trimmedTimezone === undefined || trimmedTimezone.length === 0 ? "UTC" : trimmedTimezone;
+  if (!isValidIanaTimeZone(tz)) {
+    throw new Error("timezone must be a valid IANA time zone name.");
+  }
   try {
-    return CronExpressionParser.parse(normalized).next().toDate();
+    return CronExpressionParser.parse(normalized, { tz }).next().toDate();
   } catch {
     throw new Error("schedule must be a valid 5-field cron expression.");
   }
@@ -1217,7 +1248,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     }
   });
 
-  app.post<{ Params: { roleId: string }; Body: { name: string; schedule: string; definition?: Record<string, unknown>; skillId?: string } }>(
+  app.post<{ Params: { roleId: string }; Body: { name: string; schedule: string; definition?: Record<string, unknown>; skillId?: string; timezone?: string } }>(
     "/roles/:roleId/routines",
     { schema: { body: CREATE_ROUTINE_SCHEMA } },
     async (request, reply) => {
@@ -1229,7 +1260,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           schedule: request.body.schedule.trim(),
           definition: request.body.definition ?? {},
           skillId: request.body.skillId ?? null,
-          nextFireAt: nextFireAtFromCron(request.body.schedule),
+          timezone: request.body.timezone,
+          nextFireAt: nextFireAtFromCron(request.body.schedule, request.body.timezone),
         });
         await reply.code(201).send(routine);
       } catch (error) {

@@ -32,6 +32,12 @@ export interface NewRoutine {
   skillId?: string | null;
   onMissingSource?: "report_and_stop";
   notifyThreshold?: "changes_only";
+  /**
+   * IANA time zone name used to evaluate `schedule` (TASK-247 / §9.3).
+   * Defaults to 'UTC' — matches the pre-TASK-247 behaviour of evaluating
+   * cron in process time, which every deployed environment runs as UTC.
+   */
+  timezone?: string;
 }
 
 export interface Routine {
@@ -50,6 +56,14 @@ export interface Routine {
   onMissingSource?: "report_and_stop";
   notifyThreshold?: "changes_only";
   paused?: boolean;
+  /**
+   * IANA time zone name; used for cron evaluation and next-fire display.
+   * Optional at the type level only to match this interface's existing
+   * convention for columns with a DB-side default (`paused`, `enabled`
+   * elsewhere) — every row written through `createRoutine` always has one;
+   * a fixture/mock that omits it is choosing not to model that column.
+   */
+  timezone?: string;
 }
 
 interface RoutineRow extends QueryResultRow {
@@ -68,10 +82,11 @@ interface RoutineRow extends QueryResultRow {
   on_missing_source: "report_and_stop";
   notify_threshold: "changes_only";
   paused: boolean;
+  timezone: string;
 }
 
 const routineColumns = `routine_id, role_id, tenant_id, name, schedule, lane, enabled,
-       definition, last_fire_at, next_fire_at, last_fire_status, skill_id, on_missing_source, notify_threshold, paused`;
+       definition, last_fire_at, next_fire_at, last_fire_status, skill_id, on_missing_source, notify_threshold, paused, timezone`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,6 +114,26 @@ function requireLane(value: RoutineLane, field: string): RoutineLane {
   return value;
 }
 
+/**
+ * TASK-247 / §9.3 — validated against the runtime's own IANA tz database via
+ * `Intl.DateTimeFormat`, rather than a fixed list or regex: the tz database
+ * is large, versioned, and changes over time, and `Intl` already carries an
+ * accurate copy of it. `cron-parser`'s own `tz` option does NOT validate the
+ * name (an unrecognised zone is silently accepted and produces UTC-like
+ * results), so this check is the only thing standing between a typo and a
+ * routine that silently fires at the wrong instant forever.
+ */
+function requireIanaTimeZone(value: string, field: string): string {
+  const trimmed = requireNonEmpty(value, field);
+  try {
+    // eslint-disable-next-line no-new -- constructor throws RangeError for an unknown zone; that's the check.
+    new Intl.DateTimeFormat(undefined, { timeZone: trimmed });
+  } catch {
+    throw new Error(`${field} must be a valid IANA time zone name.`);
+  }
+  return trimmed;
+}
+
 function requireFireOutcome(value: RoutineFireOutcome, field: string): RoutineFireOutcome {
   if (!routineFireOutcomes.includes(value)) {
     throw new Error(`${field} must be one of: ${routineFireOutcomes.join(", ")}.`);
@@ -120,6 +155,7 @@ function toRoutine(row: RoutineRow): Routine {
     nextFireAt: row.next_fire_at,
     lastFireStatus: row.last_fire_status,
     skillId: row.skill_id, onMissingSource: row.on_missing_source, notifyThreshold: row.notify_threshold, paused: row.paused,
+    timezone: row.timezone,
   };
 }
 
@@ -130,13 +166,14 @@ export async function createRoutine(
   const roleId = requireNonEmpty(input.roleId, "roleId");
   const name = requireNonEmpty(input.name, "name");
   const lane = requireLane(input.lane ?? "background", "lane");
+  const timezone = requireIanaTimeZone(input.timezone ?? "UTC", "timezone");
 
   return withPool(options, async (pool) => {
     const count = await pool.query<{ count: string }>(`SELECT count(*)::text AS count FROM role_routines WHERE role_id = $1`, [roleId]);
     if (Number(count.rows[0]?.count ?? 0) >= MAX_ROUTINES_PER_ROLE) throw new RoutineLimitError();
     const result = await pool.query<RoutineRow>(
-      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition, next_fire_at, skill_id, on_missing_source, notify_threshold)
-       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
+      `INSERT INTO role_routines (role_id, tenant_id, name, schedule, lane, enabled, definition, next_fire_at, skill_id, on_missing_source, notify_threshold, timezone)
+       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)
        RETURNING ${routineColumns}`,
       [
         roleId,
@@ -148,6 +185,7 @@ export async function createRoutine(
         JSON.stringify(input.definition),
         input.nextFireAt ?? null,
         input.skillId ?? null, input.onMissingSource ?? "report_and_stop", input.notifyThreshold ?? "changes_only",
+        timezone,
       ],
     );
 
@@ -332,6 +370,21 @@ if (import.meta.vitest) {
           { roleId: "r1", name: "n", definition: {}, lane: "urgent" as RoutineLane },
         ),
       ).rejects.toThrow(/lane/);
+    });
+
+    it("rejects an invalid IANA timezone on createRoutine (TASK-247)", async () => {
+      await expect(
+        createRoutine(
+          { connectionString: "postgres://x" },
+          { roleId: "r1", name: "n", definition: {}, timezone: "Not/AZone" },
+        ),
+      ).rejects.toThrow(/timezone must be a valid IANA time zone name/);
+      await expect(
+        createRoutine(
+          { connectionString: "postgres://x" },
+          { roleId: "r1", name: "n", definition: {}, timezone: "   " },
+        ),
+      ).rejects.toThrow(/timezone/);
     });
 
     it("rejects an invalid outcome on recordRoutineFire", async () => {

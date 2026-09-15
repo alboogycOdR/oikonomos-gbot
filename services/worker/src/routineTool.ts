@@ -64,14 +64,42 @@ export interface CreateRoutineToolResult {
   readonly description: string;
 }
 
-/** Mirrors `services/control-api/src/app.ts`'s own `nextFireAtFromCron` exactly. */
-export function nextFireAtFromCron(schedule: string): Date {
+/**
+ * TASK-247 / §9.3 — validated against the runtime's own IANA tz database via
+ * `Intl.DateTimeFormat`. `cron-parser`'s `tz` option does not validate the
+ * name itself (an unrecognised zone is silently accepted), so this is the
+ * only thing standing between a typo and a routine that fires at the wrong
+ * instant forever. Mirrors `services/control-api/src/app.ts`'s own copy.
+ */
+function isValidIanaTimeZone(timezone: string): boolean {
+  try {
+    // eslint-disable-next-line no-new -- constructor throws RangeError for an unknown zone; that's the check.
+    new Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mirrors `services/control-api/src/app.ts`'s own `nextFireAtFromCron`
+ * exactly. `timezone` defaults to 'UTC' (matching the platform's
+ * pre-TASK-247 behaviour). `currentDate` lets callers (the routine poller,
+ * TASK-247's DST-aware recompute) evaluate "next" relative to the instant a
+ * routine actually fired, rather than to wall-clock now.
+ */
+export function nextFireAtFromCron(schedule: string, timezone?: string, currentDate?: Date): Date {
   const normalized = schedule.trim();
   if (normalized.split(/\s+/).length !== 5) {
     throw new Error("schedule must be a valid 5-field cron expression.");
   }
+  const trimmedTimezone = timezone?.trim();
+  const tz = trimmedTimezone === undefined || trimmedTimezone.length === 0 ? "UTC" : trimmedTimezone;
+  if (!isValidIanaTimeZone(tz)) {
+    throw new Error("timezone must be a valid IANA time zone name.");
+  }
   try {
-    return CronExpressionParser.parse(normalized).next().toDate();
+    return CronExpressionParser.parse(normalized, { tz, ...(currentDate === undefined ? {} : { currentDate }) }).next().toDate();
   } catch {
     throw new Error("schedule must be a valid 5-field cron expression.");
   }
