@@ -179,7 +179,11 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
           definition: { goal: "Compile the daily digest" },
         },
       );
-      const dueAt = new Date(Date.now() - 1_000);
+      // Keep the poll's due comparison independent of the wall-clock minute
+      // in which pg-boss starts: a cron dispatch can otherwise race this test
+      // right on a minute boundary.
+      const dueAt = new Date("2020-01-01T00:00:00.000Z");
+      const pollNow = new Date("2030-01-01T00:00:00.000Z");
       await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "missed", dueAt);
 
       // TASK-221: captures anything WorkerJobQueue's onError reports, so a poll job
@@ -191,7 +195,7 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
       queue = createWorkerJobQueue({
         connectionString: connectionString!,
         applicationName,
-        routinePolling: { connectionString: connectionString!, tenantId },
+        routinePolling: { connectionString: connectionString!, tenantId, now: () => pollNow },
         onError: (error) => { pollErrors.push(error); },
       });
       await queue.start();
@@ -232,7 +236,8 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
         { connectionString: connectionString! },
         { roleId, tenantId, name: "Do not run", definition: {} },
       );
-      const dueAt = new Date(Date.now() - 1_000);
+      const dueAt = new Date("2020-01-01T00:00:00.000Z");
+      const pollNow = new Date("2030-01-01T00:00:00.000Z");
       const beforePoll = await recordRoutineFire(
         { connectionString: connectionString! },
         routine.routineId,
@@ -246,7 +251,7 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
       queue = createWorkerJobQueue({
         connectionString: connectionString!,
         applicationName,
-        routinePolling: { connectionString: connectionString!, tenantId },
+        routinePolling: { connectionString: connectionString!, tenantId, now: () => pollNow },
         onError: (error) => { pollErrors.push(error); },
       });
       await queue.start();
