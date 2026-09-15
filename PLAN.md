@@ -4863,7 +4863,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-164
 **Title:** Wire Codex/Grok subprocess routing into a real production execution path
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** Surfaced during TASK-143's adversarial review (2026-09-05, confirmed independently twice, by Codex CLI and a separate verification pass): `createGatedSubprocessProviders` (services/worker/src/subprocessProviders.ts) and everything it builds (`CodexProvider`/`GrokProvider`, ADR-011's multi-provider support) has **zero non-test call sites anywhere in this repository**. The entire Codex/Grok subprocess-routing feature — not just its budget enforcement — has never been wired into any real chat/task execution path; `chatRunDriver.ts`, the actual production driver, only ever constructs the Claude Agent SDK `query()` path. This predates TASK-143 entirely and is a pre-existing product gap, not something TASK-143 broke or could fix within its own Owned_Paths (confirmed: an attempted fix inside TASK-143 was correctly blocked by the territory firewall). TASK-143's budget enforcement is correctly built and will engage automatically the moment this task wires a real call site — this task is the missing prerequisite, not new budget work.
@@ -4878,13 +4878,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `pnpm -r test`, `pnpm -r build`, `pnpm lint` all exit 0
 **Branch:** task/TASK-164-cx9
 **Started_At:** 2026-09-15T02:05:00Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-15T02:08:16Z] [SV:CX9] Documented evidence-based deferral: Claude and Gemini are the only supported production lanes; no named Codex/Grok product use case exists, so no unreachable selector or speculative code was added.
+**Artifacts:** dossiers/TASK-164.md
+**Test_Evidence:** pnpm -r build passed; pnpm lint passed (3 existing warnings); scripts/test-isolated.ps1 -Init -Filter @oikonomos/worker passed, including subprocessProviders.test.ts 13/13 and test/executeRun.test.ts 9/9. Direct pnpm -r test is blocked by the pre-existing shared DB lacking role_routines.timezone.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T02:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T02:08:16Z
 
 ### TASK-165
 **Title:** Expose bot title/instructions in the API and mobile settings UI
