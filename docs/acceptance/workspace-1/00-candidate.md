@@ -24,10 +24,10 @@ Fixed: watchdog re-enabled (`schtasks /Change /TN OIKONOMOS-ServiceWatchdog /ENA
 - `tailscale serve status` → `/` and every prefix current work needs are mounted (`/auth /runs /roles /tasks /skills /health /openapi /threads /routines /approvals /secret-requests /workspace/summary`).
 - **Known limitation, pre-existing (not introduced by this candidate):** `POST /devices` (push-token registration, TASK-145) is not mounted in `tailscale-serve.ps1` and is therefore unreachable via the public tailnet origin — confirmed by comparing every route path registered in `app.ts`/`*.routes.ts` against the mounted prefix list. This predates this session's work and is not one of A01–A19/C01's mandatory cases; recorded here as a known limitation for the decision sheet rather than fixed mid-acceptance (fixing it is a one-line `tailscale-serve.ps1` change but is out of this task's own scope to make unannounced during a test run).
 
-## Spend ledger (owner decision D3, R60 hard allowance)
+## Spend ledger (owner decision D3, $10 USD hard allowance — corrected 2026-09-15 from an earlier R60 ZAR figure)
 
-| Case | Provider/model | Cost (ZAR) | Running total |
-|---|---|---|---|
-| — | — | — | R0.00 |
+| Time (UTC) | Case | Provider/model | Cost (USD) | Running total |
+|---|---|---|---|---|
+| 2026-09-15T05:45Z | (mid-acceptance check) | — | — | $0.00 |
 
-Updated as paid cases run. Source: `spend_records` table, queried directly, never estimated.
+Updated as paid cases run. Source: `spend_records.cost_usd`, queried directly against the live database, never estimated. A19's own test routine fired once for real (2026-09-15T05:00:24Z) but never produced a run at all — root-caused to a real critical bug (TASK-258, see `A19-24h-observation.md`) in the scheduled-routine execution path itself, not a cost event. Confirmed **zero spend incurred** throughout this entire investigation, including while auditing and clearing a large stale-queue backlog that briefly looked like it might pose a real risk (it did not, per the same file's full account) and a single genuine unguarded-risk subset (1,653 jobs) that was found and neutralized before it could be processed.
