@@ -1,0 +1,16 @@
+-- TASK-247 / specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.3 — routines gain an
+-- IANA time zone used for cron evaluation and shown with the next fire.
+--
+-- Default 'UTC' matches the platform's pre-existing behaviour (cron was
+-- always evaluated in process time, which every deployed environment runs
+-- as UTC), so every existing row keeps firing at exactly the same instant
+-- it did before this migration — only the offset used for *future* cron
+-- evaluation changes when an operator explicitly sets a different zone.
+--
+-- IANA name FORMAT validation (not a fixed enum — the tz database is large
+-- and changes) is deliberately NOT a CHECK constraint here: Postgres has no
+-- built-in "is this a real IANA zone" predicate, and hand-rolling a regex
+-- would either reject valid names (e.g. 'Etc/GMT+5') or accept invalid ones.
+-- Application code validates with `Intl.DateTimeFormat`'s own IANA
+-- database before any write reaches this column (packages/db/src/routines.ts).
+ALTER TABLE role_routines ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC';

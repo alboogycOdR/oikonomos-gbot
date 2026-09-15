@@ -454,7 +454,17 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
         Skill: { type: "object" },
-        Routine: { type: "object" },
+        Routine: {
+          type: "object",
+          properties: {
+            // TASK-247 / §9.3: IANA time zone name used to evaluate the
+            // routine's cron `schedule` and shown alongside `nextFireAt`.
+            // Defaults to UTC; accepted on create via POST
+            // /roles/{roleId}/routines's own (undocumented-here) body.
+            timezone: { type: "string", description: "IANA time zone name used for cron evaluation and next-fire display; defaults to UTC." },
+            nextFireAt: { type: "string", format: "date-time", nullable: true },
+          },
+        },
         UpdateRoutineSkill: {
           type: "object",
           required: ["skillId"],

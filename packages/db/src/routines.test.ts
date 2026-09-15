@@ -54,9 +54,28 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
     expect(created.enabled).toBe(true);
     expect(created.lastFireStatus).toBeNull();
     expect(created.nextFireAt).toBeNull();
+    // TASK-247 / §9.3: existing/omitted-timezone rows default to UTC.
+    expect(created.timezone).toBe("UTC");
 
     const fetched = await getRoutine({ connectionString: connectionString! }, created.routineId);
     expect(fetched).toEqual(created);
+  });
+
+  it("TASK-247: persists an explicit IANA timezone and rejects an invalid one", async () => {
+    const created = await createRoutine(
+      { connectionString: connectionString! },
+      { roleId, tenantId, name: "jhb-digest", schedule: "0 9 * * *", definition: {}, timezone: "Africa/Johannesburg" },
+    );
+    expect(created.timezone).toBe("Africa/Johannesburg");
+    const fetched = await getRoutine({ connectionString: connectionString! }, created.routineId);
+    expect(fetched?.timezone).toBe("Africa/Johannesburg");
+
+    await expect(
+      createRoutine(
+        { connectionString: connectionString! },
+        { roleId, tenantId, name: "bad-tz", schedule: "0 9 * * *", definition: {}, timezone: "Not/AZone" },
+      ),
+    ).rejects.toThrow(/timezone must be a valid IANA time zone name/);
   });
 
   it("persists a creation-time nextFireAt without recording a fire", async () => {
