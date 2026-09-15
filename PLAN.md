@@ -7771,7 +7771,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-261
 **Title:** `scripts/test-isolated.ps1`'s watchdog disable/re-enable is not reliably self-healing — has now left the watchdog stuck `Disabled` at least three times this session, with no independent safeguard
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `scripts/test-isolated.ps1:77-92` (`$watchdogWasReady` check, `schtasks /Change /TN $taskName /DISABLE` before the run, `/ENABLE` in the outer `finally`); `docs/runbooks/service-supervision.md` (the watchdog's own intended purpose — automatic recovery from exactly this kind of gap); PLAN.md orchestrator_notes' own recorded history of this recurring across TASK-245's acceptance session (2026-09-15) at least three times: once before A19's window opened, once mid-review, and once during TASK-260's own verification pass.
@@ -7783,16 +7783,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A real test proving the self-healing path: simulate the disabling script being killed mid-run (not just throwing a normal error) and confirm the independent mechanism still restores the watchdog within a bounded time.
 - [ ] The existing `finally`-block re-enable stays in place as the fast path; this task adds a backstop, it does not replace the existing mechanism.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded (ironic but necessary — this change touches the exact script other tests already depend on for isolation).
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-261-s5
+**Started_At:** 2026-09-15T20:07:23Z
 **Progress_Notes:**
 - [2026-09-15T10:40:00Z] [ORCH] Filed after this exact gap recurred a third time during TASK-260's own verification pass, live, during TASK-245's acceptance run — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the specific incident this was caught and fixed from. Prior occurrences already recorded in PLAN.md's own orchestrator_notes history for this session, under the "crash/reboot recovery" and general lessons sections.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-15T10:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-15T20:07:23Z
 
 ### TASK-262
 **Title:** The Steel browser MCP connector is currently unreachable for a freshly-provisioned role's sandbox session (`CONNECTION_CLOSED`), blocking real browser-workflow acceptance testing
