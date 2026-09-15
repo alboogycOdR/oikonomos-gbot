@@ -7390,8 +7390,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-247
 **Title:** Workspace-1 follow-on — routine time zone (IANA) for cron evaluation and next-fire display
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** S5
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md §9.3; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md §3 G-02
 **Owned_Paths:** packages/db/src/routines.ts, packages/db/src/routines.test.ts, infra/postgres/migrations/024_routine_timezone.up.sql, infra/postgres/migrations/024_routine_timezone.down.sql, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, services/worker/src/routineTool.ts, services/worker/src/routineTool.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/routines.routes.test.ts
@@ -7401,8 +7401,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A routine created with `timezone: 'Africa/Johannesburg'` and schedule `0 9 * * *` has `nextFireAt` at 07:00Z. (§9.3)
 - [ ] Invalid IANA names are rejected with 400; default is UTC; existing rows migrate to UTC. (§9.3)
 - [ ] The scheduler fires by the routine's zone (test with a fake clock across a DST boundary for a zone that has one). (§9.3)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-247-s5
+**Started_At:** 2026-09-15T01:10:00Z
 **Progress_Notes:**
 - [2026-09-12T10:10:00Z] [ORCH] Filed from specs/OIKONOMOS_WORKSPACE_WAVE_v1.0.md after the owner accepted the ORCH review of the CX advisory (GROKBOT-RESEARCH-DOCS/ORCH_REVIEW) on 2026-09-12 with the rule: no release date, full scope, maximum quality.
 **Artifacts:** —
@@ -7410,7 +7410,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:10:00Z
+**Updated_At:** 2026-09-15T01:10:00Z
 
 ### TASK-248
 **Title:** Workspace-1 follow-on — web Computer view: read-only live view in the dashboard; interactive only after TASK-235
@@ -7499,8 +7499,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-251
 **Title:** Two worker tests race the database on a cold isolated database — finalize phase-timing row (deterministic) and pg-boss routine lifecycle (flaky)
-**Status:** pending
-**Assigned_To:** TBD
+**Status:** claimed
+**Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** TASK-230 (phase timings); TASK-221/229 (pg-boss routine poll); TASK-162/199 (prior flake work); docs/runbooks/release-workspace-1.md Isolated tests
 **Owned_Paths:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/jobs/workerJobQueue.test.ts, services/worker/src/jobs/workerJobQueue.ts
@@ -7510,8 +7510,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] `finalize` row is present in `run_phase_timings` when `run()` resolves (awaited, not raced); test passes 5/5 consecutive runs on a freshly initialised isolated database.
 - [ ] pg-boss lifecycle tests pass 5/5 consecutive runs regardless of the wall-clock second at which they start.
 - [ ] `scripts/test-isolated.ps1 -Filter @oikonomos/worker` 242/242.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-251-cx9
+**Started_At:** 2026-09-15T01:10:00Z
 **Progress_Notes:**
 - [2026-09-12T10:50:00Z] [ORCH] Filed from TASK-240's isolated-suite evidence (three runs; results in TASK-240 Test_Evidence).
 - [2026-09-12T12:15:00Z] [ORCH] Third race, same family, observed 2026-09-12 on two serialised full-suite runs: `packages/db` `database.test.ts > Database capability enable switches (TASK-140) > flips every registered capability platform-wide` fails `expected 35 to be 36` (and 36 vs 37 earlier) — it counts `capabilities` rows while sibling files in the same package (`capabilities.test.ts` registration/skip tests) insert and delete rows in parallel vitest workers. Fix by scoping the assertion to rows the test itself created, or by `fileParallelism: false` for that file. Add `packages/db/src/database.test.ts` to this task's Owned_Paths when claimed.
@@ -7522,7 +7522,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-12T10:50:00Z
+**Updated_At:** 2026-09-15T01:10:00Z
 
 ### TASK-252
 **Title:** Adversarial review of ADR-018 (bot templates) and ADR-019 (Project entity + manager role) by a non-Anthropic model, per the protected-path rule for docs/decisions/**
