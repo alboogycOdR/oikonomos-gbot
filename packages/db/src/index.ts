@@ -90,6 +90,7 @@ export {
   DEFAULT_ROLE_PROVIDER_ENV,
   resolveRoleRuntime,
   getRole,
+  getRoleByName,
   listRoles,
   updateRoleInstructions,
   updateRoleName,

@@ -30,10 +30,20 @@ export const CREATE_ROUTINE_TOOL_DESCRIPTION =
   "month weekday) — e.g. 'every day at 2pm' -> '0 14 * * *', 'every Monday at 9am' -> " +
   "'0 9 * * 1'. Use UTC unless the user names a timezone.";
 
+// `additionalProperties` is NOT a field Gemini's function-calling schema
+// (a restricted OpenAPI subset) recognizes — sending it makes the ENTIRE
+// generateContent call fail with a 400 INVALID_ARGUMENT, which
+// `requestGemini` (packages/harness-factory/src/providers/gemini.ts) treats
+// as a silent, zero-token deny with no logged reason. Confirmed live against
+// the real API 2026-09-16: removing this one field is the only change
+// needed. Every bot with `workspace.create_routine` granted (the TASK-264
+// default floor) was failing 100% of the time on Gemini because of this.
+// The Claude MCP path (workspaceMcpServer.ts, same schema object) is
+// unaffected either way — `parseCreateRoutineInput` still validates the
+// input at the application layer regardless of this schema field.
 export const createRoutineInputSchema = {
   type: "object",
   required: ["name", "schedule"],
-  additionalProperties: false,
   properties: {
     name: { type: "string", minLength: 1, maxLength: 200, description: "Short, human-readable routine name." },
     schedule: { type: "string", description: "5-field cron expression (minute hour day month weekday)." },

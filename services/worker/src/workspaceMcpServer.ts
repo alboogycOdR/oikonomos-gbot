@@ -6,6 +6,7 @@ import { sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { parkTaskRun } from "./runLifecycle.js";
 import { parseRequestSecretInput } from "@oikonomos/broker";
+import { resolveRoleIdentifier } from "./resolveRoleIdentifier.js";
 import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
 
 export interface WorkspaceMcpServerIdentity {
@@ -81,7 +82,11 @@ export async function handleWorkspaceMcpRequest(
   try {
     const call = parseToolCall(request.params);
     if (call.name === SEND_TO_ROLE_TOOL_NAME) {
-      const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, toSendInput(call.arguments, identity));
+      const input = toSendInput(call.arguments, identity);
+      // The model knows a recipient only by its human-facing name, never its
+      // real role_id (TASK-214 Gemini-parity finding, applies equally here).
+      const resolvedToRoleId = await resolveRoleIdentifier({ connectionString: identity.connectionString }, identity.fromRoleId, input.toRoleId);
+      const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, { ...input, toRoleId: resolvedToRoleId });
       return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(acknowledgement) }] });
     }
     if (call.name === REQUEST_SECRET_TOOL_NAME) {
@@ -158,7 +163,7 @@ const sendToRoleInputSchema = {
   required: ["toRoleId", "body"],
   additionalProperties: false,
   properties: {
-    toRoleId: { type: "string" }, body: { type: "string" }, workspaceRefs: { type: "array", items: { type: "string" } },
+    toRoleId: { type: "string", description: "The recipient bot's name (e.g. \"jipolt\") or its role ID." }, body: { type: "string" }, workspaceRefs: { type: "array", items: { type: "string" } },
     handoffKind: { type: "string", enum: ["research.complete", "draft.ready_for_review"] },
     factRef: { type: "object" },
   },

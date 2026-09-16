@@ -499,6 +499,14 @@ async function runChatTask(
     if (runId !== undefined) {
       // §7.4: a failed run with no spend tap report is unrecorded, not free.
       await noteFailureUnrecordedSpend?.();
+      // `request_secret` (Gemini lane, TASK-214 parity): the tool already
+      // inserted its own `secret.requested` audit row inline (matching
+      // workspaceMcpServer.ts's Claude behavior), so this branch only needs
+      // to park — recording a second event here would double it.
+      if (error instanceof GeminiSecretRequestedSignal) {
+        await parkTaskRun(options, runId);
+        return;
+      }
       if (isHumanTakeoverSignal(error)) {
         // G-07's own event/park contract (this task's scope, not G-06a's):
         // a CAPTCHA/2FA/login-wall/payment signal from steelSession.ts is not
@@ -580,6 +588,20 @@ class GeminiHumanTakeoverSignal extends Error implements HumanTakeoverSignal {
   ) {
     super(`human takeover required: ${kind}`);
     this.name = "GeminiHumanTakeoverSignal";
+  }
+}
+
+/**
+ * Thrown once `request_secret`'s executor has called `onSecretRequested`
+ * (TASK-214 Gemini parity). Deliberately its own class rather than reusing
+ * `GeminiHumanTakeoverSignal`: a secret request is not a takeover, needs no
+ * `run.human_takeover_required` event, and must not be duck-typed into
+ * `isHumanTakeoverSignal`'s Claude-path branch.
+ */
+class GeminiSecretRequestedSignal extends Error {
+  constructor() {
+    super("secret requested — run parked pending human input");
+    this.name = "GeminiSecretRequestedSignal";
   }
 }
 
@@ -689,6 +711,10 @@ export async function executeGeminiChatRun(
   // Persisted by the detecting Steel executor before it returns. Its terminal
   // result stops the Gemini loop before another batch member or retry.
   let takeoverSignal: { readonly kind: string; readonly detail: string } | undefined;
+  // Set by `request_secret` (TASK-214 Gemini parity). No audit event needed
+  // here — the tool inserts its own `secret.requested` row inline, exactly
+  // as `workspaceMcpServer.ts` does for the Claude lane.
+  let secretRequested = false;
   const steelTools = browserConnector === undefined
     ? []
     : createSteelGeminiTools(
@@ -712,7 +738,14 @@ export async function executeGeminiChatRun(
   const workspaceTools = workspaceConnector === undefined
     ? []
     : createWorkspaceGeminiTools(
-        { connectionString: options.connectionString, tenantId: request.task.tenantId, roleId: request.task.roleId, threadId: request.threadId },
+        {
+          connectionString: options.connectionString,
+          tenantId: request.task.tenantId,
+          roleId: request.task.roleId,
+          threadId: request.threadId,
+          runId: run.runId,
+          onSecretRequested: () => { secretRequested = true; },
+        },
         workspaceConnector.allowedTools,
       );
 
@@ -785,6 +818,7 @@ export async function executeGeminiChatRun(
   // the outer catch's park/audit-event path rather than being reported as
   // an ordinary completed turn.
   if (takeoverSignal !== undefined) throw new GeminiHumanTakeoverSignal(takeoverSignal.kind, takeoverSignal.detail);
+  if (secretRequested) throw new GeminiSecretRequestedSignal();
   if (result.denied) throw new Error("Gemini run was denied before it could answer.");
   return { text: result.text, costUsd };
 }

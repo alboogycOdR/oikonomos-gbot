@@ -1,5 +1,11 @@
+import { parseRequestSecretInput } from "@oikonomos/broker";
+import { createSecretRequest, insertAuditEvent, updateRoleName } from "@oikonomos/db";
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
+import { sendToRole } from "@oikonomos/workspace";
+import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
+import { GEMINI_PROVIDER_ID } from "./geminiChatRun.js";
+import { resolveRoleIdentifier } from "./resolveRoleIdentifier.js";
 import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
 
 /**
@@ -609,15 +615,138 @@ export interface WorkspaceGeminiContext {
   readonly tenantId: string;
   readonly roleId: string;
   readonly threadId?: string;
+  /**
+   * Required only for `request_secret` (it parks the run exactly as the
+   * Claude MCP bridge does). Omitted call sites simply never grant that
+   * capability's tool, so its absence never reaches `execute()`.
+   */
+  readonly runId?: string;
+  /**
+   * Mirrors `createSteelGeminiTools`'s `onHumanTakeover` pattern: a request
+   * to STOP this turn's loop after the tool returns, without the tool itself
+   * knowing anything about the adapter's control flow. Set only by
+   * `request_secret` — unlike a takeover, no audit event needs recording by
+   * the caller, since this tool inserts its own `secret.requested` row
+   * inline, exactly as `workspaceMcpServer.ts` does.
+   */
+  readonly onSecretRequested?: () => void;
+}
+
+/** Real behavior mirrored from `workspaceMcpServer.ts`'s `send_to_role` handler. */
+const sendToRoleInputSchema = {
+  type: "object",
+  required: ["toRoleId", "body"],
+  properties: {
+    toRoleId: { type: "string", description: "The recipient bot's name (e.g. \"jipolt\") or its role ID." },
+    body: { type: "string" },
+    workspaceRefs: { type: "array", items: { type: "string" } },
+    handoffKind: { type: "string", enum: ["research.complete", "draft.ready_for_review"] },
+    factRef: { type: "object" },
+  },
+} as const;
+
+/** Real behavior mirrored from `workspaceMcpServer.ts`'s `rename_self` handler. */
+const renameSelfInputSchema = {
+  type: "object",
+  required: ["name"],
+  properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
+} as const;
+
+/** Real behavior mirrored from `workspaceMcpServer.ts`'s `request_secret` handler. */
+const requestSecretInputSchema = {
+  type: "object",
+  required: ["label", "purpose"],
+  properties: {
+    label: { type: "string", minLength: 1, maxLength: 200 },
+    purpose: { type: "string", minLength: 1, maxLength: 2000 },
+  },
+} as const;
+
+function parseSendToRoleInput(arguments_: Record<string, unknown>, fromRoleId: string, tenantId: string): {
+  tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs?: readonly string[]; handoffKind?: HandoffKind; factRef?: HandoffFactReference;
+} {
+  if (typeof arguments_.toRoleId !== "string" || typeof arguments_.body !== "string") throw new Error("send_to_role requires string toRoleId and body.");
+  if (arguments_.workspaceRefs !== undefined && (!Array.isArray(arguments_.workspaceRefs) || !arguments_.workspaceRefs.every((value) => typeof value === "string"))) {
+    throw new Error("workspaceRefs must be an array of strings.");
+  }
+  return {
+    tenantId,
+    fromRoleId,
+    toRoleId: arguments_.toRoleId,
+    body: arguments_.body,
+    ...(arguments_.workspaceRefs === undefined ? {} : { workspaceRefs: arguments_.workspaceRefs as readonly string[] }),
+    ...(arguments_.handoffKind === undefined ? {} : { handoffKind: arguments_.handoffKind as HandoffKind }),
+    ...(arguments_.factRef === undefined ? {} : { factRef: arguments_.factRef as HandoffFactReference }),
+  };
+}
+
+function parseRenameSelfInput(arguments_: Record<string, unknown>): string {
+  if (Object.keys(arguments_).length !== 1 || typeof arguments_.name !== "string") {
+    throw new Error("rename_self requires exactly one string name argument.");
+  }
+  return arguments_.name;
 }
 
 export function createWorkspaceGeminiTools(
   context: WorkspaceGeminiContext,
   grantedToolNames: readonly string[],
 ): readonly SandboxGeminiTool[] {
-  if (!grantedToolNames.includes("mcp__workspace__create_routine")) return [];
-  return [
-    {
+  const granted = new Set(grantedToolNames);
+  const tools: SandboxGeminiTool[] = [];
+
+  if (granted.has("mcp__workspace__send_to_role")) {
+    tools.push({
+      name: "mcp__workspace__send_to_role",
+      description: "Send an asynchronous role-to-role handoff.",
+      parameters: sendToRoleInputSchema,
+      tier: tierNumber("T1_draft"),
+      execute: async (arguments_) => {
+        const input = parseSendToRoleInput(arguments_, context.roleId, context.tenantId);
+        const resolvedToRoleId = await resolveRoleIdentifier({ connectionString: context.connectionString }, context.roleId, input.toRoleId);
+        return sendToRole({ connectionString: context.connectionString }, { ...input, toRoleId: resolvedToRoleId });
+      },
+    });
+  }
+
+  if (granted.has("mcp__workspace__rename_self")) {
+    tools.push({
+      name: "mcp__workspace__rename_self",
+      description: "Rename the calling bot's own display name.",
+      parameters: renameSelfInputSchema,
+      tier: tierNumber("T1_draft"),
+      execute: async (arguments_) => {
+        const role = await updateRoleName({ connectionString: context.connectionString }, context.roleId, parseRenameSelfInput(arguments_));
+        if (role === null) throw new Error("Calling role was not found.");
+        return { roleId: role.roleId, name: role.name };
+      },
+    });
+  }
+
+  if (granted.has("mcp__workspace__request_secret")) {
+    tools.push({
+      name: "mcp__workspace__request_secret",
+      description: "Ask a human to provide a secret without placing its value in the transcript.",
+      parameters: requestSecretInputSchema,
+      tier: tierNumber("T1_draft"),
+      execute: async (arguments_) => {
+        if (context.runId === undefined || context.runId.trim().length === 0) throw new Error("request_secret requires a worker-bound run ID.");
+        const input = parseRequestSecretInput(arguments_);
+        const secretRequest = await createSecretRequest(
+          { connectionString: context.connectionString },
+          { tenantId: context.tenantId, roleId: context.roleId, runId: context.runId, ...input },
+        );
+        await insertAuditEvent(
+          { connectionString: context.connectionString },
+          { tenantId: context.tenantId, runId: context.runId, actor: `agent:${GEMINI_PROVIDER_ID}`, eventType: "secret.requested", payload: { requestId: secretRequest.requestId, label: secretRequest.label, purpose: secretRequest.purpose } },
+        );
+        context.onSecretRequested?.();
+        return { status: "pending", requestId: secretRequest.requestId };
+      },
+    });
+  }
+
+  if (granted.has("mcp__workspace__create_routine")) {
+    tools.push({
       name: "mcp__workspace__create_routine",
       description: CREATE_ROUTINE_TOOL_DESCRIPTION,
       parameters: createRoutineInputSchema,
@@ -629,6 +758,8 @@ export function createWorkspaceGeminiTools(
           input,
         );
       },
-    },
-  ];
+    });
+  }
+
+  return tools;
 }

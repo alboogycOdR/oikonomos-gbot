@@ -150,6 +150,34 @@ export async function getRole(
 }
 
 /**
+ * Case-insensitive lookup by the human-facing bot name, scoped to a tenant.
+ * A model addressing `send_to_role` knows another bot only by this name (its
+ * own real `role_id` UUID is never surfaced in conversation) — without this,
+ * every cross-bot handoff attempt fails on an unresolvable ID the model has
+ * no way to obtain. Names are not guaranteed unique at the schema level, so
+ * this returns the most recently created match rather than throwing on a
+ * genuine collision; a tenant that actually creates two same-named bots is
+ * an operator error to fix by renaming, not something this lookup should
+ * block on.
+ */
+export async function getRoleByName(
+  options: DatabaseOptions,
+  tenantId: string,
+  name: string,
+): Promise<Role | null> {
+  const normalizedTenantId = requireNonEmpty(tenantId, "tenantId");
+  const normalizedName = requireNonEmpty(name, "name");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `SELECT ${roleColumns} FROM roles WHERE tenant_id = $1 AND lower(name) = lower($2) ORDER BY created_at DESC LIMIT 1`,
+      [normalizedTenantId, normalizedName],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
+  });
+}
+
+/**
  * Persist optional role-specific system-prompt material. An empty string is
  * intentional: it clears a previously configured custom instruction while
  * preserving the nullable schema's distinction for pre-existing unset roles.
