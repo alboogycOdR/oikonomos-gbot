@@ -7973,3 +7973,55 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-16T12:43:16Z
+
+### TASK-269
+**Title:** CRITICAL -- an ordinary follow-up chat message never continues the previous Claude session; every turn in a conversation starts completely fresh with zero memory of anything said before it
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** critical
+**Spec_References:** `services/control-api/src/app.ts`'s `POST /threads/:id/messages` (1:1 and group-with-one-recipient branches, ~lines 1926-1943 and ~1899-1917); `services/control-api/src/ports.ts`'s `submitTaskExecution`/`runChatTask` (neither ever looks up a prior run's `session_ref`); `services/worker/src/chatRunDriver.ts` lines ~340-360, ~446, ~787 (the ONLY place `--resume` is ever attached to the Claude CLI invocation is `request.resume`, which is set exclusively by the interrupted-run-reconciliation/approval-resume path, never by an ordinary new message in an existing thread).
+**Owned_Paths:** packages/db/src/runs.ts, packages/db/src/runs.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/chat.routes.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts
+**Depends_On:** —
+**Description:** Found live (2026-09-16) via direct owner-reported symptom: a real bot (`maximus`, Claude provider) completely lost track of its own conversation across ordinary turns -- asked for information already given two messages earlier, denied seeing a question it had just asked itself, and treated a bare follow-up word ("cape town") as meaningless out-of-context input. Root-caused precisely, not inferred: `POST /threads/:id/messages`'s real 1:1 chat path (`app.ts`) always builds a brand-new `taskInput` and calls `submitTaskExecution`/`createTask`+`runChatTask` with NO `resume` field -- there is no code anywhere in this path that looks up the thread's own most recent prior run to continue it. `chatRunDriver.ts`'s doc comment for the Gemini lane explicitly says Claude relies on the Agent SDK's own `--resume` instead of manual history reconstruction (unlike Gemini, which correctly rebuilds full history from persisted messages every turn via `buildGeminiTurnPrompt` -- confirmed still correct, not in scope here) -- but nothing ever computes or passes that `--resume` token for an ordinary continued conversation. `request.resume` is set ONLY by the narrow interrupted-run-reconciliation/post-approval-resume path (a completely different scenario: continuing ONE specific run after a pause, not turn-to-turn conversation continuity). The result: `chatRunDriver.ts`'s `claudePrintCommand` never receives a `--resume` argument for a normal follow-up message, so the Claude CLI starts a genuinely fresh, memoryless session on every single turn. This is almost certainly true for EVERY Claude-provider bot in this product, not just the one it was caught on -- it is a foundational chat-continuity gap, not a one-off. The underlying infrastructure needed to fix this already exists and works (the role's own sandbox persists correctly across turns via pause/resume -- confirmed independently and freshly this same session during TASK-262's diagnostic) -- this is a missing wiring step, not a deeper architectural gap.
+**Acceptance_Criteria:**
+- [ ] Add a real DB helper (e.g. `getLatestRunForThread` in `packages/db/src/runs.ts`) that finds the most recent run for a given thread (join through `tasks`, order by `started_at DESC`, `LIMIT 1`) -- do not assume `listRuns`'s existing filters cover this, they don't (checked: `listRuns` filters by `tenantId`/`status`/`taskId`/`cursor` only, no `threadId`/`roleId` filter exists today).
+- [ ] Wire this into `app.ts`'s `POST /threads/:id/messages` (both the 1:1 branch and the group-with-one-real-recipient branch -- read both before deciding whether the fan-out/multi-recipient branch needs the same treatment or has genuinely different continuity semantics per-recipient; do not guess, check what each recipient's own prior run in this thread looks like): when a prior run exists for this thread, pass its `sessionRef ?? runId` as the new run's `resume.sessionRef` so `chatRunDriver.ts`'s existing `--resume` plumbing picks it up -- this may mean widening `runChatTask`'s/`submitTaskExecution`'s own input shape if the current `resume` field's semantics (built for the interrupted-run case) don't cleanly cover "continue the thread's last completed run with a NEW task/run row," not just "resume this exact same run" -- investigate `startTaskRun`/`createTaskExecutionRun`'s actual session_ref handling before assuming either shape fits, and design the smallest correct change rather than forcing the existing `resume` field to mean two different things.
+- [ ] Correctly do NOT resume when: there is no prior run for this thread (first message ever -- must start fresh, not error); the prior run's resolved provider differs from the current one (a mid-conversation provider switch must never hand a resume token to a provider that doesn't understand it -- this exact danger is already named in this file's own existing comments, cite and respect it).
+- [ ] A real, non-mocked, end-to-end test: send two REAL sequential chat messages through the actual `/threads/:id/messages` route to a real running worker (real Claude provider, real spend -- keep it minimal, e.g. "my favorite color is teal" then "what did I just tell you my favorite color was"), and assert the SECOND turn's real model reply correctly references information ONLY present in the first turn. This is the one acceptance bar that actually matters -- a test that only checks "a resume argument was passed" without proving the model actually remembered something is not sufficient evidence this bug is fixed.
+- [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
+- [ ] Dossier states plainly whether this same gap affects the group/fan-out chat path too (multiple recipients in one thread) -- if it does, name it explicitly rather than silently fixing only the 1:1 case and leaving the multi-recipient case's own continuity gap undiscovered a second time.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-16T13:12:14Z] [ORCH] Filed at CRITICAL priority per direct owner report and ORCH's own live code-path tracing (not inferred from behavior alone -- read the actual dispatch code end to end before concluding). Owner explicitly authorized dispatching a fix immediately. This is a foundational, previously-undiscovered gap in this product's core chat experience for its primary (Claude) provider -- treat with the same urgency as TASK-258/260 (both critical, both fixed and deployed same-day earlier this session).
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-16T13:12:14Z
+
+
+### TASK-270
+**Title:** Adversarial review of TASK-269's conversation-continuity fix by a non-Anthropic model
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** critical
+**Spec_References:** TASK-269 (the implementation this reviews)
+**Owned_Paths:** docs/decisions/TASK-269-review-cx9-2026-09.md
+**Depends_On:** —
+**Description:** This is the single most foundational fix landed on this product this session -- every Claude-provider bot's ability to hold a real conversation depends on it being correct. Review the actual diff against the real chat pipeline, not the dossier's summary. Pressure points: (1) does the fix genuinely prove the model remembers something from an earlier real turn, or only that a resume argument was technically passed (a resume token pointing at the wrong session, or silently ignored by the CLI, would still show a `--resume` flag in the command without actually working -- verify the TEST proves the outcome, not just the mechanism)? (2) is the provider-mismatch guard (never resume across a provider switch) actually present and tested, not just mentioned in a comment? (3) does the very FIRST message in a brand-new thread still work correctly (no prior run to resume, must not error or accidentally try to resume something)? (4) does the group/fan-out chat path get the same treatment, or does the dossier honestly disclose it as a known, separate, still-open gap rather than silently leaving it broken? (5) could this change accidentally cause an OLD, already-completed/abandoned conversation to be incorrectly resumed when the user actually wanted a fresh start (e.g. after a very long gap, or after the thread was effectively reset some other way) -- is there any bound on how "stale" a prior run can be before it's no longer resumed, and is that a real design decision or an oversight?
+**Acceptance_Criteria:**
+- [ ] One review file at the Owned_Path with a verdict and required changes (possibly empty), each claim citing file:line on the reviewed commit.
+- [ ] Every pressure point answered with real evidence (a query, a re-run test, or a read of the actual code), not opinion.
+- [ ] No file outside Owned_Paths modified.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-16T13:12:14Z] [ORCH] Filed alongside TASK-269. Do not dispatch until TASK-269 reaches needs_review. ORCH manually times this dispatch rather than a hard Depends_On, which would deadlock (TASK-265's own precedent this session).
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-16T13:12:14Z
