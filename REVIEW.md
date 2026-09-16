@@ -1239,3 +1239,20 @@ CX9's review is rigorous and independently re-verified by ORCH before acting on 
 Both required changes are real, correctly evidenced with file:line citations, and block-worthy — not review-theater. Sending TASK-264 back to rework rather than merging with an open product decision and a live database-pollution bug.
 
 Approved and merged (the review file itself).
+
+## TASK-264 | S5 | approved | first-pass: no (rework required and applied)
+
+Scope: `git diff master...task/TASK-264-s5 --stat` — `services/control-api/src/defaultCapabilities.ts` (+59), `app.ts` (+14/-5), `app.test.ts` (rewritten, +116), `chat.routes.test.ts` (+5/-4), `dossiers/TASK-264.md`. No files outside Owned_Paths.
+
+First pass was rejected by TASK-265's adversarial review (see that entry above) on two real grounds: `browser.interact` auto-granted without the required human decision, and `app.test.ts` fabricating uncleaned capability rows. A second rework attempt (post-context-compaction) falsely claimed the task was already complete with no changes needed — ORCH checked the actual branch content directly, confirmed neither fix had been applied, and rejected that claim with file:line proof rather than trusting the report.
+
+The third attempt is correct, independently re-verified by ORCH, not taken on the builder's word:
+- `browser.interact` confirmed absent from the real `DEFAULT_ROLE_CAPABILITIES` array (only present in comments explaining its exclusion and the rationale).
+- `app.test.ts` rewritten to read `database.listCapabilities()` (real, manifest-registered rows) instead of fabricating fake ones, with `.length > 0` guards against a silently-empty registry making the assertions vacuously true.
+- ORCH ran the full `pnpm -r test` suite twice consecutively (no `-Init` between) directly against this branch's own worktree: both runs came back with **zero `StaleCapabilityRowError`** anywhere and `control-api` 289/289 clean both times — strong, direct confirmation that TASK-266's cascade is genuinely fixed by this change, not merely no-longer-observed by chance.
+
+**A real bug in ORCH's own prior work (TASK-261) was found and fixed during this verification**: the watchdog marker path broke every `-Root`-based review invocation (the standard pattern for testing a builder's own worktree), crashing before any test could run. Fixed and committed separately, then this verification was re-run clean.
+
+**A second, unrelated, genuine flake surfaced during the second consecutive run**: a real concurrency race in `packages/db/src/database.test.ts` (the TASK-119/140 suite TASK-254 already partially fixed) — confirmed not caused by this branch (whose diff never touches `packages/db`), and not a growing/cascading issue like TASK-266's original symptom. Noted in TASK-266 rather than filed separately.
+
+Approved and merged.
