@@ -191,6 +191,22 @@ export interface ReconcileOutcome {
 }
 
 /**
+ * The `test` provider is a fixture-only provider. `chatRunDriver` rejects it
+ * before dispatching any model work, so a persisted run with this provider
+ * can never represent accepted executable work. Test suites intentionally
+ * leave some of these runs open; treating them as interrupted production work
+ * on every worker boot floods the durable queue with jobs that immediately
+ * fail the provider guard.
+ *
+ * Keep this an exact provider match. In particular, do not infer fixture
+ * status from tenant, title, or requester fields: the shared `basileia`
+ * tenant contains real work, and a false positive here would lose it.
+ */
+export function isNonExecutableTestFixtureRun(run: Pick<Run, "provider">): boolean {
+  return run.provider === "test";
+}
+
+/**
  * Boot-time reconciliation (OIK-106): find every run left in an open,
  * non-terminal status with no live process still executing it — the
  * fingerprint of a run orphaned by a prior worker process's death — and
@@ -241,6 +257,9 @@ export async function reconcileInterruptedRuns(
   for (const run of orphaned) {
     // Approval is a durable human decision boundary, never boot work.
     if (run.status === "waiting_approval") continue;
+    // Fixture-only providers cannot execute. Skipping them keeps stale test
+    // rows from becoming durable worker jobs on every process restart.
+    if (isNonExecutableTestFixtureRun(run)) continue;
     try {
       const queued = await enqueue(run);
       await recordAuditEvent(options, {
