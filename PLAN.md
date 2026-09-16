@@ -8031,3 +8031,28 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** OWNERSHIP_CONFLICT: territory-precommit rejects the exact TASK-270 Owned_Path docs/decisions/TASK-269-review-cx9-2026-09.md as a protected docs/** path; no hook bypass attempted.
 **Updated_By:** SV
 **Updated_At:** 2026-09-16T14:12:32Z
+
+### TASK-271
+**Title:** Real, disclosed incident (2026-09-16): during TASK-269's build, a builder session ran tests directly against production DATABASE_URL (not scripts/test-isolated.ps1) -- real fixture pollution (37 roles + cascade) and real spend ($0.1839, 44 records) landed in production; root-caused and the standing lesson finally propagated to where builders actually read it
+**Status:** done
+**Assigned_To:** TBD
+**Priority:** medium
+**Spec_References:** briefings/S5_BUILD_BRIEFING.md, briefings/CODEX_BRIEFING.md, briefings/GROK_BUILD_BRIEFING.md (Hard prohibitions sections, now amended); PLAN.md's own 2026-09-15T10:52:00Z orchestrator_note (the FIRST occurrence of this exact incident class, from TASK-258's review)
+**Owned_Paths:** briefings/S5_BUILD_BRIEFING.md, briefings/CODEX_BRIEFING.md, briefings/GROK_BUILD_BRIEFING.md
+**Depends_On:** —
+**Description:** Found live while checking in on unrelated bot-testing feedback: production `roles` count had jumped from 1 (just `maximus`) to 38. Investigation traced it to S5's TASK-269 work: its own dossier said "one cross-suite flake in the full `pnpm test` run... reproduced identically with `git stash`" -- language that only makes sense if a direct `pnpm`/`vitest` invocation was used at some point instead of `scripts/test-isolated.ps1`, which would have safely redirected to the isolated `oikonomos_test` database. This is the SECOND occurrence of this exact incident class this session -- the first (TASK-258's review, 2026-09-15T10:52:00Z, $0.0274) was disclosed at the time but the lesson ("scripts/test-isolated.ps1 must be the ONLY path ever attempted") was only ever written into PLAN.md's own orchestrator_notes, which no builder ever reads -- confirmed by grepping all three builder briefings for "test-isolated"/"DATABASE_URL": zero matches, before this task's own fix. The real root cause of the RECURRENCE, not just the incident itself, is that a lesson learned and disclosed was never actually propagated to the one place that would have prevented it from happening again.
+**Acceptance_Criteria:**
+- [x] Root cause identified with direct evidence (the dossier's own "git stash"/"full pnpm test" language), not assumed.
+- [x] Real spend confirmed and disclosed precisely: $0.1839 across 44 `spend_records` rows, occurred 2026-09-16T13:30-13:33Z. These rows' own parent runs/tasks were already cleaned up by the test's own (incomplete) fixture teardown before ORCH found this -- consistent with the identical pattern from the first occurrence (spend_records survive fixture cleanup; nothing else does). Left in place as an honest permanent record rather than deleted, matching that same precedent.
+- [x] Fixture pollution cleaned up: 37 roles + their full cascade (327 role_grants, 9 role_messages, 3 role_routines, 2 threads, 2 messages -- 380 rows total), scoped precisely by `created_at` window and explicitly excluding `maximus`, verified intact before and after commit.
+- [x] The actual, structural fix: an explicit, prominent "NEVER run pnpm test/vitest directly" prohibition added to all three builder briefings (S5/Codex/Grok) -- the place a builder's own instructions actually live, not just PLAN.md's internal notes. Commit `5c5f7ed`.
+**Branch:** — (ORCH direct fix, briefings/** is ORCH's own docs-adjacent territory, not builder-owned)
+**Started_At:** 2026-09-16T15:12:03Z
+**Progress_Notes:**
+- [2026-09-16T15:12:03Z] [ORCH] Found, root-caused, cleaned up, and fixed at the source in one pass. The real lesson here is process, not code: disclosing an incident honestly (which happened correctly both times) is necessary but not sufficient -- the disclosure has to actually reach the place that changes future behavior. A note in PLAN.md that only ORCH ever reads does not do that for a builder session that starts fresh from its own briefing file each time.
+**Artifacts:** briefings/S5_BUILD_BRIEFING.md, briefings/CODEX_BRIEFING.md, briefings/GROK_BUILD_BRIEFING.md
+**Test_Evidence:** Live: production `roles` count confirmed back to 1 (`maximus` only) after cleanup; `spend_records` total confirmed via direct query ($0.1839/44 records, left as an honest record).
+**Review_Findings:** Self-reviewed (ORCH direct fix, three near-identical doc-string additions, zero behavior-code touched).
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-16T15:12:03Z
