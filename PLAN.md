@@ -8145,7 +8145,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-275
 **Title:** Bounded-room anti-runaway caps for group threads
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Bounded-room anti-runaway caps") -- confirmed present in origin/master and merged into CX9's own worktree 2026-09-16T23:10Z (a second real ORCH process gap: re-dispatching a RESUMED builder does not automatically pull new master commits into its existing branch, so the file's earlier commit never actually reached CX9 despite being on master); docs/STUDY-grok-bot-018.md (group chatter cost); services/control-api/src/ports.ts's routeGroupMessage and app.ts's real POST /threads/:id/messages handler (the actual live dispatch/history path)
@@ -8168,12 +8168,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T22:35:00Z] [ORCH] Confirmed CX9's core finding (zero group-thread awareness in services/worker, verified independently) but traced the architecture one step further and made a firm scope decision, quoted in full in the corrected Description above, to prevent a fourth blocked round: enforcement belongs entirely in services/control-api, checking real message history at the routing decision point, since nothing currently makes a bot reply auto-trigger a new round. Also fixed a real, separate ORCH oversight CX9 correctly caught: the remaining-work spec doc this task cites was written to disk earlier but never actually `git add`ed -- genuinely absent from every worktree until just now. Re-dispatching CX9 with both fixed.
 - [2026-09-16T23:05:20Z] [SV:CX9] Recorded fresh preflight and live-path evidence in the task dossier; control-api is the correct enforcement seam, but policy inputs are missing.
 - [2026-09-16T23:10:00Z] [ORCH] Both real. (1) A second, distinct ORCH process gap, not the same as the first: dispatch.ps1's resume path correctly preserves a builder's in-progress branch, but does NOT pull new master commits into it -- so the spec file's earlier commit, though genuinely on master, never reached CX9's own worktree. Fixed by merging origin/master into task/TASK-275-cx9 directly. (2) Specified concrete thresholds (cap=3 consecutive bot turns, 10-message rolling window, 2-repeat quiet-room trigger) in the corrected Description above, per CX9's own fair request not to invent policy numbers itself. Re-dispatching CX9.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-16T23:40:19Z] [SV:CX9] Implemented bounded group-room routing with persisted-history caps, quiet-room system notice, direct-mention override, and a 10-message Tier-0 context window; committed as 69ca74a.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/ports.ts, dossiers/TASK-275.md
+**Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Filter @oikonomos/control-api: 294/295 tests passed, including all 12 src/app.ts tests and new TASK-275 coverage. One unrelated existing TASK-269 failure remains because @oikonomos/db lacks getThreadEpoch/getLatestRunForThread exports; typecheck reports those same pre-existing imports only.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T23:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T23:40:19Z
 
 ### TASK-276
 **Title:** Database schema for bot templates and the Project entity (foundation only -- no API, no UI)
