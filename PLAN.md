@@ -8006,7 +8006,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-270
 **Title:** Adversarial review of TASK-269's conversation-continuity fix by a non-Anthropic model
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** TASK-269 (the implementation this reviews)
@@ -8021,9 +8021,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-16T13:56:25Z
 **Progress_Notes:**
 - [2026-09-16T13:12:14Z] [ORCH] Filed alongside TASK-269. Do not dispatch until TASK-269 reaches needs_review. ORCH manually times this dispatch rather than a hard Depends_On, which would deadlock (TASK-265's own precedent this session).
+- [2026-09-16T14:11:16Z] [SV:CX9] Completed adversarial review; found required rework for /threads/:id/fresh crossing the new Claude session-resume boundary. Review file is present but uncommitted.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: territory-precommit rejects the exact TASK-270 Owned_Path docs/decisions/TASK-269-review-cx9-2026-09.md as a protected docs/** path; no hook bypass attempted.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T13:56:25Z
+**Updated_At:** 2026-09-16T14:11:16Z
