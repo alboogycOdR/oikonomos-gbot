@@ -8006,7 +8006,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-270
 **Title:** Adversarial review of TASK-269's conversation-continuity fix by a non-Anthropic model
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** TASK-269 (the implementation this reviews)
@@ -8017,13 +8017,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] One review file at the Owned_Path with a verdict and required changes (possibly empty), each claim citing file:line on the reviewed commit.
 - [ ] Every pressure point answered with real evidence (a query, a re-run test, or a read of the actual code), not opinion.
 - [ ] No file outside Owned_Paths modified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-270-cx9
+**Started_At:** 2026-09-16T13:56:25Z
 **Progress_Notes:**
 - [2026-09-16T13:12:14Z] [ORCH] Filed alongside TASK-269. Do not dispatch until TASK-269 reaches needs_review. ORCH manually times this dispatch rather than a hard Depends_On, which would deadlock (TASK-265's own precedent this session).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T13:12:14Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T13:56:25Z
