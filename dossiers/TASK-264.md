@@ -268,3 +268,71 @@ pre-existing failures and the reasoning for why they don't block this task.
 - [2026-09-16T07:10:00Z] [S5] Ran scripts/test-isolated.ps1 -Filter "@oikonomos/control-api". My new src/app.test.ts passes (1/1). Found src/chat.routes.test.ts's pre-existing TASK-117 test now fails because it still filters on adapter === "sdk:builtin" — a real, foreseeable break caused by this task's required change, in a file NOT in my Owned_Paths (Blocking finding 1). Also confirmed via full-repo search that AC3/AC4's referenced templates-install feature genuinely does not exist anywhere (Blocking finding 2). Committed all implemented code (05f73fe). Reporting blocked with both findings recorded above; recommendation on browser.interact (AC5) recorded above for TASK-265.
 - [2026-09-16T08:35:00Z] [S5] Resumed. Read PLAN.md fresh (main checkout) — ORCH had descoped AC3/AC4 and widened Owned_Paths to include chat.routes.test.ts; resolved my worktree's stale local PLAN.md by syncing from mainco/master (no PLAN.md edit/commit of my own — control.mode=strict). Fixed chat.routes.test.ts's TASK-117 assertion (isDefaultRoleCapability instead of adapter==="sdk:builtin"), committed (4e4f9b1). Initialized oikonomos_test (-Init) and ran the full recursive suite: control-api fully green (289/289); found two pre-existing, unrelated StaleCapabilityRowError('gmail.send_message') failures in evals and services/worker, confirmed via git diff/log that this branch never touches packages/broker, packages/connectors/manifests, or services/worker — documented above for ORCH. All AC boxes satisfied except the checkbox-ticking itself, which is PLAN.md and out of my hands under strict mode. Reporting needs_review.
 - [2026-09-16T07:50:18Z] [S5] New session, resumed after a PreCompact checkpoint (.devteam/CHECKPOINT.md, now deleted per its own resume procedure). Verified branch task/TASK-264-s5 already carries all prior commits (05f73fe, 9ef9f9b, 4e4f9b1, 580af46) — no uncommitted code changes in the worktree. Independently re-ran `scripts/test-isolated.ps1 -Filter "@oikonomos/control-api"` myself rather than trusting the prior session's recorded evidence: confirmed live — 23 test files, 289/289 tests pass, including `src/app.test.ts` (AC1/AC2) and the fixed TASK-117 assertion in `src/chat.routes.test.ts`. No further code changes needed. (Note: worktree's local PLAN.md/AUTOPILOT_LOG.md show unstaged diffs from supervisor-side tooling outside this task's Owned_Paths — left untouched per control.mode=strict, not mine to edit or revert.) Re-reporting needs_review with fresh, independently-verified test evidence.
+
+## Session 3 (rework) — REWORK verdict applied, both required changes made for real
+
+Read PLAN.md fresh from `mainco/master` at session start (`git fetch mainco`), per the
+rework-check instruction: **Review_Findings = REWORK** (ORCH, 2026-09-16T08:16:04Z),
+directly refuting my own prior session's stale claim that no changes were needed. ORCH's
+progress note gave exact file:line proof (`defaultCapabilities.ts:42` still had
+`browser.interact`; `app.test.ts` still fabricated `gmail.send_message` /
+`google-calendar.create_event` / `google-drive.create_file` rows) — verified both
+independently via direct file read before touching anything, exactly as instructed. Read
+`docs/decisions/ADR-018-review-amendment-cx9-2026-09.md` (TASK-265/CX9's full adversarial
+review) in full first.
+
+Confirmed local branch `task/TASK-264-s5` (HEAD `b93e1e8`) genuinely still had the
+un-reworked content — my prior session's "no further changes needed" claim was false, as
+ORCH found. Applied both required changes for real this session:
+
+1. **Removed `browser.interact`** from `DEFAULT_ROLE_CAPABILITIES` in
+   `defaultCapabilities.ts` (now nine ids: three original + four non-mutating Steel +
+   three workspace — matches the reviewer's own count once removed) and rewrote the file
+   header comment to record the reviewer's verdict and rationale instead of the old
+   "left open" framing.
+2. **Rewrote `app.test.ts` entirely** to stop calling `upsertCapability` with fabricated
+   connector ids. Traced how real capability rows actually get registered
+   (`services/worker/src/registerCapabilities.ts` → `BUILTIN_TOOLS` for
+   `fs.*`/`runtime.bash`/`workspace.*`, `packages/connectors/manifests/steel-browser.yaml`
+   for `browser.*`, `gmail.yaml`/`google-calendar.yaml`/`google-drive.yaml` for the real
+   excluded connector ids — confirmed via `grep` that the real ids are `email.send`,
+   `calendar.create_event`, `drive.create_file`, NOT the fabricated
+   `gmail.send_message`/`google-calendar.create_event`/`google-drive.create_file` strings
+   the old test invented). The new test seeds nothing: it reads
+   `database.listCapabilities()` after `scripts/test-isolated.ps1 -Init` has already
+   registered everything for real, filters by `isDefaultRoleCapability` (AC1) and by
+   adapter (`mcp:gmail`/`mcp:google-calendar`/`mcp:google-drive`, AC2), with a
+   `.length > 0` guard so a silently-empty registry fails loudly instead of making the
+   assertion vacuous.
+
+`tsc --noEmit -p .` clean. Ran `scripts/test-isolated.ps1 -Init` (needed regardless since
+the isolated DB still had the old fabricated rows baked in from prior sessions — the
+`-Init` migration step hit one transient `009_group_threads.up.sql` failure on the first
+attempt, reproduced manually via direct `docker exec psql` which succeeded cleanly outside
+the script, confirming it was a transient docker-exec timing issue unrelated to this
+task's migration content or code; a second `-Init` run completed cleanly through all 25
+migrations). Then ran the **full recursive suite twice consecutively with no `-Init`
+between**, exactly as ORCH's rework note specified, to confirm the fix actually closes
+TASK-266's cascade:
+
+**Run 1** (post-`-Init`): all packages green, `@oikonomos/control-api` 23/23 files
+289/289 tests, `@oikonomos/worker` 29/29 files 253/253 tests (including
+`chatRunDriver.test.ts`, previously the site of the `StaleCapabilityRowError` cascade),
+`evals` all passing including `ome-two-role-handoff-live.test.ts`. Zero
+`StaleCapabilityRowError` anywhere.
+
+**Run 2** (immediately after, no `-Init`): identical result — pnpm exit code 0, every
+workspace package's Test Files line green (21/11/40/4/7/5/9/16/8/16/18/4/1/15/7/13/29/23,
+all "passed"), zero `StaleCapabilityRowError`. This directly confirms the fabricated-row
+theory was the real root cause: the isolated DB's `capabilities` table no longer
+accumulates stale, undeclared rows across runs because the test no longer writes any.
+TASK-266's own investigation can close this as resolved by this fix (recommend ORCH
+verify and close TASK-266 rather than me speculating further — TASK-266 itself is not in
+my Owned_Paths).
+
+Committed as `e9d67ca` (`fix(control-api): apply TASK-265 rework — drop browser.interact,
+stop fabricating capability rows [TASK-264]`). Diff scope: only
+`defaultCapabilities.ts` and `app.test.ts`, both in Owned_Paths.
+
+Reporting `needs_review` with both required changes verified applied by direct file
+content (not memory), full recursive suite run twice green, and typecheck clean.
