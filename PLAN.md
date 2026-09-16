@@ -7849,7 +7849,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-264
 **Title:** Implement ADR-018 Amendment 2026-09-16 -- widen the default role-capability floor to DEFAULT_ROLE_CAPABILITIES (adds browser.* and workspace self-management to auto-grant)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16 (the amendment section itself, Proposed); specs/OIKONOMOS_TEMPLATES_v1.0.md §3.2/§5.2/§10 (spec text ORCH updates after this merges, not part of this task's Owned_Paths -- specs/** stays protected)
@@ -7863,16 +7863,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A new test proves a template's `integrations[]` can never legitimately name a `DEFAULT_ROLE_CAPABILITIES` member (install refuses or ignores it -- your call which, name the choice explicitly in your dossier).
 - [ ] Dossier states your recommendation on `browser.interact`'s inclusion, with reasoning, for the reviewer to weigh in on.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-264-s5
+**Started_At:** 2026-09-16T05:49:12Z
 **Progress_Notes:**
 - [2026-09-16T05:47:44Z] [ORCH] Filed from ADR-018's Amendment 2026-09-16 (docs/decisions/ADR-018-bot-templates.md), itself triggered by TASK-263's incident and a direct owner product-design question about default tool availability. This is a security-relevant grant-boundary change; per ADR-018's own header, implementation and review must be by different models -- S5 (Claude) implements, TASK-265 (CX9/GPT) adversarially reviews. Do not merge without that review regardless of how clean the diff looks.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T05:47:44Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T05:49:12Z
 
 
 ### TASK-265
