@@ -7772,7 +7772,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-261
 **Title:** `scripts/test-isolated.ps1`'s watchdog disable/re-enable is not reliably self-healing — has now left the watchdog stuck `Disabled` at least three times this session, with no independent safeguard
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** `scripts/test-isolated.ps1:77-92` (`$watchdogWasReady` check, `schtasks /Change /TN $taskName /DISABLE` before the run, `/ENABLE` in the outer `finally`); `docs/runbooks/service-supervision.md` (the watchdog's own intended purpose — automatic recovery from exactly this kind of gap); PLAN.md orchestrator_notes' own recorded history of this recurring across TASK-245's acceptance session (2026-09-15) at least three times: once before A19's window opened, once mid-review, and once during TASK-260's own verification pass.
@@ -7788,12 +7788,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-15T20:07:23Z
 **Progress_Notes:**
 - [2026-09-15T10:40:00Z] [ORCH] Filed after this exact gap recurred a third time during TASK-260's own verification pass, live, during TASK-245's acceptance run — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the specific incident this was caught and fixed from. Prior occurrences already recorded in PLAN.md's own orchestrator_notes history for this session, under the "crash/reboot recovery" and general lessons sections.
+- [2026-09-16T05:46:54Z] [SV:S5] Designed the full fix (marker file + independent self-registering OIKONOMOS-WatchdogBackstop scheduled task, 5-min cadence, EncodedCommand recovery logic) but the territory-firewall hook mechanically blocked the very first edit to scripts/test-isolated.ps1 with 'protected path (protocol hard prohibition for S5), do not modify'. PLAN.md's TASK-261 Owned_Paths explicitly names this exact file, but AGENTS.md/briefing's hard-prohibition list and CLAUDE.md's DEVDEPARTMENT section both blanket-protect scripts/** as pack infrastructure, and the mechanical firewall enforces that with no apparent per-task exception. No files were modified (edit rejected before any write; working tree was clean before and after). Full design + resolution options + test plan recorded in dossier for whoever unblocks this.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: hooks/territory-firewall.js blocks all S5 writes to scripts/test-isolated.ps1 as a hard-prohibited path, but TASK-261's Owned_Paths in PLAN.md explicitly assigns that exact file to S5 and the task's entire scope requires editing it. Needs ORCH to either carve a firewall exception for this file/task or reassign the fix to a non-scripts/** path.
 **Updated_By:** SV
-**Updated_At:** 2026-09-15T20:07:23Z
+**Updated_At:** 2026-09-16T05:46:54Z
 
 ### TASK-262
 **Title:** The Steel browser MCP connector is currently unreachable for a freshly-provisioned role's sandbox session (`CONNECTION_CLOSED`), blocking real browser-workflow acceptance testing
