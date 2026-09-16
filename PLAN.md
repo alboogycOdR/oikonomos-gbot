@@ -8191,7 +8191,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-277
 **Title:** Capability-drift safety invariant (CapabilityEnabledDriftError) -- required before any manager-bot tool may exist
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-019-project-entity-and-manager-role.md (the manager role's project.* capabilities, explicitly shipped disabled-by-default pending this invariant); packages/broker/src/capabilityRegistry.ts (C5's existing tier-drift check, the precedent this mirrors)
@@ -8207,12 +8207,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-16T20:15:00Z
 **Progress_Notes:**
 - [2026-09-16T20:15:00Z] [ORCH] Filed as part of the user's 18-hour autopilot priority list (Tier 2, item 5). Deliberately sequenced BEFORE any manager-bot tool implementation -- the user's own "chief of staff creates/retires bots" request does not get a real tool until this exists and is proven live, per ADR-019's own explicit safety sequencing.
+- [2026-09-16T20:31:28Z] [SV:CX9] Read ADR-019 and live registry composition; recorded the conflict before implementation.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T20:15:00Z
+**Blocked_Reason:** SPEC_AMBIGUITY: ADR-019 mandates unconditional enabled-state-drift rejection and L1/declaration changes outside Owned_Paths, while TASK-277 permits an audited-enable exception without defining or owning its durable audit contract.
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T20:31:28Z
 
 ### TASK-278
 **Title:** Template export/import backend API (no UI) -- with the 5-class credential scan
