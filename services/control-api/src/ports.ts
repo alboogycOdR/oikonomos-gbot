@@ -531,8 +531,8 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     // very next message -- defeating the fresh-reset contract entirely.
     // Reuses the same epoch concept `chatRunDriver.ts`'s Gemini-lane
     // compaction logic already relies on, rather than inventing a second
-    // "start fresh" mechanism -- but reads it via `getThreadEpoch` (a plain
-    // SELECT, no row-lock), NOT `getOrInitThreadContext` (an UPSERT): this
+    // "start fresh" mechanism -- but reads it via `getThreadEpoch` (a plain,
+    // lock-free read), NOT `getOrInitThreadContext` (an UPSERT): this
     // runs on EVERY chat turn, and paying a write lock on `thread_context`
     // just to read a number that defaults to 0 until the first `/fresh`
     // would needlessly serialize back-to-back turns on the same thread.
