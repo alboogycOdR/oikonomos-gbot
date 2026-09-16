@@ -24,11 +24,15 @@
  *     account-linked case that correctly requires an explicit human grant
  *     step (CLAUDE.md non-negotiable #5, scope boundary).
  *
- * `browser.interact` is included per the amendment's own explicit set
- * (see the ADR amendment text and TASK-264's dossier for the reviewer-facing
- * discussion of whether it belongs at the same weight as its read-only
- * Steel siblings — that call was deliberately left open for TASK-265's
- * adversarial review, not decided unilaterally here).
+ * `browser.interact` is DELIBERATELY EXCLUDED per TASK-265's adversarial
+ * review (docs/decisions/ADR-018-review-amendment-cx9-2026-09.md, Q3 /
+ * Required change 1): it is the one mutating (click/type/fill) Steel
+ * capability in the amendment's candidate set, gated at `T2_internal`, and
+ * the amendment text left its automatic-grant status an open question for
+ * exactly that review to resolve. The reviewer's verdict was to keep it
+ * manual-grant-only pending an explicit human product/security decision —
+ * do not re-add it without that recorded decision. The four read-only/
+ * session Steel capabilities below are unaffected by that call.
  */
 export const DEFAULT_ROLE_CAPABILITIES = Object.freeze([
   // Unchanged from the original built-in floor (sdk:builtin).
@@ -36,10 +40,10 @@ export const DEFAULT_ROLE_CAPABILITIES = Object.freeze([
   "fs.write",
   "runtime.bash",
   // New — Steel browser sandbox, Basileia-owned, no personal account behind it.
+  // (browser.interact deliberately excluded — see file header comment.)
   "browser.session",
   "browser.navigate",
   "browser.read",
-  "browser.interact",
   "browser.screenshot",
   // New — core product self-management, not an external account at all.
   "workspace.rename_self",
