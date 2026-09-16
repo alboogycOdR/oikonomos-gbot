@@ -8145,7 +8145,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-275
 **Title:** Bounded-room anti-runaway caps for group threads
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Bounded-room anti-runaway caps") -- committed to git 2026-09-16T22:31Z, was genuinely missing from every worktree before that, a real ORCH oversight, not a CX9 error; docs/STUDY-grok-bot-018.md (group chatter cost); services/control-api/src/ports.ts's routeGroupMessage and app.ts's real POST /threads/:id/messages handler (the actual live dispatch/history path)
@@ -8166,12 +8166,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T22:05:00Z] [ORCH] CX9's finding was correct -- confirmed by direct code read: routeGroupMessage lives in services/control-api/src/ports.ts, and the real message-post handler is in app.ts. Widened Owned_Paths accordingly, kept the original worker files too since bot-authored turn counting may still need groupFanout.ts on the reply side. Re-dispatching CX9.
 - [2026-09-16T22:31:19Z] [SV:CX9] Recorded the live-path mismatch: group executions discard their group thread ID before bot-response persistence, leaving no group bot turns to cap or compare.
 - [2026-09-16T22:35:00Z] [ORCH] Confirmed CX9's core finding (zero group-thread awareness in services/worker, verified independently) but traced the architecture one step further and made a firm scope decision, quoted in full in the corrected Description above, to prevent a fourth blocked round: enforcement belongs entirely in services/control-api, checking real message history at the routing decision point, since nothing currently makes a bot reply auto-trigger a new round. Also fixed a real, separate ORCH oversight CX9 correctly caught: the remaining-work spec doc this task cites was written to disk earlier but never actually `git add`ed -- genuinely absent from every worktree until just now. Re-dispatching CX9 with both fixed.
+- [2026-09-16T23:05:20Z] [SV:CX9] Recorded fresh preflight and live-path evidence in the task dossier; control-api is the correct enforcement seam, but policy inputs are missing.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T22:35:00Z
+**Blocked_Reason:** MISSING_DEPENDENCY: specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md is absent from HEAD and origin/master; ORCH must also specify the consecutive-bot cap, history window, and quiet-repeat threshold.
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T23:05:20Z
 
 ### TASK-276
 **Title:** Database schema for bot templates and the Project entity (foundation only -- no API, no UI)
