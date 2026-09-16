@@ -7667,7 +7667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
@@ -7675,13 +7675,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** Found live during TASK-245's A19 acceptance case (2026-09-15): after a routine worker restart, `pgboss.job` showed 4,646 `worker.run-execution` jobs stuck in `created` state, almost all (4,416 of 4,646) under the `"basileia"` tenant with `provider: "test"` and titles like "TASK-080 fixture" — old `pnpm -r test` fixture runs left in an open status, swept up and re-queued for real execution by `reconcileInterruptedRuns` on every boot. Confirmed zero real cost risk (the `provider: "test"` value is rejected by `chatRunDriver.ts`'s own fail-closed provider guard before any real model call), but this backlog delays real queued work behind thousands of instantly-failing zombie jobs and will keep growing every boot until addressed. Two independent, non-exclusive fixes worth considering: (a) `reconcileInterruptedRuns` could skip runs under a recognizably test-fixture-shaped tenant/provider before re-queueing them; (b) TASK-231's cleanup could be extended to also purge stale open-status runs (not just the row types it already targets), closing the specific gap that task's own Progress_Notes already disclosed ("the shared, ambiguous 'basileia' tenant still grows").
 **Acceptance_Criteria:**
-- [ ] Root cause confirmed against real data (already done, see TASK-245's A19 evidence) — this task should not need to re-derive it, just build the fix.
-- [ ] Stale test-fixture runs no longer accumulate as real `worker.run-execution` jobs across repeated `pnpm -r test` + worker-restart cycles.
-- [ ] No real, non-test run is ever skipped by whatever filter is added — a false positive here would silently drop real accepted work, which is worse than the problem being fixed.
-- [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
+- [x] Root cause confirmed against real data (already done, see TASK-245's A19 evidence) — this task should not need to re-derive it, just build the fix.
+- [x] Stale test-fixture runs no longer accumulate as real `worker.run-execution` jobs across repeated `pnpm -r test` + worker-restart cycles.
+- [x] No real, non-test run is ever skipped by whatever filter is added — a false positive here would silently drop real accepted work, which is worse than the problem being fixed.
+- [x] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
 **Branch:** task/TASK-257-cx9
 **Started_At:** 2026-09-16T05:49:01Z
 **Progress_Notes:**
+- [2026-09-16T07:20:00Z] [ORCH] APPROVED first-pass, merged (REVIEW.md). Independently re-verified: the `routineJob.test.ts` timeout CX9 saw was environmental (reproduced clean on plain master, 2026ms); the `evals/harness`+`worker` StaleCapabilityRowError pair is confirmed pre-existing on plain master too (zero changes from this task or TASK-264 applied) -- filed as TASK-266, not blocking this merge. Residual scope note recorded in REVIEW.md: this fix covers the recurring `provider: "test"` leak class, not every one-off historical fixture shape (e.g. the already-cleaned-up 'Probe routine' pattern). Branch deleted post-merge.
 - [2026-09-16T05:47:44Z] [ORCH] Triaged: CX9's block was a real, transient tooling failure (Docker Desktop was down at the time -- the exact same outage independently diagnosed and fixed under TASK-263, unrelated to this task's own scope). Docker/Postgres/control-api/worker all confirmed healthy again since. Clearing the blocker and returning to pending for CX9 to resume; no fix needed to this task's own approach.
 - [2026-09-15T11:00:00Z] [ORCH] PRIORITY BUMPED low -> medium: this recurred a second time this session, at a larger scale (16,372 vs the original 8,770), and under a SECOND, differently-shaped stale-fixture naming pattern (a 'Probe routine' fixture, requested_by shaped `routine:<id>` rather than `test:<name>`) that the original cleanup rule did not anticipate -- confirmed this is a real, compounding, recurring gap, not a one-off. It directly delayed real acceptance-verification work this time (TASK-245's own live confirmation of TASK-258's fix), not just a theoretical concern. See docs/acceptance/workspace-1/A19-24h-observation.md for the full second-occurrence account, including the specific manual remediation applied (both times fully safe, zero unintended spend either time, but relying on manual re-derivation of the safe cleanup rule each time is not sustainable).
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
@@ -7690,10 +7691,10 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T07:14:16Z] [SV:CX9] Exact provider=test reconciliation boundary and 3 focused regression tests are committed; full isolated run was recorded but has unrelated existing routine/evals failures.
 **Artifacts:** services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts
 **Test_Evidence:** Worker typecheck passed; focused runLifecycle tests 3/3 passed. scripts/test-isolated.ps1 exited 1 due to unrelated routineJob timeout and evals/harness failure; details recorded in dossiers/TASK-257.md.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH, 2026-09-16T07:20:00Z, REVIEW.md). See REVIEW.md for full verdict.
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T07:14:16Z
+**Updated_At:** 2026-09-16T07:20:00Z
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
