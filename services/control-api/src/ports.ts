@@ -147,6 +147,10 @@ const EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN";
  * used only by `index.ts`'s `start()` and by the DATABASE_URL-gated
  * integration tests.
  */
+export type GroupRoutingDecision =
+  | { route: GroupRoute; routingRunId: string | null }
+  | { route: null; routingRunId: null; stopReason: "consecutive_bot_cap" | "quiet_room" };
+
 export interface ControlApiDeps {
   createTask(input: NewTask): Promise<Task>;
   /**
@@ -220,7 +224,7 @@ export interface ControlApiDeps {
     body: string;
     title: string;
     goal: string;
-  }): Promise<{ route: GroupRoute; routingRunId: string | null }>;
+  }): Promise<GroupRoutingDecision>;
   /**
    * TASK-177 (G-01b) — Skills CRUD, tenant-scoped like every other list
    * route. Declared optional (unlike every other port method here) purely
@@ -677,6 +681,12 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         dbListRoles(options, { tenantId, status: "active" }),
         dbListMessages(options, threadId),
       ]);
+      // TASK-275: Tier-0 gets a deliberately small, bounded transcript
+      // window. `listMessages` is oldest-first, so reverse only after
+      // truncating the tail to keep the ten newest entries newest-first.
+      const routingHistory = messages.slice(-GROUP_ROUTING_HISTORY_WINDOW).reverse();
+      const roomLimit = evaluateGroupRoomLimits(messages, body);
+      if (roomLimit !== null) return { route: null, routingRunId: null, stopReason: roomLimit };
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
       const members = memberRoleIds.map((roleId) => {
         const role = rolesById.get(roleId);
@@ -724,7 +734,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
           message: body,
           members,
           mostRecentResponderRoleId,
-          scorer: async ({ member, message }) => parseTierZeroScore(await tierZero(groupRoutingPrompt(member, message))),
+          scorer: async ({ member, message }) => parseTierZeroScore(await tierZero(groupRoutingPrompt(member, message, routingHistory))),
         });
         await completeTaskRun(options, routingRun.runId);
         return { route: resolved, routingRunId: routingRun.runId };
@@ -802,14 +812,48 @@ function resolveTierZeroProviderOptions(
 function groupRoutingPrompt(
   member: { title: string; description: string },
   message: string,
+  history: readonly Message[] = [],
 ): string {
+  const transcript = history.length === 0
+    ? "(no prior messages)"
+    : history.map((entry) => `[${entry.role}] ${entry.body}`).join("\n");
   return [
     "Return only a JSON object with a numeric score from 0 through 1.",
     "Score how appropriate it is for this group member to respond to the message.",
     `Member title: ${member.title}`,
     `Member description: ${member.description}`,
+    "Recent group transcript (newest first; at most 10 messages):",
+    transcript,
     `Message: ${message}`,
   ].join("\n");
+}
+
+/** TASK-275's conservative, explicitly configured Tier-0 context bound. */
+export const GROUP_ROUTING_HISTORY_WINDOW = 10;
+/** TASK-275's configured maximum number of trailing bot-authored turns. */
+export const GROUP_CONSECUTIVE_BOT_TURN_CAP = 3;
+/** TASK-275's configured count of identical trailing bot replies. */
+export const GROUP_QUIET_ROOM_REPEAT_CAP = 2;
+
+export function evaluateGroupRoomLimits(
+  messages: readonly Message[],
+  incomingBody: string,
+): "consecutive_bot_cap" | "quiet_room" | null {
+  // Grok Bot's direct-address convention deliberately overrides chatter
+  // controls; all unmentioned routing remains server-side fail-closed.
+  if (/@[\p{L}\p{N}_-]+/u.test(incomingBody)) return null;
+
+  let trailingBots = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role !== "bot") break;
+    trailingBots += 1;
+  }
+  if (trailingBots >= GROUP_CONSECUTIVE_BOT_TURN_CAP) return "consecutive_bot_cap";
+
+  const recent = messages.slice(-GROUP_QUIET_ROOM_REPEAT_CAP);
+  if (recent.length !== GROUP_QUIET_ROOM_REPEAT_CAP || recent.some((message) => message.role !== "bot")) return null;
+  const normalized = recent.map((message) => message.body.trim().toLocaleLowerCase());
+  return normalized.every((body) => body === normalized[0]) ? "quiet_room" : null;
 }
 
 function parseTierZeroScore(response: string): number {
