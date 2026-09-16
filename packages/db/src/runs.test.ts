@@ -6,20 +6,24 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   completeRun,
   createTask,
+  createTaskExecutionRun,
   defaultPoolConfig,
   getAuditEventsForRun,
+  getRun,
   IllegalRunTransitionError,
   insertApproval,
   insertAuditEvent,
   listPendingApprovals,
   listRuns,
+  resumeRun,
   startRun,
 } from "./index.js";
-// `listOpenRuns`/`openRunStatuses` (OIK-106) are new in this task and not
-// yet re-exported from the package barrel (`index.ts` is outside this
-// task's `Owned_Paths` — see the dossier) — imported directly from the
-// module instead.
-import { failRun, cancelRun, listOpenRuns, openRunStatuses, parkRun } from "./runs.js";
+// `listOpenRuns`/`openRunStatuses` (OIK-106) and `getLatestRunForThread`
+// (TASK-269) are new and not yet re-exported from the package barrel
+// (`index.ts` is outside this file's `Owned_Paths` — see the TASK-269
+// dossier; the identical gap for `listOpenRuns` was hit and resolved the
+// same way in OIK-106) — imported directly from the module instead.
+import { failRun, cancelRun, getLatestRunForThread, listOpenRuns, openRunStatuses, parkRun } from "./runs.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -445,6 +449,162 @@ integration("packages/db runs — parkRun (TASK-136)", () => {
     await expect(
       parkRun({ connectionString: connectionString! }, "00000000-0000-0000-0000-000000000000"),
     ).rejects.toThrow(/was not found/);
+  });
+});
+
+// TASK-269: getLatestRunForThread is the query the control-api's chat send
+// path uses to find the run it should continue from. Real Postgres, real
+// `tasks.execution` JSON (via `createTaskExecutionRun`, the same production
+// path `submitTaskExecution` calls) -- not a hand-built fixture that might
+// not match the real column shape.
+integration("packages/db runs — getLatestRunForThread (TASK-269)", () => {
+  let pool: Pool;
+  const roleId = "task-269-latestrun-role-a";
+  const otherRoleId = "task-269-latestrun-role-b";
+  const threadId = "22222222-2222-2222-2222-222222222222";
+  const otherThreadId = "33333333-3333-3333-3333-333333333333";
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = ANY($1))`,
+      [[roleId, otherRoleId]],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = ANY($1)`, [[roleId, otherRoleId]]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
+    await cleanup();
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("returns null for a thread with no prior run (first message ever)", async () => {
+    const result = await getLatestRunForThread(integrationOptions, { threadId });
+    expect(result).toBeNull();
+  });
+
+  it("finds the newest run for a thread via tasks.execution, ignoring runs on unrelated threads", async () => {
+    const older = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "turn 1", goal: "hi", requestedBy: "chat:thread:" + threadId },
+      execution: { version: 1, kind: "chat", threadId },
+      provider: "claude",
+    });
+    // A real gap between started_at values, same technique as this file's
+    // other suites, so "newest" is unambiguous without forcing a tie.
+    await pool.query(`UPDATE runs SET started_at = started_at - interval '1 minute' WHERE run_id = $1`, [
+      older.runId,
+    ]);
+    const newer = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "turn 2", goal: "hi again", requestedBy: "chat:thread:" + threadId },
+      execution: { version: 1, kind: "chat", threadId },
+      provider: "claude",
+    });
+    const unrelated = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "other thread", goal: "hi", requestedBy: "chat:thread:" + otherThreadId },
+      execution: { version: 1, kind: "chat", threadId: otherThreadId },
+      provider: "claude",
+    });
+
+    const result = await getLatestRunForThread(integrationOptions, { threadId });
+    expect(result?.runId).toBe(newer.runId);
+    expect(result?.runId).not.toBe(older.runId);
+    expect(result?.runId).not.toBe(unrelated.runId);
+  });
+
+  it("scopes by roleId so a group/fan-out thread never hands one recipient's session to another's turn", async () => {
+    const groupThreadId = "44444444-4444-4444-4444-444444444444";
+    const forRoleA = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "fanout a", goal: "hi", requestedBy: "chat:thread:" + groupThreadId },
+      execution: {
+        version: 1,
+        kind: "fanout",
+        threadId: groupThreadId,
+        sourceMessageId: "55555555-5555-5555-5555-555555555555",
+        recipientRoleId: roleId,
+      },
+      provider: "claude",
+    });
+    await pool.query(`UPDATE runs SET started_at = started_at - interval '1 minute' WHERE run_id = $1`, [
+      forRoleA.runId,
+    ]);
+    const forRoleB = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId: otherRoleId, title: "fanout b", goal: "hi", requestedBy: "chat:thread:" + groupThreadId },
+      execution: {
+        version: 1,
+        kind: "fanout",
+        threadId: groupThreadId,
+        sourceMessageId: "55555555-5555-5555-5555-555555555555",
+        recipientRoleId: otherRoleId,
+      },
+      provider: "claude",
+    });
+
+    const forA = await getLatestRunForThread(integrationOptions, { threadId: groupThreadId, roleId });
+    expect(forA?.runId).toBe(forRoleA.runId);
+    const forB = await getLatestRunForThread(integrationOptions, { threadId: groupThreadId, roleId: otherRoleId });
+    expect(forB?.runId).toBe(forRoleB.runId);
+    // MUTATION-PROOF: without the role_id filter, both queries above would
+    // return whichever run is newest overall (forRoleB), silently handing
+    // role A's turn role B's Claude session.
+    expect(forA?.runId).not.toBe(forB?.runId);
+  });
+});
+
+// TASK-269: `resumeRun` is the existing, already-tested machinery this
+// task's ports.ts wiring reuses to seed a brand-new run's `session_ref`
+// with a prior completed run's session (continuity) and, separately,
+// chatRunDriver.ts reuses it to record the REAL session id the Claude CLI
+// itself reports once a turn completes. Prove both call shapes work exactly
+// the way those call sites depend on: overwriting an existing session_ref
+// (not just filling a null one), and remaining legal on a run whose status
+// is already 'started' (never previously resumed).
+integration("packages/db runs — resumeRun as a session_ref setter (TASK-269 reuse)", () => {
+  let pool: Pool;
+  const roleId = "task-269-resumeasfset-role";
+  let taskId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
+    await cleanup();
+    const task = await createTask(integrationOptions, { roleId, title: "fixture", goal: "g", requestedBy: "alister" });
+    taskId = task.taskId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("seeds a session_ref on a freshly-started run (continuity) and moves it to 'resumed'", async () => {
+    const run = await startRun(integrationOptions, { taskId, provider: "claude" });
+    expect(run.sessionRef).toBeNull();
+
+    const seeded = await resumeRun(integrationOptions, run.runId, "prior-turn-session-id");
+    expect(seeded.status).toBe("resumed");
+    expect(seeded.sessionRef).toBe("prior-turn-session-id");
+  });
+
+  it("overwrites an already-seeded session_ref with the CLI's real one after execution", async () => {
+    const run = await startRun(integrationOptions, { taskId, provider: "claude" });
+    await resumeRun(integrationOptions, run.runId, "seeded-placeholder");
+
+    const recorded = await resumeRun(integrationOptions, run.runId, "real-cli-session-id");
+    expect(recorded.sessionRef).toBe("real-cli-session-id");
+
+    const reread = await getRun(integrationOptions, run.runId);
+    expect(reread?.sessionRef).toBe("real-cli-session-id");
   });
 });
 

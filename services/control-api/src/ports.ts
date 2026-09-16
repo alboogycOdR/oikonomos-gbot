@@ -56,6 +56,13 @@ import {
   fulfillPendingSecretRequest as dbFulfillPendingSecretRequest,
   declineSecretRequest as dbDeclineSecretRequest,
   resumeRun as dbResumeRun,
+  // TASK-269: NOT YET re-exported from packages/db/src/index.ts -- that
+  // barrel file is outside this task's Owned_Paths (see the dossier's
+  // OWNERSHIP_CONFLICT). `getLatestRunForThread` itself is implemented and
+  // tested in packages/db/src/runs.ts (Owned_Paths for this task); this
+  // import, and every build/typecheck that depends on it, cannot succeed
+  // until the one-line barrel export is added.
+  getLatestRunForThread as dbGetLatestRunForThread,
   SECRET_VAULT_WRITE_EVENT,
   RoutineLimitError,
   type AuditEvent,
@@ -481,11 +488,60 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
   const submitTaskExecution: NonNullable<ControlApiDeps["submitTaskExecution"]> = async ({ task, execution }) => {
     const role = await dbGetRole(options, task.roleId);
     if (role === null) throw new Error(`Cannot queue task execution: role ${task.roleId} not found.`);
+    const provider = resolveRoleRuntime(role).provider;
+    // TASK-269: an ordinary follow-up message in an existing thread must
+    // continue the SAME Agent SDK session the thread's last turn used, not
+    // start a fresh, memoryless one every time. Look up the thread's most
+    // recent prior run BEFORE creating this turn's own run below --
+    // `getLatestRunForThread` orders by `started_at DESC` with no way to
+    // exclude a not-yet-existing row, so querying it after
+    // `createTaskExecutionRun` would find the run THIS call just created
+    // (itself always the newest) instead of the real predecessor, and
+    // silently never seed continuity at all.
+    //
+    // Deliberately conservative about WHEN to seed:
+    // - no prior run for this thread+role -> first message ever, start
+    //   fresh (do nothing here).
+    // - prior run's provider differs from this run's -> never hand a
+    //   Claude session token to a Gemini run or vice versa (the exact
+    //   danger chatRunDriver.ts's own provider-pinning comment names).
+    // - prior run did not reach 'completed' -> nothing safe to resume (a
+    //   still-open, failed, or cancelled run has no known-good session
+    //   state to continue from).
+    //
+    // Deliberately fails CLOSED to "no continuity" (never lets a lookup
+    // problem here block message-sending itself, which is the one thing
+    // this port must never regress): `getLatestRunForThread` is a new
+    // accessor not yet re-exported from packages/db/src/index.ts (outside
+    // this task's Owned_Paths -- see the dossier's OWNERSHIP_CONFLICT), so
+    // until that one-line barrel export lands, this call throws and this
+    // path must still create and queue an ordinary, un-seeded run exactly
+    // as it did before this task, not fail the whole chat turn.
+    let priorRun: Awaited<ReturnType<typeof dbGetLatestRunForThread>> | null = null;
+    try {
+      priorRun = await dbGetLatestRunForThread(options, { threadId: execution.threadId, roleId: task.roleId });
+    } catch (error) {
+      console.error("TASK-269 continuity lookup failed; continuing without session continuity for this turn:", error);
+    }
     const persisted = await dbCreateTaskExecutionRun(options, {
       task,
       execution,
-      provider: resolveRoleRuntime(role).provider,
+      provider,
     });
+    // `createTaskExecutionRun` always inserts a brand-new run with no
+    // `session_ref` (correct for a genuinely first message); seed
+    // continuity here, BEFORE this run is ever enqueued, by reusing
+    // `dbResumeRun` -- already-tested machinery that sets both
+    // `session_ref` and `status='resumed'` atomically -- to attach the
+    // prior run's session. `services/worker/src/main.ts` (unchanged,
+    // outside this task's territory) already forwards `run.sessionRef` as
+    // `resume.sessionRef` to the driver whenever it is non-null, so seeding
+    // it here is the only wiring this path needs; chatRunDriver.ts's
+    // existing `--resume` plumbing (and this task's new post-run
+    // session_ref capture, see that file) does the rest.
+    if (priorRun !== null && priorRun.status === "completed" && priorRun.provider === provider) {
+      await dbResumeRun(options, persisted.runId, priorRun.sessionRef ?? priorRun.runId);
+    }
     await recordQueuedRun({
       runId: persisted.runId,
       taskId: persisted.task.taskId,

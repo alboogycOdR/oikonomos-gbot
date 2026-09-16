@@ -223,6 +223,63 @@ export async function getRun(
   });
 }
 
+export interface LatestRunForThreadFilter {
+  /** `tasks.execution ->> 'threadId'` — chat/fanout commands are the only
+   * `TaskExecution` kinds that carry one (see `@oikonomos/db`'s `tasks.ts`,
+   * outside this file). */
+  threadId: string;
+  /**
+   * Restrict to runs whose task belongs to this role. REQUIRED for correct
+   * continuity in a group/fan-out thread (TASK-269): several recipients can
+   * share one `threadId`, each with their own independent Claude session --
+   * without this filter, "the thread's latest run" could belong to a
+   * DIFFERENT bot's turn and handing its `session_ref` to this bot would
+   * resume the wrong conversation entirely. Optional only so a caller that
+   * genuinely wants "any role" (none exist yet) is not forced to fabricate
+   * one; every known caller today passes it.
+   */
+  roleId?: string;
+}
+
+/**
+ * The most recent run for a thread (TASK-269) -- the exact query an
+ * ordinary follow-up chat message needs to find the run it should continue
+ * from. `runs` has no `thread_id` column: a run's thread lives on its
+ * task's reference-only `execution` JSON (`tasks.execution ->> 'threadId'`),
+ * so this joins through `tasks` rather than assuming a filter `listRuns`
+ * already exposes -- it doesn't (checked: `listRuns` filters by
+ * `tenantId`/`status`/`taskId`/`cursor` only).
+ *
+ * Returns `null` when the thread has no prior run at all (its very first
+ * message) -- callers must treat that as "start fresh", never as an error.
+ */
+export async function getLatestRunForThread(
+  options: DatabaseOptions,
+  filter: LatestRunForThreadFilter,
+): Promise<Run | null> {
+  const threadId = requireUuid(filter.threadId, "threadId");
+  const conditions: string[] = [`t.execution ->> 'threadId' = $1`];
+  const params: unknown[] = [threadId];
+  if (filter.roleId !== undefined) {
+    params.push(requireNonEmpty(filter.roleId, "roleId"));
+    conditions.push(`t.role_id = $${params.length}`);
+  }
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RunRow>(
+      `SELECT r.run_id, r.task_id, r.tenant_id, r.provider, r.session_ref, r.status,
+              r.started_at, r.ended_at, r.failure_note
+       FROM runs r
+       JOIN tasks t ON r.task_id = t.task_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY r.started_at DESC, r.run_id DESC
+       LIMIT 1`,
+      params,
+    );
+    return result.rows[0] === undefined ? null : toRun(result.rows[0]);
+  });
+}
+
 /**
  * Resume a run — after a killed process, a fresh worker re-reads the
  * persisted `session_ref` (via `getRun`) and hands it back here so the
@@ -651,6 +708,18 @@ if (import.meta.vitest) {
       await expect(
         listOpenRuns({ connectionString: "postgres://x" }, { taskId: "not-a-uuid" }),
       ).rejects.toThrow(/UUID/);
+    });
+
+    it("rejects an invalid threadId or roleId on getLatestRunForThread (TASK-269)", async () => {
+      await expect(
+        getLatestRunForThread({ connectionString: "postgres://x" }, { threadId: "not-a-uuid" }),
+      ).rejects.toThrow(/threadId/);
+      await expect(
+        getLatestRunForThread(
+          { connectionString: "postgres://x" },
+          { threadId: "11111111-1111-1111-1111-111111111111", roleId: "   " },
+        ),
+      ).rejects.toThrow(/roleId/);
     });
 
     it("openRunStatuses is exactly the resume/fail/cancel-eligible set", () => {

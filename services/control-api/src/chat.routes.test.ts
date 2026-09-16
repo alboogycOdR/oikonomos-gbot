@@ -7,13 +7,16 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   Database,
   defaultPoolConfig,
+  completeRun,
   createTask,
   getRole,
+  getRun,
   insertApproval,
   insertMessage,
   listMessages,
   listRuns,
   parkRun,
+  resumeRun,
   startRun,
   listAllThreadsWithMembers,
   listRoutines,
@@ -1583,6 +1586,208 @@ integration("POST /threads/:id/attachments — real Postgres durable submission 
       await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
       await pool.end();
       await rm(storeRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// TASK-269 — real Postgres, real HTTP route, real `submitTaskExecution`
+// (via `createDatabaseBackedDeps`). Deliberately does NOT start a worker
+// consumer or wait for driver execution, mirroring this file's own
+// established boundary (see the TASK-155 suite's ADR-016 comment above): a
+// direct SDK call from this isolated API-process suite would be a
+// regression, not evidence. Instead this proves the exact thing
+// `submitTaskExecution` itself is responsible for -- seeding (or correctly
+// NOT seeding) a brand-new run's `session_ref` before it is ever enqueued --
+// by inspecting the persisted run row after each POST. The Claude CLI's own
+// real session capture (`chatRunDriver.ts`'s `extractClaudeSessionId` +
+// `resumeRun` write) is unit-tested separately in `chatRunDriver.test.ts`.
+integration("POST /threads/:id/messages — conversation continuity (TASK-269)", () => {
+  const options = integrationOptions;
+
+  async function latestRunForRole(pool: Pool, roleId: string): Promise<{ runId: string; sessionRef: string | null; status: string; provider: string } | undefined> {
+    const result = await pool.query<{ run_id: string; session_ref: string | null; status: string; provider: string }>(
+      `SELECT r.run_id, r.session_ref, r.status, r.provider
+       FROM runs r JOIN tasks t ON r.task_id = t.task_id
+       WHERE t.role_id = $1
+       ORDER BY r.started_at DESC LIMIT 1`,
+      [roleId],
+    );
+    const row = result.rows[0];
+    return row === undefined ? undefined : { runId: row.run_id, sessionRef: row.session_ref, status: row.status, provider: row.provider };
+  }
+
+  // `POST /threads/:id/messages` deliberately does not await
+  // `submitTaskExecution` before responding (app.ts: `void submit.catch(...)`,
+  // so a slow worker enqueue never blocks the HTTP reply) — so the run row
+  // this suite asserts on can persist a few milliseconds after `app.inject`
+  // resolves. Poll instead of a fixed sleep so this is fast on a healthy run
+  // and never flaky under load.
+  async function waitForRunOtherThan(
+    pool: Pool,
+    roleId: string,
+    excludeRunId: string | undefined,
+  ): Promise<{ runId: string; sessionRef: string | null; status: string; provider: string }> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const run = await latestRunForRole(pool, roleId);
+      if (run !== undefined && run.runId !== excludeRunId) return run;
+      if (Date.now() > deadline) throw new Error(`waitForRunOtherThan: no new run appeared for role ${roleId} within 5s.`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  it("seeds a follow-up message's run with the thread's prior COMPLETED run's session_ref, never on the first message", async () => {
+    const roleId = `task-269-continuity-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
+    let app: ReturnType<typeof buildApp> | undefined;
+    try {
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description, provider)
+         VALUES ($1, 'basileia', $1, 'TASK-269 fixture', 'TASK-269 fixture', 'claude')`,
+        [roleId],
+      );
+      const threadResult = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId]);
+      const threadId = threadResult.rows[0]!.id;
+      app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+
+      const firstPost = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "my favorite color is teal" },
+      });
+      expect(firstPost.statusCode).toBe(201);
+      const firstRun = await waitForRunOtherThan(pool, roleId, undefined);
+      expect(firstRun).toBeDefined();
+      // First message ever on this thread: nothing to continue from.
+      expect(firstRun!.sessionRef).toBeNull();
+      expect(firstRun!.status).toBe("started");
+
+      // Simulate what chatRunDriver.ts does once a real Claude turn
+      // completes: capture the CLI's own session id, then finish the run.
+      await resumeRun(options, firstRun!.runId, "real-claude-cli-session-abc");
+      await completeRun(options, firstRun!.runId);
+
+      const secondPost = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "what did I just tell you my favorite color was" },
+      });
+      expect(secondPost.statusCode).toBe(201);
+      const secondRun = await waitForRunOtherThan(pool, roleId, firstRun!.runId);
+      expect(secondRun).toBeDefined();
+      expect(secondRun!.runId).not.toBe(firstRun!.runId);
+      // The follow-up turn's run is seeded with the prior turn's real
+      // session id BEFORE it is ever enqueued -- the actual mechanism that
+      // lets `--resume` continue the same Agent SDK session, so the second
+      // reply can genuinely reference "teal" instead of starting fresh.
+      expect(secondRun!.sessionRef).toBe("real-claude-cli-session-abc");
+      expect(secondRun!.status).toBe("resumed");
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
+    }
+  });
+
+  it("does NOT seed continuity when the prior run never completed (still open / failed / cancelled)", async () => {
+    const roleId = `task-269-nocontinuity-open-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
+    let app: ReturnType<typeof buildApp> | undefined;
+    try {
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description, provider)
+         VALUES ($1, 'basileia', $1, 'TASK-269 fixture', 'TASK-269 fixture', 'claude')`,
+        [roleId],
+      );
+      const threadResult = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId]);
+      const threadId = threadResult.rows[0]!.id;
+      app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+
+      const firstPost = await app.inject({
+        method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "turn one" },
+      });
+      expect(firstPost.statusCode).toBe(201);
+      const firstRun = await waitForRunOtherThan(pool, roleId, undefined);
+      // Left 'started' -- never completed, e.g. the worker is still mid-turn.
+
+      const secondPost = await app.inject({
+        method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "turn two" },
+      });
+      expect(secondPost.statusCode).toBe(201);
+      const secondRun = await waitForRunOtherThan(pool, roleId, firstRun!.runId);
+      expect(secondRun!.runId).not.toBe(firstRun!.runId);
+      expect(secondRun!.sessionRef).toBeNull();
+      expect(secondRun!.status).toBe("started");
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
+    }
+  });
+
+  it("does NOT seed continuity across a provider switch (a Claude session token must never reach a Gemini run, or vice versa)", async () => {
+    const roleId = `task-269-nocontinuity-provider-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
+    let app: ReturnType<typeof buildApp> | undefined;
+    try {
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description, provider)
+         VALUES ($1, 'basileia', $1, 'TASK-269 fixture', 'TASK-269 fixture', 'claude')`,
+        [roleId],
+      );
+      const threadResult = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId]);
+      const threadId = threadResult.rows[0]!.id;
+      app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
+
+      const firstPost = await app.inject({
+        method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "turn one on claude" },
+      });
+      expect(firstPost.statusCode).toBe(201);
+      const firstRun = await waitForRunOtherThan(pool, roleId, undefined);
+      await resumeRun(options, firstRun!.runId, "claude-session-before-switch");
+      await completeRun(options, firstRun!.runId);
+
+      // The role's provider changes mid-conversation -- a real, if unusual,
+      // operator action (see chatRunDriver.ts's own provider-pinning
+      // comment for why this must never hand a Gemini run a Claude token).
+      await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [roleId]);
+
+      const secondPost = await app.inject({
+        method: "POST", url: `/threads/${threadId}/messages`, headers: authHeaders(), payload: { body: "turn two on gemini now" },
+      });
+      expect(secondPost.statusCode).toBe(201);
+      const secondRun = await waitForRunOtherThan(pool, roleId, firstRun!.runId);
+      expect(secondRun!.runId).not.toBe(firstRun!.runId);
+      expect(secondRun!.provider).toBe("gemini");
+      expect(secondRun!.sessionRef).toBeNull();
+      expect(secondRun!.status).toBe("started");
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
     }
   });
 });
