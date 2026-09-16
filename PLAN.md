@@ -7667,7 +7667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
@@ -7687,12 +7687,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
 - [2026-09-16T05:46:54Z] [SV:CX9] Exact provider=test fixture boundary added; reconciliation test proves fixture runs are skipped while normal runs requeue.
 - [2026-09-16T06:13:49Z] [SV:CX9] Fixture-provider reconciliation fix is committed; focused worker typecheck and 3/3 regression tests pass. Full isolated suite began successfully but its final exit code was not captured. NEXT: Run one persistent powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 invocation and capture its final pnpm exit code.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-16T07:14:16Z] [SV:CX9] Exact provider=test reconciliation boundary and 3 focused regression tests are committed; full isolated run was recorded but has unrelated existing routine/evals failures.
+**Artifacts:** services/worker/src/runLifecycle.ts, services/worker/src/runLifecycle.test.ts
+**Test_Evidence:** Worker typecheck passed; focused runLifecycle tests 3/3 passed. scripts/test-isolated.ps1 exited 1 due to unrelated routineJob timeout and evals/harness failure; details recorded in dossiers/TASK-257.md.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T06:13:49Z
+**Updated_At:** 2026-09-16T07:14:16Z
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
