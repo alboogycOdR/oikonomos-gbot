@@ -8,6 +8,7 @@ import { BUILTIN_TOOLS } from "./builtinTools.js";
 import {
   CapabilityNotRegisteredError,
   CapabilityOwnershipError,
+  CapabilityEnabledDriftError,
   CapabilityRegistry,
   CapabilityTierDriftError,
   DuplicateToolDeclarationError,
@@ -37,7 +38,7 @@ function reader(rows: readonly PersistedCapability[], grants = new Map<string, "
 
 function rowsFor(declared: readonly DeclaredTool[]): PersistedCapability[] {
   return [...new Map(declared.map((entry) => [entry.capabilityId, {
-    capabilityId: entry.capabilityId, defaultTier: entry.defaultTier, adapter: entry.adapter, enabled: true,
+    capabilityId: entry.capabilityId, defaultTier: entry.defaultTier, adapter: entry.adapter, enabled: entry.enabled,
   }])).values()];
 }
 
@@ -86,6 +87,16 @@ describe("CapabilityRegistry construction closure", () => {
       .rejects.toThrow(gmail.capabilityId);
   });
 
+  it("throws CapabilityEnabledDriftError for enabled-state drift in either direction", async () => {
+    const declaredDisabled = { ...gmail, enabled: false };
+    await expect(CapabilityRegistry.build({
+      declared: [gmail], persisted: reader([{ ...rowsFor([gmail])[0]!, enabled: false }]),
+    })).rejects.toThrow(CapabilityEnabledDriftError);
+    await expect(CapabilityRegistry.build({
+      declared: [declaredDisabled], persisted: reader([{ ...rowsFor([declaredDisabled])[0]!, enabled: true }]),
+    })).rejects.toThrow(CapabilityEnabledDriftError);
+  });
+
   it("C6 throws StaleCapabilityRowError with the stale capability", async () => {
     const rows = [...rowsFor([gmail]), { capabilityId: "email.stale", defaultTier: "T0_observe" as const, adapter: "mcp:gmail", enabled: true }];
     await expect(CapabilityRegistry.build({ declared: [gmail], persisted: reader(rows) }))
@@ -130,6 +141,18 @@ describe("CapabilityRegistry resolution ports", () => {
     vi.mocked(store.getCapability).mockResolvedValueOnce(null);
     await expect(ports.getCapability(gmail.toolName)).resolves.toBeNull();
     expect(store.getCapability).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps declared-disabled capabilities out of ports and mounts regardless of grants", async () => {
+    const disabled = { ...gmail, capabilityId: "project.create_role", enabled: false };
+    const store = reader(rowsFor([disabled]), new Map([[`manager:${disabled.capabilityId}`, "T4_irreversible"]]));
+    const registry = await CapabilityRegistry.build({ declared: [disabled], persisted: store });
+    const ports = registry.brokerPorts(store);
+
+    await expect(ports.getCapability(disabled.toolName)).resolves.toBeNull();
+    expect(ports.isCapabilityDeclaredDisabled?.(disabled.toolName)).toBe(true);
+    expect(registry.enabledToolNames.has(disabled.toolName)).toBe(false);
+    expect(store.getCapability).not.toHaveBeenCalled();
   });
 
   it("maps a persisted role grant exactly and preserves missing grants", async () => {
@@ -194,5 +217,24 @@ describe("ADR-013 liveness layer 2", () => {
     await expect(handlePreToolUse({ ...request, toolUseId: "liveness-2" }, brokerDependencies(mutatedRegistry, mutatedPersisted, deniedEvents)))
       .resolves.toMatchObject({ decision: "deny", reason: "allowlist.miss" });
     expect(deniedEvents).toEqual([expect.objectContaining({ verdict: "deny", reason: "allowlist.miss" })]);
+  });
+});
+
+describe("ADR-019 Invariant A declared-disabled L1 enforcement", () => {
+  it("LIVENESS: denies a granted declared-disabled capability before the mount allowlist", async () => {
+    const disabled = { ...gmail, capabilityId: "project.create_role", enabled: false };
+    const persisted = reader(
+      rowsFor([disabled]),
+      new Map([[`manager:${disabled.capabilityId}`, "T4_irreversible"]]),
+    );
+    const registry = await CapabilityRegistry.build({ declared: [disabled], persisted });
+    const events: unknown[] = [];
+    const response = await handlePreToolUse({
+      toolUseId: "declared-disabled-1", runId: "11111111-1111-1111-1111-111111111111", roleId: "manager", tenantId: "basileia",
+      toolName: disabled.toolName, input: { path: "/workspace/inbox" }, agentRef: { provider: "test", sessionRef: "test", isSubagent: false },
+    }, brokerDependencies(registry, persisted, events));
+
+    expect(response).toMatchObject({ decision: "deny", reason: "capability.declared_disabled" });
+    expect(events).toEqual([expect.objectContaining({ verdict: "deny", reason: "capability.declared_disabled" })]);
   });
 });
