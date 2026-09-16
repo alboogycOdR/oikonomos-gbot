@@ -8145,7 +8145,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-275
 **Title:** Bounded-room anti-runaway caps for group threads
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Bounded-room anti-runaway caps"); docs/STUDY-grok-bot-018.md (group chatter cost, the documented reason Grok Bot needed this); services/worker/src/groupFanout.ts (existing 6-member cap, the only limit currently enforced); services/control-api/src/ports.ts's routeGroupMessage and services/control-api/src/app.ts's real POST /threads/:id/messages handler (the actual live dispatch/history path, confirmed by CX9's own correct territory finding -- group-thread turn counting and history assembly happen here, not in services/worker)
@@ -8164,12 +8164,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T20:31:00Z] [ORCH] TASK-274 done -- dependency met. Queued next for CX9 once TASK-277 (currently in progress) reaches needs_review or done.
 - [2026-09-16T21:52:47Z] [SV:CX9] Live group-thread dispatch and history are controlled by unowned control-api files; owned worker files lack group-thread context, so a server-side cap would be inert.
 - [2026-09-16T22:05:00Z] [ORCH] CX9's finding was correct -- confirmed by direct code read: routeGroupMessage lives in services/control-api/src/ports.ts, and the real message-post handler is in app.ts. Widened Owned_Paths accordingly, kept the original worker files too since bot-authored turn counting may still need groupFanout.ts on the reply side. Re-dispatching CX9.
+- [2026-09-16T22:31:19Z] [SV:CX9] Recorded the live-path mismatch: group executions discard their group thread ID before bot-response persistence, leaving no group bot turns to cap or compare.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T22:05:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Requires services/worker/src/main.ts and its test coverage, plus direction for the missing bounded group-round orchestration; the referenced parity spec file is absent.
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T22:31:19Z
 
 ### TASK-276
 **Title:** Database schema for bot templates and the Project entity (foundation only -- no API, no UI)
