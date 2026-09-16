@@ -7888,7 +7888,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-265
 **Title:** Adversarial review of TASK-264 (ADR-018 Amendment 2026-09-16 implementation) by a non-Anthropic model, per the ADR's own different-model review requirement
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16; TASK-264 (the implementation this reviews); ADR-018's original header ("Implementing tasks on ... the control-api routes require adversarial review by a model other than their author"); ADR-018-review-cx9-2026-09.md (the review-format precedent to mirror)
@@ -7899,8 +7899,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] One review file at the Owned_Path with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
 - [ ] Every pressure point in the Description is answered explicitly, with evidence (a real query or a real test run), not opinion.
 - [ ] No file outside Owned_Paths is modified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-265-cx9
+**Started_At:** 2026-09-16T07:19:49Z
 **Progress_Notes:**
 - [2026-09-16T07:22:00Z] [ORCH] Fixed own filing error: Depends_On: TASK-264 deadlocks, since a review task cannot wait for the thing it exists to unblock to already be done. Removed the field; ORCH manually times this dispatch once TASK-264 reaches needs_review (already true).
 - [2026-09-16T05:47:44Z] [ORCH] Filed alongside TASK-264. Do not dispatch until TASK-264 reaches needs_review -- resume-first dispatch logic will otherwise have nothing to review yet.
@@ -7908,8 +7908,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T05:47:44Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T07:19:49Z
 
 ### TASK-266
 **Title:** Root-cause the recurring `StaleCapabilityRowError: gmail.send_message` cascade in the isolated test database -- a capability id that exists in no current source, fixture, migration, or manifest
