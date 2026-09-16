@@ -74,9 +74,19 @@ if ($Init) {
 }
 
 Write-Host "[test-isolated] database: $testDb (container $container)"
+# TASK-261: an independent guardian (scripts/watchdog-guardian.ps1, its own
+# Scheduled Task) watches for this marker and force-re-enables the watchdog
+# if it goes stale -- a backstop for the case where this script itself is
+# killed before the `finally` below can run. The `finally` stays the fast
+# path; this marker is only ever consulted if that fast path never fires.
+$watchdogMarker = Join-Path $repoRoot "infra\compose\logs\watchdog-disabled.marker"
 $watchdogWasReady = (schtasks /Query /TN $taskName /FO LIST 2>$null | Select-String "Status:\s+Ready") -ne $null
 try {
-  if ($watchdogWasReady) { schtasks /Change /TN $taskName /DISABLE | Out-Null; Write-Host "[test-isolated] watchdog disabled" }
+  if ($watchdogWasReady) {
+    schtasks /Change /TN $taskName /DISABLE | Out-Null
+    Set-Content -Path $watchdogMarker -Value (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    Write-Host "[test-isolated] watchdog disabled (guardian marker written)"
+  }
   $workers = Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*dist*main.js*" }
   foreach ($w in $workers) { Stop-Process -Id $w.ProcessId -Force; Write-Host "[test-isolated] stopped live worker pid $($w.ProcessId)" }
 
@@ -89,6 +99,10 @@ try {
   } finally { Pop-Location }
   Write-Host "[test-isolated] pnpm exit code $code (database $testDb)"
 } finally {
-  if ($watchdogWasReady) { schtasks /Change /TN $taskName /ENABLE | Out-Null; Write-Host "[test-isolated] watchdog re-enabled (worker restarts within 2 minutes)" }
+  if ($watchdogWasReady) {
+    schtasks /Change /TN $taskName /ENABLE | Out-Null
+    Remove-Item -Path $watchdogMarker -Force -ErrorAction SilentlyContinue
+    Write-Host "[test-isolated] watchdog re-enabled (worker restarts within 2 minutes)"
+  }
 }
 exit $code
