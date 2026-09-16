@@ -7976,7 +7976,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-269
 **Title:** CRITICAL -- an ordinary follow-up chat message never continues the previous Claude session; every turn in a conversation starts completely fresh with zero memory of anything said before it
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** `services/control-api/src/app.ts`'s `POST /threads/:id/messages` (1:1 and group-with-one-recipient branches, ~lines 1926-1943 and ~1899-1917); `services/control-api/src/ports.ts`'s `submitTaskExecution`/`runChatTask` (neither ever looks up a prior run's `session_ref`); `services/worker/src/chatRunDriver.ts` lines ~340-360, ~446, ~787 (the ONLY place `--resume` is ever attached to the Claude CLI invocation is `request.resume`, which is set exclusively by the interrupted-run-reconciliation/approval-resume path, never by an ordinary new message in an existing thread).
@@ -7993,20 +7993,21 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** task/TASK-269-s5
 **Started_At:** 2026-09-16T13:14:19Z
 **Progress_Notes:**
+- [2026-09-16T14:12:32Z] [ORCH] REWORK per TASK-270's approved adversarial review (docs/decisions/TASK-269-review-cx9-2026-09.md). Real, independently-confirmed defect: `getLatestRunForThread` has zero awareness of a thread's epoch, so a user who explicitly calls `POST /threads/:id/fresh` (TASK-179's 'start fresh', which bumps the thread's epoch specifically so the model stops seeing anything before that point) would still have their OLD Claude session silently resumed on their next message -- completely defeating the fresh-reset contract. Required change: scope `getLatestRunForThread`'s lookup to the thread's CURRENT epoch (read `thread_context`'s `epoch`/`getOrInitThreadContext`, already used by the existing Gemini-lane compaction logic in `chatRunDriver.ts` -- reuse that same epoch concept rather than inventing a second one), so a run created before the most recent `/fresh` call is never eligible to be resumed. Add a real route-level test: complete/capture a Claude run, call `/threads/:id/fresh`, post the next message, and prove the new run has session_ref null and status started (no inherited session). The other four pressure points (outcome-based memory proof, provider-mismatch guard, first-message handling, group/fan-out role-scoping) all passed and do not need to change.
 - [2026-09-16T13:55:55Z] [ORCH] Reviewed. Excellent work -- S5's own investigation found a SECOND, deeper root cause beyond this task's original filing (nothing ever captured the real Claude CLI session_id in the first place; our own run UUID was never something the CLI could actually resume). Both fixed. The real end-to-end bar (AC4) is met with genuine evidence: a live two-message test where the second turn's real reply contains information ('teal') only given in the first turn -- independently re-run by ORCH, passes. Diff scope otherwise clean. Fixed the one legitimate OWNERSHIP_CONFLICT directly (one-line export in packages/db/src/index.ts, precedented by OIK-106's identical prior gap) and widened Owned_Paths accordingly. Independently re-ran the full control-api suite twice: 292/292 clean both times (one run showed the already-documented, non-deterministic TASK-155 audit-row race once, confirmed unrelated by the clean retry). Given this is the single most foundational fix landed this session, holding the merge for TASK-270's adversarial review (CX9) before finalizing, per that task's own filing -- dispatching now.
 - [2026-09-16T13:12:14Z] [ORCH] Filed at CRITICAL priority per direct owner report and ORCH's own live code-path tracing (not inferred from behavior alone -- read the actual dispatch code end to end before concluding). Owner explicitly authorized dispatching a fix immediately. This is a foundational, previously-undiscovered gap in this product's core chat experience for its primary (Claude) provider -- treat with the same urgency as TASK-258/260 (both critical, both fixed and deployed same-day earlier this session).
 - [2026-09-16T13:48:14Z] [SV:S5] Root-caused two real gaps behind memoryless chat turns: (1) nothing looked up a thread's prior run to continue from, (2) nothing ever captured the Claude CLI's real session_id after a turn, so even a passed --resume token pointed nowhere real. Implemented and tested both: packages/db/src/runs.ts gets getLatestRunForThread (role-scoped, so group/fan-out threads never cross-pollinate sessions); services/worker/src/chatRunDriver.ts now captures and persists the real session_id via the existing resumeRun primitive (proven end-to-end with a real, live two-Claude-API-call test ΓÇö turn 2 genuinely recalls info only given in turn 1); services/control-api/src/ports.ts seeds a new run's continuity from the prior completed same-provider run. app.ts needed no change (both real chat-send branches already forward threadId through submitTaskExecution unchanged). Blocked on one precise OWNERSHIP_CONFLICT: getLatestRunForThread must be re-exported from packages/db/src/index.ts (a curated export list, not a wildcard barrel) to be importable from ports.ts at all -- confirmed this is a genuine runtime failure under vitest, not just tsc. My ports.ts code fails closed to 'no continuity, but sends normally' when that lookup is unavailable, so this branch does NOT regress existing chat sending (verified: chat.routes.test.ts 45/46 passing, only the blocked positive-continuity test fails, cleanly). Exact one-line fix and full evidence in dossiers/TASK-269.md.
 **Artifacts:** —
 **Test_Evidence:** Independently re-verified by ORCH: full `scripts/test-isolated.ps1 -Root <worktree>` run, 292/292 tests clean (one non-deterministic pre-existing flake on first pass, clean on retry). The real, live, two-Claude-API-call memory test passes: second turn's genuine reply contains 'teal', given only in the first turn.
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH, 2026-09-16T14:12:32Z, REVIEW.md/TASK-270) -- see progress note above for the precise required change.
 **Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts (a curated named-export list, not a wildcard barrel) needs one added line -- `getLatestRunForThread` re-exported from ./runs.js alongside the existing runs exports -- for services/control-api/src/ports.ts (a separate workspace package, reachable only through @oikonomos/db's package export map) to import it at all. Confirmed this is a hard runtime failure under vitest as well as tsc (TypeError: ... is not a function inside real chat.routes.test.ts HTTP tests), not merely a build nicety. index.ts is outside TASK-269's Owned_Paths. Identical, already-precedented gap and fix exists for OIK-106's listOpenRuns/openRunStatuses (see index.ts's own current runs.js export block and runs.test.ts's comment on it). Once the one line is added, no other code change is needed on either side -- the real behavior is already implemented and tested; I'd only recommend also dropping the now-unnecessary try/catch guard in ports.ts and re-running chat.routes.test.ts's 3 TASK-269 cases to confirm all go green.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T13:48:14Z
+**Updated_At:** 2026-09-16T14:12:32Z
 
 
 ### TASK-270
 **Title:** Adversarial review of TASK-269's conversation-continuity fix by a non-Anthropic model
-**Status:** blocked
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** TASK-269 (the implementation this reviews)
@@ -8014,17 +8015,18 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** This is the single most foundational fix landed on this product this session -- every Claude-provider bot's ability to hold a real conversation depends on it being correct. Review the actual diff against the real chat pipeline, not the dossier's summary. Pressure points: (1) does the fix genuinely prove the model remembers something from an earlier real turn, or only that a resume argument was technically passed (a resume token pointing at the wrong session, or silently ignored by the CLI, would still show a `--resume` flag in the command without actually working -- verify the TEST proves the outcome, not just the mechanism)? (2) is the provider-mismatch guard (never resume across a provider switch) actually present and tested, not just mentioned in a comment? (3) does the very FIRST message in a brand-new thread still work correctly (no prior run to resume, must not error or accidentally try to resume something)? (4) does the group/fan-out chat path get the same treatment, or does the dossier honestly disclose it as a known, separate, still-open gap rather than silently leaving it broken? (5) could this change accidentally cause an OLD, already-completed/abandoned conversation to be incorrectly resumed when the user actually wanted a fresh start (e.g. after a very long gap, or after the thread was effectively reset some other way) -- is there any bound on how "stale" a prior run can be before it's no longer resumed, and is that a real design decision or an oversight?
 **Acceptance_Criteria:**
-- [ ] One review file at the Owned_Path with a verdict and required changes (possibly empty), each claim citing file:line on the reviewed commit.
-- [ ] Every pressure point answered with real evidence (a query, a re-run test, or a read of the actual code), not opinion.
-- [ ] No file outside Owned_Paths modified.
+- [x] One review file at the Owned_Path with a verdict and required changes (possibly empty), each claim citing file:line on the reviewed commit.
+- [x] Every pressure point answered with real evidence (a query, a re-run test, or a read of the actual code), not opinion.
+- [x] No file outside Owned_Paths modified.
 **Branch:** task/TASK-270-cx9
 **Started_At:** 2026-09-16T13:56:25Z
 **Progress_Notes:**
+- [2026-09-16T14:12:32Z] [ORCH] Reviewed and copied CX9's review file to docs/decisions/ (protected path). Verdict independently re-verified before acting: read `POST /threads/:id/fresh`'s real code (app.ts) and confirmed the epoch/startFresh mechanism exists exactly as cited; read `getLatestRunForThread`'s actual query and confirmed zero epoch-awareness. A real, well-evidenced defect, not review-theater. Sent TASK-269 to rework with the precise required change.
 - [2026-09-16T13:12:14Z] [ORCH] Filed alongside TASK-269. Do not dispatch until TASK-269 reaches needs_review. ORCH manually times this dispatch rather than a hard Depends_On, which would deadlock (TASK-265's own precedent this session).
 - [2026-09-16T14:11:16Z] [SV:CX9] Completed adversarial review; found required rework for /threads/:id/fresh crossing the new Claude session-resume boundary. Review file is present but uncommitted.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** docs/decisions/TASK-269-review-cx9-2026-09.md
+**Test_Evidence:** N/A -- review task; evidence is the review file's file:line citations, independently re-verified by ORCH (see REVIEW.md).
+**Review_Findings:** APPROVED first-pass (ORCH, 2026-09-16T14:12:32Z, REVIEW.md).
 **Blocked_Reason:** OWNERSHIP_CONFLICT: territory-precommit rejects the exact TASK-270 Owned_Path docs/decisions/TASK-269-review-cx9-2026-09.md as a protected docs/** path; no hook bypass attempted.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T14:11:16Z
+**Updated_At:** 2026-09-16T14:12:32Z

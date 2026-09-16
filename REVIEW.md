@@ -1256,3 +1256,13 @@ The third attempt is correct, independently re-verified by ORCH, not taken on th
 **A second, unrelated, genuine flake surfaced during the second consecutive run**: a real concurrency race in `packages/db/src/database.test.ts` (the TASK-119/140 suite TASK-254 already partially fixed) — confirmed not caused by this branch (whose diff never touches `packages/db`), and not a growing/cascading issue like TASK-266's original symptom. Noted in TASK-266 rather than filed separately.
 
 Approved and merged.
+
+## TASK-270 | CX9 | approved | first-pass: yes
+
+Scope: `docs/decisions/TASK-269-review-cx9-2026-09.md` only (copied from CX9's worktree by ORCH — protected path builders can never commit to directly).
+
+A genuinely valuable adversarial review, not review-theater. CX9 confirmed four of five pressure points pass with real, cited evidence (outcome-based memory proof reading actual test assertions, not just checking a `--resume` flag was present; the provider-mismatch guard; correct first-message handling; group/fan-out role-scoping via `task.roleId`). The fifth is a real, serious defect ORCH independently re-verified before accepting: `getLatestRunForThread` has zero awareness of a thread's epoch — `POST /threads/:id/fresh` (TASK-179, a real, already-shipped "start fresh" feature) bumps a thread's epoch specifically so the model stops seeing anything before that point, but the new continuity fix would still resume the pre-fresh Claude session underneath a user who explicitly asked to reset. This is exactly the kind of interaction between an old feature and a new one that a same-session author is prone to miss and a genuinely independent reviewer is positioned to catch.
+
+Sending TASK-269 back to rework with the required change.
+
+Approved and merged (the review file itself).
