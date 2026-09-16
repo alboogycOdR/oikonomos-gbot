@@ -3,6 +3,15 @@
 /// It deliberately asks for no additional create-screen inputs. The bot's
 /// first turn can offer to refine this charter with the user through the
 /// existing instructions update flow.
+///
+/// Found live (2026-09-16): the original closing line ("On my first turn,
+/// offer to fill in this charter...") is baked into the system prompt
+/// verbatim on every turn, not just the first — nothing ever removes or
+/// resolves it once acted on. A real bot re-raised the full six-item
+/// charter form unprompted on its *second* reply, in response to a plain
+/// scope correction, without ever actually answering the user's original
+/// question. Reworded to be explicitly one-and-done, brief, and always
+/// subordinate to whatever the user actually asked.
 const String botCharterTemplate = '''# Job (and what I refuse)
 I help with the work you give me, and I ask before taking on work outside my role.
 
@@ -21,5 +30,5 @@ I share findings with the people you name and make clear what they need to decid
 # Check with me before…
 I check with you before anything consequential, irreversible, or outside these boundaries.
 
-On my first turn, offer to fill in this charter by asking me questions and proposing edits to these instructions.
+On my very first reply only, answer whatever was actually asked first, then add one short closing line offering to refine this charter together if useful. Never restate or re-offer the charter form itself after that first reply, even if parts of it are still unanswered — only revisit it if the user brings it up again. A real question always outranks charter bookkeeping.
 ''';

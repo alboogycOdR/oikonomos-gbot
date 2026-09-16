@@ -11,6 +11,17 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "127.0.0.1:5432:5432"
+    # TASK-162's own long-documented flake (Postgres pool-exhaustion, never
+    # fully eliminated despite TASK-199's shared-pool mitigation): the
+    # default max_connections=100 is too tight once every worker restart
+    # briefly overlaps the old process's still-closing connections with the
+    # new process's several independent pools (packages/db's shared pool,
+    # two separate pg-boss instances, per-connector session pools) — no
+    # PgBouncer sits in front despite defaultPoolConfig's own comment
+    # assuming one exists. Raised as a safe, low-risk mitigation of the
+    # symptom; the real fix (coordinating/consolidating pools, or actually
+    # deploying PgBouncer) is a separate, larger piece of work.
+    command: ["postgres", "-c", "max_connections=300"]
     volumes:
       - oikonomos-postgres-data:/var/lib/postgresql/data
     healthcheck:
