@@ -173,9 +173,97 @@ committed to `task/TASK-264-s5` (05f73fe) and ready to resume the instant
 either Owned_Paths is widened or a follow-up task is filed for
 `chat.routes.test.ts`.
 
+## Session 2 (resume) — ORCH triage resolved both findings, finishing the task
+
+ORCH's triage (PLAN.md Progress_Note 2026-09-16T06:20:00Z, read fresh this
+session from the main checkout's PLAN.md): AC3/AC4 DESCOPED entirely
+(`POST /templates/:id/install` confirmed not to exist — ORCH's own filing
+error, not mine); Owned_Paths widened to include
+`services/control-api/src/chat.routes.test.ts`, resolving Blocking finding 1
+as an ownership question. My own AC1/AC2/AC5 implementation from session 1
+was untouched and did not need rework.
+
+Note: my worktree's local `PLAN.md` (committed at claim time, `4a4eba2`) was
+stale relative to ORCH's widening commits on `main` (`f0beca8`, `bb28f76`) —
+the territory firewall initially rejected the `chat.routes.test.ts` edit
+using the *old* Owned_Paths list. Fixed by `git fetch mainco && git checkout
+mainco/master -- PLAN.md` to sync the worktree's local coordination file to
+the latest `main` state (a read-only sync of the coordination file itself,
+not a PLAN.md edit — no PLAN.md write of my own was made or committed, per
+control.mode=strict).
+
+Fixed `services/control-api/src/chat.routes.test.ts`'s TASK-117 integration
+test: imported `isDefaultRoleCapability` from `./defaultCapabilities.js`,
+replaced the `capability.adapter === "sdk:builtin"` filter with
+`isDefaultRoleCapability(capability.capabilityId)`, and renamed the test
+title to name TASK-264. (The other `sdk:builtin`-filtering test in the same
+file, "grants every sdk:builtin capability at its registered default tier"
+at ~line 264, is a port-spy test whose mock `listCapabilities` only contains
+`fs.read`/`runtime.bash`/`email.send` — none of the new browser.*/workspace.*
+ids — so its assertion is unaffected by the widened floor and needed no
+change.)
+
+Initialized the isolated test database (`scripts/test-isolated.ps1 -Init`;
+it did not exist at session start) and ran the full recursive suite
+(`scripts/test-isolated.ps1`, no filter, per CLAUDE.md's DEVDEPARTMENT
+amendment: "always run the FULL recursive suite, never only the task's own
+package").
+
+**Result — this task's own package (`@oikonomos/control-api`) is fully
+green: 23 test files, 289/289 tests pass**, including the fixed TASK-117
+test and my new `src/app.test.ts` (AC1/AC2). `tsc --noEmit -p .` is clean.
+
+**Two pre-existing, unrelated failures found elsewhere in the full-suite
+run** (both outside this task's Owned_Paths and outside `packages/broker`/
+`services/worker`, which this task never touches):
+- `evals/test/ome-two-role-handoff-live.test.ts` (1 test)
+- `services/worker/src/chatRunDriver.test.ts` (27 tests)
+
+Both fail with the identical root cause: `StaleCapabilityRowError:
+Registered capability 'gmail.send_message' has no declaration.` at
+`packages/broker/src/capabilityRegistry.ts:143` — a registered DB row for
+`gmail.send_message` with no corresponding manifest declaration (the current
+`packages/connectors/manifests/gmail.yaml` explicitly excludes send:
+"NO gmail.send in wave 1"). This is a genuine capability/manifest drift bug,
+but it is **not caused by this task**: `git diff mainco/master...HEAD --stat`
+shows this branch only touches `services/control-api/**` and this dossier —
+nothing in `packages/broker`, `packages/connectors/manifests`, or
+`services/worker`. `git log` on `gmail.yaml` shows its last change was
+TASK-185, unrelated and long predating this task. `DEFAULT_ROLE_CAPABILITIES`
+does not reference `gmail.send_message` or any Gmail capability at all (it's
+explicitly excluded per the ADR amendment). Most likely cause: the isolated
+test database's baseline seed (`scripts/test-isolated.ps1 -Init`, which I ran
+this session because `oikonomos_test` did not yet exist) inserts a
+`gmail.send_message` row from an older baseline/migration that the current
+manifest set no longer declares — an environment/seed-script drift issue,
+not a code regression on this branch. `packages/broker`,
+`packages/connectors/manifests`, and `services/worker` are all outside this
+task's Owned_Paths (and `packages/broker`/`packages/connectors/manifests`
+are protected paths requiring adversarial review) — I have not touched them.
+**Flagging for ORCH**: this looks like it needs its own follow-up task
+(probably to `scripts/test-isolated.ps1`'s seed step, or to whatever baseline
+row inserts `gmail.send_message`) — recommend triaging before it hides a
+real regression in a future recursive run.
+
+Full-suite evidence (`scripts/test-isolated.ps1`, this session,
+2026-09-16T08:21-08:27Z UTC approx):
+```
+@oikonomos/control-api:  Test Files 23 passed (23) | Tests 289 passed (289)
+evals:                    Test Files 1 failed | 12 passed (13) | Tests 1 failed | 18 passed (19)
+  -> pre-existing StaleCapabilityRowError('gmail.send_message'), unrelated to this branch
+@oikonomos/worker:        Test Files 1 failed | 28 passed (29) | Tests 27 failed | 226 passed (253)
+  -> same pre-existing StaleCapabilityRowError('gmail.send_message'), unrelated to this branch
+All other 15+ workspace packages: fully green
+```
+
+AC6 ("Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded") is
+satisfied by the run above — recorded honestly, including the two unrelated
+pre-existing failures and the reasoning for why they don't block this task.
+
 ## Work Log
 
 - [2026-09-16T06:20:00Z] [S5] Read AGENTS.md, briefing, PLAN.md TASK-264/265, ADR-018 (incl. Amendment 2026-09-16) fresh from disk. Confirmed branch task/TASK-264-s5 already existed and was checked out (dispatcher-created); no dossier existed yet (first session). Ran preflight_paths.py (output above). Confirmed via full-repo grep that packages/templates and the templates install route do not exist anywhere in this codebase.
 - [2026-09-16T06:35:00Z] [S5] Implemented services/control-api/src/defaultCapabilities.ts (DEFAULT_ROLE_CAPABILITIES + isDefaultRoleCapability), updated POST /roles in app.ts to grant that set instead of the sdk:builtin adapter filter (tier resolution unchanged, still live from deps.listCapabilities()). tsc --noEmit clean.
 - [2026-09-16T06:50:00Z] [S5] Added services/control-api/src/app.test.ts: real-Postgres test (describe.skip without DATABASE_URL) proving AC1 (exactly the ten ids, each at live default tier) and AC2 (workspace.request_secret + one Gmail/Calendar/Drive id each confirmed absent despite being registered). Fixed an early bug in my own test (role response field is `id`, not `roleId` — confirmed via serializeRole in app.ts).
 - [2026-09-16T07:10:00Z] [S5] Ran scripts/test-isolated.ps1 -Filter "@oikonomos/control-api". My new src/app.test.ts passes (1/1). Found src/chat.routes.test.ts's pre-existing TASK-117 test now fails because it still filters on adapter === "sdk:builtin" — a real, foreseeable break caused by this task's required change, in a file NOT in my Owned_Paths (Blocking finding 1). Also confirmed via full-repo search that AC3/AC4's referenced templates-install feature genuinely does not exist anywhere (Blocking finding 2). Committed all implemented code (05f73fe). Reporting blocked with both findings recorded above; recommendation on browser.interact (AC5) recorded above for TASK-265.
+- [2026-09-16T08:35:00Z] [S5] Resumed. Read PLAN.md fresh (main checkout) — ORCH had descoped AC3/AC4 and widened Owned_Paths to include chat.routes.test.ts; resolved my worktree's stale local PLAN.md by syncing from mainco/master (no PLAN.md edit/commit of my own — control.mode=strict). Fixed chat.routes.test.ts's TASK-117 assertion (isDefaultRoleCapability instead of adapter==="sdk:builtin"), committed (4e4f9b1). Initialized oikonomos_test (-Init) and ran the full recursive suite: control-api fully green (289/289); found two pre-existing, unrelated StaleCapabilityRowError('gmail.send_message') failures in evals and services/worker, confirmed via git diff/log that this branch never touches packages/broker, packages/connectors/manifests, or services/worker — documented above for ORCH. All AC boxes satisfied except the checkbox-ticking itself, which is PLAN.md and out of my hands under strict mode. Reporting needs_review.
