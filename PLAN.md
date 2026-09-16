@@ -7667,7 +7667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
@@ -7680,7 +7680,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] No real, non-test run is ever skipped by whatever filter is added — a false positive here would silently drop real accepted work, which is worse than the problem being fixed.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
 **Branch:** task/TASK-257-cx9
-**Started_At:** 2026-09-15T20:08:28Z
+**Started_At:** 2026-09-16T05:49:01Z
 **Progress_Notes:**
 - [2026-09-16T05:47:44Z] [ORCH] Triaged: CX9's block was a real, transient tooling failure (Docker Desktop was down at the time -- the exact same outage independently diagnosed and fixed under TASK-263, unrelated to this task's own scope). Docker/Postgres/control-api/worker all confirmed healthy again since. Clearing the blocker and returning to pending for CX9 to resume; no fix needed to this task's own approach.
 - [2026-09-15T11:00:00Z] [ORCH] PRIORITY BUMPED low -> medium: this recurred a second time this session, at a larger scale (16,372 vs the original 8,770), and under a SECOND, differently-shaped stale-fixture naming pattern (a 'Probe routine' fixture, requested_by shaped `routine:<id>` rather than `test:<name>`) that the original cleanup rule did not anticipate -- confirmed this is a real, compounding, recurring gap, not a one-off. It directly delayed real acceptance-verification work this time (TASK-245's own live confirmation of TASK-258's fix), not just a theoretical concern. See docs/acceptance/workspace-1/A19-24h-observation.md for the full second-occurrence account, including the specific manual remediation applied (both times fully safe, zero unintended spend either time, but relying on manual re-derivation of the safe cleanup rule each time is not sustainable).
@@ -7691,7 +7691,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T05:46:54Z
+**Updated_At:** 2026-09-16T05:49:01Z
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
@@ -7873,7 +7873,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-16T05:47:44Z
-
+
+
 ### TASK-265
 **Title:** Adversarial review of TASK-264 (ADR-018 Amendment 2026-09-16 implementation) by a non-Anthropic model, per the ADR's own different-model review requirement
 **Status:** pending
