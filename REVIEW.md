@@ -1212,3 +1212,17 @@ TASK-258 is approved and merged. ORCH is applying the one-line fix to `workerJob
 ## Follow-up (ORCH, direct) | TASK-258's flagged collateral fix applied
 
 Applied directly by ORCH (outside TASK-258's own Owned_Paths, a trivial, well-understood, test-only correction S5 correctly flagged rather than attempted itself): `services/worker/src/jobs/workerJobQueue.test.ts`'s "uses a real pg-boss poll job to queue each due routine and persist its fire outcome" test now waits for `lastFireStatus === "queued"` before asserting on it, mirroring the exact pattern its own sibling "missed" case already used. Verified fixed: a full isolated `@oikonomos/worker` run came back 29/29 files, 253/253 tests, including this specific test passing cleanly. Watchdog confirmed `Ready` afterward.
+
+## TASK-257 | CX9 | approved | first-pass: yes
+
+Scope: `git diff master...task/TASK-257-cx9 --stat` — `services/worker/src/runLifecycle.ts` (+19), `services/worker/src/runLifecycle.test.ts` (+53, new file), `dossiers/TASK-257.md` (+9). No files outside Owned_Paths, no PLAN.md edits.
+
+The fix is exactly the shape this task's own AC2 demanded: `reconcileInterruptedRuns` now skips any orphaned run with `provider === "test"` before enqueueing it, via a small, clearly-named, well-commented predicate (`isNonExecutableTestFixtureRun`). The comment explicitly explains why it is an exact provider match rather than a tenant/title heuristic — the shared `basileia` tenant holds real work, and a broader filter risks silently dropping accepted work, which the task's own AC2 named as strictly worse than the problem being fixed. This is the correct, conservative choice.
+
+New focused tests prove the actual behavior, not just that the function was called: a mocked reconciliation scan asserts a `basileia`/`test` fixture run is skipped while a `claude`-provider run from the same scan is still requeued — the negative and positive cases side by side in one assertion, which is the right shape of proof for a filter whose failure mode (over-matching) is the dangerous direction.
+
+**Independently re-verified, not taken on trust:** ran `routineJob.test.ts`'s TASK-258 regression test myself directly against current `master` after CX9 reported it timed out during a Docker-Desktop-adjacent session — reproduced cleanly in 2026ms, confirming the timeout CX9 saw was transient/environmental (system load), not a defect in this diff. Separately, ran the full `pnpm -r test` suite on plain `master` (zero changes from either TASK-257 or TASK-264 applied) and reproduced the identical `evals/harness` + `services/worker` failure pair CX9 and S5 both independently reported — direct proof this is a real, pre-existing, environment-level issue (now filed as TASK-266), not something either builder's diff introduced or should be blocked on.
+
+**Residual scope note, not a blocker:** this fix covers the primary, self-perpetuating leak class (`provider: "test"` rows created by every `pnpm -r test` run). It does not retroactively guard against a differently-shaped one-off fixture (the "Probe routine" pattern from earlier this session, which carried a real `provider: "claude"` value) — that specific instance was already manually found and cleaned during TASK-245's A19 investigation, and guarding against every conceivable one-off fixture shape is a heuristics problem this task was never scoped to solve completely. Worth a human eye on `pgboss.job` periodically until a more general safeguard exists, but not a reason to withhold this real, verified fix.
+
+Approved and merged.
