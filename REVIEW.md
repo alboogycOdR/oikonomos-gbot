@@ -1226,3 +1226,16 @@ New focused tests prove the actual behavior, not just that the function was call
 **Residual scope note, not a blocker:** this fix covers the primary, self-perpetuating leak class (`provider: "test"` rows created by every `pnpm -r test` run). It does not retroactively guard against a differently-shaped one-off fixture (the "Probe routine" pattern from earlier this session, which carried a real `provider: "claude"` value) — that specific instance was already manually found and cleaned during TASK-245's A19 investigation, and guarding against every conceivable one-off fixture shape is a heuristics problem this task was never scoped to solve completely. Worth a human eye on `pgboss.job` periodically until a more general safeguard exists, but not a reason to withhold this real, verified fix.
 
 Approved and merged.
+
+## TASK-265 | CX9 | approved | first-pass: yes
+
+Scope: `docs/decisions/ADR-018-review-amendment-cx9-2026-09.md` only (copied from CX9's worktree by ORCH — `docs/decisions/**` is a protected path builders can never commit to directly, the same lesson TASK-252 already established; the territory firewall correctly rejected CX9's own attempted commit).
+
+CX9's review is rigorous and independently re-verified by ORCH before acting on it, not taken on trust:
+
+1. **`browser.interact` should not be in the default floor** — confirmed correct. The amendment text explicitly left this open for the reviewer's own call; TASK-264 shipped it in the default set unilaterally. Agreed: a mutating (click/type/fill) capability being auto-granted to every bot with zero human action is a real product/security decision that shouldn't be made by omission.
+2. **`app.test.ts` fabricates and never cleans up non-manifest capability IDs** (`gmail.send_message`, `google-calendar.create_event`, `google-drive.create_file`) — confirmed directly by reading the file: `seedAllKnownCapabilities()` calls `database.upsertCapability(...)` for all three, and the test's only teardown is `database.close()`. **This is very likely the actual root cause of TASK-266's mystery `StaleCapabilityRowError: gmail.send_message` cascade** that both ORCH (TASK-261) and S5 (TASK-264's own dossier) investigated and failed to pin down — neither of us thought to suspect a test *introduced in the same session* of leaving behind the exact row it was later confused by. TASK-266 updated accordingly.
+
+Both required changes are real, correctly evidenced with file:line citations, and block-worthy — not review-theater. Sending TASK-264 back to rework rather than merging with an open product decision and a live database-pollution bug.
+
+Approved and merged (the review file itself).

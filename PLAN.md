@@ -7853,7 +7853,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-264
 **Title:** Implement ADR-018 Amendment 2026-09-16 -- widen the default role-capability floor to DEFAULT_ROLE_CAPABILITIES (adds browser.* and workspace self-management to auto-grant)
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16 (the amendment section itself, Proposed); specs/OIKONOMOS_TEMPLATES_v1.0.md §3.2/§5.2/§10 (spec text ORCH updates after this merges, not part of this task's Owned_Paths -- specs/** stays protected)
@@ -7872,6 +7872,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** task/TASK-264-s5
 **Started_At:** 2026-09-16T06:16:08Z
 **Progress_Notes:**
+- [2026-09-16T07:47:33Z] [ORCH] REWORK per TASK-265's approved adversarial review (docs/decisions/ADR-018-review-amendment-cx9-2026-09.md), two required changes: (1) remove `browser.interact` from `DEFAULT_ROLE_CAPABILITIES` and all test expectations -- the amendment left this an explicit open question for the reviewer, not yours to resolve unilaterally; the four other Steel capabilities (session/navigate/read/screenshot) stay. (2) `app.test.ts`'s `seedAllKnownCapabilities()` inserts fabricated, non-manifest capability rows (`gmail.send_message`, `google-calendar.create_event`, `google-drive.create_file`) via `upsertCapability` and never cleans them up -- rewrite to check exclusion against the real, already-registered manifest capability rows (query `listCapabilities()` for the real Gmail/Calendar/Drive ids) instead of manufacturing fake ones. This is very likely the actual root cause of TASK-266's cascade -- once fixed, re-run the full suite twice consecutively (no -Init between) and confirm zero StaleCapabilityRowError anywhere, which would close TASK-266 as a side effect.
 - [2026-09-16T06:52:00Z] [ORCH] Reviewed S5's second session. Diff scope clean (`git diff master...task/TASK-264-s5 --stat`: only `defaultCapabilities.ts`, `app.ts`, `app.test.ts`, `chat.routes.test.ts`, dossier -- all within Owned_Paths). `@oikonomos/control-api` independently confirmed 289/289 green. Accepted S5's well-evidenced pushback on the fixture-leak AC ORCH added last session -- the capability id in question genuinely doesn't exist in any current source, so treating it as a simple leak-of-a-known-capability was ORCH's own unverified assumption. Descoped both related ACs, filed the real investigation as TASK-266. TASK-264's own scope (DEFAULT_ROLE_CAPABILITIES + TASK-117 fix) is complete and correct. Per ADR-018's own header, this still requires TASK-265's adversarial review (different model) before merge -- dispatching CX9 now.
 - [2026-09-16T06:25:10Z] [ORCH] Widened scope: while independently verifying TASK-261's own full-suite evidence, reproduced the exact `StaleCapabilityRowError` cascade that `dossiers/TASK-254.md` already flagged (2026-09-15) as a real, separate, never-filed leak in this same file's `POST /roles` fixtures. Since TASK-264 already owns `chat.routes.test.ts`, folding the fix in here rather than filing an overlapping task. Sequence: do the TASK-117 assertion swap and this cleanup fix together, they touch adjacent fixture code.
 - [2026-09-16T06:20:00Z] [ORCH] Triaged S5's blocked report, both findings confirmed real and independently verified: (1) `packages/templates`/`POST /templates/:id/install` genuinely does not exist anywhere in the codebase -- ADR-018 §3 was accepted as a design decision on 2026-09-12 but its implementation was apparently never filed as a follow-up task and never built. This was ORCH's own filing error (assumed the ADR's present-tense description meant shipped code) -- AC3/AC4 descoped entirely, not deferred silently. (2) Widened Owned_Paths to include `chat.routes.test.ts` so the one-line TASK-117 assertion update lands in the same PR instead of blocking on an artificial territory boundary. Your real implementation work (AC1/AC2/AC5, already tested against real Postgres) stands untouched -- resume on the same branch.
@@ -7880,15 +7881,15 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T06:45:13Z] [SV:S5] Resumed after ORCH's triage (AC3/AC4 descoped, Owned_Paths widened for chat.routes.test.ts). Fixed the TASK-117 assertion in chat.routes.test.ts to filter on isDefaultRoleCapability instead of adapter==='sdk:builtin'. Full recursive suite run: @oikonomos/control-api 289/289 green (incl. AC1/AC2 real-Postgres proof and the fixed TASK-117 test). Found and documented two pre-existing, unrelated StaleCapabilityRowError('gmail.send_message') failures in evals/services-worker -- confirmed via git diff/log this branch never touches packages/broker, packages/connectors/manifests, or services/worker; flagged for ORCH as a separate follow-up. browser.interact inclusion recommendation stands from session 1 (dossier).
 **Artifacts:** services/control-api/src/defaultCapabilities.ts, services/control-api/src/app.ts, services/control-api/src/app.test.ts, services/control-api/src/chat.routes.test.ts, dossiers/TASK-264.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init then scripts/test-isolated.ps1 (full pnpm -r test), 2026-09-16 ~08:21-08:27Z: @oikonomos/control-api Test Files 23 passed (23) | Tests 289 passed (289); tsc --noEmit -p . clean. evals: 1 failed/13 files, 18 passed+1 failed/19 tests (pre-existing StaleCapabilityRowError, unrelated). @oikonomos/worker: 1 failed/29 files, 226 passed+27 failed/253 tests (same pre-existing unrelated error). All other 15+ workspace packages fully green. Full analysis and root-cause in dossiers/TASK-264.md.
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH, 2026-09-16T07:47:33Z, REVIEW.md/TASK-265) -- see progress note above for both required changes.
 **Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/chat.routes.test.ts (not in Owned_Paths) contains the actual pre-existing set-equality test (TASK-117, filters capability.adapter==="sdk:builtin") that must be updated to DEFAULT_ROLE_CAPABILITIES or pnpm -r test stays red; also MISSING_DEPENDENCY: AC3/AC4 and the templates.routes.test.ts Owned_Paths entry reference a POST /templates/:id/install route/test that does not exist anywhere in the codebase despite ADR-018 ┬º3 being marked Accepted. See dossiers/TASK-264.md for full detail and recommended next steps.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T06:45:13Z
+**Updated_At:** 2026-09-16T07:47:33Z
 
 
 ### TASK-265
 **Title:** Adversarial review of TASK-264 (ADR-018 Amendment 2026-09-16 implementation) by a non-Anthropic model, per the ADR's own different-model review requirement
-**Status:** blocked
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16; TASK-264 (the implementation this reviews); ADR-018's original header ("Implementing tasks on ... the control-api routes require adversarial review by a model other than their author"); ADR-018-review-cx9-2026-09.md (the review-format precedent to mirror)
@@ -7896,21 +7897,22 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Depends_On:** —
 **Description:** TASK-264 widens the automatic role-capability floor -- a real change to what every new bot can do with zero human action. Review it the way ADR-018-review-cx9-2026-09.md reviewed the original decision: read the actual diff and the actual `DEFAULT_ROLE_CAPABILITIES` set against the amendment's stated intent, not the dossier's summary. Pressure points to attack specifically: (1) does the new set genuinely exclude every account-linked connector capability, checked against the live `capabilities` table, not just the manifest files? (2) is `workspace.request_secret` genuinely excluded -- trace what it would let a bot do if it were accidentally included? (3) does `browser.interact` (a mutating capability: click/type/fill on a live page) belong in an every-bot-gets-this-for-free set, or does its inclusion need to be pushed back to a human decision -- give your own verdict, don't just note the question is open; (4) can a template's `integrations[]` still smuggle in a capability that used to require a human grant but is now in the default floor, in a way that makes the grant checklist misleading (e.g. showing `browser.session` as something the human still needs to approve when it's actually already auto-granted)? (5) is the tier-resolution genuinely read live from the registry/manifest at grant time, or did the implementation accidentally hardcode a tier that could drift from a future manifest change? Verdict: accept / accept-with-changes / reject, each claim citing file:line on the reviewed commit, mirroring the existing review file's format exactly.
 **Acceptance_Criteria:**
-- [ ] One review file at the Owned_Path with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
-- [ ] Every pressure point in the Description is answered explicitly, with evidence (a real query or a real test run), not opinion.
-- [ ] No file outside Owned_Paths is modified.
+- [x] One review file at the Owned_Path with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
+- [x] Every pressure point in the Description is answered explicitly, with evidence (a real query or a real test run), not opinion.
+- [x] No file outside Owned_Paths is modified.
 **Branch:** task/TASK-265-cx9
 **Started_At:** 2026-09-16T07:19:49Z
 **Progress_Notes:**
+- [2026-09-16T07:47:33Z] [ORCH] Reviewed and copied CX9's review file to docs/decisions/ (protected path, builders can never commit there directly). Verdict independently re-verified: browser.interact's inclusion confirmed unilateral (amendment left it open); the app.test.ts fabricated-capability-row leak confirmed by direct file read (upsertCapability calls for gmail.send_message/google-calendar.create_event/google-drive.create_file, zero cleanup). This is very likely TASK-266's real root cause -- updated that task accordingly. Sent TASK-264 to rework with both required changes.
 - [2026-09-16T07:22:00Z] [ORCH] Fixed own filing error: Depends_On: TASK-264 deadlocks, since a review task cannot wait for the thing it exists to unblock to already be done. Removed the field; ORCH manually times this dispatch once TASK-264 reaches needs_review (already true).
 - [2026-09-16T05:47:44Z] [ORCH] Filed alongside TASK-264. Do not dispatch until TASK-264 reaches needs_review -- resume-first dispatch logic will otherwise have nothing to review yet.
 - [2026-09-16T07:46:17Z] [SV:CX9] Completed reject review; mandatory territory hook rejects the sole owned docs review artifact as globally protected. Dossier committed at 7c47198; review file remains locally present.
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Artifacts:** docs/decisions/ADR-018-review-amendment-cx9-2026-09.md
+**Test_Evidence:** N/A -- this is a review task; its own evidence is the review file's file:line citations, independently re-verified by ORCH (see REVIEW.md).
+**Review_Findings:** APPROVED first-pass (ORCH, 2026-09-16T07:47:33Z, REVIEW.md).
 **Blocked_Reason:** OWNERSHIP_CONFLICT: mandatory territory pre-commit hook rejects docs/decisions/ADR-018-review-amendment-cx9-2026-09.md as protected docs/** despite it being TASK-265's exact Owned_Path.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T07:46:17Z
+**Updated_At:** 2026-09-16T07:47:33Z
 
 ### TASK-266
 **Title:** Root-cause the recurring `StaleCapabilityRowError: gmail.send_message` cascade in the isolated test database -- a capability id that exists in no current source, fixture, migration, or manifest
@@ -7930,6 +7932,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-16T07:47:33Z] [ORCH] LIKELY SOLVED via TASK-265's adversarial review of TASK-264 (docs/decisions/ADR-018-review-amendment-cx9-2026-09.md): CX9 found that `services/control-api/src/app.test.ts` (TASK-264's own new test, added THIS session) calls `upsertCapability` to fabricate `gmail.send_message`, `google-calendar.create_event`, and `google-drive.create_file` rows directly into the shared isolated database, with zero cleanup afterward -- confirmed by direct file read (ORCH). Neither the chat.routes.test.ts leak theory (ORCH) nor the pre-existing-environment theory (S5) was correct; the real cause was a test introduced in this very session, which is why it wasn't caught by searching for the string in packages/broker/connectors/manifests -- it only exists in a test file added after that search was run. Marking this task pending confirmation: once TASK-264's rework fixes `app.test.ts` (query real registered capabilities instead of fabricating rows) and two consecutive full-suite runs come back clean, close this task as resolved by that fix rather than a separate one.
 - [2026-09-16T06:52:00Z] [ORCH] Filed after two independent investigators (ORCH/TASK-261, S5/TASK-264) hit the identical failure signature this session and neither could confirm a root cause under time pressure -- deliberately not rushed into either PR. See both dossiers (TASK-261, TASK-264) for the full evidence trail each gathered.
 **Artifacts:** —
 **Test_Evidence:** —
