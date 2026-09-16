@@ -371,6 +371,49 @@ if (import.meta.vitest) {
       });
     });
 
+    // Acceptance Criterion 3: "works identically on both provider lanes ...
+    // confirm this explicitly rather than assuming it." The module
+    // docstring documents *why* this is lane-agnostic by construction
+    // (`task.goal` is consumed identically by `buildGeminiTurnPrompt` and
+    // `claudePrintCommand` — read live in `chatRunDriver.ts`, not assumed);
+    // this test confirms the half THIS module actually owns: that a
+    // Gemini-provider recipient's `resolveRoleRuntime` result really
+    // reaches the persisted run as `provider: 'gemini'` (the exact value
+    // `chatRunDriver.ts`'s own `resolveChatRunExecution` branches lane
+    // selection on) and that the delivered goal text is byte-identical to
+    // the Claude-lane case above. `chatRunDriver.test.ts`'s own Gemini-lane
+    // suite (TASK-220 and neighbours) already exhaustively covers what
+    // happens once a Gemini run actually executes — this task's own
+    // boundary is provider selection reaching the run, not re-proving that
+    // driver's internals.
+    it("selects the gemini lane for a gemini-provider recipient, with the identical delivered goal text", async () => {
+      const senderId = `task-273-sender-gemini-${crypto.randomUUID()}`;
+      const recipientId = `task-273-recipient-gemini-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender Bot", title: "Sender" });
+      await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Recipient Bot", title: "Recipient" });
+      // NewRole has no `provider` field (set post-creation, matching
+      // chatRunDriver.test.ts's own TASK-220 gemini-lane fixture).
+      await pool.query(`UPDATE roles SET provider = 'gemini' WHERE role_id = $1`, [recipientId]);
+
+      const sent = await sendRoleMessage(
+        { connectionString: connectionString! },
+        { tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "please review the draft" },
+      );
+
+      const results = await deliverPendingRoleMessages(options);
+      const delivered = results.find((r) => r.messageId === sent.messageId);
+      expect(delivered?.outcome).toBe("delivered");
+
+      const run = await getRun({ connectionString: connectionString! }, delivered!.runId!);
+      expect(run?.provider).toBe("gemini");
+
+      const tasks = await pool.query<{ goal: string }>(
+        `SELECT goal FROM tasks WHERE tenant_id = $1 AND role_id = $2`,
+        [tenantId, recipientId],
+      );
+      expect(tasks.rows[0]!.goal).toBe("You have a message from Sender Bot: please review the draft");
+    });
+
     it("skips (and does not mark read) a message addressed to a non-active (soft-deleted) recipient role", async () => {
       // role_messages.to_role_id carries a REFERENCES roles(role_id) FK with
       // no ON DELETE action, so a hard-missing role can never actually be
