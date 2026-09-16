@@ -6,20 +6,32 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   completeRun,
   createTask,
+  createTaskExecutionRun,
   defaultPoolConfig,
   getAuditEventsForRun,
+  getRun,
   IllegalRunTransitionError,
   insertApproval,
   insertAuditEvent,
   listPendingApprovals,
   listRuns,
+  resumeRun,
+  startFreshEpoch,
   startRun,
+  type TaskExecution,
 } from "./index.js";
-// `listOpenRuns`/`openRunStatuses` (OIK-106) are new in this task and not
-// yet re-exported from the package barrel (`index.ts` is outside this
-// task's `Owned_Paths` — see the dossier) — imported directly from the
-// module instead.
-import { failRun, cancelRun, listOpenRuns, openRunStatuses, parkRun } from "./runs.js";
+
+// TASK-270 rework: `createTaskExecutionRun`'s `execution` param has no
+// `epoch` field of its own (see ports.ts's matching doc comment) -- these
+// fixtures stamp it the same way `submitTaskExecution` does in production,
+// so `getLatestRunForThread`'s epoch scoping has something real to match.
+type StampedExecution = TaskExecution & { epoch: number };
+// `listOpenRuns`/`openRunStatuses` (OIK-106) and `getLatestRunForThread`
+// (TASK-269) are new and not yet re-exported from the package barrel
+// (`index.ts` is outside this file's `Owned_Paths` — see the TASK-269
+// dossier; the identical gap for `listOpenRuns` was hit and resolved the
+// same way in OIK-106) — imported directly from the module instead.
+import { failRun, cancelRun, getLatestRunForThread, getThreadEpoch, listOpenRuns, openRunStatuses, parkRun } from "./runs.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -445,6 +457,253 @@ integration("packages/db runs — parkRun (TASK-136)", () => {
     await expect(
       parkRun({ connectionString: connectionString! }, "00000000-0000-0000-0000-000000000000"),
     ).rejects.toThrow(/was not found/);
+  });
+});
+
+// TASK-269: getLatestRunForThread is the query the control-api's chat send
+// path uses to find the run it should continue from. Real Postgres, real
+// `tasks.execution` JSON (via `createTaskExecutionRun`, the same production
+// path `submitTaskExecution` calls) -- not a hand-built fixture that might
+// not match the real column shape.
+integration("packages/db runs — getLatestRunForThread (TASK-269)", () => {
+  let pool: Pool;
+  const roleId = "task-269-latestrun-role-a";
+  const otherRoleId = "task-269-latestrun-role-b";
+  const threadId = "22222222-2222-2222-2222-222222222222";
+  const otherThreadId = "33333333-3333-3333-3333-333333333333";
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = ANY($1))`,
+      [[roleId, otherRoleId]],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = ANY($1)`, [[roleId, otherRoleId]]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
+    await cleanup();
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("returns null for a thread with no prior run (first message ever)", async () => {
+    const result = await getLatestRunForThread(integrationOptions, { threadId, epoch: 0 });
+    expect(result).toBeNull();
+  });
+
+  it("finds the newest run for a thread via tasks.execution, ignoring runs on unrelated threads", async () => {
+    const older = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "turn 1", goal: "hi", requestedBy: "chat:thread:" + threadId },
+      execution: { version: 1, kind: "chat", threadId, epoch: 0 } as StampedExecution,
+      provider: "claude",
+    });
+    // A real gap between started_at values, same technique as this file's
+    // other suites, so "newest" is unambiguous without forcing a tie.
+    await pool.query(`UPDATE runs SET started_at = started_at - interval '1 minute' WHERE run_id = $1`, [
+      older.runId,
+    ]);
+    const newer = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "turn 2", goal: "hi again", requestedBy: "chat:thread:" + threadId },
+      execution: { version: 1, kind: "chat", threadId, epoch: 0 } as StampedExecution,
+      provider: "claude",
+    });
+    const unrelated = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "other thread", goal: "hi", requestedBy: "chat:thread:" + otherThreadId },
+      execution: { version: 1, kind: "chat", threadId: otherThreadId, epoch: 0 } as StampedExecution,
+      provider: "claude",
+    });
+
+    const result = await getLatestRunForThread(integrationOptions, { threadId, epoch: 0 });
+    expect(result?.runId).toBe(newer.runId);
+    expect(result?.runId).not.toBe(older.runId);
+    expect(result?.runId).not.toBe(unrelated.runId);
+  });
+
+  it("scopes by roleId so a group/fan-out thread never hands one recipient's session to another's turn", async () => {
+    const groupThreadId = "44444444-4444-4444-4444-444444444444";
+    const forRoleA = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId, title: "fanout a", goal: "hi", requestedBy: "chat:thread:" + groupThreadId },
+      execution: {
+        version: 1,
+        kind: "fanout",
+        threadId: groupThreadId,
+        sourceMessageId: "55555555-5555-5555-5555-555555555555",
+        recipientRoleId: roleId,
+        epoch: 0,
+      } as StampedExecution,
+      provider: "claude",
+    });
+    await pool.query(`UPDATE runs SET started_at = started_at - interval '1 minute' WHERE run_id = $1`, [
+      forRoleA.runId,
+    ]);
+    const forRoleB = await createTaskExecutionRun(integrationOptions, {
+      task: { roleId: otherRoleId, title: "fanout b", goal: "hi", requestedBy: "chat:thread:" + groupThreadId },
+      execution: {
+        version: 1,
+        kind: "fanout",
+        threadId: groupThreadId,
+        sourceMessageId: "55555555-5555-5555-5555-555555555555",
+        recipientRoleId: otherRoleId,
+        epoch: 0,
+      } as StampedExecution,
+      provider: "claude",
+    });
+
+    const forA = await getLatestRunForThread(integrationOptions, { threadId: groupThreadId, roleId, epoch: 0 });
+    expect(forA?.runId).toBe(forRoleA.runId);
+    const forB = await getLatestRunForThread(integrationOptions, {
+      threadId: groupThreadId,
+      roleId: otherRoleId,
+      epoch: 0,
+    });
+    expect(forB?.runId).toBe(forRoleB.runId);
+    // MUTATION-PROOF: without the role_id filter, both queries above would
+    // return whichever run is newest overall (forRoleB), silently handing
+    // role A's turn role B's Claude session.
+    expect(forA?.runId).not.toBe(forB?.runId);
+  });
+
+  it("TASK-270 rework: a run from a stale epoch is never eligible once /fresh bumps the thread forward", async () => {
+    // `thread_context` FKs to a real `threads` row (unlike this suite's
+    // other cases, which never touch `threads`/`roles` at all -- `runs`'s
+    // own FKs don't require it). `threads.role_id` is additionally
+    // UNIQUE-constrained to `roles`, so this test seeds its own
+    // self-contained role+thread pair rather than reusing the describe
+    // block's fixture role ids.
+    const freshRoleId = "task-270-freshepoch-role";
+    await pool.query(
+      `INSERT INTO roles (role_id, tenant_id, name, title, description, provider)
+       VALUES ($1, 'basileia', $1, 'TASK-270 fixture', 'TASK-270 fixture', 'claude')
+       ON CONFLICT (role_id) DO NOTHING`,
+      [freshRoleId],
+    );
+    const threadResult = await pool.query<{ id: string }>(
+      "INSERT INTO threads (role_id) VALUES ($1) RETURNING id",
+      [freshRoleId],
+    );
+    const freshThreadId = threadResult.rows[0]!.id;
+
+    try {
+      // getThreadEpoch (TASK-270 rework): a brand-new thread with no
+      // `thread_context` row yet must read as epoch 0 -- the same default
+      // `getOrInitThreadContext` would lazily materialize -- WITHOUT this
+      // read-only helper creating that row itself (see runs.ts's doc
+      // comment for why `submitTaskExecution` deliberately avoids the
+      // heavier upsert on every ordinary chat turn).
+      expect(await getThreadEpoch(integrationOptions, freshThreadId)).toBe(0);
+
+      // Epoch 0: an ordinary completed turn, exactly like production's
+      // `submitTaskExecution` would stamp it.
+      const beforeFresh = await createTaskExecutionRun(integrationOptions, {
+        task: { roleId: freshRoleId, title: "before fresh", goal: "hi", requestedBy: "chat:thread:" + freshThreadId },
+        execution: { version: 1, kind: "chat", threadId: freshThreadId, epoch: 0 } as StampedExecution,
+        provider: "claude",
+      });
+      await completeRun(integrationOptions, beforeFresh.runId);
+
+      // Still epoch 0: the un-bumped thread must still find it.
+      const stillEpochZero = await getLatestRunForThread(integrationOptions, {
+        threadId: freshThreadId,
+        roleId: freshRoleId,
+        epoch: 0,
+      });
+      expect(stillEpochZero?.runId).toBe(beforeFresh.runId);
+
+      // `/fresh` bumps the epoch (this is the exact primitive
+      // `POST /threads/:id/fresh` calls) -- the pre-fresh run must now be
+      // invisible to a lookup scoped to the NEW current epoch, even though
+      // it is still (and will always be) the newest row in the table.
+      const context = await startFreshEpoch(integrationOptions, freshThreadId);
+      expect(context.epoch).toBe(1);
+      // getThreadEpoch must agree with startFreshEpoch's own return value --
+      // the two ways `submitTaskExecution`/`/fresh` observe "current epoch"
+      // must never disagree.
+      expect(await getThreadEpoch(integrationOptions, freshThreadId)).toBe(1);
+
+      const afterFresh = await getLatestRunForThread(integrationOptions, {
+        threadId: freshThreadId,
+        roleId: freshRoleId,
+        epoch: context.epoch,
+      });
+      expect(afterFresh).toBeNull();
+
+      // A NEW run stamped with the new epoch is found normally.
+      const postFreshRun = await createTaskExecutionRun(integrationOptions, {
+        task: { roleId: freshRoleId, title: "after fresh", goal: "hi", requestedBy: "chat:thread:" + freshThreadId },
+        execution: { version: 1, kind: "chat", threadId: freshThreadId, epoch: context.epoch } as StampedExecution,
+        provider: "claude",
+      });
+      const foundPostFresh = await getLatestRunForThread(integrationOptions, {
+        threadId: freshThreadId,
+        roleId: freshRoleId,
+        epoch: context.epoch,
+      });
+      expect(foundPostFresh?.runId).toBe(postFreshRun.runId);
+    } finally {
+      await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`, [freshRoleId]);
+      await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [freshRoleId]);
+      await pool.query(`DELETE FROM thread_context WHERE thread_id = $1`, [freshThreadId]);
+      await pool.query(`DELETE FROM threads WHERE id = $1`, [freshThreadId]);
+      await pool.query(`DELETE FROM roles WHERE role_id = $1`, [freshRoleId]);
+    }
+  });
+});
+
+// TASK-269: `resumeRun` is the existing, already-tested machinery this
+// task's ports.ts wiring reuses to seed a brand-new run's `session_ref`
+// with a prior completed run's session (continuity) and, separately,
+// chatRunDriver.ts reuses it to record the REAL session id the Claude CLI
+// itself reports once a turn completes. Prove both call shapes work exactly
+// the way those call sites depend on: overwriting an existing session_ref
+// (not just filling a null one), and remaining legal on a run whose status
+// is already 'started' (never previously resumed).
+integration("packages/db runs — resumeRun as a session_ref setter (TASK-269 reuse)", () => {
+  let pool: Pool;
+  const roleId = "task-269-resumeasfset-role";
+  let taskId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query(
+      `DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)`,
+      [roleId],
+    );
+    await pool.query(`DELETE FROM tasks WHERE role_id = $1`, [roleId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...integrationPoolConfig });
+    await cleanup();
+    const task = await createTask(integrationOptions, { roleId, title: "fixture", goal: "g", requestedBy: "alister" });
+    taskId = task.taskId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("seeds a session_ref on a freshly-started run (continuity) and moves it to 'resumed'", async () => {
+    const run = await startRun(integrationOptions, { taskId, provider: "claude" });
+    expect(run.sessionRef).toBeNull();
+
+    const seeded = await resumeRun(integrationOptions, run.runId, "prior-turn-session-id");
+    expect(seeded.status).toBe("resumed");
+    expect(seeded.sessionRef).toBe("prior-turn-session-id");
+  });
+
+  it("overwrites an already-seeded session_ref with the CLI's real one after execution", async () => {
+    const run = await startRun(integrationOptions, { taskId, provider: "claude" });
+    await resumeRun(integrationOptions, run.runId, "seeded-placeholder");
+
+    const recorded = await resumeRun(integrationOptions, run.runId, "real-cli-session-id");
+    expect(recorded.sessionRef).toBe("real-cli-session-id");
+
+    const reread = await getRun(integrationOptions, run.runId);
+    expect(reread?.sessionRef).toBe("real-cli-session-id");
   });
 });
 

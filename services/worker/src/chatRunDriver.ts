@@ -32,6 +32,7 @@ import {
   recordRunPhaseTiming,
   recordSpend,
   resolveRoleRuntime,
+  resumeRun as dbResumeRun,
   updateThreadContext,
   updateRoleSandboxState,
   upsertRoleSandbox,
@@ -468,6 +469,27 @@ async function runChatTask(
     // A run that reached here having accounted for nothing is unrecorded, not
     // free. Say so explicitly rather than leaving an absence to be misread.
     if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
+    // TASK-269: persist the REAL session id the Claude CLI/Agent SDK itself
+    // reports for this turn, so the THREAD's next turn (ports.ts's
+    // `submitTaskExecution` continuity seeding, or a killed-worker's
+    // `resumeInterruptedRun`) has a genuine session to `--resume` rather
+    // than the `run.sessionRef ?? run.runId` fallback used elsewhere in
+    // this file for broker/audit bookkeeping only -- the Claude CLI never
+    // recognizes our own run UUID as a session id it can resume. Without
+    // this write, the continuity fix is inert: `--resume <our-own-uuid>`
+    // would find no matching CLI session and silently start fresh,
+    // reproducing the exact bug this task exists to fix. Gemini keeps its
+    // own separate, already-correct history mechanism (`buildGeminiTurnPrompt`)
+    // and never reaches this branch. `resumeRun` overwrites unconditionally
+    // (its COALESCE always prefers the new value when one is supplied) and
+    // is legal here because the run is still in an open status -- this MUST
+    // run before `completeTaskRun` below moves it to a terminal one.
+    if (effectiveProvider === "claude") {
+      const capturedSessionRef = extractClaudeSessionId(result?.events ?? []);
+      if (capturedSessionRef !== undefined && capturedSessionRef !== run.sessionRef) {
+        await dbResumeRun(options, run.runId, capturedSessionRef);
+      }
+    }
     await compactCompletedChatRun(options, request, run.runId);
     await completeTaskRun(options, run.runId);
     // This is the run's final write. Unlike earlier, observational phase
@@ -1466,6 +1488,28 @@ export function destinationFor(request: PreToolUseRequest): string {
   return destination;
 }
 
+/**
+ * TASK-269 — the real Claude CLI/Agent SDK session id for this turn, read
+ * off whichever event actually carries it. The sandboxed CLI lane's single
+ * synthesized event (`eventFromSandboxStdout`) spreads the CLI's own
+ * `--output-format json` result envelope verbatim, and the real CLI's
+ * `result` message includes a top-level `session_id` string; the local
+ * (non-sandbox) Agent SDK lane streams the same field on its own result
+ * event. Scans every event (not just the last) since either lane may also
+ * emit earlier, non-result events with no such field. Returns `undefined`
+ * on anything that isn't a genuine non-empty string -- a missing session id
+ * must never be treated as "no continuity needed" silently; the caller
+ * checks this return value explicitly rather than defaulting it.
+ */
+export function extractClaudeSessionId(events: readonly unknown[]): string | undefined {
+  for (const event of events) {
+    if (typeof event !== "object" || event === null) continue;
+    const value = (event as { session_id?: unknown }).session_id;
+    if (typeof value === "string" && value.trim().length > 0) return value;
+  }
+  return undefined;
+}
+
 export function finalText(events: readonly unknown[]): string {
   for (const event of [...events].reverse()) if (typeof event === "object" && event !== null && typeof (event as { result?: unknown }).result === "string") {
     const result = (event as { result: string }).result.trim(); if (result.length > 0) return result;
@@ -1511,6 +1555,25 @@ if (import.meta.vitest) {
         type: "result",
         result: "Sandbox turn complete",
       });
+    });
+
+    it("extractClaudeSessionId (TASK-269) finds a real CLI/SDK session_id anywhere in the event stream", () => {
+      expect(extractClaudeSessionId([
+        { type: "system", subtype: "init", session_id: "sess-abc-123" },
+        { type: "result", subtype: "success", result: "hi" },
+      ])).toBe("sess-abc-123");
+      // The sandboxed CLI lane synthesizes exactly one event
+      // (eventFromSandboxStdout), which spreads the CLI's own JSON result
+      // envelope verbatim -- session_id lives directly on it.
+      expect(extractClaudeSessionId([
+        eventFromSandboxStdout(JSON.stringify({ type: "result", result: "hi", session_id: "sandbox-sess-1" })),
+      ])).toBe("sandbox-sess-1");
+    });
+
+    it("extractClaudeSessionId returns undefined rather than a placeholder when no event carries a session id", () => {
+      expect(extractClaudeSessionId([])).toBeUndefined();
+      expect(extractClaudeSessionId([{ type: "result", result: "no session id here" }])).toBeUndefined();
+      expect(extractClaudeSessionId([{ session_id: "" }, { session_id: 42 }, null, "not an object"])).toBeUndefined();
     });
   });
 

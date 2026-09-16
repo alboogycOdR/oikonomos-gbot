@@ -56,6 +56,8 @@ import {
   fulfillPendingSecretRequest as dbFulfillPendingSecretRequest,
   declineSecretRequest as dbDeclineSecretRequest,
   resumeRun as dbResumeRun,
+  getLatestRunForThread as dbGetLatestRunForThread,
+  getThreadEpoch as dbGetThreadEpoch,
   SECRET_VAULT_WRITE_EVENT,
   RoutineLimitError,
   type AuditEvent,
@@ -457,6 +459,18 @@ export async function notifyAfterChatRun(
  * opens its own connection via `createDatabaseStore` — this file never
  * touches a `Pool` directly, only the two packages' public functions.
  */
+/**
+ * `TaskExecution` (packages/db/src/tasks.ts, outside this task's
+ * Owned_Paths) has no `epoch` field of its own -- rather than widen that
+ * type (and its DB-side validation) for a control-api-only concern, this
+ * task stamps `epoch` onto the execution JSON at the port boundary. The
+ * underlying JSONB column and `createTaskExecutionRun`'s persistence are
+ * already field-agnostic (`JSON.stringify(execution)`), so this is a pure
+ * additive read/write contract between `submitTaskExecution` (writer) and
+ * `getLatestRunForThread` (reader) -- see runs.ts's matching doc comment.
+ */
+type EpochStampedExecution = TaskExecution & { readonly epoch: number };
+
 export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
   const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
   const recordQueuedRun = async (event: QueuedRunAudit): Promise<void> => {
@@ -481,11 +495,87 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
   const submitTaskExecution: NonNullable<ControlApiDeps["submitTaskExecution"]> = async ({ task, execution }) => {
     const role = await dbGetRole(options, task.roleId);
     if (role === null) throw new Error(`Cannot queue task execution: role ${task.roleId} not found.`);
+    const provider = resolveRoleRuntime(role).provider;
+    // TASK-269: an ordinary follow-up message in an existing thread must
+    // continue the SAME Agent SDK session the thread's last turn used, not
+    // start a fresh, memoryless one every time. Look up the thread's most
+    // recent prior run BEFORE creating this turn's own run below --
+    // `getLatestRunForThread` orders by `started_at DESC` with no way to
+    // exclude a not-yet-existing row, so querying it after
+    // `createTaskExecutionRun` would find the run THIS call just created
+    // (itself always the newest) instead of the real predecessor, and
+    // silently never seed continuity at all.
+    //
+    // Deliberately conservative about WHEN to seed:
+    // - no prior run for this thread+role -> first message ever, start
+    //   fresh (do nothing here).
+    // - prior run's provider differs from this run's -> never hand a
+    //   Claude session token to a Gemini run or vice versa (the exact
+    //   danger chatRunDriver.ts's own provider-pinning comment names).
+    // - prior run did not reach 'completed' -> nothing safe to resume (a
+    //   still-open, failed, or cancelled run has no known-good session
+    //   state to continue from).
+    //
+    // Deliberately fails CLOSED to "no continuity" (never lets a lookup
+    // problem here block message-sending itself, which is the one thing
+    // this port must never regress): a thread-context or continuity-lookup
+    // error leaves both `currentEpoch` at its safe default and `priorRun`
+    // `null`, so this path still creates and queues an ordinary, un-seeded
+    // run exactly as it did before this task, never failing the chat turn.
+    //
+    // TASK-270 review rework: `/threads/:id/fresh` (TASK-179) bumps the
+    // thread's `thread_context.epoch` specifically so the model stops
+    // seeing anything from before that reset. Without scoping the prior-run
+    // lookup to the thread's CURRENT epoch, a user who just called `/fresh`
+    // would still have their old Claude session silently resumed on their
+    // very next message -- defeating the fresh-reset contract entirely.
+    // Reuses the same epoch concept `chatRunDriver.ts`'s Gemini-lane
+    // compaction logic already relies on, rather than inventing a second
+    // "start fresh" mechanism -- but reads it via `getThreadEpoch` (a plain,
+    // lock-free read), NOT `getOrInitThreadContext` (an UPSERT): this
+    // runs on EVERY chat turn, and paying a write lock on `thread_context`
+    // just to read a number that defaults to 0 until the first `/fresh`
+    // would needlessly serialize back-to-back turns on the same thread.
+    // `currentEpoch` is also stamped onto THIS run's own execution JSON
+    // below, so the very next turn (or the next `/fresh`) has a reliable
+    // epoch to compare against in turn.
+    let currentEpoch = 0;
+    let priorRun: Awaited<ReturnType<typeof dbGetLatestRunForThread>> | null = null;
+    try {
+      currentEpoch = await dbGetThreadEpoch(options, execution.threadId);
+      priorRun = await dbGetLatestRunForThread(options, {
+        threadId: execution.threadId,
+        roleId: task.roleId,
+        epoch: currentEpoch,
+      });
+    } catch (error) {
+      console.error("TASK-269 continuity lookup failed; continuing without session continuity for this turn:", error);
+    }
+    // Stamp the epoch onto this run's own execution record (an extra field
+    // on the already-flexible `execution` JSONB, deliberately not added to
+    // `TaskExecution`'s own type in packages/db/src/tasks.ts -- outside this
+    // task's Owned_Paths) so a FUTURE turn's `getLatestRunForThread` lookup
+    // can tell whether THIS run belongs to its thread's still-current epoch.
+    const epochStampedExecution: EpochStampedExecution = { ...execution, epoch: currentEpoch };
     const persisted = await dbCreateTaskExecutionRun(options, {
       task,
-      execution,
-      provider: resolveRoleRuntime(role).provider,
+      execution: epochStampedExecution,
+      provider,
     });
+    // `createTaskExecutionRun` always inserts a brand-new run with no
+    // `session_ref` (correct for a genuinely first message); seed
+    // continuity here, BEFORE this run is ever enqueued, by reusing
+    // `dbResumeRun` -- already-tested machinery that sets both
+    // `session_ref` and `status='resumed'` atomically -- to attach the
+    // prior run's session. `services/worker/src/main.ts` (unchanged,
+    // outside this task's territory) already forwards `run.sessionRef` as
+    // `resume.sessionRef` to the driver whenever it is non-null, so seeding
+    // it here is the only wiring this path needs; chatRunDriver.ts's
+    // existing `--resume` plumbing (and this task's new post-run
+    // session_ref capture, see that file) does the rest.
+    if (priorRun !== null && priorRun.status === "completed" && priorRun.provider === provider) {
+      await dbResumeRun(options, persisted.runId, priorRun.sessionRef ?? priorRun.runId);
+    }
     await recordQueuedRun({
       runId: persisted.runId,
       taskId: persisted.task.taskId,

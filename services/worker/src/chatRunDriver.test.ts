@@ -9,6 +9,7 @@ import {
   insertMessage,
   listMessages,
   listRuns,
+  resumeRun,
   upsertRoleSandbox,
   type DatabaseOptions,
 } from "@oikonomos/db";
@@ -28,6 +29,7 @@ import {
   chatExecutionMode,
   claudePrintCommand,
   destinationFor,
+  extractClaudeSessionId,
   finalText,
   HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE,
   LOCAL_LANE_MODEL,
@@ -446,6 +448,67 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const botMessage = messages.find((message) => message.role === "bot" && message.runId === run.runId);
       expect(botMessage).toBeDefined();
       expect(botMessage?.body.length).toBeGreaterThan(0);
+    },
+    120_000,
+  );
+
+  it(
+    "TASK-269: a real second turn genuinely remembers information only given in the real first turn, via a captured, persisted session_ref",
+    async () => {
+      const driver = createChatRunDriver(options);
+      const continuityTask = await createTask(options, {
+        roleId,
+        title: "TASK-269 continuity fixture turn 1",
+        goal: "My favorite color is teal. Reply with just: Got it.",
+        requestedBy: "task-269-suite",
+      });
+      // `threads` has one row per role_id (a real UNIQUE constraint) — reuse
+      // this suite's own fixture thread rather than inserting a second one.
+      const continuityThreadId = threadId;
+
+      await driver.run({ task: continuityTask, threadId: continuityThreadId });
+
+      const firstPage = await listRuns(options, { taskId: continuityTask.taskId });
+      expect(firstPage.runs).toHaveLength(1);
+      const firstRun = firstPage.runs[0]!;
+      expect(firstRun.status).toBe("completed");
+      // The real Claude CLI/Agent SDK's own session id was captured and
+      // persisted after the turn completed -- proof there is something
+      // genuine to `--resume` with, not just the run's own manufactured
+      // UUID (which the CLI never recognizes as a session it can resume).
+      expect(firstRun.sessionRef).not.toBeNull();
+      expect(firstRun.sessionRef).not.toBe(firstRun.runId);
+
+      // Mirrors exactly what ports.ts's `submitTaskExecution` does in
+      // production: a brand-NEW task/run for the next turn, seeded with the
+      // prior turn's captured session_ref before it is ever executed.
+      const secondTask = await createTask(options, {
+        roleId,
+        title: "TASK-269 continuity fixture turn 2",
+        goal: "What did I just tell you my favorite color was? Answer with just the color, one word, lowercase.",
+        requestedBy: "task-269-suite",
+      });
+      const secondRun = await startTaskRun(options, { taskId: secondTask.taskId, provider: "claude" });
+      const seeded = await resumeRun(options, secondRun.runId, firstRun.sessionRef!);
+      expect(seeded.sessionRef).toBe(firstRun.sessionRef);
+
+      // Mirrors exactly what `services/worker/src/main.ts` (unowned,
+      // unchanged) constructs from the persisted run before calling the
+      // driver: `resume = { runId, sessionRef }` whenever sessionRef is set.
+      await driver.run({
+        task: secondTask,
+        threadId: continuityThreadId,
+        resume: { runId: secondRun.runId, sessionRef: seeded.sessionRef! },
+      });
+
+      const secondMessages = await listMessages(options, continuityThreadId);
+      const secondReply = secondMessages.find((message) => message.role === "bot" && message.runId === secondRun.runId);
+      expect(secondReply).toBeDefined();
+      // The bar that actually matters (per this task's own acceptance
+      // criteria): real evidence the second turn's real model reply
+      // correctly references information ONLY present in the first turn,
+      // not merely that a --resume argument was technically passed.
+      expect(secondReply!.body.toLowerCase()).toContain("teal");
     },
     120_000,
   );
