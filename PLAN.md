@@ -7686,12 +7686,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-15T11:00:00Z] [ORCH] PRIORITY BUMPED low -> medium: this recurred a second time this session, at a larger scale (16,372 vs the original 8,770), and under a SECOND, differently-shaped stale-fixture naming pattern (a 'Probe routine' fixture, requested_by shaped `routine:<id>` rather than `test:<name>`) that the original cleanup rule did not anticipate -- confirmed this is a real, compounding, recurring gap, not a one-off. It directly delayed real acceptance-verification work this time (TASK-245's own live confirmation of TASK-258's fix), not just a theoretical concern. See docs/acceptance/workspace-1/A19-24h-observation.md for the full second-occurrence account, including the specific manual remediation applied (both times fully safe, zero unintended spend either time, but relying on manual re-derivation of the safe cleanup rule each time is not sustainable).
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
 - [2026-09-16T05:46:54Z] [SV:CX9] Exact provider=test fixture boundary added; reconciliation test proves fixture runs are skipped while normal runs requeue.
+- [2026-09-16T06:13:49Z] [SV:CX9] Fixture-provider reconciliation fix is committed; focused worker typecheck and 3/3 regression tests pass. Full isolated suite began successfully but its final exit code was not captured. NEXT: Run one persistent powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 invocation and capture its final pnpm exit code.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T05:49:01Z
+**Updated_At:** 2026-09-16T06:13:49Z
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
