@@ -1,6 +1,6 @@
 # ADR-018 — Bot templates: a refuse-on-secret manifest that never grants, internal-only with an import-ready shape
 
-**Status:** Accepted (2026-09-12, after adversarial review by CX9 / Codex GPT — accept-with-changes, both required changes applied below; see `ADR-018-review-cx9-2026-09.md` for the full verdict). Implementing tasks on `packages/templates` export/install and the control-api routes require adversarial review by a model other than their author — by policy, per ADR-012 §6, since this is a secret-egress and grant boundary even though the paths are not on the CLAUDE.md protected list.
+**Status:** Accepted (2026-09-12, after adversarial review by CX9 / Codex GPT — accept-with-changes, both required changes applied below; see `ADR-018-review-cx9-2026-09.md` for the full verdict). Implementing tasks on `packages/templates` export/install and the control-api routes require adversarial review by a model other than their author — by policy, per ADR-012 §6, since this is a secret-egress and grant boundary even though the paths are not on the CLAUDE.md protected list. **The "Amendment 2026-09-16" section below is Proposed, pending its own adversarial review** — §3's original built-in-floor decision stays Accepted and in effect until that review lands.
 **Date:** 2026-09-12
 **Author:** Fable 5.1, from `docs/research/fable-brief-templates-project-manager-bot-2026-09-12.md`
 **Related:** `specs/OIKONOMOS_TEMPLATES_v1.0.md` (the spec this decides for); ADR-013 (declaration-verified registry — templates reference capability ids, never declare them); ADR-008 (manifest location — templates never write there); ADR-014 (vault — `secret://` refs never travel); CLAUDE.md non-negotiables #4 (no credentials) and #5 (Basileia-owned accounts only); parity disposition row 20.
@@ -69,3 +69,40 @@ A routine that fires on install is the "run one supervised test before enabling 
 - Review: the export scan and the install/grant boundary get adversarial, different-model review by policy.
 - Sequencing: the routes share `app.ts`/`openapi.ts`/`ports.ts` with Wave Workspace-1's TASK-237/238/242 and follow them, or take a dedicated routes file registered by a one-line integration task.
 - Open for a later ADR: team/public visibility, signing, upgrade-in-place of an installed bot, and any external import converter.
+
+## Amendment 2026-09-16 — the built-in floor is the wrong boundary; widen it to a named default-tool set, not an adapter tag
+
+**Trigger:** found live, not theoretically. A freshly-created bot (`maximus`, TASK-263's incident) was asked for the weather and correctly refused to fabricate an answer — but the refusal happened because the bot holds *no* way to look anything up at all, not because a look-up was denied on policy grounds. The owner asked, correctly, why a generic tool like web browsing needs the same manual per-capability grant call as linking a real Gmail account, when the public Grok Bot product the owner is replicating makes tools available the moment you sign in and only gates account-linked connectors behind an explicit connect step.
+
+**Diagnosis.** §3's "built-in floor" is implemented in `services/control-api/src/app.ts`'s `POST /roles` handler as `capabilities.adapter === 'sdk:builtin'` — a filter on *implementation detail* (is this capability implemented as an in-process SDK tool or an MCP server call?), not on the property that actually matters for whether a human's consent is needed first: **does invoking this touch one specific external account/mailbox/calendar that belongs to someone, or is it a shared, sandboxed, Basileia-owned tool with no personal data behind it at all?** Checked directly against the live `capabilities` table:
+
+| Capability | Adapter | Touches a personal account? |
+|---|---|---|
+| `fs.read`, `fs.write`, `runtime.bash` | `sdk:builtin` | No | 
+| `browser.session`, `browser.navigate`, `browser.read`, `browser.interact`, `browser.screenshot` (Steel) | `mcp:steel-browser` | No — a Basileia-owned sandbox, `account_ownership: basileia` |
+| `workspace.rename_self`, `workspace.send_to_role`, `workspace.create_routine` | `mcp:workspace` | No — core product self-management, not an external account at all |
+| `workspace.request_secret` | `mcp:workspace` | No, but genuinely consequential (asks a human to hand over a credential) |
+| Gmail / Calendar / Drive (all tools) | `mcp:gmail`/`mcp:google-calendar`/`mcp:google-drive` | Yes — a specific mailbox/calendar/drive with real content |
+
+The adapter tag happens to correlate with this distinction for exactly the three original `sdk:builtin` tools, which is why the contradiction sat unnoticed since ADR-018's original acceptance.
+
+**Decision.** Replace the adapter-tag filter with an explicit, named **default capability set**, `DEFAULT_ROLE_CAPABILITIES`, checked in at `services/control-api/src/defaultCapabilities.ts` (new file, not protected-path, but held to this ADR's own adversarial-review requirement below same as §3's original floor):
+
+```
+fs.read, fs.write, runtime.bash,                                   // unchanged (sdk:builtin)
+browser.session, browser.navigate, browser.read,
+browser.interact, browser.screenshot,                               // new — Steel, no personal account
+workspace.rename_self, workspace.send_to_role, workspace.create_routine  // new — self-management, no personal account
+```
+
+Each entry is granted at its manifest-declared `default_tier` exactly as today's floor already does — this amendment changes *which* capabilities are in the floor, not the tier-resolution mechanism. `workspace.request_secret` and every Gmail/Calendar/Drive capability are deliberately **excluded** and remain manual-grant-only: the first because handing over a credential is consequential regardless of account ownership, the second because they are exactly the account-linked case the owner named as correctly requiring an explicit step.
+
+`POST /templates/:id/install` (§3) inherits this widened floor automatically, since it creates a role through the same `POST /roles` path — no separate change needed there, but the install test's set-equality assertion (§3, "asserts set equality with the built-in capability-id set from `BUILTIN_TOOLS`") must be updated to assert equality against `DEFAULT_ROLE_CAPABILITIES` instead, or it will fail the moment this lands.
+
+**Consequence for §3's own security property:** a template's `integrations[]` list still can never grant anything — it can still only ever contain capabilities *outside* `DEFAULT_ROLE_CAPABILITIES` (a Steel or workspace capability can never legitimately appear there anymore, since it's now part of the automatic floor every role gets regardless of any template). The install test naming §3's grant boundary should add an explicit assertion that no `DEFAULT_ROLE_CAPABILITIES` member ever appears in a template's `integrations[]` — if one did, that would itself be a spec/tooling bug worth catching mechanically, not silently accepted as redundant.
+
+**Not decided here, left for the review or a follow-up:** whether `browser.interact` (T2_internal — the one member of the new set capable of mutating a live page: click/type/fill) belongs in the default floor at the same weight as the four read-only/session Steel capabilities, or should stay manual while its four siblings default on. Flagging explicitly for the adversarial reviewer rather than asserting either answer here.
+
+**Review requirement.** Per this ADR's own header, any change to `services/control-api`'s grant boundary requires adversarial review by a model other than its author. This amendment is authored by ORCH (Claude Sonnet 5); implementation and review both go to builders under that same different-model constraint.
+
+**Spec follow-up (ORCH, after this amendment's implementation merges):** `specs/OIKONOMOS_TEMPLATES_v1.0.md` §3.2, §5.2, §10 all currently say "built-in floor" / `BUILTIN_TOOLS` where this amendment now means `DEFAULT_ROLE_CAPABILITIES` — builders never touch `specs/**` (protected path), so ORCH updates the spec text directly once the implementing task's exact naming is confirmed, not before.
