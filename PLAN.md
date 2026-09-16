@@ -7976,7 +7976,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-269
 **Title:** CRITICAL -- an ordinary follow-up chat message never continues the previous Claude session; every turn in a conversation starts completely fresh with zero memory of anything said before it
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** `services/control-api/src/app.ts`'s `POST /threads/:id/messages` (1:1 and group-with-one-recipient branches, ~lines 1926-1943 and ~1899-1917); `services/control-api/src/ports.ts`'s `submitTaskExecution`/`runChatTask` (neither ever looks up a prior run's `session_ref`); `services/worker/src/chatRunDriver.ts` lines ~340-360, ~446, ~787 (the ONLY place `--resume` is ever attached to the Claude CLI invocation is `request.resume`, which is set exclusively by the interrupted-run-reconciliation/approval-resume path, never by an ordinary new message in an existing thread).
@@ -7990,16 +7990,16 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] A real, non-mocked, end-to-end test: send two REAL sequential chat messages through the actual `/threads/:id/messages` route to a real running worker (real Claude provider, real spend -- keep it minimal, e.g. "my favorite color is teal" then "what did I just tell you my favorite color was"), and assert the SECOND turn's real model reply correctly references information ONLY present in the first turn. This is the one acceptance bar that actually matters -- a test that only checks "a resume argument was passed" without proving the model actually remembered something is not sufficient evidence this bug is fixed.
 - [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
 - [ ] Dossier states plainly whether this same gap affects the group/fan-out chat path too (multiple recipients in one thread) -- if it does, name it explicitly rather than silently fixing only the 1:1 case and leaving the multi-recipient case's own continuity gap undiscovered a second time.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-269-s5
+**Started_At:** 2026-09-16T13:14:19Z
 **Progress_Notes:**
 - [2026-09-16T13:12:14Z] [ORCH] Filed at CRITICAL priority per direct owner report and ORCH's own live code-path tracing (not inferred from behavior alone -- read the actual dispatch code end to end before concluding). Owner explicitly authorized dispatching a fix immediately. This is a foundational, previously-undiscovered gap in this product's core chat experience for its primary (Claude) provider -- treat with the same urgency as TASK-258/260 (both critical, both fixed and deployed same-day earlier this session).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T13:12:14Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T13:14:19Z
 
 
 ### TASK-270
