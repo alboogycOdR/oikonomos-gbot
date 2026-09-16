@@ -52,6 +52,7 @@ export {
   failRun,
   getLatestRunForThread,
   getRun,
+  getThreadEpoch,
   IllegalRunTransitionError,
   listOpenRuns,
   listRuns,

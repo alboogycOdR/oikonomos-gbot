@@ -42,6 +42,7 @@ import {
   ATTACHMENT_ALLOWED_CONTENT_TYPES,
   ATTACHMENT_MAX_BYTES,
   createDatabaseBackedDeps,
+  createDatabaseBackedThreadContext,
   createFilesystemAttachmentStore,
   type ControlApiDeps,
 } from "./ports.js";
@@ -1561,7 +1562,13 @@ integration("POST /threads/:id/attachments — real Postgres durable submission 
         "SELECT execution FROM tasks WHERE requested_by = $1",
         [`chat:thread:${liveThreadId}`],
       );
-      expect(execution.rows).toEqual([expect.objectContaining({ execution: { version: 1, kind: "chat", threadId: liveThreadId } })]);
+      // `epoch` (TASK-269/270): every execution `submitTaskExecution` creates
+      // is now stamped with the thread's current epoch at creation time, so
+      // a future `getLatestRunForThread` lookup can tell whether it still
+      // belongs to the thread's current (not-yet-/fresh'd) epoch.
+      expect(execution.rows).toEqual([
+        expect.objectContaining({ execution: { version: 1, kind: "chat", threadId: liveThreadId, epoch: 0 } }),
+      ]);
 
       const listed = JSON.parse(
         (await app.inject({
@@ -1784,6 +1791,83 @@ integration("POST /threads/:id/messages — conversation continuity (TASK-269)",
       await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
       await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
       await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+      await pool.end();
+    }
+  });
+
+  // TASK-270 rework: `getLatestRunForThread` must never resume a session
+  // from BEFORE the thread's most recent `POST /threads/:id/fresh` call --
+  // that route bumps `thread_context.epoch` specifically so the model
+  // forgets everything before the reset (TASK-179), and a silently-resumed
+  // old session would defeat that contract entirely. This wires `buildApp`
+  // with the real `threadContext` port (`createDatabaseBackedThreadContext`)
+  // so `/fresh` is exercised through the real HTTP route, not a mock.
+  it("does NOT resume a pre-/fresh session: the first post-/fresh run has session_ref null and status started", async () => {
+    const roleId = `task-270-freshepoch-${randomUUID()}`;
+    const pool = new Pool({ connectionString: connectionString ?? "", ...integrationPoolConfig });
+    let app: ReturnType<typeof buildApp> | undefined;
+    try {
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description, provider)
+         VALUES ($1, 'basileia', $1, 'TASK-270 fixture', 'TASK-270 fixture', 'claude')`,
+        [roleId],
+      );
+      const threadResult = await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId]);
+      const threadId = threadResult.rows[0]!.id;
+      app = buildApp(createDatabaseBackedDeps(options), {
+        authToken: TOKEN,
+        logger: false,
+        threadContext: createDatabaseBackedThreadContext(options),
+      });
+
+      const firstPost = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "my favorite color is teal" },
+      });
+      expect(firstPost.statusCode).toBe(201);
+      const firstRun = await waitForRunOtherThan(pool, roleId, undefined);
+      // Capture + complete the first turn's session, exactly like the plain
+      // continuity test above -- this is the session `/fresh` must make
+      // unreachable to the very next turn.
+      await resumeRun(options, firstRun!.runId, "pre-fresh-claude-session");
+      await completeRun(options, firstRun!.runId);
+
+      const freshPost = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/fresh`,
+        headers: authHeaders(),
+      });
+      expect(freshPost.statusCode).toBe(200);
+      expect(freshPost.json().epoch).toBe(1);
+
+      const secondPost = await app.inject({
+        method: "POST",
+        url: `/threads/${threadId}/messages`,
+        headers: authHeaders(),
+        payload: { body: "what did I just tell you my favorite color was" },
+      });
+      expect(secondPost.statusCode).toBe(201);
+      const secondRun = await waitForRunOtherThan(pool, roleId, firstRun!.runId);
+      expect(secondRun!.runId).not.toBe(firstRun!.runId);
+      // The whole point of this test: the pre-/fresh session must NOT be
+      // inherited, even though it is a real, completed, same-provider,
+      // same-role prior run and would otherwise be exactly what
+      // `getLatestRunForThread` picks.
+      expect(secondRun!.sessionRef).toBeNull();
+      expect(secondRun!.status).toBe("started");
+    } finally {
+      if (app !== undefined) await app.close();
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM approvals WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [roleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [roleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [roleId]);
+      await pool.query("DELETE FROM thread_context WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
       await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
       await pool.query("DELETE FROM role_grants WHERE role_id = $1", [roleId]);
       await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);

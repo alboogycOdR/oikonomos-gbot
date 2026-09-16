@@ -56,13 +56,8 @@ import {
   fulfillPendingSecretRequest as dbFulfillPendingSecretRequest,
   declineSecretRequest as dbDeclineSecretRequest,
   resumeRun as dbResumeRun,
-  // TASK-269: NOT YET re-exported from packages/db/src/index.ts -- that
-  // barrel file is outside this task's Owned_Paths (see the dossier's
-  // OWNERSHIP_CONFLICT). `getLatestRunForThread` itself is implemented and
-  // tested in packages/db/src/runs.ts (Owned_Paths for this task); this
-  // import, and every build/typecheck that depends on it, cannot succeed
-  // until the one-line barrel export is added.
   getLatestRunForThread as dbGetLatestRunForThread,
+  getThreadEpoch as dbGetThreadEpoch,
   SECRET_VAULT_WRITE_EVENT,
   RoutineLimitError,
   type AuditEvent,
@@ -464,6 +459,18 @@ export async function notifyAfterChatRun(
  * opens its own connection via `createDatabaseStore` — this file never
  * touches a `Pool` directly, only the two packages' public functions.
  */
+/**
+ * `TaskExecution` (packages/db/src/tasks.ts, outside this task's
+ * Owned_Paths) has no `epoch` field of its own -- rather than widen that
+ * type (and its DB-side validation) for a control-api-only concern, this
+ * task stamps `epoch` onto the execution JSON at the port boundary. The
+ * underlying JSONB column and `createTaskExecutionRun`'s persistence are
+ * already field-agnostic (`JSON.stringify(execution)`), so this is a pure
+ * additive read/write contract between `submitTaskExecution` (writer) and
+ * `getLatestRunForThread` (reader) -- see runs.ts's matching doc comment.
+ */
+type EpochStampedExecution = TaskExecution & { readonly epoch: number };
+
 export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOptions): ControlApiDeps {
   const pushTransport = options.pushTransport ?? createPushTransportFromEnv();
   const recordQueuedRun = async (event: QueuedRunAudit): Promise<void> => {
@@ -511,21 +518,48 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     //
     // Deliberately fails CLOSED to "no continuity" (never lets a lookup
     // problem here block message-sending itself, which is the one thing
-    // this port must never regress): `getLatestRunForThread` is a new
-    // accessor not yet re-exported from packages/db/src/index.ts (outside
-    // this task's Owned_Paths -- see the dossier's OWNERSHIP_CONFLICT), so
-    // until that one-line barrel export lands, this call throws and this
-    // path must still create and queue an ordinary, un-seeded run exactly
-    // as it did before this task, not fail the whole chat turn.
+    // this port must never regress): a thread-context or continuity-lookup
+    // error leaves both `currentEpoch` at its safe default and `priorRun`
+    // `null`, so this path still creates and queues an ordinary, un-seeded
+    // run exactly as it did before this task, never failing the chat turn.
+    //
+    // TASK-270 review rework: `/threads/:id/fresh` (TASK-179) bumps the
+    // thread's `thread_context.epoch` specifically so the model stops
+    // seeing anything from before that reset. Without scoping the prior-run
+    // lookup to the thread's CURRENT epoch, a user who just called `/fresh`
+    // would still have their old Claude session silently resumed on their
+    // very next message -- defeating the fresh-reset contract entirely.
+    // Reuses the same epoch concept `chatRunDriver.ts`'s Gemini-lane
+    // compaction logic already relies on, rather than inventing a second
+    // "start fresh" mechanism -- but reads it via `getThreadEpoch` (a plain
+    // SELECT, no row-lock), NOT `getOrInitThreadContext` (an UPSERT): this
+    // runs on EVERY chat turn, and paying a write lock on `thread_context`
+    // just to read a number that defaults to 0 until the first `/fresh`
+    // would needlessly serialize back-to-back turns on the same thread.
+    // `currentEpoch` is also stamped onto THIS run's own execution JSON
+    // below, so the very next turn (or the next `/fresh`) has a reliable
+    // epoch to compare against in turn.
+    let currentEpoch = 0;
     let priorRun: Awaited<ReturnType<typeof dbGetLatestRunForThread>> | null = null;
     try {
-      priorRun = await dbGetLatestRunForThread(options, { threadId: execution.threadId, roleId: task.roleId });
+      currentEpoch = await dbGetThreadEpoch(options, execution.threadId);
+      priorRun = await dbGetLatestRunForThread(options, {
+        threadId: execution.threadId,
+        roleId: task.roleId,
+        epoch: currentEpoch,
+      });
     } catch (error) {
       console.error("TASK-269 continuity lookup failed; continuing without session continuity for this turn:", error);
     }
+    // Stamp the epoch onto this run's own execution record (an extra field
+    // on the already-flexible `execution` JSONB, deliberately not added to
+    // `TaskExecution`'s own type in packages/db/src/tasks.ts -- outside this
+    // task's Owned_Paths) so a FUTURE turn's `getLatestRunForThread` lookup
+    // can tell whether THIS run belongs to its thread's still-current epoch.
+    const epochStampedExecution: EpochStampedExecution = { ...execution, epoch: currentEpoch };
     const persisted = await dbCreateTaskExecutionRun(options, {
       task,
-      execution,
+      execution: epochStampedExecution,
       provider,
     });
     // `createTaskExecutionRun` always inserts a brand-new run with no

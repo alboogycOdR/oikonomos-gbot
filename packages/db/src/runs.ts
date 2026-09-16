@@ -239,6 +239,49 @@ export interface LatestRunForThreadFilter {
    * one; every known caller today passes it.
    */
   roleId?: string;
+  /**
+   * The thread's CURRENT `thread_context.epoch` (TASK-269 rework, TASK-270
+   * review finding). `POST /threads/:id/fresh` (TASK-179) bumps that epoch
+   * specifically so the model stops seeing anything from before the reset --
+   * without this filter, a run created in an earlier epoch would still be
+   * silently eligible to be resumed, handing the model back exactly the
+   * session `/fresh` was called to make it forget. Every known caller stamps
+   * this same epoch value onto the execution JSON of the run it creates (see
+   * `services/control-api/src/ports.ts`), so a run only ever matches here
+   * while it belongs to the thread's still-current epoch; once the epoch
+   * moves on, that run's `execution ->> 'epoch'` no longer equals the
+   * caller's freshly-read current epoch and it drops out of eligibility for
+   * good. REQUIRED (not optional) -- every real call site already knows this
+   * value via `getOrInitThreadContext`, and defaulting it would silently
+   * reintroduce the exact bug this filter exists to close.
+   */
+  epoch: number;
+}
+
+/**
+ * Read-only view of a thread's current 'start fresh' epoch (TASK-270
+ * rework), WITHOUT `getOrInitThreadContext`'s UPSERT
+ * (`packages/db/src/threadContext.ts`, outside this task's Owned_Paths).
+ * That upsert takes a row lock on `thread_context` on every single call --
+ * fine for the low-frequency `GET /threads/:id` / `POST /threads/:id/fresh`
+ * routes it was written for, but `submitTaskExecution` calls this on EVERY
+ * ordinary chat turn, so paying a write lock just to read a number would
+ * needlessly serialize back-to-back turns on the same thread and add
+ * contention under load for no benefit. A thread with no `thread_context`
+ * row yet has never had `/fresh` called and is, by definition, still on
+ * epoch 0 -- the exact same default the `015_thread_context` migration's
+ * column declares and `getOrInitThreadContext` lazily materializes; this
+ * function simply never bothers creating that row for a plain read.
+ */
+export async function getThreadEpoch(options: DatabaseOptions, threadId: string): Promise<number> {
+  const normalizedThreadId = requireUuid(threadId, "threadId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ epoch: number }>(
+      `SELECT epoch FROM thread_context WHERE thread_id = $1`,
+      [normalizedThreadId],
+    );
+    return result.rows[0]?.epoch ?? 0;
+  });
 }
 
 /**
@@ -250,20 +293,35 @@ export interface LatestRunForThreadFilter {
  * already exposes -- it doesn't (checked: `listRuns` filters by
  * `tenantId`/`status`/`taskId`/`cursor` only).
  *
- * Returns `null` when the thread has no prior run at all (its very first
- * message) -- callers must treat that as "start fresh", never as an error.
+ * Epoch-scoped (TASK-270 rework): a run whose task was stamped with an
+ * older epoch (i.e. created before the thread's most recent `/fresh` call)
+ * never matches, even if it is otherwise the newest run on the thread. A
+ * run with no `epoch` in its execution JSON at all (legacy rows persisted
+ * before this rework shipped) also never matches -- `NULL = $n` is never
+ * true in SQL, which is the conservative direction: at worst a very old
+ * thread loses one turn's worth of continuity across the deploy boundary,
+ * never the reverse (resuming a session `/fresh` was called to end).
+ *
+ * Returns `null` when the thread has no prior run in its current epoch at
+ * all (its very first message, or the first message after `/fresh`) --
+ * callers must treat that as "start fresh", never as an error.
  */
 export async function getLatestRunForThread(
   options: DatabaseOptions,
   filter: LatestRunForThreadFilter,
 ): Promise<Run | null> {
   const threadId = requireUuid(filter.threadId, "threadId");
+  if (!Number.isInteger(filter.epoch) || filter.epoch < 0) {
+    throw new Error("epoch must be a non-negative integer.");
+  }
   const conditions: string[] = [`t.execution ->> 'threadId' = $1`];
   const params: unknown[] = [threadId];
   if (filter.roleId !== undefined) {
     params.push(requireNonEmpty(filter.roleId, "roleId"));
     conditions.push(`t.role_id = $${params.length}`);
   }
+  params.push(filter.epoch);
+  conditions.push(`(t.execution ->> 'epoch')::int = $${params.length}`);
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RunRow>(
@@ -710,16 +768,37 @@ if (import.meta.vitest) {
       ).rejects.toThrow(/UUID/);
     });
 
-    it("rejects an invalid threadId or roleId on getLatestRunForThread (TASK-269)", async () => {
+    it("rejects an invalid threadId, roleId, or epoch on getLatestRunForThread (TASK-269)", async () => {
       await expect(
-        getLatestRunForThread({ connectionString: "postgres://x" }, { threadId: "not-a-uuid" }),
+        getLatestRunForThread({ connectionString: "postgres://x" }, { threadId: "not-a-uuid", epoch: 0 }),
       ).rejects.toThrow(/threadId/);
       await expect(
         getLatestRunForThread(
           { connectionString: "postgres://x" },
-          { threadId: "11111111-1111-1111-1111-111111111111", roleId: "   " },
+          { threadId: "11111111-1111-1111-1111-111111111111", roleId: "   ", epoch: 0 },
         ),
       ).rejects.toThrow(/roleId/);
+    });
+
+    it("rejects a negative or non-integer epoch on getLatestRunForThread (TASK-270 rework)", async () => {
+      await expect(
+        getLatestRunForThread(
+          { connectionString: "postgres://x" },
+          { threadId: "11111111-1111-1111-1111-111111111111", epoch: -1 },
+        ),
+      ).rejects.toThrow(/epoch/);
+      await expect(
+        getLatestRunForThread(
+          { connectionString: "postgres://x" },
+          { threadId: "11111111-1111-1111-1111-111111111111", epoch: 1.5 },
+        ),
+      ).rejects.toThrow(/epoch/);
+    });
+
+    it("rejects an invalid threadId on getThreadEpoch (TASK-270 rework)", async () => {
+      await expect(
+        getThreadEpoch({ connectionString: "postgres://x" }, "not-a-uuid"),
+      ).rejects.toThrow(/threadId/);
     });
 
     it("openRunStatuses is exactly the resume/fail/cancel-eligible set", () => {

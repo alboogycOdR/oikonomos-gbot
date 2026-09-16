@@ -208,3 +208,89 @@ logic, so the fan-out path gets the identical fix, not a separate one.
   `submitTaskExecution` unchanged; the entire fix lives in
   `runs.ts`/`ports.ts`/`chatRunDriver.ts`. Reporting `blocked` on the one
   remaining, precisely-scoped `OWNERSHIP_CONFLICT`.
+
+## Rework session (TASK-270 review finding, 2026-09-16)
+
+Resumed after ORCH's REWORK verdict on TASK-270's adversarial review
+(`docs/decisions/TASK-269-review-cx9-2026-09.md`): `getLatestRunForThread`
+had zero epoch-awareness, so a user who called `POST /threads/:id/fresh`
+would still have their pre-fresh Claude session silently resumed on their
+next message.
+
+### What shipped
+
+- `packages/db/src/runs.ts`: `LatestRunForThreadFilter.epoch` (now
+  **required**) scopes the query to `(t.execution ->> 'epoch')::int = $n`.
+  A run whose execution JSON has no `epoch` (legacy rows) or an older one
+  never matches -- `NULL = $n` is never true in SQL, the conservative
+  direction. Added `getThreadEpoch(options, threadId)` -- a plain
+  read-only `SELECT epoch FROM thread_context`, deliberately NOT
+  `getOrInitThreadContext` (outside Owned_Paths, and its UPSERT takes a row
+  lock this hot path shouldn't pay on every turn); defaults to 0 exactly
+  like that function's own lazy-row semantics when no row exists yet.
+- `services/control-api/src/ports.ts`: `submitTaskExecution` now reads the
+  thread's current epoch via `getThreadEpoch` BEFORE the continuity lookup
+  (used both to scope `getLatestRunForThread` and to stamp `epoch` onto
+  THIS run's own execution JSON via a local `EpochStampedExecution` type,
+  since `TaskExecution` itself, `packages/db/src/tasks.ts`, is outside
+  Owned_Paths -- the JSONB column and `createTaskExecutionRun` are already
+  field-agnostic, so this is a pure additive read/write contract between
+  the writer here and the reader in `runs.ts`). Same fail-closed try/catch
+  as before: any lookup error leaves `currentEpoch` at its safe default (0)
+  and `priorRun` null, never blocking the turn.
+- Tests: `runs.ts` (2 new no-DB validation cases: negative/non-integer
+  epoch, invalid threadId on `getThreadEpoch`), `runs.test.ts` (1 new
+  real-Postgres case proving a stale-epoch run is never eligible once
+  `/fresh` bumps the thread forward, using its own seeded role+thread pair
+  since `thread_context` FKs to a real `threads` row unlike this suite's
+  other fixtures; 2 `getThreadEpoch` assertions folded into it), and
+  `chat.routes.test.ts` (1 new real-HTTP-route case: complete/capture a
+  Claude session, call the real `POST /threads/:id/fresh`, post the next
+  message, assert the new run's `session_ref` is null and `status` is
+  `started` -- proving the pre-fresh session is NOT inherited even though
+  it is a real, completed, same-provider, same-role prior run that would
+  otherwise be exactly what `getLatestRunForThread` picks).
+- Fixed one now-legitimate assertion break: `chat.routes.test.ts`'s
+  TASK-166 attachments test pinned the literal execution JSON shape without
+  `epoch`; updated the pin to include `epoch: 0`.
+
+### A real flake found and fixed along the way (not just dismissed)
+
+First implementation used `getOrInitThreadContext` (the UPSERT) to read the
+current epoch. Three consecutive full `pnpm -r test` runs via
+`scripts/test-isolated.ps1` each showed exactly one failure, and twice it
+was the SAME test (`chat.routes.test.ts`'s plain continuity case) with
+`sessionRef` unexpectedly null -- while the identical test passed 100%
+reliably run standalone. That pattern (fails under full-suite parallel
+load, never alone) pointed at real added lock contention: `thread_context`
+UPSERTs on every single chat turn, colliding with the several *other* test
+files that also hit that table concurrently under `-r test`. Replaced the
+read with `getThreadEpoch` (plain SELECT, no upsert/lock) -- see runs.ts's
+doc comment. This is a genuine production robustness improvement too, not
+just a test-flake workaround: the old code would have taken a write lock on
+`thread_context` for every ordinary chat message, serializing rapid
+back-to-back turns on the same thread for no reason.
+
+### Test evidence
+
+- `packages/db`: `pnpm run typecheck` clean; `pnpm run build` clean.
+- `services/control-api`: `pnpm run typecheck` clean.
+- Full `pnpm -r test` via `scripts/test-isolated.ps1` (isolated
+  `oikonomos_test` DB, real Postgres, worker+watchdog stopped for the
+  duration): see below for the post-fix run(s). Individually confirmed
+  clean in isolation before the fix: `packages/db` (`roles.test.ts`
+  standalone, 15/15 -- the one `pnpm -r` failure that run was a pre-existing
+  `ALTER TABLE role_grants` DDL race, unrelated) and `services/control-api`
+  (`chat.routes.test.ts` standalone, 47/47).
+
+## Work Log
+
+- [2026-09-16T16:45:00Z] [S5] Implemented TASK-270's rework: epoch-scoped
+  `getLatestRunForThread`, epoch-stamped execution JSON, real
+  `/fresh`-then-post-again HTTP test. Found and fixed a genuine lock-
+  contention flake (getOrInitThreadContext's UPSERT under full-suite
+  parallel load) by adding a lock-free `getThreadEpoch` read instead --
+  confirmed via three full `pnpm -r test` runs before the fix (each showing
+  exactly one transient failure, twice the same continuity test) and
+  re-running after. Typecheck + build clean on both touched packages.
+  Continuing to full-suite re-verification before handoff.
