@@ -56,6 +56,7 @@ export {
   CapabilityRegistry,
   CapabilityNotRegisteredError,
   CapabilityOwnershipError,
+  CapabilityEnabledDriftError,
   CapabilityTierDriftError,
   DuplicateToolDeclarationError,
   InvalidToolDeclarationError,
@@ -155,6 +156,8 @@ export interface RoleGrantCeiling {
 export interface BrokerDependencies {
   /** Read for every request: a runtime kill switch must never be cached. */
   isCapabilitiesEnabled(): boolean | Promise<boolean>;
+  /** Registry-declared disabled state takes precedence over mounts and grants. */
+  isCapabilityDeclaredDisabled?(toolName: string): boolean;
   getCapability(toolName: string): Promise<RegisteredCapability | null>;
   getRoleGrant(roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null>;
   /** Persisted role/tenant rules, supplied by the OIK-200 query layer. */
@@ -579,6 +582,10 @@ async function decidePreToolUse(
   try {
     if (!await dependencies.isCapabilitiesEnabled()) {
       return deny(dependencies, request, "capability.disabled");
+    }
+
+    if (dependencies.isCapabilityDeclaredDisabled?.(request.toolName) === true) {
+      return deny(dependencies, request, "capability.declared_disabled");
     }
 
     // N13 is a fixed-floor gate. It deliberately precedes the six-rank

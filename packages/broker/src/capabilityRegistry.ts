@@ -69,6 +69,9 @@ export class CapabilityOwnershipError extends RegistryError {
 export class CapabilityTierDriftError extends RegistryError {
   public constructor(capabilityId: string) { super("CapabilityTierDriftError", `Capability '${capabilityId}' has default tier drift.`); }
 }
+export class CapabilityEnabledDriftError extends RegistryError {
+  public constructor(capabilityId: string) { super("CapabilityEnabledDriftError", `Capability '${capabilityId}' has enabled-state drift.`); }
+}
 export class StaleCapabilityRowError extends RegistryError {
   public constructor(capabilityId: string) { super("StaleCapabilityRowError", `Registered capability '${capabilityId}' has no declaration.`); }
 }
@@ -134,6 +137,7 @@ export class CapabilityRegistry {
       if (row === undefined) throw new CapabilityNotRegisteredError(entry.capabilityId);
       if (row.adapter !== entry.adapter) throw new CapabilityOwnershipError(entry.capabilityId);
       if (row.defaultTier !== entry.defaultTier) throw new CapabilityTierDriftError(entry.capabilityId);
+      if (row.enabled !== entry.enabled) throw new CapabilityEnabledDriftError(entry.capabilityId);
     }
 
     const declaredAdapters = new Set([...entries.values()].map((entry) => entry.adapter));
@@ -152,11 +156,12 @@ export class CapabilityRegistry {
   }
 
   /** Per-call database adapters for the L1 broker boundary. */
-  public brokerPorts(persisted: Pick<PersistedCapabilityReader, "getCapability" | "getRoleGrant">): Pick<BrokerDependencies, "getCapability" | "getRoleGrant"> {
+  public brokerPorts(persisted: Pick<PersistedCapabilityReader, "getCapability" | "getRoleGrant">): Pick<BrokerDependencies, "getCapability" | "getRoleGrant" | "isCapabilityDeclaredDisabled"> {
     return {
+      isCapabilityDeclaredDisabled: (toolName: string): boolean => this.resolve(toolName)?.enabled === false,
       getCapability: async (toolName: string): Promise<RegisteredCapability | null> => {
         const entry = this.resolve(toolName);
-        if (entry === null) return null;
+        if (entry === null || entry.enabled !== true) return null;
         const row = await persisted.getCapability(entry.capabilityId);
         if (row === null || row.enabled !== true || row.defaultTier !== entry.defaultTier || row.adapter !== entry.adapter) return null;
         return { toolName, capabilityId: entry.capabilityId, defaultTier: entry.defaultTier };
