@@ -7851,7 +7851,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-264
 **Title:** Implement ADR-018 Amendment 2026-09-16 -- widen the default role-capability floor to DEFAULT_ROLE_CAPABILITIES (adds browser.* and workspace self-management to auto-grant)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16 (the amendment section itself, Proposed); specs/OIKONOMOS_TEMPLATES_v1.0.md §3.2/§5.2/§10 (spec text ORCH updates after this merges, not part of this task's Owned_Paths -- specs/** stays protected)
@@ -7874,12 +7874,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T06:20:00Z] [ORCH] Triaged S5's blocked report, both findings confirmed real and independently verified: (1) `packages/templates`/`POST /templates/:id/install` genuinely does not exist anywhere in the codebase -- ADR-018 §3 was accepted as a design decision on 2026-09-12 but its implementation was apparently never filed as a follow-up task and never built. This was ORCH's own filing error (assumed the ADR's present-tense description meant shipped code) -- AC3/AC4 descoped entirely, not deferred silently. (2) Widened Owned_Paths to include `chat.routes.test.ts` so the one-line TASK-117 assertion update lands in the same PR instead of blocking on an artificial territory boundary. Your real implementation work (AC1/AC2/AC5, already tested against real Postgres) stands untouched -- resume on the same branch.
 - [2026-09-16T05:47:44Z] [ORCH] Filed from ADR-018's Amendment 2026-09-16 (docs/decisions/ADR-018-bot-templates.md), itself triggered by TASK-263's incident and a direct owner product-design question about default tool availability. This is a security-relevant grant-boundary change; per ADR-018's own header, implementation and review must be by different models -- S5 (Claude) implements, TASK-265 (CX9/GPT) adversarially reviews. Do not merge without that review regardless of how clean the diff looks.
 - [2026-09-16T06:13:49Z] [SV:S5] DEFAULT_ROLE_CAPABILITIES implemented in defaultCapabilities.ts + app.ts POST /roles, tested against real Postgres (AC1/AC2 pass, tier resolution proven live). Blocked on two out-of-scope findings: (1) OWNERSHIP_CONFLICT ΓÇö chat.routes.test.ts's pre-existing TASK-117 sdk:builtin-filter test now fails as a direct, correct consequence of this change, but that file is outside Owned_Paths; (2) MISSING_DEPENDENCY ΓÇö AC3/AC4 reference POST /templates/:id/install and its install test, which do not exist anywhere in the codebase (full-repo grep confirmed no packages/templates, no bot_templates table, no install route). browser.interact inclusion recommendation (AC5) recorded in dossier for TASK-265. All work committed to task/TASK-264-s5 (05f73fe code, 9ef9f9b dossier).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-16T06:45:13Z] [SV:S5] Resumed after ORCH's triage (AC3/AC4 descoped, Owned_Paths widened for chat.routes.test.ts). Fixed the TASK-117 assertion in chat.routes.test.ts to filter on isDefaultRoleCapability instead of adapter==='sdk:builtin'. Full recursive suite run: @oikonomos/control-api 289/289 green (incl. AC1/AC2 real-Postgres proof and the fixed TASK-117 test). Found and documented two pre-existing, unrelated StaleCapabilityRowError('gmail.send_message') failures in evals/services-worker -- confirmed via git diff/log this branch never touches packages/broker, packages/connectors/manifests, or services/worker; flagged for ORCH as a separate follow-up. browser.interact inclusion recommendation stands from session 1 (dossier).
+**Artifacts:** services/control-api/src/defaultCapabilities.ts, services/control-api/src/app.ts, services/control-api/src/app.test.ts, services/control-api/src/chat.routes.test.ts, dossiers/TASK-264.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Init then scripts/test-isolated.ps1 (full pnpm -r test), 2026-09-16 ~08:21-08:27Z: @oikonomos/control-api Test Files 23 passed (23) | Tests 289 passed (289); tsc --noEmit -p . clean. evals: 1 failed/13 files, 18 passed+1 failed/19 tests (pre-existing StaleCapabilityRowError, unrelated). @oikonomos/worker: 1 failed/29 files, 226 passed+27 failed/253 tests (same pre-existing unrelated error). All other 15+ workspace packages fully green. Full analysis and root-cause in dossiers/TASK-264.md.
 **Review_Findings:** —
 **Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/chat.routes.test.ts (not in Owned_Paths) contains the actual pre-existing set-equality test (TASK-117, filters capability.adapter==="sdk:builtin") that must be updated to DEFAULT_ROLE_CAPABILITIES or pnpm -r test stays red; also MISSING_DEPENDENCY: AC3/AC4 and the templates.routes.test.ts Owned_Paths entry reference a POST /templates/:id/install route/test that does not exist anywhere in the codebase despite ADR-018 ┬º3 being marked Accepted. See dossiers/TASK-264.md for full detail and recommended next steps.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T06:16:08Z
+**Updated_At:** 2026-09-16T06:45:13Z
 
 
 ### TASK-265
