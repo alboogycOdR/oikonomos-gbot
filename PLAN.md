@@ -7667,7 +7667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
@@ -7684,12 +7684,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-15T11:00:00Z] [ORCH] PRIORITY BUMPED low -> medium: this recurred a second time this session, at a larger scale (16,372 vs the original 8,770), and under a SECOND, differently-shaped stale-fixture naming pattern (a 'Probe routine' fixture, requested_by shaped `routine:<id>` rather than `test:<name>`) that the original cleanup rule did not anticipate -- confirmed this is a real, compounding, recurring gap, not a one-off. It directly delayed real acceptance-verification work this time (TASK-245's own live confirmation of TASK-258's fix), not just a theoretical concern. See docs/acceptance/workspace-1/A19-24h-observation.md for the full second-occurrence account, including the specific manual remediation applied (both times fully safe, zero unintended spend either time, but relying on manual re-derivation of the safe cleanup rule each time is not sustainable).
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
+- [2026-09-16T05:46:54Z] [SV:CX9] Exact provider=test fixture boundary added; reconciliation test proves fixture runs are skipped while normal runs requeue.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** TOOLING_FAILURE: Docker Desktop Linux engine is unavailable (npipe dockerDesktopLinuxEngine), so the required isolated full workspace suite cannot run.
 **Updated_By:** SV
-**Updated_At:** 2026-09-15T20:08:28Z
+**Updated_At:** 2026-09-16T05:46:54Z
 
 ### TASK-258
 **Title:** Scheduled routine firings never actually execute — `routineJob.ts`'s poll path creates an orphaned task row and never enqueues a real run (a genuine "lost accepted work" hold condition)
