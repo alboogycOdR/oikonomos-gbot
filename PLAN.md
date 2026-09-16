@@ -7976,7 +7976,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-269
 **Title:** CRITICAL -- an ordinary follow-up chat message never continues the previous Claude session; every turn in a conversation starts completely fresh with zero memory of anything said before it
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** `services/control-api/src/app.ts`'s `POST /threads/:id/messages` (1:1 and group-with-one-recipient branches, ~lines 1926-1943 and ~1899-1917); `services/control-api/src/ports.ts`'s `submitTaskExecution`/`runChatTask` (neither ever looks up a prior run's `session_ref`); `services/worker/src/chatRunDriver.ts` lines ~340-360, ~446, ~787 (the ONLY place `--resume` is ever attached to the Claude CLI invocation is `request.resume`, which is set exclusively by the interrupted-run-reconciliation/approval-resume path, never by an ordinary new message in an existing thread).
@@ -7994,12 +7994,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-16T13:14:19Z
 **Progress_Notes:**
 - [2026-09-16T13:12:14Z] [ORCH] Filed at CRITICAL priority per direct owner report and ORCH's own live code-path tracing (not inferred from behavior alone -- read the actual dispatch code end to end before concluding). Owner explicitly authorized dispatching a fix immediately. This is a foundational, previously-undiscovered gap in this product's core chat experience for its primary (Claude) provider -- treat with the same urgency as TASK-258/260 (both critical, both fixed and deployed same-day earlier this session).
+- [2026-09-16T13:48:14Z] [SV:S5] Root-caused two real gaps behind memoryless chat turns: (1) nothing looked up a thread's prior run to continue from, (2) nothing ever captured the Claude CLI's real session_id after a turn, so even a passed --resume token pointed nowhere real. Implemented and tested both: packages/db/src/runs.ts gets getLatestRunForThread (role-scoped, so group/fan-out threads never cross-pollinate sessions); services/worker/src/chatRunDriver.ts now captures and persists the real session_id via the existing resumeRun primitive (proven end-to-end with a real, live two-Claude-API-call test ΓÇö turn 2 genuinely recalls info only given in turn 1); services/control-api/src/ports.ts seeds a new run's continuity from the prior completed same-provider run. app.ts needed no change (both real chat-send branches already forward threadId through submitTaskExecution unchanged). Blocked on one precise OWNERSHIP_CONFLICT: getLatestRunForThread must be re-exported from packages/db/src/index.ts (a curated export list, not a wildcard barrel) to be importable from ports.ts at all -- confirmed this is a genuine runtime failure under vitest, not just tsc. My ports.ts code fails closed to 'no continuity, but sends normally' when that lookup is unavailable, so this branch does NOT regress existing chat sending (verified: chat.routes.test.ts 45/46 passing, only the blocked positive-continuity test fails, cleanly). Exact one-line fix and full evidence in dossiers/TASK-269.md.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/db/src/index.ts (a curated named-export list, not a wildcard barrel) needs one added line -- `getLatestRunForThread` re-exported from ./runs.js alongside the existing runs exports -- for services/control-api/src/ports.ts (a separate workspace package, reachable only through @oikonomos/db's package export map) to import it at all. Confirmed this is a hard runtime failure under vitest as well as tsc (TypeError: ... is not a function inside real chat.routes.test.ts HTTP tests), not merely a build nicety. index.ts is outside TASK-269's Owned_Paths. Identical, already-precedented gap and fix exists for OIK-106's listOpenRuns/openRunStatuses (see index.ts's own current runs.js export block and runs.test.ts's comment on it). Once the one line is added, no other code change is needed on either side -- the real behavior is already implemented and tested; I'd only recommend also dropping the now-unnecessary try/catch guard in ports.ts and re-running chat.routes.test.ts's 3 TASK-269 cases to confirm all go green.
 **Updated_By:** SV
-**Updated_At:** 2026-09-16T13:14:19Z
+**Updated_At:** 2026-09-16T13:48:14Z
 
 
 ### TASK-270
