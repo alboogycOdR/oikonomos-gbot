@@ -1315,3 +1315,18 @@ The re-dispatched implementation matches the ADR's quoted text exactly: `Capabil
 This is the safety invariant ADR-019 requires exist and be proven live before any manager-bot tool (create/retire other bots) may be built — landed correctly, ahead of that riskier work.
 
 Approved and merged.
+
+## TASK-275 | CX9 | approved | first-pass: no (three legitimate blocks along the way, two ORCH filing/process errors and one real architecture question, all resolved properly)
+
+Scope: `git diff mainco/master...task/TASK-275-cx9 --stat` — `services/control-api/src/app.ts` (+96), `services/control-api/src/ports.ts` (+48/-2), `dossiers/TASK-275.md`. No files outside Owned_Paths.
+
+CX9 blocked this task three times, and each time was substantively correct: (1) ORCH's original filing scoped enforcement to `services/worker`, but the real group-message dispatch and history live in `services/control-api` — CX9 caught this immediately from the real call graph; (2) ORCH's spec-file reference and re-dispatch both failed to actually reach CX9's worktree due to two distinct process gaps — a file written but never `git add`ed, and `dispatch.ps1`'s resume path not pulling new master commits into an already-existing branch (surfaced because the worktree's `origin` remote points to GitHub, not the local repo — `mainco` does); (3) CX9 correctly refused to invent the consecutive-turn/history-window/quiet-room thresholds itself rather than guess at product policy.
+
+The landed implementation, once properly scoped and specified: `evaluateGroupRoomLimits` (pure, exported, directly testable) checks real persisted message history at the exact `routeGroupMessage` decision point — a hard cap of 3 consecutive bot turns before requiring a human message (an explicit @-mention always overrides), a 10-message rolling window bounding what the Tier-0 scorer sees, and a 2-repeat quiet-room detector that stops routing and inserts a real system notice into the thread. Real HTTP-route tests (`app.inject` against the actual `buildApp` routes, not a unit test on the pure function alone) prove both the cap firing and the quiet-room notice landing.
+
+**Independently re-verified by ORCH:**
+- Ran the isolated `@oikonomos/control-api` suite twice: 294/295 both times, one identical failure in every run.
+- That one failure (`chat.routes.test.ts`'s TASK-269 continuity test) was checked against plain `master` with none of this task's changes present — reproduces identically, confirming it predates and is unrelated to this task. CX9's own stated cause for it (missing `packages/db` exports) does not hold on direct inspection; real cause unknown, filed separately as TASK-279 rather than either blocking this task on it or silently ignoring it.
+- Checked real live production data as a sanity check: session continuity is genuinely carrying correctly across 5 consecutive real runs today, so TASK-279 does not appear to be breaking real usage — though the Claude lane specifically can't be live-verified while Anthropic billing remains down, which TASK-279 records honestly as an open uncertainty rather than a closed one.
+
+Approved and merged.
