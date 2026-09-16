@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS project_decisions_project_id_idx;
+DROP TABLE IF EXISTS project_decisions;
+DROP INDEX IF EXISTS project_artifacts_task_id_idx;
+DROP INDEX IF EXISTS project_artifacts_project_id_idx;
+DROP TABLE IF EXISTS project_artifacts;
+DROP INDEX IF EXISTS project_tasks_project_id_idx;
+DROP TABLE IF EXISTS project_tasks;
+DROP INDEX IF EXISTS projects_tenant_id_idx;
+DROP TABLE IF EXISTS projects;
