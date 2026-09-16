@@ -7893,7 +7893,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16; TASK-264 (the implementation this reviews); ADR-018's original header ("Implementing tasks on ... the control-api routes require adversarial review by a model other than their author"); ADR-018-review-cx9-2026-09.md (the review-format precedent to mirror)
 **Owned_Paths:** docs/decisions/ADR-018-review-amendment-cx9-2026-09.md
-**Depends_On:** TASK-264
+**Depends_On:** —
 **Description:** TASK-264 widens the automatic role-capability floor -- a real change to what every new bot can do with zero human action. Review it the way ADR-018-review-cx9-2026-09.md reviewed the original decision: read the actual diff and the actual `DEFAULT_ROLE_CAPABILITIES` set against the amendment's stated intent, not the dossier's summary. Pressure points to attack specifically: (1) does the new set genuinely exclude every account-linked connector capability, checked against the live `capabilities` table, not just the manifest files? (2) is `workspace.request_secret` genuinely excluded -- trace what it would let a bot do if it were accidentally included? (3) does `browser.interact` (a mutating capability: click/type/fill on a live page) belong in an every-bot-gets-this-for-free set, or does its inclusion need to be pushed back to a human decision -- give your own verdict, don't just note the question is open; (4) can a template's `integrations[]` still smuggle in a capability that used to require a human grant but is now in the default floor, in a way that makes the grant checklist misleading (e.g. showing `browser.session` as something the human still needs to approve when it's actually already auto-granted)? (5) is the tier-resolution genuinely read live from the registry/manifest at grant time, or did the implementation accidentally hardcode a tier that could drift from a future manifest change? Verdict: accept / accept-with-changes / reject, each claim citing file:line on the reviewed commit, mirroring the existing review file's format exactly.
 **Acceptance_Criteria:**
 - [ ] One review file at the Owned_Path with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
@@ -7902,6 +7902,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** —
 **Started_At:** —
 **Progress_Notes:**
+- [2026-09-16T07:22:00Z] [ORCH] Fixed own filing error: Depends_On: TASK-264 deadlocks, since a review task cannot wait for the thing it exists to unblock to already be done. Removed the field; ORCH manually times this dispatch once TASK-264 reaches needs_review (already true).
 - [2026-09-16T05:47:44Z] [ORCH] Filed alongside TASK-264. Do not dispatch until TASK-264 reaches needs_review -- resume-first dispatch logic will otherwise have nothing to review yet.
 **Artifacts:** —
 **Test_Evidence:** —
