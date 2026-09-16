@@ -7667,7 +7667,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-257
 **Title:** `reconcileInterruptedRuns` re-queues thousands of stale test-fixture runs as real execution jobs on every worker boot
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** `services/worker/src/runLifecycle.ts`'s `reconcileInterruptedRuns` (unconditionally re-queues every run in `OPEN_RUN_STATUSES`); `scripts/db-cleanup.mjs`/TASK-231 (the existing, deliberately conservative cleanup that never touches the shared `"basileia"` tenant, the same tenant these stale runs live under).
@@ -7682,13 +7682,14 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** task/TASK-257-cx9
 **Started_At:** 2026-09-15T20:08:28Z
 **Progress_Notes:**
+- [2026-09-16T05:47:44Z] [ORCH] Triaged: CX9's block was a real, transient tooling failure (Docker Desktop was down at the time -- the exact same outage independently diagnosed and fixed under TASK-263, unrelated to this task's own scope). Docker/Postgres/control-api/worker all confirmed healthy again since. Clearing the blocker and returning to pending for CX9 to resume; no fix needed to this task's own approach.
 - [2026-09-15T11:00:00Z] [ORCH] PRIORITY BUMPED low -> medium: this recurred a second time this session, at a larger scale (16,372 vs the original 8,770), and under a SECOND, differently-shaped stale-fixture naming pattern (a 'Probe routine' fixture, requested_by shaped `routine:<id>` rather than `test:<name>`) that the original cleanup rule did not anticipate -- confirmed this is a real, compounding, recurring gap, not a one-off. It directly delayed real acceptance-verification work this time (TASK-245's own live confirmation of TASK-258's fix), not just a theoretical concern. See docs/acceptance/workspace-1/A19-24h-observation.md for the full second-occurrence account, including the specific manual remediation applied (both times fully safe, zero unintended spend either time, but relying on manual re-derivation of the safe cleanup rule each time is not sustainable).
 - [2026-09-15T05:15:00Z] [ORCH] Filed live during TASK-245's A19 acceptance case — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the full incident this surfaced from.
 - [2026-09-16T05:46:54Z] [SV:CX9] Exact provider=test fixture boundary added; reconciliation test proves fixture runs are skipped while normal runs requeue.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE: Docker Desktop Linux engine is unavailable (npipe dockerDesktopLinuxEngine), so the required isolated full workspace suite cannot run.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-16T05:46:54Z
 
@@ -7772,8 +7773,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-261
 **Title:** `scripts/test-isolated.ps1`'s watchdog disable/re-enable is not reliably self-healing — has now left the watchdog stuck `Disabled` at least three times this session, with no independent safeguard
-**Status:** blocked
-**Assigned_To:** S5
+**Status:** pending
+**Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** `scripts/test-isolated.ps1:77-92` (`$watchdogWasReady` check, `schtasks /Change /TN $taskName /DISABLE` before the run, `/ENABLE` in the outer `finally`); `docs/runbooks/service-supervision.md` (the watchdog's own intended purpose — automatic recovery from exactly this kind of gap); PLAN.md orchestrator_notes' own recorded history of this recurring across TASK-245's acceptance session (2026-09-15) at least three times: once before A19's window opened, once mid-review, and once during TASK-260's own verification pass.
 **Owned_Paths:** scripts/test-isolated.ps1
@@ -7787,12 +7788,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Branch:** task/TASK-261-s5
 **Started_At:** 2026-09-15T20:07:23Z
 **Progress_Notes:**
+- [2026-09-16T05:47:44Z] [ORCH] Triaged: this was ORCH's own filing error, not a real blocker to work around. `scripts/**` is DEVDEPARTMENT pack infrastructure and is never builder territory (CLAUDE.md, `docs/COORDINATION_PROTOCOL.md`) -- the territory firewall correctly refused S5's write regardless of what Owned_Paths said. Reassigning to TBD/ORCH-executed, matching how TASK-240/245 (also scripts/runbook-shaped work) were handled. No code was lost; S5 made no commits before hitting the block.
 - [2026-09-15T10:40:00Z] [ORCH] Filed after this exact gap recurred a third time during TASK-260's own verification pass, live, during TASK-245's acceptance run — see `docs/acceptance/workspace-1/A19-24h-observation.md` for the specific incident this was caught and fixed from. Prior occurrences already recorded in PLAN.md's own orchestrator_notes history for this session, under the "crash/reboot recovery" and general lessons sections.
 - [2026-09-16T05:46:54Z] [SV:S5] Designed the full fix (marker file + independent self-registering OIKONOMOS-WatchdogBackstop scheduled task, 5-min cadence, EncodedCommand recovery logic) but the territory-firewall hook mechanically blocked the very first edit to scripts/test-isolated.ps1 with 'protected path (protocol hard prohibition for S5), do not modify'. PLAN.md's TASK-261 Owned_Paths explicitly names this exact file, but AGENTS.md/briefing's hard-prohibition list and CLAUDE.md's DEVDEPARTMENT section both blanket-protect scripts/** as pack infrastructure, and the mechanical firewall enforces that with no apparent per-task exception. No files were modified (edit rejected before any write; working tree was clean before and after). Full design + resolution options + test plan recorded in dossier for whoever unblocks this.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: hooks/territory-firewall.js blocks all S5 writes to scripts/test-isolated.ps1 as a hard-prohibited path, but TASK-261's Owned_Paths in PLAN.md explicitly assigns that exact file to S5 and the task's entire scope requires editing it. Needs ORCH to either carve a firewall exception for this file/task or reassign the fix to a non-scripts/** path.
+**Blocked_Reason:** —
 **Updated_By:** SV
 **Updated_At:** 2026-09-16T05:46:54Z
 
@@ -7844,3 +7846,54 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-15T20:57:31Z
+
+### TASK-264
+**Title:** Implement ADR-018 Amendment 2026-09-16 -- widen the default role-capability floor to DEFAULT_ROLE_CAPABILITIES (adds browser.* and workspace self-management to auto-grant)
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16 (the amendment section itself, Proposed); specs/OIKONOMOS_TEMPLATES_v1.0.md §3.2/§5.2/§10 (spec text ORCH updates after this merges, not part of this task's Owned_Paths -- specs/** stays protected)
+**Owned_Paths:** services/control-api/src/defaultCapabilities.ts, services/control-api/src/app.ts, services/control-api/src/app.test.ts, services/control-api/test/templates.routes.test.ts
+**Depends_On:** —
+**Description:** Replace `POST /roles`'s current auto-grant filter (`capability.adapter === 'sdk:builtin'`, `app.ts` around line 1155) with a new named constant `DEFAULT_ROLE_CAPABILITIES` in a new file `services/control-api/src/defaultCapabilities.ts`, containing exactly: `fs.read`, `fs.write`, `runtime.bash` (unchanged), plus `browser.session`, `browser.navigate`, `browser.read`, `browser.interact`, `browser.screenshot` (Steel), plus `workspace.rename_self`, `workspace.send_to_role`, `workspace.create_routine`. Each is granted at its manifest-declared `default_tier` read live from `CapabilityRegistry`/the `capabilities` table (same tier-resolution mechanism as today -- do not hardcode tiers in the new file, resolve them the same way the existing code does). `workspace.request_secret` and every Gmail/Calendar/Drive capability id are explicitly NOT in this set and must stay manual-grant-only. `POST /templates/:id/install` reuses `POST /roles` so it inherits this automatically -- but its own install integration test asserts set-equality between the new role's `role_grants` and `BUILTIN_TOOLS`; update that assertion to `DEFAULT_ROLE_CAPABILITIES` or it will fail the moment this lands. Add a new test asserting no `DEFAULT_ROLE_CAPABILITIES` member can ever appear in a template's own `integrations[]` list (the amendment's own stated follow-on invariant). Flag in your dossier, do not unilaterally decide, whether `browser.interact` (the one mutating Steel capability in the new set) should ship in this same PR or be held back for the adversarial reviewer's explicit call -- the amendment text says this is undecided on purpose.
+**Acceptance_Criteria:**
+- [ ] A freshly-created role (`POST /roles`) has exactly the ten `DEFAULT_ROLE_CAPABILITIES` capability ids in its `role_grants`, each at its manifest-declared default tier, proven by a real Postgres-backed test reading `role_grants` back after creation (not a port spy).
+- [ ] `workspace.request_secret` and every Gmail/Calendar/Drive capability id are confirmed absent from a freshly-created role's grants by the same test.
+- [ ] `POST /templates/:id/install`'s existing set-equality test is updated to `DEFAULT_ROLE_CAPABILITIES` and still passes.
+- [ ] A new test proves a template's `integrations[]` can never legitimately name a `DEFAULT_ROLE_CAPABILITIES` member (install refuses or ignores it -- your call which, name the choice explicitly in your dossier).
+- [ ] Dossier states your recommendation on `browser.interact`'s inclusion, with reasoning, for the reviewer to weigh in on.
+- [ ] Full `pnpm -r test` via `scripts/test-isolated.ps1` recorded.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-16T05:47:44Z] [ORCH] Filed from ADR-018's Amendment 2026-09-16 (docs/decisions/ADR-018-bot-templates.md), itself triggered by TASK-263's incident and a direct owner product-design question about default tool availability. This is a security-relevant grant-boundary change; per ADR-018's own header, implementation and review must be by different models -- S5 (Claude) implements, TASK-265 (CX9/GPT) adversarially reviews. Do not merge without that review regardless of how clean the diff looks.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-16T05:47:44Z
+
+### TASK-265
+**Title:** Adversarial review of TASK-264 (ADR-018 Amendment 2026-09-16 implementation) by a non-Anthropic model, per the ADR's own different-model review requirement
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** docs/decisions/ADR-018-bot-templates.md#amendment-2026-09-16; TASK-264 (the implementation this reviews); ADR-018's original header ("Implementing tasks on ... the control-api routes require adversarial review by a model other than their author"); ADR-018-review-cx9-2026-09.md (the review-format precedent to mirror)
+**Owned_Paths:** docs/decisions/ADR-018-review-amendment-cx9-2026-09.md
+**Depends_On:** TASK-264
+**Description:** TASK-264 widens the automatic role-capability floor -- a real change to what every new bot can do with zero human action. Review it the way ADR-018-review-cx9-2026-09.md reviewed the original decision: read the actual diff and the actual `DEFAULT_ROLE_CAPABILITIES` set against the amendment's stated intent, not the dossier's summary. Pressure points to attack specifically: (1) does the new set genuinely exclude every account-linked connector capability, checked against the live `capabilities` table, not just the manifest files? (2) is `workspace.request_secret` genuinely excluded -- trace what it would let a bot do if it were accidentally included? (3) does `browser.interact` (a mutating capability: click/type/fill on a live page) belong in an every-bot-gets-this-for-free set, or does its inclusion need to be pushed back to a human decision -- give your own verdict, don't just note the question is open; (4) can a template's `integrations[]` still smuggle in a capability that used to require a human grant but is now in the default floor, in a way that makes the grant checklist misleading (e.g. showing `browser.session` as something the human still needs to approve when it's actually already auto-granted)? (5) is the tier-resolution genuinely read live from the registry/manifest at grant time, or did the implementation accidentally hardcode a tier that could drift from a future manifest change? Verdict: accept / accept-with-changes / reject, each claim citing file:line on the reviewed commit, mirroring the existing review file's format exactly.
+**Acceptance_Criteria:**
+- [ ] One review file at the Owned_Path with a verdict and a numbered list of required changes (possibly empty), each claim citing file:line on the reviewed commit.
+- [ ] Every pressure point in the Description is answered explicitly, with evidence (a real query or a real test run), not opinion.
+- [ ] No file outside Owned_Paths is modified.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-16T05:47:44Z] [ORCH] Filed alongside TASK-264. Do not dispatch until TASK-264 reaches needs_review -- resume-first dispatch logic will otherwise have nothing to review yet.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-16T05:47:44Z
