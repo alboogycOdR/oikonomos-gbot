@@ -1,0 +1,427 @@
+/**
+ * TASK-273 — delivers a persisted `role_messages` handoff to its recipient.
+ *
+ * TASK-272 fixed `send_to_role`'s real bugs, so a handoff now genuinely
+ * persists a `role_messages` row. Nothing delivered it: the only reader
+ * (`services/control-api/src/app.ts`'s `GET /roles/:roleId/handoffs`) is a
+ * human-facing dashboard history endpoint, not anything the recipient bot
+ * itself can see or act on. This file is the missing other half of probe
+ * Q5's documented "async-send-then-later-wake" design
+ * (STUDY-grok-bot-018.md): a durable poller, mirroring
+ * `services/worker/src/jobs/routineJob.ts`'s own accepted fire pattern
+ * (`createAndEnqueueRoutineRun`), that turns each undelivered row into a
+ * real bot-authored turn on the recipient's own thread.
+ *
+ * Design decisions the Acceptance Criteria explicitly asked this task to
+ * make and document:
+ *
+ * - **Delivery text is `task.goal`.** Confirmed live in
+ *   `services/worker/src/chatRunDriver.ts` that both lanes consume
+ *   `task.goal` identically — `buildGeminiTurnPrompt` appends it as the
+ *   newest turn, `claudePrintCommand(request.task.goal, ...)` sends it as
+ *   the resumed turn — so setting the delivered text as the run's `goal`
+ *   (exactly mirroring how a routine fire's goal reaches the model) makes
+ *   lane parity true by construction. No provider-specific tool-layer code
+ *   is needed.
+ * - **"Delivered" is the existing `read_at` column, not a new one.**
+ *   `markRoleMessageRead` (`@oikonomos/db`) is already exported and
+ *   idempotent (`read_at = COALESCE(read_at, now())`), and a delivered
+ *   message has no further use for an "unread" state distinct from
+ *   "delivered" — the dashboard's own `GET /roles/:roleId/handoffs` history
+ *   view is unaffected either way. Reusing it avoids a schema migration
+ *   this task's `Owned_Paths` cannot reach (`packages/db` is out of
+ *   territory here).
+ * - **Ordering is enqueue-then-mark-read**, deliberately matching
+ *   `routineJob.ts`'s own accepted `createAndEnqueueRoutineRun` (create +
+ *   enqueue) BEFORE `recordFire` ordering: a crash between the enqueue and
+ *   the `markRoleMessageRead` risks a rare duplicate redelivery on the next
+ *   poll, never a silent, permanent drop. Combined with this poller's own
+ *   `singleton` pg-boss queue policy (one poll in flight at a time, same as
+ *   `WORKER_ROUTINE_POLL_JOB`), that keeps duplicates a crash-window edge
+ *   case rather than a routine occurrence.
+ * - **A missing or non-active recipient role is skipped, not dropped.** The
+ *   row stays unread (never marked delivered) so a later poll retries it if
+ *   the role becomes active again — "no silent drop if the recipient's
+ *   thread does not exist yet" from the Acceptance Criteria.
+ *   `role_messages.to_role_id` has a `REFERENCES roles(role_id)` foreign
+ *   key with no `ON DELETE` action (`infra/postgres/migrations/
+ *   004_roles_routines_rules.up.sql`), so a role referenced by a pending
+ *   message can never be hard-deleted out from under it — the reachable
+ *   "not deliverable yet" case is a role whose `status` has moved off
+ *   `"active"` (soft-delete, matching `roleStatuses` in `roles.ts`), the
+ *   same check `routineJob.ts`'s `environmentIsUp` already uses for the
+ *   identical reason. `getOrCreateThreadForRole` itself always yields a
+ *   thread for a role that exists, so this is the only skip case.
+ * - **No regression to probe Q5's four properties** (async / verbatim text
+ *   + sender identity / zero context carry-over / no implicit memory
+ *   write, `services/workspace/src/mailbox.ts`): this module reads only
+ *   `message.body` and the sender's display name (`getRole`) — no
+ *   transcript, no memory write — and layers delivery on top of the
+ *   existing send path without touching it.
+ */
+import { PgBoss } from "pg-boss";
+
+import {
+  createTaskExecutionRun,
+  getOrCreateThreadForRole,
+  getRole,
+  listRoleMessages,
+  markRoleMessageRead,
+  resolveRoleRuntime,
+  type DatabaseOptions,
+  type RoleMessage,
+} from "@oikonomos/db";
+
+import { enqueueRunExecution } from "./jobs/workerJobQueue.js";
+
+export interface RoleMessageDeliveryOptions extends DatabaseOptions {
+  tenantId: string;
+}
+
+export interface RoleMessageDeliveryResult {
+  messageId: string;
+  toRoleId: string;
+  outcome: "delivered" | "skipped_no_role";
+}
+
+/** Mirrors `routineJob.ts`'s own `environmentIsUp` check for the same reason. */
+function roleIsDeliverable<T extends { status: string }>(role: T | null): role is T {
+  return role !== null && role.status === "active";
+}
+
+function requireNonEmpty(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) throw new Error(`${field} must not be empty.`);
+  return trimmed;
+}
+
+/**
+ * The exact turn text the recipient's own next real chat run sees. Kept as
+ * a named export so a test (or a future dashboard preview) can assert the
+ * literal wording without duplicating it.
+ */
+export function roleMessageDeliveryGoal(senderName: string, body: string): string {
+  return `You have a message from ${senderName}: ${body}`;
+}
+
+async function deliverRoleMessage(
+  options: DatabaseOptions,
+  message: RoleMessage,
+): Promise<RoleMessageDeliveryResult> {
+  const recipient = await getRole(options, message.toRoleId);
+  if (!roleIsDeliverable(recipient)) {
+    // Left unread on purpose: retried by the next poll rather than dropped.
+    return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "skipped_no_role" };
+  }
+
+  const sender = await getRole(options, message.fromRoleId);
+  const senderName = sender?.name ?? message.fromRoleId;
+
+  const thread = await getOrCreateThreadForRole(options, { roleId: message.toRoleId });
+  const { provider } = resolveRoleRuntime(recipient);
+  const { runId } = await createTaskExecutionRun(options, {
+    task: {
+      tenantId: message.tenantId,
+      roleId: message.toRoleId,
+      title: `Message from ${senderName}`,
+      goal: roleMessageDeliveryGoal(senderName, message.body),
+      requestedBy: `role-message:${message.messageId}`,
+    },
+    execution: { version: 1, kind: "chat", threadId: thread.id },
+    provider,
+  });
+  await enqueueRunExecution(options.connectionString, runId);
+  // Marked read last, deliberately — see the module docstring's ordering note.
+  await markRoleMessageRead(options, message.messageId);
+
+  return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered" };
+}
+
+/**
+ * Finds every undelivered (`read_at IS NULL`) `role_messages` row for the
+ * tenant and delivers each as a real bot-authored turn on the recipient's
+ * own thread. Called by the poller below on a durable pg-boss schedule, and
+ * directly by tests / an immediate-poll trigger.
+ */
+export async function deliverPendingRoleMessages(
+  options: RoleMessageDeliveryOptions,
+): Promise<RoleMessageDeliveryResult[]> {
+  const tenantId = requireNonEmpty(options.tenantId, "tenantId");
+  const pending = await listRoleMessages(options, { tenantId, unreadOnly: true });
+  const results: RoleMessageDeliveryResult[] = [];
+  // Sequential, not Promise.all: two pending messages can target the same
+  // recipient role, and `getOrCreateThreadForRole`'s upsert is safe either
+  // way, but serial delivery keeps this poller's own behaviour easy to
+  // reason about and keeps one bad row (e.g. a deleted role) from racing a
+  // good one for no benefit — a poll tick is not latency-sensitive.
+  for (const message of pending) {
+    results.push(await deliverRoleMessage(options, message));
+  }
+  return results;
+}
+
+export const WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB = "worker.role-message-delivery-poll";
+
+const roleMessageDeliveryPollQueueOptions = {
+  policy: "singleton",
+  retryLimit: 3,
+  retryDelay: 1,
+  retryBackoff: true,
+  expireInSeconds: 60,
+  retentionSeconds: 86_400,
+  deleteAfterSeconds: 604_800,
+} as const;
+
+/** Same cadence as `WORKER_ROUTINE_POLL_JOB` (workerJobQueue.ts). */
+const ROLE_MESSAGE_DELIVERY_POLL_CRON = "* * * * *";
+
+export interface RoleMessageDeliveryPollerOptions {
+  connectionString: string;
+  tenantId: string;
+  /** Lets deployments and integration tests identify pg-boss-owned connections. */
+  applicationName?: string;
+  /**
+   * Mirrors `CreateWorkerJobQueueOptions.onError` (workerJobQueue.ts,
+   * TASK-221): pg-boss's own 'error' event and any handler throw are
+   * otherwise silent. Defaults to `console.error`.
+   */
+  onError?(error: unknown, context: { job: string }): Promise<void> | void;
+}
+
+function assertConnectionString(connectionString: string): void {
+  if (connectionString.trim().length === 0) {
+    throw new Error("DATABASE_URL must not be empty when starting the role-message delivery poller.");
+  }
+}
+
+/**
+ * Owns its own small pg-boss lifecycle — deliberately separate from
+ * `WorkerJobQueue` (`services/worker/src/jobs/workerJobQueue.ts`), which is
+ * outside this task's `Owned_Paths`. Mirrors that class's own
+ * start/schedule/stop shape so `services/worker/src/main.ts` can compose it
+ * the same way it composes `WorkerJobQueue`.
+ */
+export class RoleMessageDeliveryPoller {
+  private boss: PgBoss | undefined;
+
+  public constructor(private readonly options: RoleMessageDeliveryPollerOptions) {
+    assertConnectionString(options.connectionString);
+  }
+
+  public async start(): Promise<void> {
+    if (this.boss !== undefined) return;
+
+    const boss = new PgBoss({
+      connectionString: this.options.connectionString,
+      application_name: this.options.applicationName ?? "oikonomos-worker-role-message-delivery",
+    });
+
+    const onError = this.options.onError ?? ((error: unknown) => console.error(error));
+    boss.on("error", (error) => void onError(error, { job: "pg-boss" }));
+
+    try {
+      await boss.start();
+      await boss.createQueue(WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB, roleMessageDeliveryPollQueueOptions);
+      await boss.work(WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB, async () => {
+        try {
+          await deliverPendingRoleMessages({
+            connectionString: this.options.connectionString,
+            tenantId: this.options.tenantId,
+          });
+        } catch (error) {
+          await onError(error, { job: WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB });
+          throw error; // still fails/retries the job the same as before — this only adds visibility.
+        }
+      });
+      // pg-boss owns this durable repeating schedule, so a worker restart
+      // neither loses nor duplicates the next delivery sweep.
+      await boss.schedule(WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB, ROLE_MESSAGE_DELIVERY_POLL_CRON);
+      this.boss = boss;
+    } catch (error) {
+      await boss.stop({ close: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Enqueue an immediate durable poll, used by bootstraps and integration tests. */
+  public async enqueuePollNow(): Promise<string> {
+    if (this.boss === undefined) {
+      throw new Error("Role-message delivery poller must be started before a poll can be enqueued.");
+    }
+    const id = await this.boss.send(WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB, {});
+    if (id === null) throw new Error("pg-boss did not create the role-message delivery poll job.");
+    return id;
+  }
+
+  public async stop(): Promise<void> {
+    const boss = this.boss;
+    this.boss = undefined;
+    if (boss !== undefined) await boss.stop({ close: true, graceful: true, timeout: 10_000 });
+  }
+}
+
+export function createRoleMessageDeliveryPoller(
+  options: RoleMessageDeliveryPollerOptions,
+): RoleMessageDeliveryPoller {
+  return new RoleMessageDeliveryPoller(options);
+}
+
+if (import.meta.vitest) {
+  const { describe, it, expect, beforeAll, afterAll } = import.meta.vitest;
+  const { createRole, sendRoleMessage, getRun, listMessages: _listMessages, defaultPoolConfig } = await import(
+    "@oikonomos/db"
+  );
+  const { Pool } = await import("pg");
+  const { purgePgBossQueue, withPgBossQueueLock } = await import("./jobs/pgBossTestCleanup.js");
+  const { WORKER_RUN_EXECUTION_JOB } = await import("./jobs/workerJobQueue.js");
+
+  describe("roleMessageDeliveryGoal — pure text, lane-agnostic by construction", () => {
+    it("renders sender name and verbatim body", () => {
+      expect(roleMessageDeliveryGoal("Alice", "please review the draft")).toBe(
+        "You have a message from Alice: please review the draft",
+      );
+    });
+  });
+
+  const connectionString = process.env.DATABASE_URL;
+  const integration = connectionString === undefined ? describe.skip : describe;
+
+  integration("deliverPendingRoleMessages — real Postgres + real pg-boss (TASK-273)", () => {
+    let pool: InstanceType<typeof Pool>;
+    const tenantId = `task-273-role-message-delivery-${crypto.randomUUID()}`;
+    const options = { connectionString: connectionString!, tenantId };
+
+    beforeAll(() => {
+      pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    });
+
+    afterAll(async () => {
+      await pool.query(`DELETE FROM role_messages WHERE tenant_id = $1`, [tenantId]);
+      await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
+      await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
+      await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
+      await pool.query(`DELETE FROM roles WHERE tenant_id = $1`, [tenantId]);
+      await pool.end();
+    });
+
+    it("delivers a real handoff as a real chat run and marks it read exactly once", async () => {
+      await withPgBossQueueLock(pool, async () => {
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+
+        const senderId = `task-273-sender-${crypto.randomUUID()}`;
+        const recipientId = `task-273-recipient-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender Bot", title: "Sender" });
+        await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Recipient Bot", title: "Recipient" });
+
+        const sent = await sendRoleMessage(
+          { connectionString: connectionString! },
+          { tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "please review the draft" },
+        );
+
+        const results = await deliverPendingRoleMessages(options);
+        expect(results).toContainEqual({ messageId: sent.messageId, toRoleId: recipientId, outcome: "delivered" });
+
+        const tasks = await pool.query<{ task_id: string; goal: string }>(
+          `SELECT task_id, goal FROM tasks WHERE tenant_id = $1 AND role_id = $2`,
+          [tenantId, recipientId],
+        );
+        expect(tasks.rows).toHaveLength(1);
+        expect(tasks.rows[0]!.goal).toBe("You have a message from Sender Bot: please review the draft");
+
+        // Liveness check, not a mock: a real `runs` row and a real
+        // `pgboss.job` row for WORKER_RUN_EXECUTION_JOB must exist for that
+        // exact run (TASK-258's own precedent) — proves the enqueue really
+        // happened rather than that some in-process function was merely
+        // called.
+        const runs = await pool.query<{ run_id: string }>(`SELECT run_id FROM runs WHERE task_id = $1`, [tasks.rows[0]!.task_id]);
+        expect(runs.rows).toHaveLength(1);
+        const runId = runs.rows[0]!.run_id;
+        expect(await getRun({ connectionString: connectionString! }, runId)).not.toBeNull();
+
+        const jobs = await pool.query<{ data: { runId: string } }>(
+          `SELECT data FROM pgboss.job WHERE name = $1 AND data->>'runId' = $2`,
+          [WORKER_RUN_EXECUTION_JOB, runId],
+        );
+        expect(jobs.rows).toHaveLength(1);
+
+        const refetched = await pool.query<{ read_at: Date | null }>(
+          `SELECT read_at FROM role_messages WHERE message_id = $1`,
+          [sent.messageId],
+        );
+        expect(refetched.rows[0]!.read_at).not.toBeNull();
+
+        // Idempotent: a second poll with nothing new pending delivers nothing more.
+        const secondPass = await deliverPendingRoleMessages(options);
+        expect(secondPass.find((r) => r.messageId === sent.messageId)).toBeUndefined();
+
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      });
+    });
+
+    it("skips (and does not mark read) a message addressed to a non-active (soft-deleted) recipient role", async () => {
+      // role_messages.to_role_id carries a REFERENCES roles(role_id) FK with
+      // no ON DELETE action, so a hard-missing role can never actually be
+      // the recipient of a pending message — the real, reachable case this
+      // guards is a role whose status moved off "active" after the send.
+      const senderId = `task-273-sender-missing-${crypto.randomUUID()}`;
+      const deletedRoleId = `task-273-deleted-recipient-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender Bot", title: "Sender" });
+      await createRole({ connectionString: connectionString! }, { roleId: deletedRoleId, tenantId, name: "Deleted Bot", title: "Deleted" });
+
+      const sent = await sendRoleMessage(
+        { connectionString: connectionString! },
+        { tenantId, fromRoleId: senderId, toRoleId: deletedRoleId, body: "hello?" },
+      );
+      // Soft-delete AFTER the send, matching the real ordering this guards against.
+      await createRole({ connectionString: connectionString! }, { roleId: deletedRoleId, tenantId, name: "Deleted Bot", title: "Deleted", status: "deleted" });
+
+      const results = await deliverPendingRoleMessages(options);
+      expect(results).toContainEqual({ messageId: sent.messageId, toRoleId: deletedRoleId, outcome: "skipped_no_role" });
+
+      const refetched = await pool.query<{ read_at: Date | null }>(
+        `SELECT read_at FROM role_messages WHERE message_id = $1`,
+        [sent.messageId],
+      );
+      expect(refetched.rows[0]!.read_at).toBeNull();
+    });
+
+    it("RoleMessageDeliveryPoller delivers via a real durable pg-boss schedule, immediate-poll triggered", async () => {
+      await withPgBossQueueLock(pool, async () => {
+        await purgePgBossQueue(pool, WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB);
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+
+        const senderId = `task-273-poller-sender-${crypto.randomUUID()}`;
+        const recipientId = `task-273-poller-recipient-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender Bot", title: "Sender" });
+        await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Recipient Bot", title: "Recipient" });
+        const sent = await sendRoleMessage(
+          { connectionString: connectionString! },
+          { tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "via the poller" },
+        );
+
+        const poller = createRoleMessageDeliveryPoller({ connectionString: connectionString!, tenantId });
+        try {
+          await poller.start();
+          await poller.enqueuePollNow();
+
+          let readAt: Date | null = null;
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const refetched = await pool.query<{ read_at: Date | null }>(
+              `SELECT read_at FROM role_messages WHERE message_id = $1`,
+              [sent.messageId],
+            );
+            readAt = refetched.rows[0]?.read_at ?? null;
+            if (readAt !== null) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          expect(readAt).not.toBeNull();
+        } finally {
+          await poller.stop();
+        }
+
+        await purgePgBossQueue(pool, WORKER_ROLE_MESSAGE_DELIVERY_POLL_JOB);
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      });
+    }, 20_000);
+  });
+}
