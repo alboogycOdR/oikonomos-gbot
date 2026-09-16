@@ -34,6 +34,7 @@ import {
 import { Pool } from "pg";
 
 import { buildApp } from "./app.js";
+import { isDefaultRoleCapability } from "./defaultCapabilities.js";
 import {
   ATTACHMENT_ALLOWED_CONTENT_TYPES,
   ATTACHMENT_MAX_BYTES,
@@ -814,7 +815,7 @@ const integrationOptions: DatabaseOptions = {
 integration("POST /roles — built-in grant database integration (TASK-117)", () => {
   const options = integrationOptions;
 
-  it("persists every registered sdk:builtin capability at its own default tier", async () => {
+  it("persists every DEFAULT_ROLE_CAPABILITIES member at its own default tier (TASK-264)", async () => {
     const app = buildApp(createDatabaseBackedDeps(options), { authToken: TOKEN, logger: false });
     const response = await app.inject({
       method: "POST", url: "/roles", headers: authHeaders(),
@@ -824,7 +825,7 @@ integration("POST /roles — built-in grant database integration (TASK-117)", ()
     const created = JSON.parse(response.body) as { id: string };
     const database = new Database(options);
     try {
-      const capabilities = (await database.listCapabilities()).filter((capability) => capability.adapter === "sdk:builtin");
+      const capabilities = (await database.listCapabilities()).filter((capability) => isDefaultRoleCapability(capability.capabilityId));
       expect(await database.listRoleGrants(created.id)).toEqual(
         capabilities.map((capability) => ({
           roleId: created.id,

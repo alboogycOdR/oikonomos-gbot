@@ -10,6 +10,7 @@ import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
+import { DEFAULT_ROLE_CAPABILITIES } from "./defaultCapabilities.js";
 import { registerLiveAgentRoutes, type LiveAgentPort, type LiveAgentExecdEndpoint, type LiveAgentInputDiscardedEvent, type UpstreamConnection } from "./liveAgent.routes.js";
 import {
   registerBrowserTakeoverRoutes,
@@ -1156,11 +1157,18 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           title: name,
           description,
         });
-        const builtinCapabilities = (await deps.listCapabilities()).filter(
-          (capability) => capability.adapter === "sdk:builtin",
+        // TASK-264 / ADR-018 Amendment 2026-09-16: the automatic
+        // role-creation floor is now the named `DEFAULT_ROLE_CAPABILITIES`
+        // set (see services/control-api/src/defaultCapabilities.ts), not
+        // an adapter-tag filter. Tier resolution is unchanged: each grant
+        // still reads its `maxTier` live from `deps.listCapabilities()`
+        // (the same `capabilities` table CapabilityRegistry enforces
+        // against), never hardcoded here.
+        const defaultCapabilities = (await deps.listCapabilities()).filter((capability) =>
+          (DEFAULT_ROLE_CAPABILITIES as readonly string[]).includes(capability.capabilityId),
         );
         await Promise.all(
-          builtinCapabilities.map((capability) =>
+          defaultCapabilities.map((capability) =>
             deps.upsertRoleGrant({
               roleId: role.roleId,
               capabilityId: capability.capabilityId,
