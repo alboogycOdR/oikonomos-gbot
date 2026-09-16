@@ -8193,7 +8193,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-277
 **Title:** Capability-drift safety invariant (CapabilityEnabledDriftError) -- required before any manager-bot tool may exist
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-019-project-entity-and-manager-role.md, Invariant A (the exact, authoritative text -- quoted in full in this task's Description below since an earlier paraphrase here introduced an exception the ADR does not contain); packages/broker/src/capabilityRegistry.ts (C5's existing tier/adapter-drift check, the precedent this mirrors)
@@ -8213,12 +8213,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T20:15:00Z] [ORCH] Filed as part of the user's 18-hour autopilot priority list (Tier 2, item 5). Deliberately sequenced BEFORE any manager-bot tool implementation -- the user's own "chief of staff creates/retires bots" request does not get a real tool until this exists and is proven live, per ADR-019's own explicit safety sequencing.
 - [2026-09-16T20:31:28Z] [SV:CX9] Read ADR-019 and live registry composition; recorded the conflict before implementation.
 - [2026-09-16T20:45:00Z] [ORCH] CX9's flag was correct on both counts. Retracted the invented "audited-enable exception" -- ADR-019 Invariant A is unconditional, quoted in full in the corrected Description above. Widened Owned_Paths to include packages/broker/src/index.ts (getCapability/decidePreToolUse both live there, not in capabilityRegistry.ts alone). Re-dispatching CX9.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-16T21:06:17Z] [SV:CX9] Implemented CapabilityEnabledDriftError and declared-disabled L1 enforcement; protected-path adversarial review remains required before merge.
+**Artifacts:** packages/broker/src/capabilityRegistry.ts, packages/broker/src/index.ts, packages/broker/src/capabilityRegistry.test.ts, dossiers/TASK-277.md
+**Test_Evidence:** PASS: pnpm --filter @oikonomos/broker test (15 files, 173 tests); typecheck and build passed. pnpm -r test was run but has unrelated packages/db integration failures; no broker failures.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T20:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T21:06:17Z
 
 ### TASK-278
 **Title:** Template export/import backend API (no UI) -- with the 5-class credential scan
