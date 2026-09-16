@@ -6,6 +6,7 @@ import { createRunGate } from "./runConcurrency.js";
 import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, listMessages } from "@oikonomos/db";
 import { failTaskRun, parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { deliverBotToBotMessage } from "./groupFanout.js";
+import { createRoleMessageDeliveryPoller } from "./roleMessageDelivery.js";
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -28,6 +29,14 @@ import { deliverBotToBotMessage } from "./groupFanout.js";
  *    Runs BEFORE the job queue starts so an orphaned run's resume can't
  *    race a freshly-dispatched job for the same run.
  * 2. Start the job queue (heartbeat + routine polling, if configured).
+ * 3. Start the role-message delivery poller (TASK-273) — a separate, small
+ *    pg-boss lifecycle (`RoleMessageDeliveryPoller`,
+ *    `services/worker/src/roleMessageDelivery.ts`) that turns each
+ *    undelivered `role_messages` row into a real chat run on the
+ *    recipient's own thread. Kept independent of `WorkerJobQueue` rather
+ *    than folded into it: that class's file is outside this task's
+ *    `Owned_Paths`, so this mirrors its start/schedule/stop shape instead
+ *    of editing it.
  *
  * `TENANT_ID` follows the existing `DEFAULT_TENANT_ID = "basileia"`
  * precedent in `packages/approvals/src/editApproval.ts` — routine polling
@@ -118,6 +127,12 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
     },
   });
   await queue.start();
+  const roleMessageDeliveryPoller = createRoleMessageDeliveryPoller({
+    connectionString: options.connectionString,
+    tenantId: options.tenantId,
+    onError: (error, context) => console.error(`role-message delivery poller error (${context.job}):`, error),
+  });
+  await roleMessageDeliveryPoller.start();
   const reconciled = await reconcileInterruptedRuns(database, options.reconcileFilter ?? {}, async (run) => {
     if (run.provider === "claude" && run.sessionRef !== null) {
       await queue.enqueueRunExecution(run.runId);
@@ -132,9 +147,14 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
     return { runId: replacement.runId, mode: "new_run" };
   });
   if (reconciled.length > 0) log(`reconciled ${reconciled.length} interrupted run(s) at boot: queued for execution.`);
-  log("worker started: heartbeat + routine polling live.");
+  log("worker started: heartbeat + routine polling + role-message delivery polling live.");
 
-  return { stop: () => queue.stop() };
+  return {
+    stop: async () => {
+      await roleMessageDeliveryPoller.stop();
+      await queue.stop();
+    },
+  };
 }
 
 async function main(): Promise<void> {
