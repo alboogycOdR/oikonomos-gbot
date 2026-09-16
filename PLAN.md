@@ -8172,7 +8172,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-276
 **Title:** Database schema for bot templates and the Project entity (foundation only -- no API, no UI)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; docs/decisions/ADR-019-project-entity-and-manager-role.md; specs/OIKONOMOS_TEMPLATES_v1.0.md; specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md
@@ -8188,12 +8188,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-16T20:15:00Z
 **Progress_Notes:**
 - [2026-09-16T20:15:00Z] [ORCH] Filed as part of the user's 18-hour autopilot priority list (Tier 2, item 4). Deliberately the narrowest possible slice -- storage only -- so it can land today without pretending the full feature is done.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-16T21:52:47Z] [SV:S5] Foundation storage layer for ADR-018 (bot templates) and ADR-019 (Project entity) landed: 5 tables via 2 reversible migrations (026_bot_templates, 027_project_workspace), field-for-field from each spec's own SQL section, plus typed CRUD in packages/db/src/templates.ts and projects.ts mirroring roles.ts conventions. Real Postgres-backed tests live in-source (DATABASE_URL-gated) using withPool rather than a dedicated pool, to satisfy database.test.ts's TASK-199 liveness check that forbids accessor modules from constructing their own Pool -- Owned_Paths names templates.ts/projects.ts, not sibling *.test.ts files, so tests couldn't live in separate files without an ownership conflict; flagged in dossier for ORCH. Ran the full recursive suite twice: identical 2 pre-existing/unrelated failures both times (packages/db roles.test.ts TASK-084 backfill guard -- deadlock under concurrent DDL; services/worker main.test.ts TASK-226 pg-boss timing race), neither touching any table or file this task owns; my own new tests (templates.ts 11/11, projects.ts 14/14) passed in every run.
+**Artifacts:** infra/postgres/migrations/026_bot_templates.up.sql, infra/postgres/migrations/026_bot_templates.down.sql, infra/postgres/migrations/027_project_workspace.up.sql, infra/postgres/migrations/027_project_workspace.down.sql, packages/db/src/templates.ts, packages/db/src/projects.ts, packages/db/src/index.ts, dossiers/TASK-276.md
+**Test_Evidence:** pnpm typecheck: clean. scripts/test-isolated.ps1 -Init -Filter @oikonomos/db (fresh DB, all 27 migrations): 42/42 files, 238 passed + 2 skipped, 0 failed -- includes new templates.ts (11 tests) and projects.ts (14 tests: CRUD, thread_id UNIQUE, FK enforcement on project_tasks/artifacts/decisions, task state transitions incl. blocked-reason CHECK at TS+DB level). Full recursive suite (scripts/test-isolated.ps1, no filter) run twice: both times identical 2 pre-existing/unrelated failures outside this task's Owned_Paths (packages/db roles.test.ts TASK-084 deadlock; services/worker main.test.ts TASK-226 pg-boss race) -- see dossier work log for full evidence these are concurrency artifacts, not caused by this task.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T20:15:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T21:52:47Z
 
 ### TASK-277
 **Title:** Capability-drift safety invariant (CapabilityEnabledDriftError) -- required before any manager-bot tool may exist
