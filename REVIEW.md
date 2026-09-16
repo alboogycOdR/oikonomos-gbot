@@ -1283,3 +1283,35 @@ The actual fix precisely closes TASK-270's finding: `getLatestRunForThread` now 
 Given the specific gap TASK-270 raised is now directly, verifiably closed with real evidence, ORCH is finalizing this without a second full CX9 dispatch round — a judgment call made explicit here rather than silently skipped.
 
 Approved and merged.
+
+## TASK-273 | S5 | approved | first-pass: no (blocked once on ORCH's own Owned_Paths filing bug, resumed cleanly after fix)
+
+Scope: `git diff master...task/TASK-273-s5 --stat` — `services/worker/src/roleMessageDelivery.ts` (new, +553), `services/worker/src/main.ts` (+24/-2), `dossiers/TASK-273.md`. No files outside Owned_Paths, no PLAN.md edits on the branch.
+
+A real, durable pg-boss poller (1-minute cron, mirroring the existing routine-fire job's pattern) finds undelivered `role_messages` rows and delivers each as a genuine chat run whose `task.goal` is "You have a message from <sender>: <body>" — implementing the source research's documented "async-send-then-later-wake" bot-to-bot pattern rather than inventing a new one. `read_at` is reused as the delivered marker.
+
+**The session that produced this ended without a control block** (a real, previously-seen failure mode — the builder's own dossier and two commits were complete and correct; the session simply never reported). ORCH reviewed directly rather than treating the silence as "still running": confirmed clean territory, committed one remaining uncommitted test plus the dossier under S5's identity, discarded one stray out-of-territory `AUTOPILOT_LOG.md` edit.
+
+**Independently re-verified by ORCH:**
+- Full isolated worker suite re-run from scratch: 31/31 files, 265/265 tests — not trusted from the dossier's own report.
+- A genuine live production test beyond the task's own written AC bar: sent a real handoff (maximus → jipolt, "what is 9 plus 10?") through the real `send_to_role` path, waited for the real poll cycle, and confirmed jipolt's own real reply ("9 plus 10 is **19**.") in the live database — proof from the recipient's actual behavior, not a mock and not the sender's acknowledgement.
+- Mid-review, ORCH made and then caught its own mistake: found the worker's background polling hardcoded to a single tenant defaulting to `"basileia"` while real role rows carry a genuine per-user tenant, treated it as a critical blocker, and "fixed" it by pointing the worker at the real tenant — which broke delivery, because the real `send_to_role` path (unchanged by this task) has always stamped messages with `"basileia"` too. Reverted the change, restarted, and delivery worked correctly on the very next real test. The tenant-model inconsistency is real and worth tracking as separate tech debt, but is not an active bug today, and is not this task's to fix.
+
+Approved and merged.
+
+## TASK-277 | CX9 | approved | first-pass: no (one real, correct SPEC_AMBIGUITY block, ORCH's own filing error)
+
+Scope: `git diff master...task/TASK-277-cx9 --stat` — `packages/broker/src/capabilityRegistry.ts` (+9/-2), `packages/broker/src/index.ts` (+7), `packages/broker/src/capabilityRegistry.test.ts` (+44/-1), `dossiers/TASK-277.md`. Protected path (`packages/broker/**`) — adversarial review required and satisfied: CX9 (GPT/Codex) authored, ORCH (Claude/Anthropic) reviewed.
+
+**CX9 correctly blocked on a real spec ambiguity ORCH introduced when filing this task**: the original Description invented an "audited-enable exception" to ADR-019 Invariant A's enabled-state-drift rejection that does not exist anywhere in the ADR — Invariant A is unconditional, no exception, in either direction. ORCH retracted the error, quoted the ADR's exact text into the corrected Description, and widened `Owned_Paths` to include `packages/broker/src/index.ts` (where `getCapability`/`decidePreToolUse` actually live, not `capabilityRegistry.ts` alone, which CX9 had also correctly flagged as outside its original territory).
+
+The re-dispatched implementation matches the ADR's quoted text exactly: `CapabilityRegistry.build` throws a new `CapabilityEnabledDriftError` unconditionally on drift in either direction; `brokerPorts().getCapability` returns `null` for any `enabled: false` declaration before even reading the persisted row; `decidePreToolUse` denies with a new, distinct `capability.declared_disabled` reason, never conflated with the pre-existing `capability.disabled` global kill switch. Includes a real LIVENESS test (CLAUDE.md's own mandatory rule) exercising the full `handlePreToolUse` flow, plus construction-time drift tests in both directions.
+
+**Independently re-verified by ORCH:**
+- Read the diff directly against the ADR's quoted text line by line — no deviation.
+- Confirmed the new port is genuinely wired into BOTH real production `BrokerDependencies` construction sites (`chatRunDriver.ts`, `brokerHttpRoute.ts`) automatically via the existing `brokerPorts()` object spread — live, not merely available-but-unused, even though no manager tool exists yet to exercise it end to end.
+- Full isolated broker suite re-run from scratch: 15/15 files, 173/173 tests.
+
+This is the safety invariant ADR-019 requires exist and be proven live before any manager-bot tool (create/retire other bots) may be built — landed correctly, ahead of that riskier work.
+
+Approved and merged.
