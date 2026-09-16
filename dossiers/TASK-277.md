@@ -1,0 +1,5 @@
+# TASK-277 Dossier
+
+## Work Log
+
+- [2026-09-16T20:02:17Z] [CX9] Preflight completed: `packages/broker/src/capabilityRegistry.ts` is an existing file and `packages/broker/src/*.test.ts` matches the existing protected-package tests. Read ADR-019, CLAUDE.md, current registry and all live construction callers. Blocked before edits: ADR-019 §4 Invariant A requires construction to reject enabled-state drift unconditionally in either direction, while TASK-277's Description/Acceptance_Criteria permits a declared-disabled/persisted-enabled row when a matching audited enable event exists. No audit-read port or event schema exists in the registry/database composition, and the necessary production caller/database changes are outside Owned_Paths. ADR-019 also mandates L1 deny reason `capability.declared_disabled` and disabled built-in declarations, both outside Owned_Paths (`packages/broker/src/index.ts`, `builtinTools.ts`). Supervisor decision required: (1) retain ADR's unconditional rejection and widen territory to the required L1/declaration files, or (2) amend ADR and grant owned paths for a defined durable audit-reader/event contract plus its production wiring.
