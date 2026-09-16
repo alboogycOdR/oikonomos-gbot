@@ -7976,7 +7976,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-269
 **Title:** CRITICAL -- an ordinary follow-up chat message never continues the previous Claude session; every turn in a conversation starts completely fresh with zero memory of anything said before it
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** `services/control-api/src/app.ts`'s `POST /threads/:id/messages` (1:1 and group-with-one-recipient branches, ~lines 1926-1943 and ~1899-1917); `services/control-api/src/ports.ts`'s `submitTaskExecution`/`runChatTask` (neither ever looks up a prior run's `session_ref`); `services/worker/src/chatRunDriver.ts` lines ~340-360, ~446, ~787 (the ONLY place `--resume` is ever attached to the Claude CLI invocation is `request.resume`, which is set exclusively by the interrupted-run-reconciliation/approval-resume path, never by an ordinary new message in an existing thread).
