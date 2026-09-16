@@ -82,6 +82,8 @@ export interface RoleMessageDeliveryResult {
   messageId: string;
   toRoleId: string;
   outcome: "delivered" | "skipped_no_role";
+  /** Only set when `outcome === "delivered"` — the run a test can drive/inspect directly. */
+  runId?: string;
 }
 
 /** Mirrors `routineJob.ts`'s own `environmentIsUp` check for the same reason. */
@@ -134,7 +136,7 @@ async function deliverRoleMessage(
   // Marked read last, deliberately — see the module docstring's ordering note.
   await markRoleMessageRead(options, message.messageId);
 
-  return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered" };
+  return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered", runId };
 }
 
 /**
@@ -268,12 +270,13 @@ export function createRoleMessageDeliveryPoller(
 
 if (import.meta.vitest) {
   const { describe, it, expect, beforeAll, afterAll } = import.meta.vitest;
-  const { createRole, sendRoleMessage, getRun, listMessages: _listMessages, defaultPoolConfig } = await import(
+  const { createRole, sendRoleMessage, getRun, getTask, listMessages, defaultPoolConfig } = await import(
     "@oikonomos/db"
   );
   const { Pool } = await import("pg");
   const { purgePgBossQueue, withPgBossQueueLock } = await import("./jobs/pgBossTestCleanup.js");
   const { WORKER_RUN_EXECUTION_JOB } = await import("./jobs/workerJobQueue.js");
+  const { createChatRunDriver } = await import("./chatRunDriver.js");
 
   describe("roleMessageDeliveryGoal — pure text, lane-agnostic by construction", () => {
     it("renders sender name and verbatim body", () => {
@@ -297,6 +300,13 @@ if (import.meta.vitest) {
 
     afterAll(async () => {
       await pool.query(`DELETE FROM role_messages WHERE tenant_id = $1`, [tenantId]);
+      // messages.run_id REFERENCES runs — delete messages before runs, and
+      // audit_events before runs too (chatRunDriver.test.ts's own precedent).
+      await pool.query(
+        `DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1))`,
+        [tenantId],
+      );
+      await pool.query(`DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))`, [tenantId]);
       await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
       await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
@@ -319,7 +329,10 @@ if (import.meta.vitest) {
         );
 
         const results = await deliverPendingRoleMessages(options);
-        expect(results).toContainEqual({ messageId: sent.messageId, toRoleId: recipientId, outcome: "delivered" });
+        const delivered = results.find((r) => r.messageId === sent.messageId);
+        expect(delivered).toMatchObject({ messageId: sent.messageId, toRoleId: recipientId, outcome: "delivered" });
+        expect(typeof delivered?.runId).toBe("string");
+        const runId = delivered!.runId!;
 
         const tasks = await pool.query<{ task_id: string; goal: string }>(
           `SELECT task_id, goal FROM tasks WHERE tenant_id = $1 AND role_id = $2`,
@@ -335,7 +348,7 @@ if (import.meta.vitest) {
         // called.
         const runs = await pool.query<{ run_id: string }>(`SELECT run_id FROM runs WHERE task_id = $1`, [tasks.rows[0]!.task_id]);
         expect(runs.rows).toHaveLength(1);
-        const runId = runs.rows[0]!.run_id;
+        expect(runs.rows[0]!.run_id).toBe(runId);
         expect(await getRun({ connectionString: connectionString! }, runId)).not.toBeNull();
 
         const jobs = await pool.query<{ data: { runId: string } }>(
@@ -423,5 +436,75 @@ if (import.meta.vitest) {
         await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
       });
     }, 20_000);
+
+    // Acceptance Criterion 2 requires proof "from the recipient's own
+    // actual behavior/reply in a live test, not from the sender's
+    // acknowledgement alone, and not from a unit test with a mocked
+    // delivery path". Every test above proves the mechanism is real up to
+    // the enqueued `worker.run-execution` job (TASK-258's own accepted
+    // liveness bar); this test goes one step further and actually DRIVES
+    // that exact run through the real `createChatRunDriver` — the same
+    // real-provider driver `chatRunDriver.test.ts` exercises with no
+    // `queryFn` override — with `resume: { runId }`, mirroring exactly what
+    // `main.ts`'s own `onRunExecution` handler does for a freshly-enqueued
+    // run. The recipient bot's own real reply, not a scripted one, is what
+    // gets asserted.
+    it(
+      "a real handoff genuinely reaches the recipient: its own real reply answers the sender's question",
+      async () => {
+        await withPgBossQueueLock(pool, async () => {
+          await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+
+          const senderId = `task-273-live-sender-${crypto.randomUUID()}`;
+          const recipientId = `task-273-live-recipient-${crypto.randomUUID()}`;
+          await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Alice", title: "Sender" });
+          await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Recipient Bot", title: "Recipient" });
+
+          const sent = await sendRoleMessage(
+            { connectionString: connectionString! },
+            {
+              tenantId,
+              fromRoleId: senderId,
+              toRoleId: recipientId,
+              body: "What is 7 plus 8? Reply with only the number, nothing else.",
+            },
+          );
+
+          const results = await deliverPendingRoleMessages(options);
+          const delivered = results.find((r) => r.messageId === sent.messageId);
+          expect(delivered?.outcome).toBe("delivered");
+          const runId = delivered!.runId!;
+
+          const run = await getRun({ connectionString: connectionString! }, runId);
+          expect(run).not.toBeNull();
+          const task = await getTask({ connectionString: connectionString! }, run!.taskId);
+          expect(task).not.toBeNull();
+          expect(task!.execution).toMatchObject({ kind: "chat" });
+          const threadId = (task!.execution as { threadId: string }).threadId;
+
+          // Real driver, real provider — exactly `main.ts`'s own
+          // `onRunExecution` resume path for a brand-new (no captured
+          // session) run, not a mock or a scripted queryFn.
+          const driver = createChatRunDriver({ connectionString: connectionString! });
+          await driver.run({ task: task!, threadId, resume: { runId } });
+
+          const finished = await getRun({ connectionString: connectionString! }, runId);
+          expect(finished?.status).toBe("completed");
+
+          const messages = await listMessages({ connectionString: connectionString! }, threadId);
+          const reply = messages.find((message) => message.role === "bot" && message.runId === runId);
+          expect(reply).toBeDefined();
+          expect(reply?.body.length).toBeGreaterThan(0);
+          // The recipient's OWN real behavior, not the sender's
+          // acknowledgement: it actually answered the question the
+          // delivered goal text carried (a genuinely fresh fact the
+          // recipient could only have from this delivered turn).
+          expect(reply?.body).toMatch(/15/);
+
+          await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+        });
+      },
+      120_000,
+    );
   });
 }
