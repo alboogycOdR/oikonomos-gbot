@@ -79,7 +79,17 @@ Write-Host "[test-isolated] database: $testDb (container $container)"
 # if it goes stale -- a backstop for the case where this script itself is
 # killed before the `finally` below can run. The `finally` stays the fast
 # path; this marker is only ever consulted if that fast path never fires.
-$watchdogMarker = Join-Path $repoRoot "infra\compose\logs\watchdog-disabled.marker"
+#
+# The guardian task always watches the MAIN repo's infra/compose/logs, never
+# a -Root review worktree's own copy (which may not have that directory at
+# all -- confirmed live: this crashed every -Root invocation, including
+# review runs, before any test could execute). Resolve the marker path from
+# this script's own physical location (always the main repo, regardless of
+# -Root), not from $repoRoot (which -Root overrides).
+$mainRepoRoot = Split-Path -Parent $PSScriptRoot
+$watchdogMarker = Join-Path $mainRepoRoot "infra\compose\logs\watchdog-disabled.marker"
+$watchdogMarkerDir = Split-Path -Parent $watchdogMarker
+if (-not (Test-Path $watchdogMarkerDir)) { New-Item -ItemType Directory -Path $watchdogMarkerDir -Force | Out-Null }
 $watchdogWasReady = (schtasks /Query /TN $taskName /FO LIST 2>$null | Select-String "Status:\s+Ready") -ne $null
 try {
   if ($watchdogWasReady) {
