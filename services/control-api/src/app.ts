@@ -26,6 +26,7 @@ import {
   ATTACHMENT_INLINE_TEXT_MAX_BYTES,
   buildChatGoal,
   createFilesystemAttachmentStore,
+  evaluateGroupRoomLimits,
   isAllowedAttachmentContentType,
   isInlineableTextContentType,
   publicAttachmentRef,
@@ -678,6 +679,8 @@ async function loadMessageShapingContext(
  * "exists but not owned by this tenant" identically, so every call site
  * gets a 404-never-403 for free by construction.
  */
+const GROUP_QUIET_ROOM_NOTICE = "Group routing paused: consecutive bot replies repeated without new information. Mention a bot directly to continue.";
+
 async function findTenantOwnedThread(
   deps: ControlApiDeps,
   tenantId: string,
@@ -1845,6 +1848,20 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             title: titleSource,
             goal,
           });
+          if (routing.route === null) {
+            const message = await deps.insertMessage({
+              threadId: thread.id,
+              role: "user",
+              body,
+              senderRoleId: null,
+              attachments: publicAttachments,
+            });
+            if (routing.stopReason === "quiet_room") {
+              await deps.insertMessage({ threadId: thread.id, role: "system", body: GROUP_QUIET_ROOM_NOTICE });
+            }
+            await reply.code(201).send(shapePostedMessage(message));
+            return;
+          }
           const recipients = routing.route.recipients;
           if (recipients.length === 0) throw new Error("group routing selected no recipients.");
           if (recipients.length > 1) {
@@ -2709,6 +2726,85 @@ if (import.meta.vitest) {
 
       const own = await app.inject({ method: "GET", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A) });
       expect(own.statusCode).toBe(200);
+      await app.close();
+    });
+  });
+
+  describe("TASK-275 — bounded group-room routing", () => {
+    const groupThread: GroupThread = {
+      id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      title: "Bounded room",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      memberRoleIds: ["role-a"],
+    };
+    const botMessage = (body: string): Message => ({
+      id: randomUUID(),
+      threadId: groupThread.id,
+      role: "bot",
+      body,
+      runId: null,
+      senderRoleId: "role-a",
+      createdAt: new Date(),
+    });
+
+    it("live route refuses a fourth automatic bot turn from persisted history, but a direct mention overrides it", async () => {
+      const inserted: Array<Parameters<ControlApiDeps["insertMessage"]>[0]> = [];
+      let routeCalls = 0;
+      const history = [botMessage("one"), botMessage("two"), botMessage("three")];
+      const deps = makeDeps({
+        listAllThreadsWithMembers: async () => [groupThread],
+        insertMessage: async (input) => {
+          inserted.push(input);
+          return { id: randomUUID(), threadId: input.threadId, role: input.role, body: input.body, runId: null, createdAt: new Date() };
+        },
+        routeGroupMessage: async ({ body }) => {
+          routeCalls += 1;
+          const stopReason = evaluateGroupRoomLimits(history, body);
+          if (stopReason !== null) return { route: null, routingRunId: null, stopReason };
+          return { route: { reason: "mentioned", recipients: [{ roleId: "role-a", name: "Tenant A bot", title: "Tenant A bot", description: "d" }] }, routingRunId: null };
+        },
+        createTask: async (input) => ({ taskId: randomUUID(), tenantId: TENANT_A, roleId: input.roleId, title: input.title, goal: input.goal, status: "draft", routineId: null, requestedBy: input.requestedBy, createdAt: new Date(), updatedAt: new Date() }),
+      });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const capped = await app.inject({ method: "POST", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A), payload: { body: "continue" } });
+      expect(capped.statusCode).toBe(201);
+      expect(routeCalls).toBe(1);
+      expect(inserted).toEqual([expect.objectContaining({ role: "user", body: "continue" })]);
+
+      const mentioned = await app.inject({ method: "POST", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A), payload: { body: "@Tenant please continue" } });
+      expect(mentioned.statusCode).toBe(201);
+      expect(routeCalls).toBe(2);
+      await app.close();
+    });
+
+    it("live route detects a quiet room and persists a system notice instead of submitting another bot call", async () => {
+      const inserted: Array<Parameters<ControlApiDeps["insertMessage"]>[0]> = [];
+      let routeCalls = 0;
+      const history = [botMessage(" Same reply "), botMessage("same reply")];
+      const deps = makeDeps({
+        listAllThreadsWithMembers: async () => [groupThread],
+        insertMessage: async (input) => {
+          inserted.push(input);
+          return { id: randomUUID(), threadId: input.threadId, role: input.role, body: input.body, runId: null, createdAt: new Date() };
+        },
+        routeGroupMessage: async ({ body }) => {
+          routeCalls += 1;
+          const stopReason = evaluateGroupRoomLimits(history, body);
+          if (stopReason !== null) return { route: null, routingRunId: null, stopReason };
+          throw new Error("quiet room must stop routing");
+        },
+      });
+      const app = buildApp(deps, { authToken: TOKEN, logger: false });
+
+      const response = await app.inject({ method: "POST", url: `/threads/${groupThread.id}/messages`, headers: sessionHeaders(TENANT_A), payload: { body: "anything new?" } });
+      expect(response.statusCode).toBe(201);
+      expect(routeCalls).toBe(1);
+      expect(inserted).toEqual([
+        expect.objectContaining({ role: "user", body: "anything new?" }),
+        expect.objectContaining({ role: "system", body: GROUP_QUIET_ROOM_NOTICE }),
+      ]);
       await app.close();
     });
   });
