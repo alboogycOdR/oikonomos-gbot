@@ -8145,7 +8145,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-275
 **Title:** Bounded-room anti-runaway caps for group threads
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Bounded-room anti-runaway caps"); docs/STUDY-grok-bot-018.md (group chatter cost, the documented reason Grok Bot needed this); services/worker/src/groupFanout.ts (existing 6-member cap, the only limit currently enforced)
@@ -8162,12 +8162,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-16T20:15:00Z] [ORCH] Filed as part of the user's 18-hour autopilot priority list (Tier 1, item 3). Depends on TASK-274 confirming the base routing mechanism is genuinely sound before layering caps on top of it.
 - [2026-09-16T20:31:00Z] [ORCH] TASK-274 done -- dependency met. Queued next for CX9 once TASK-277 (currently in progress) reaches needs_review or done.
+- [2026-09-16T21:52:47Z] [SV:CX9] Live group-thread dispatch and history are controlled by unowned control-api files; owned worker files lack group-thread context, so a server-side cap would be inert.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T20:15:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: requires services/control-api/src/app.ts and services/control-api/src/ports.ts (and their tests) to enforce group-thread turn/history/quiet-room controls.
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T21:52:47Z
 
 ### TASK-276
 **Title:** Database schema for bot templates and the Project entity (foundation only -- no API, no UI)
