@@ -8085,7 +8085,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-273
 **Title:** Nothing delivers a role_messages handoff to its recipient -- send_to_role persists correctly but the recipient bot never becomes aware of it
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** services/workspace/src/mailbox.ts (probe Q5's own documented properties: async, no same-turn reply -- correctly implemented, but nothing implements the OTHER half of async delivery, i.e. the recipient eventually finding out); services/control-api/src/app.ts's GET /roles/:roleId/handoffs (the only current consumer, a human-facing dashboard history view, not anything a bot itself can reach)
@@ -8103,12 +8103,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-16T19:57:00Z] [ORCH] Filed per the user's explicit instruction: "let's write this up as a task and tackle it a bit later. We will decide later whether we want to prioritise it." Deliberately left Assigned_To TBD and Status pending -- not to be picked up without a separate, explicit go-ahead.
 - [2026-09-16T20:15:00Z] [ORCH] User declared this critical, part of an 18-hour autopilot push (Tier 1, item 1). Scoped for dispatch: durable-poller delivery mechanism chosen over an inbox-check tool, matching the source research's own documented design rather than inventing a new one. Dispatching S5.
+- [2026-09-16T20:31:28Z] [SV:S5] Full implementation design completed and recorded in the dossier (delivery poller mirroring routineJob.ts's fire pattern, task.goal as the lane-agnostic delivery text, read_at reused as the delivered marker). Blocked before writing any file: hooks/territory-firewall.js rejects all three of TASK-273's Owned_Paths entries because each carries a parenthetical annotation the mechanical parser (hooks/lib.js ownedPathsOf/globPrefix/pathInGlob) doesn't strip, so the literal match prefix includes text like ' (new)' that no real path can equal or fall under. scripts/preflight_paths.py shows the identical parsing break independently. No fix is available inside my territory (hooks/** and PLAN.md are both off-limits to me), and I'm not routing around the firewall via an unmatched tool just because it happens not to be wired to Bash.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T20:15:00Z
+**Blocked_Reason:** TOOLING_FAILURE: hooks/territory-firewall.js's Owned_Paths matcher cannot handle parenthetical annotations in the Owned_Paths field (confirmed root cause in hooks/lib.js's ownedPathsOf/globPrefix/pathInGlob, and independently in scripts/preflight_paths.py's output) -- blocks writes to all three of TASK-273's own Owned_Paths entries. Fix options for ORCH: (1) reformat TASK-273's Owned_Paths in PLAN.md to bare paths, moving the '(new)'/'(pattern reference only...)'/'(job registration)' notes into Description instead; or (2) patch hooks/lib.js's ownedPathsOf to strip a trailing ' (...)' annotation before computing the glob prefix.
+**Updated_By:** SV
+**Updated_At:** 2026-09-16T20:31:28Z
 
 ### TASK-274
 **Title:** Live-verify single-owner group routing (G-04) with a real multi-bot group message
