@@ -1492,3 +1492,29 @@ closing both relay legs the moment the originating session's signature/expiry ch
   bearer-exemption negative control.
 
 Approved and merged (no-ff) to master.
+
+## TASK-287 | S5 | approved | 2026-09-17T12:20:00Z
+
+Threaded `app.ts`'s `revokedSessionTokens` explicit-logout store through `liveAgent`/
+`browserTakeover`'s WS re-validation, closing TASK-286's own honestly-disclosed gap.
+
+**Genuinely important bonus find, independently verified via mutation testing, not just
+trusted:** `liveAgent.routes.ts`'s shared `app.server` `'upgrade'` listener called
+`handleUpgrade` unconditionally for any path not matching its own TAKEOVER pattern, and
+`handleUpgrade`'s own fallback unconditionally destroyed the socket for anything not matching
+`PTY_PATH_PATTERN` -- both fully synchronous, no `await` between them. Since
+`registerLiveAgentRoutes` always runs before `registerBrowserTakeoverRoutes` in `app.ts`, and
+Node's `EventEmitter` invokes every listener for an event in registration order, every real
+`/runs/:id/browser-takeover` upgrade had its socket destroyed by liveAgent's listener before
+browserTakeover's own listener ever got a chance to claim it -- silently breaking every real
+browser-takeover WS connection since TASK-235.
+
+- Confirmed this directly, not by reading the diff alone: reverted just the fix (the
+  `PTY_PATH_PATTERN` gate back to unconditional fallthrough) in the worktree, rebuilt, and
+  watched the new TASK-287 browser-takeover logout test genuinely time out (the connection never
+  even opens) -- then restored the fix and reconfirmed a clean 24/24 files, 314/314 tests.
+- Diff clean against Owned_Paths; typecheck clean.
+- 4 real tests (live-agent viewer, live-agent takeover, browser-takeover, plus a negative
+  control for an unrelated revoked session) all real loopback TCP + real WS handshake.
+
+Approved and merged (no-ff) to master.
