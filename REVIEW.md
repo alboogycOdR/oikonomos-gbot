@@ -1656,3 +1656,17 @@ complete. Reviewed entirely from scratch rather than trusted, per this session's
 discipline. Second occurrence of this exact failure mode on this same task.
 
 Merged `--no-ff` to master. Unlocks TASK-291 (drift badge) together with TASK-290, both now done.
+
+## TASK-291 | CX9 | approved | 2026-09-17T22:30:00Z
+
+Mobile template drift badge (T-3's last piece). First-pass approval.
+
+Territory: clean — 5 files, all in Owned_Paths, plus its own dossier.
+Verification (ORCH's own run, not the builder's claim): flutter analyze whole package 0 issues;
+flutter test 180 passed / 0 failed / 0 skipped. All three drift states are covered by name, and the
+422 export-refusal UI test folded in from TASK-290's review gap now exists and passes.
+Code: badge shows only when drift is real; a failed status fetch is deliberately swallowed so the chat
+stays usable; UnauthorizedError pops the screen like the rest of the app.
+Merged --no-ff to master as 931c2a7. Closes T-3 mobile template work end to end.
+Note: TASK-293 (drift false positives) is still in flight and changes only how `changed` is computed
+server-side; this UI consumes the unchanged response shape, so no rework here is expected.
