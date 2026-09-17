@@ -8725,7 +8725,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-294
 **Title:** CAN-03 banned-modes eval: flaky 5s timeout, and no liveness assertion in the eval itself
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-002-permission-bypass-ban-scope.md §4 + Amendment A; docs/decisions/ADR-005-control-liveness.md ("every mechanical control ships a liveness assertion ... keyed on evidence the control emits by doing its job").
@@ -8738,16 +8738,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] The negative (clean-repo) assertion is retained; a scanner that rejected everything must still fail the eval.
 - [ ] No change to infra/ci/** and no allowlist widening.
 - [ ] evals/harness suite green.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-294-cx9
+**Started_At:** 2026-09-17T22:17:03Z
 **Progress_Notes:**
 - [2026-09-17T22:35:00Z] [ORCH] Filed from a direct investigation (scanner exercised live, both directions). Not a hypothetical: the flake already cost real signal in TASK-289's review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T22:45:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T22:17:03Z
 
 ### TASK-295
 **Title:** Banned-modes scanner misses non-Claude permission-bypass vocabulary (`codex exec -s danger-full-access`)
