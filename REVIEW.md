@@ -1598,3 +1598,30 @@ authenticate with. ORCH has no browser-automation tooling to substitute for one 
 the code half (real, complete, tested); left the task's own `Status` as `blocked` rather than
 falsely mark it `done` -- the live check needs the user's own action, not another builder
 round-trip.
+
+## TASK-290 | CX9 | approved | 2026-09-17T16:35:00Z
+
+Mobile template UI core (share-as-template, template library, install with grant checklist) --
+the mobile counterpart to TASK-283's already-shipped dashboard templates UI, same backend routes.
+
+- Diff clean against Owned_Paths (7 files, all declared: api_client.dart, models.dart,
+  templates_screen.dart, chat_screen.dart + the 3 mirrored apps/mobile/test/** files).
+- Read the full diff directly: `_exportAsTemplate()` surfaces the real 422 `field_paths`/`classes`
+  via a dedicated `TemplateExportRefusedException` rather than a generic error (ADR-018 S2's own
+  bar, matching TASK-283's dashboard precedent). `TemplatesScreen` has real loading/empty/error
+  states with a retry action. Install flow shows the real `grant_checklist` from the response
+  (available/unknown_capability/disabled per entry), mirroring `CreateBotScreen`'s scoping
+  precedent.
+- Flutter tooling confirmed genuinely present in this environment (Flutter 3.47.2, Dart 3.13.2)
+  before trusting any reported count -- this is the first Flutter/mobile dispatch this session.
+  Re-ran directly (not delegated, not trusted from the builder's own report): `flutter analyze`
+  on the 7 targeted files -- clean, no issues. `flutter test` (full app suite) -- 176/176 passing,
+  "All tests passed!" -- exceeds CX9's own claimed 158 (that number likely only covered the
+  touched-file subset). `git diff --check` -- clean.
+- Second dispatch correctly added the AC-required export/library/install tests once Owned_Paths
+  was widened to include the mirrored `apps/mobile/test/**` paths -- this app's test tree mirrors
+  `lib/**` rather than colocating like every other package in this repo, an ORCH filing gap from
+  the first dispatch, now fixed and documented in PLAN.md.
+
+Merged `--no-ff` to master. Unlocks nothing further by itself; TASK-291 (drift badge) still needs
+TASK-289 (drift-detection endpoint) to land first.
