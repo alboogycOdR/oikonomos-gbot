@@ -24,7 +24,14 @@ const _bot = SingleThread(
   updatedAt: '2026-09-04T00:00:00Z',
 );
 
-Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
+Future<ApiClient> _loggedIn(
+  FakeHttpClient fake, {
+  Map<String, dynamic> templateStatus = const {
+    'installed_from': null,
+    'drift': false,
+    'changed': <String>[],
+  },
+}) async {
   fake.queueJson(
     200,
     {'authenticated': true},
@@ -41,6 +48,12 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
     'contextLimit': 100,
     'epoch': 0,
   });
+  fake.queueJsonFor(
+    'GET',
+    '/roles/role-1/template-status',
+    200,
+    templateStatus,
+  );
   return client;
 }
 
@@ -169,6 +182,58 @@ void main() {
     expect(find.text('Template export refused'), findsOneWidget);
     expect(find.textContaining('/identity/instructions'), findsOneWidget);
     expect(find.textContaining('credential_url'), findsOneWidget);
+  });
+
+  testWidgets('shows changed template sections when an installed bot drifts',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake, templateStatus: const {
+      'installed_from': {'templateId': 'template-1', 'version': 2},
+      'drift': true,
+      'changed': ['identity', 'skills'],
+    });
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('template-drift-badge')), findsOneWidget);
+    expect(find.text('Modified: identity, skills'), findsOneWidget);
+  });
+
+  testWidgets('shows no template indicator for an uninstalled bot',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('template-drift-badge')), findsNothing);
+    expect(find.textContaining('Modified:'), findsNothing);
+  });
+
+  testWidgets('shows no template indicator for an unchanged installed bot',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake, templateStatus: const {
+      'installed_from': {'templateId': 'template-1', 'version': 2},
+      'drift': false,
+      'changed': <String>[],
+    });
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('template-drift-badge')), findsNothing);
   });
 
   testWidgets('typing slash opens enabled-only picker and inserts its token',

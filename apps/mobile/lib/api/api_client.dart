@@ -256,6 +256,16 @@ class ApiClient {
     return TemplateInstallResult.fromJson(json as Map<String, dynamic>);
   }
 
+  /// `GET /roles/:roleId/template-status` — reports whether a role was
+  /// installed from a template and, if so, which manifest sections changed.
+  Future<TemplateStatus> getRoleTemplateStatus(String roleId) async {
+    final json = await _request(
+      'GET',
+      '/roles/${Uri.encodeComponent(roleId)}/template-status',
+    );
+    return TemplateStatus.fromJson(json as Map<String, dynamic>);
+  }
+
   static Map<String, dynamic> _jsonObject(String body) {
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
