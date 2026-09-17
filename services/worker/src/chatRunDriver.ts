@@ -1505,6 +1505,12 @@ const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unk
   [WORKSPACE_RENAME_SELF_TOOL]: (input) => input.name,
   [WORKSPACE_REQUEST_SECRET_TOOL]: (input) => input.label,
   [WORKSPACE_CREATE_ROUTINE_TOOL]: (input) => input.name,
+  // TASK-282's own tools never got entries here, so handlePreToolUse's
+  // unconditional destinationFor() call (resolved before any tier check,
+  // for every request) has been fail-closing every real create_bot call in
+  // production since TASK-282 merged -- found while investigating TASK-285.
+  mcp__workspace__create_bot: (input) => input.name,
+  mcp__workspace__retire_bot: (input) => input.roleId,
 
   mcp__steel__steel_navigate: (input) => input.url,
   mcp__steel__steel_act: (input) => input.action,

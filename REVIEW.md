@@ -1447,3 +1447,48 @@ boot never auto-registers new builtin tools by design -- not a defect, the docum
 mechanism.
 
 Approved and merged (no-ff) to master.
+
+## TASK-259 | S5 | approved | 2026-09-17T10:55:00Z
+
+SSE stream session re-validation: `/threads/:id/stream`'s auth was checked once at handshake;
+neither the poll timer nor the 15s heartbeat re-checked the originating session, so an expired
+or revoked session kept receiving real-time messages indefinitely on an already-open
+connection. Fixed with `sessionStillValid()`, checked on every tick, reusing the exact same
+`verifySessionPrincipal`/`revokedSessionTokens` pattern already used identically elsewhere in
+this file (not invented).
+
+- Diff clean against Owned_Paths; typecheck clean; isolated control-api suite 24/24 files,
+  306/306 tests.
+- Read the 3 new tests directly: genuinely rigorous, using a real `listen()`/`fetch()` round
+  trip rather than `app.inject()` (which cannot observe a server-initiated close of a still-open
+  stream) -- a real short-TTL session expiring mid-connection is actually force-closed, a real
+  mid-stream logout force-closes immediately, and a bearer-token connection correctly survives
+  (no session to expire).
+- S5 correctly scoped this to SSE only per its own AC's explicit allowance after checking
+  `liveAgent`/`browserTakeover` (WebSocket-upgrade routes, structurally different -- no
+  `setInterval` loop to piggyback on) and flagging rather than silently widening or dropping.
+  Confirmed directly by ORCH, filed as TASK-286.
+
+Approved and merged (no-ff) to master.
+
+## TASK-286 | S5 | approved | 2026-09-17T11:30:00Z
+
+WebSocket session re-validation for `liveAgent`/`browserTakeover`, the follow-up to TASK-259's
+SSE fix. Both routes now run a dedicated periodic re-check (`startSessionRevalidation`, since a
+WS upgrade has no existing timer to piggyback on the way SSE's poll/heartbeat did), force-
+closing both relay legs the moment the originating session's signature/expiry check fails.
+
+- Diff clean against Owned_Paths; typecheck clean; isolated control-api suite 24/24 files,
+  310/310 tests.
+- Read the fix directly: careful, well-commented code -- correctly distinguishes `.destroy()`
+  from `.end()` for a WS-upgraded socket (outside Node's HTTP connection bookkeeping), correctly
+  clears its own timer on connection close.
+- Honestly disclosed a real scope limitation rather than silently dropping or over-widening: the
+  fix checks signature+expiry only, not the session-revocation store (explicit logout), since
+  that store lives in `app.ts` and isn't threaded through these routes' registration options.
+  Filed as TASK-287.
+- 4 new tests confirmed matching TASK-259's own rigor: real loopback TCP + real WS handshake +
+  real elapsing clock for liveAgent viewer, liveAgent takeover, and browserTakeover, plus a
+  bearer-exemption negative control.
+
+Approved and merged (no-ff) to master.
