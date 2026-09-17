@@ -1384,3 +1384,24 @@ creates routines always-paused, and writes opted-in memory facts.
   fact, unchanged built-in-floor grant set, integration NOT auto-granted).
 
 Approved and merged (no-ff) to master.
+
+## TASK-284 | CX9 | approved | 2026-09-17T09:12:00Z
+
+Consistent (non-flaky) `chat.routes.test.ts` TASK-121 group-routing failure, found during
+TASK-281's own review. Root cause: two things, both real and both fixed in the test file only.
+
+- The test's provider assertion expected `"claude"`, but this workstation's
+  `OIK_DEFAULT_ROLE_PROVIDER` is genuinely set to `"gemini"` -- verified directly via registry
+  read (not trusted from the diff's own comment) before accepting the expectation change as a
+  real fix rather than a masked regression. `resolveRoleRuntime`'s own code comment documents
+  this as a deliberate, already-underway platform provider transition.
+- Several assertions read durable-queue state immediately after the route's fire-and-forget
+  `submitTaskExecution`, racing its own producer transaction -- fixed by polling, same pattern
+  as TASK-279's own earlier fix.
+- Re-ran the file 3 consecutive times (47/47 clean every time) and the full isolated control-api
+  suite once (24/24 files, 303/303 tests) myself.
+- This merge also resolved 2 further failures S5 had separately flagged during TASK-282's own
+  review (against an older master snapshot, before this fix landed) -- confirmed by re-running
+  the same file twice more on the now-current master, both clean.
+
+Approved and merged (no-ff) to master.
