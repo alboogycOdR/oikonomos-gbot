@@ -109,6 +109,68 @@ void main() {
     expect(find.text('Earlier turn'), findsOneWidget);
   });
 
+  testWidgets('exports a template from the bot menu and confirms creation',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('POST', '/roles/role-1/templates', 201, {
+      'templateId': 'template-1',
+      'version': 2,
+      'digest': 'digest-1',
+    });
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-overflow-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export as template'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Concierge playbook',
+    );
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Template created (version 2).'), findsOneWidget);
+    final request = fake.requests.lastWhere(
+      (request) => request.url.path == '/roles/role-1/templates',
+    ) as http.Request;
+    expect(jsonDecode(request.body), {'name': 'Concierge playbook'});
+  });
+
+  testWidgets('shows credential refusal field paths and classes on export',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueJsonFor('POST', '/roles/role-1/templates', 422, {
+      'field_paths': ['/identity/instructions'],
+      'classes': ['credential_url'],
+    });
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-overflow-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export as template'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Template export refused'), findsOneWidget);
+    expect(find.textContaining('/identity/instructions'), findsOneWidget);
+    expect(find.textContaining('credential_url'), findsOneWidget);
+  });
+
   testWidgets('typing slash opens enabled-only picker and inserts its token',
       (tester) async {
     final fake = FakeHttpClient();
@@ -653,8 +715,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      'bot settings lists routines with a human-readable schedule', (
+  testWidgets('bot settings lists routines with a human-readable schedule', (
     tester,
   ) async {
     final fake = FakeHttpClient();
@@ -705,8 +766,7 @@ void main() {
     final client = await _loggedIn(fake);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
-    fake.queueJsonFor(
-        'GET', '/roles/role-1/routines', 500, {'error': 'boom'});
+    fake.queueJsonFor('GET', '/roles/role-1/routines', 500, {'error': 'boom'});
 
     await tester.pumpWidget(
       MaterialApp(home: ChatScreen(apiClient: client, bot: _bot)),

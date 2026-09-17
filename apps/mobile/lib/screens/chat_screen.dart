@@ -234,17 +234,17 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _exportAsTemplate() async {
-    final controller =
-        TextEditingController(text: '${widget.bot.botName} template');
+    var templateName = '${widget.bot.botName} template';
     final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Share as template'),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: templateName,
           autofocus: true,
           decoration: const InputDecoration(labelText: 'Template name'),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          onChanged: (value) => templateName = value,
+          onFieldSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
           TextButton(
@@ -252,13 +252,12 @@ class ChatScreenState extends State<ChatScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            onPressed: () => Navigator.of(dialogContext).pop(templateName),
             child: const Text('Export'),
           ),
         ],
       ),
     );
-    controller.dispose();
     final trimmedName = name?.trim();
     if (trimmedName == null || trimmedName.isEmpty || !mounted) return;
     try {
