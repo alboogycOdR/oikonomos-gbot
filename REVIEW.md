@@ -1357,3 +1357,30 @@ in packages/db/src/index.ts) -- each block was a real, legitimate finding, not b
   capability floor) verified present and gated on real `DATABASE_URL`.
 
 Approved and merged (no-ff) to master as part of the 7e9d0bd merge commit.
+
+## TASK-281 | CX9 | approved | 2026-09-17T07:55:00Z
+
+Template install/export completeness (ADR-018 §3/§5): export now populates `integrations[]`
+from real grants and `memories[]` only for explicitly opted-in keys; install now copies skills,
+creates routines always-paused, and writes opted-in memory facts.
+
+- Session survived a real mid-work power interruption cleanly (checkpoint + git log confirmed
+  no work lost); this review picks up directly from where it left off.
+- Found and fixed a real pre-existing `pnpm-lock.yaml` drift on master (packages/templates deps
+  never locked in) that was the true cause of CX9's TOOLING_FAILURE block -- not a CX9 defect.
+- Rebuilt the entire workspace dependency chain in CX9's worktree by hand (13 packages/services,
+  none of which had been built there before) to get past a cascade of module-resolution errors.
+- Found and fixed a real test bug: `routeFixture`'s mock `deps` never defined `listRoleGrants`,
+  which the export route now calls -- every mocked export/install test threw and returned 400
+  instead of 422/201. Production path was unaffected throughout (`createDatabaseBackedDeps`
+  already had it wired; both real-Postgres integration tests passed the whole time).
+- Re-ran the full isolated `@oikonomos/control-api` suite three times. One failure (TASK-121
+  group-routing/FreeLLMAPI) reproduced identically on plain master with none of this diff
+  present -- confirmed genuinely pre-existing and unrelated, not flaky (failed 3/3, not
+  intermittently), worth its own follow-up task.
+- Read the merged install/export route code directly and matched each of the 6 acceptance
+  criteria against it line-by-line, then confirmed the real Postgres round-trip integration
+  test actually asserts all of them (enabled skills, force-paused routines, opted-in memory
+  fact, unchanged built-in-floor grant set, integration NOT auto-granted).
+
+Approved and merged (no-ff) to master.
