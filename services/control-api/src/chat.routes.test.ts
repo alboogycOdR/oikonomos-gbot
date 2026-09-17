@@ -1637,7 +1637,28 @@ integration("POST /threads/:id/messages — conversation continuity (TASK-269)",
     const deadline = Date.now() + 5_000;
     for (;;) {
       const run = await latestRunForRole(pool, roleId);
-      if (run !== undefined && run.runId !== excludeRunId) return run;
+      if (run !== undefined && run.runId !== excludeRunId) {
+        // `submitTaskExecution` creates the run row FIRST and then, in the
+        // SAME fire-and-forget async chain, conditionally calls `resumeRun`
+        // to seed `session_ref` before ever enqueueing. A poll landing
+        // between those two awaits observes a real row with a not-yet-seeded
+        // `session_ref` and would otherwise return early with a false
+        // negative -- confirmed live: this exact race reproduced
+        // deterministically against both an isolated worktree DB and the
+        // main repo's own DB (TASK-279). Debounce: only accept the row once
+        // two consecutive reads 25ms apart agree on BOTH status and
+        // session_ref, which is true immediately for the (legitimate)
+        // never-seeded case and only true for the seeded case once the
+        // in-flight `resumeRun` has actually landed.
+        const settleCheck = await new Promise<{ runId: string; sessionRef: string | null; status: string; provider: string } | undefined>((resolve) => {
+          setTimeout(() => { void latestRunForRole(pool, roleId).then(resolve); }, 25);
+        });
+        if (settleCheck !== undefined && settleCheck.runId === run.runId
+          && settleCheck.status === run.status && settleCheck.sessionRef === run.sessionRef) {
+          return run;
+        }
+        // Not yet settled -- fall through and keep polling from the top.
+      }
       if (Date.now() > deadline) throw new Error(`waitForRunOtherThan: no new run appeared for role ${roleId} within 5s.`);
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
