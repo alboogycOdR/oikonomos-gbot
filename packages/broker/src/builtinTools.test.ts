@@ -22,6 +22,15 @@ describe("BUILTIN_TOOLS", () => {
     ]);
     expect(Object.isFrozen(BUILTIN_TOOLS)).toBe(true);
   });
+
+  it("freezes retire_bot's own enforcedActionClasses array at its declaration, not just the outer BUILTIN_TOOLS array (adversarial review, TASK-285)", () => {
+    // Object.freeze(BUILTIN_TOOLS) is shallow -- it does not freeze nested
+    // arrays. Without this, the literal array `enforcedActionClasses`
+    // points at would stay mutable at the true source, regardless of any
+    // defensive copy CapabilityRegistry.build makes downstream.
+    const retireBot = BUILTIN_TOOLS.find((tool) => tool.toolName === "mcp__workspace__retire_bot");
+    expect(Object.isFrozen(retireBot?.enforcedActionClasses)).toBe(true);
+  });
 });
 
 /**

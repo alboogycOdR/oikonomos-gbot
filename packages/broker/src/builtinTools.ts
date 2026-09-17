@@ -74,6 +74,11 @@ export const BUILTIN_TOOLS = Object.freeze([
     mcpServerName: "workspace",
     enabled: true,
     enforcementEnabled: true,
-    enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    // Object.freeze below is shallow -- it freezes BUILTIN_TOOLS itself,
+    // never this nested array literal -- so it must be frozen here, at its
+    // own declaration, or it stays mutable at the true source regardless of
+    // any defensive copy CapabilityRegistry.build makes downstream (found
+    // by adversarial review, TASK-285).
+    enforcedActionClasses: Object.freeze(["E6_irreversible_role_mutation"]),
   },
 ] as const satisfies readonly DeclaredTool[]);
