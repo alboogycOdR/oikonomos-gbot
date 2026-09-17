@@ -61,6 +61,10 @@ function asManifest(value: Record<string, unknown>): TemplateManifest | null {
   return parsed.success ? parsed.data : null;
 }
 
+function selectedMemoryKeys(keys: readonly string[] | undefined): Set<string> {
+  return new Set((keys ?? []).map((key) => key.trim()).filter((key) => key.length > 0));
+}
+
 export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDeps): void {
   app.post<{ Params: { roleId: string }; Body: { name?: string; include_memories?: string[] } }>(
     "/roles/:roleId/templates",
@@ -81,11 +85,19 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
         return;
       }
       try {
-        const [skills, routines] = await Promise.all([
+        const memoryKeys = selectedMemoryKeys(request.body.include_memories);
+        const [skills, routines, grants, memories] = await Promise.all([
           deps.listEnabledSkillsForRole(role.roleId),
           deps.listRoutines({ tenantId: request.tenantId, roleId: role.roleId }),
+          deps.listRoleGrants(role.roleId),
+          memoryKeys.size === 0
+            ? Promise.resolve([])
+            : deps.readProfileTier === undefined
+              ? Promise.reject(new Error("template memory is not configured"))
+              : deps.readProfileTier({ tenantId: request.tenantId, roleId: role.roleId }),
         ]);
         const skillsById = new Map(skills.map((skill) => [skill.skillId, skill]));
+        const capabilitiesById = new Map((await deps.listCapabilities()).map((capability) => [capability.capabilityId, capability]));
         const manifest = projectRoleToManifest({
           identity: role,
           skills,
@@ -97,9 +109,12 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
             onMissingSource: routine.onMissingSource ?? "report_and_stop",
             notifyThreshold: routine.notifyThreshold ?? "changes_only",
           })),
-          integrations: [],
-          // Memory is opt-in and has no control-api port in this task's scope.
-          memories: [],
+          integrations: grants
+            .filter((grant) => capabilitiesById.has(grant.capabilityId))
+            .map((grant) => ({ capabilityId: grant.capabilityId, requestedMaxTier: grant.maxTier })),
+          memories: memories
+            .filter((memory) => memory.scope === "agent" && memory.roleId === role.roleId && memory.tier === "profile" && memoryKeys.has(memory.key))
+            .map((memory) => ({ key: memory.key, value: memory.value })),
           exportedFromTenantDigest: `tenant:${request.tenantId}`,
           oikonomosVersion: "v1",
         }, new Date());
@@ -134,7 +149,7 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
     await reply.code(200).send(await deps.listBotTemplates({ tenantId: request.tenantId }));
   });
 
-  app.post<{ Params: { id: string }; Body: { version?: number; name?: string } }>(
+  app.post<{ Params: { id: string }; Body: { version?: number; name?: string; include_memories?: string[] } }>(
     "/templates/:id/install",
     async (request, reply) => {
       if (deps.getLatestBotTemplate === undefined || deps.getBotTemplate === undefined || deps.createRoleTemplateInstall === undefined || deps.insertAuditEvent === undefined) {
@@ -159,6 +174,19 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
         return;
       }
       try {
+        if (manifest.skills.length > 0 && (deps.listSkills === undefined || deps.createSkill === undefined || deps.setSkillEnabledForRole === undefined)) {
+          await unavailable(reply);
+          return;
+        }
+        if (manifest.routines.length > 0 && deps.setRoutinePaused === undefined) {
+          await unavailable(reply);
+          return;
+        }
+        const memoryKeys = selectedMemoryKeys(request.body.include_memories);
+        if (memoryKeys.size > 0 && deps.writeMemoryFact === undefined) {
+          await unavailable(reply);
+          return;
+        }
         const name = request.body.name?.trim() || manifest.identity.name;
         const role = await createRoleWithDefaultCapabilities(deps, {
           tenantId: request.tenantId,
@@ -166,6 +194,54 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
           title: manifest.identity.title,
           description: manifest.identity.description,
         });
+        const existingSkills = manifest.skills.length === 0
+          ? []
+          : await deps.listSkills!({ tenantId: request.tenantId });
+        const skillsByName = new Map(existingSkills.map((skill) => [skill.name, skill]));
+        for (const templateSkill of manifest.skills) {
+          let skill = skillsByName.get(templateSkill.name);
+          if (skill === undefined) {
+            skill = await deps.createSkill!({
+              tenantId: request.tenantId,
+              name: templateSkill.name,
+              description: templateSkill.description,
+              whenToUse: templateSkill.when_to_use,
+              body: templateSkill.body,
+              inputs: templateSkill.inputs,
+              access: templateSkill.access,
+              approvals: templateSkill.approvals,
+              failurePolicy: templateSkill.failure_policy,
+            });
+            skillsByName.set(skill.name, skill);
+          }
+          await deps.setSkillEnabledForRole!(role.roleId, skill.skillId, true);
+        }
+        for (const templateRoutine of manifest.routines) {
+          const skillId = templateRoutine.skill === null ? null : skillsByName.get(templateRoutine.skill)?.skillId ?? null;
+          const routine = await deps.createRoutine({
+            tenantId: request.tenantId,
+            roleId: role.roleId,
+            name: templateRoutine.name,
+            schedule: templateRoutine.schedule,
+            definition: templateRoutine.definition,
+            skillId,
+            onMissingSource: templateRoutine.on_missing_source,
+            notifyThreshold: templateRoutine.notify_threshold,
+          });
+          await deps.setRoutinePaused!(routine.routineId, request.tenantId, true);
+        }
+        for (const memory of manifest.memories) {
+          if (!memoryKeys.has(memory.key)) continue;
+          await deps.writeMemoryFact!({
+            tenantId: request.tenantId,
+            roleId: role.roleId,
+            scope: "agent",
+            tier: "profile",
+            key: memory.key,
+            value: memory.value,
+            source: `template:${template.templateId}@${String(template.version)}`,
+          });
+        }
         await deps.createRoleTemplateInstall({
           roleId: role.roleId,
           templateId: template.templateId,

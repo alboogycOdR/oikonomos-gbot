@@ -1,7 +1,20 @@
 import Fastify from "fastify";
 import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
-import { createRole, Database, listBotTemplates, updateRoleInstructions, type BotTemplate, type Role } from "@oikonomos/db";
+import {
+  createRole,
+  createRoutine,
+  createSkill,
+  Database,
+  listBotTemplates,
+  listEnabledForRole,
+  listRoutines,
+  setEnabledForRole,
+  updateRoleInstructions,
+  type BotTemplate,
+  type Role,
+} from "@oikonomos/db";
+import { readProfileTier, writeMemoryFact } from "@oikonomos/memory";
 
 import { DEFAULT_ROLE_CAPABILITIES } from "./defaultCapabilities.js";
 import { registerTemplateRoutes } from "./templates.js";
@@ -106,18 +119,35 @@ integration("template export/install — production composition against real Pos
   it("round-trips a persisted export into an independently created role", async () => {
     const sourceId = `task-278-source-${crypto.randomUUID()}`;
     const tenantId = "basileia";
+    const skillName = `template-skill-${crypto.randomUUID().slice(0, 8)}`;
+    const routineName = `template-routine-${crypto.randomUUID().slice(0, 8)}`;
+    const integrationId = `template.integration.${crypto.randomUUID().slice(0, 8)}`;
     await createRole({ connectionString: connectionString! }, {
       roleId: sourceId, tenantId, name: `source-${Date.now()}`, title: "Source", description: "Round-trip source.",
     });
     await updateRoleInstructions({ connectionString: connectionString! }, sourceId, "Production route proof.");
+    const sourceSkill = await createSkill({ connectionString: connectionString! }, {
+      tenantId, name: skillName, description: "Round-trip skill", whenToUse: "When testing templates.", body: "Perform the round-trip check.",
+    });
+    await setEnabledForRole({ connectionString: connectionString! }, sourceId, sourceSkill.skillId, true);
+    await createRoutine({ connectionString: connectionString! }, {
+      tenantId, roleId: sourceId, name: routineName, schedule: "0 9 * * *", definition: { goal: "Check template parity" }, skillId: sourceSkill.skillId,
+    });
+    await writeMemoryFact({ connectionString: connectionString! }, {
+      tenantId, roleId: sourceId, scope: "agent", tier: "profile", key: "preferred-style", value: "concise", source: "template-test",
+    });
+    const sourceDatabase = new Database({ connectionString: connectionString! });
+    await sourceDatabase.upsertCapability({ capabilityId: integrationId, description: "Template integration fixture", defaultTier: "T2_internal", adapter: "test", enabled: true });
+    await sourceDatabase.upsertRoleGrant({ roleId: sourceId, capabilityId: integrationId, maxTier: "T2_internal", constraints: {} });
+    await sourceDatabase.close();
     const app = buildApp(createDatabaseBackedDeps({ connectionString: connectionString! }), { authToken: "task-278-token", logger: false });
     const headers = { authorization: "Bearer task-278-token" };
-    const exported = await app.inject({ method: "POST", url: `/roles/${sourceId}/templates`, headers, payload: { name: "Round trip" } });
+    const exported = await app.inject({ method: "POST", url: `/roles/${sourceId}/templates`, headers, payload: { name: "Round trip", include_memories: ["preferred-style"] } });
     expect(exported.statusCode).toBe(201);
     const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number; digest: string };
     const persisted = await listBotTemplates({ connectionString: connectionString! }, { tenantId, templateId: exportedBody.templateId });
     expect(persisted).toHaveLength(1);
-    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version } });
+    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version, include_memories: ["preferred-style"] } });
     expect(installed.statusCode).toBe(201);
     const installedRoleId = JSON.parse(installed.body).role.roleId as string;
     expect(installedRoleId).not.toBe(sourceId);
@@ -128,6 +158,16 @@ integration("template export/install — production composition against real Pos
       .sort();
     expect((await database.listRoleGrants(installedRoleId)).map((grant) => grant.capabilityId).sort())
       .toEqual(expectedFloor);
+    expect((await listEnabledForRole({ connectionString: connectionString! }, installedRoleId)).map((skill) => skill.name))
+      .toEqual([skillName]);
+    const installedRoutines = await listRoutines({ connectionString: connectionString! }, { tenantId, roleId: installedRoleId });
+    expect(installedRoutines).toEqual([expect.objectContaining({ name: routineName, paused: true, skillId: sourceSkill.skillId })]);
+    expect(await readProfileTier({ connectionString: connectionString! }, { tenantId, roleId: installedRoleId }))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ key: "preferred-style", value: "concise", scope: "agent", tier: "profile" })]));
+    expect(JSON.parse(installed.body).grant_checklist).toEqual(expect.arrayContaining([
+      { capability_id: integrationId, requested_max_tier: "T2_internal", status: "available" },
+    ]));
+    expect((await database.listRoleGrants(installedRoleId)).map((grant) => grant.capabilityId)).not.toContain(integrationId);
     await database.close();
     await app.close();
   });

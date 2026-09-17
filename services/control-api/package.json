@@ -35,6 +35,7 @@
     "@oikonomos/broker": "workspace:*",
     "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
+    "@oikonomos/memory": "workspace:*",
     "@oikonomos/sandbox-client": "workspace:*",
     "@oikonomos/templates": "workspace:*",
     "@oikonomos/worker": "workspace:*",
