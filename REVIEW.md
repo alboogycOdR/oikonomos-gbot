@@ -1578,3 +1578,23 @@ Web Computer view: a read-only live sandbox stream in the dashboard.
   standard TASK-240 itself used to satisfy C01 on mobile. Filed TASK-288 for the real wiring.
 
 Approved and merged (no-ff) to master.
+
+## TASK-288 | CX9 | approved (code half only, live-check genuinely pending user action) | 2026-09-17T14:35:00Z
+
+Mounts the Computer workspace segment: `/workspace/:threadId/computer` route (mirrors the
+existing results/work routes exactly), a "computer" tab, and `ChatPage`'s own segment-derivation
+switch mounting `ComputerView` with the active bot's `roleId`.
+
+- Diff clean against Owned_Paths; dashboard typecheck clean; dashboard suite 25/25 files
+  (158/158 tests).
+- Read the routing/mounting code directly and confirmed it exactly mirrors the established
+  results/work pattern, with the correct `ComputerView` prop signature.
+
+**Genuine, disclosed remaining limit, not a corner cut:** this task's own AC also requires a
+live browser re-recording of acceptance case C01 -- an actual authenticated session observing
+real streamed output from a real active sandbox. CX9 correctly reported this as blocked
+(`MISSING_DEPENDENCY`): a headless builder has no real dashboard session or sandbox principal to
+authenticate with. ORCH has no browser-automation tooling to substitute for one either. Merged
+the code half (real, complete, tested); left the task's own `Status` as `blocked` rather than
+falsely mark it `done` -- the live check needs the user's own action, not another builder
+round-trip.
