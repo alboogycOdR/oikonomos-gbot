@@ -8644,7 +8644,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-291
 **Title:** Mobile template UI -- drift badge on an installed bot (spec §6, T-3's remaining piece)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_TEMPLATES_v1.0.md §6 ("Drift is shown, never auto-synced. Re-exporting a drifted role produces a new template version. 'Upgrade' ... is a v2 feature; v1 offers 'install as new bot' only."); T-3 row's own "drift badge" item.
@@ -8657,8 +8657,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A role never installed from a template shows nothing template-related at all.
 - [ ] Widget tests for all three states.
 - [ ] (Folded-in TASK-290 review gap) A widget test proving a 422 export refusal in `chat_screen.dart` renders the actual refused `field_paths` and `classes` from the response, not a generic error -- TASK-290 only proved the api_client preserves them.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-291-cx9
+**Started_At:** 2026-09-17T16:07:24Z
 **Progress_Notes:**
 - [2026-09-17T14:50:00Z] [ORCH] Split out from TASK-290 since it depends on TASK-289's not-yet-built endpoint; left pending until both land.
 - [2026-09-17T15:50:00Z] [ORCH] Both deps merged. Activated for CX9. Test paths added up front (mirrored apps/mobile/test tree -- not repeating the TASK-290 filing mistake). The endpoint's response shape is fixed; TASK-293 changes only how `changed` is computed server-side, so this can proceed in parallel. Also folded in TASK-290's one review gap (no widget test for the 422 refusal UI).
@@ -8666,8 +8666,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T15:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T16:07:24Z
 
 
 ### TASK-292
