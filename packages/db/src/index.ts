@@ -86,19 +86,26 @@ export {
 } from "./tasks.js";
 export {
   createRole,
+  createRoleWithDefaultCapabilities,
   DEFAULT_ROLE_MODEL_ENV,
   DEFAULT_ROLE_PROVIDER_ENV,
   resolveRoleRuntime,
   getRole,
   getRoleByName,
   listRoles,
+  MANAGER_BOT_DEFAULT_CAPABILITIES,
+  retireRole,
+  RoleRetirementError,
   updateRoleInstructions,
   updateRoleName,
+  updateRoleStatus,
   MAX_ROLE_NAME_LENGTH,
   roleStatuses,
+  type NewBotRoleInput,
   type NewRole,
   type Role,
   type RoleListFilter,
+  type RoleRetirementErrorCode,
   type RoleStatus,
 } from "./roles.js";
 export {

@@ -1,7 +1,14 @@
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { createSecretRequest, insertAuditEvent, updateRoleName } from "@oikonomos/db";
+import {
+  createRoleWithDefaultCapabilities,
+  createSecretRequest,
+  insertAuditEvent,
+  retireRole,
+  RoleRetirementError,
+  updateRoleName,
+} from "@oikonomos/db";
 import { sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { parkTaskRun } from "./runLifecycle.js";
@@ -30,6 +37,8 @@ const SEND_TO_ROLE_TOOL_NAME = "send_to_role";
 const RENAME_SELF_TOOL_NAME = "rename_self";
 const REQUEST_SECRET_TOOL_NAME = "request_secret";
 const CREATE_ROUTINE_TOOL_NAME = "create_routine";
+const CREATE_BOT_TOOL_NAME = "create_bot";
+const RETIRE_BOT_TOOL_NAME = "retire_bot";
 
 /**
  * Narrow stdio MCP bridge for the existing mailbox implementation. Identity
@@ -74,6 +83,8 @@ export async function handleWorkspaceMcpRequest(
       { name: RENAME_SELF_TOOL_NAME, description: "Rename the calling bot's own display name.", inputSchema: renameSelfInputSchema },
       { name: REQUEST_SECRET_TOOL_NAME, description: "Ask a human to provide a secret without placing its value in the transcript.", inputSchema: requestSecretInputSchema },
       { name: CREATE_ROUTINE_TOOL_NAME, description: CREATE_ROUTINE_TOOL_DESCRIPTION, inputSchema: createRoutineInputSchema },
+      { name: CREATE_BOT_TOOL_NAME, description: "Create a new bot with the default capability floor. External-facing and human-approvable.", inputSchema: createBotInputSchema },
+      { name: RETIRE_BOT_TOOL_NAME, description: "Retire another bot (soft deactivation, never itself, never cross-tenant). Irreversible-tier and human-approvable.", inputSchema: retireBotInputSchema },
     ] });
   }
   if (request.method !== "tools/call") {
@@ -112,6 +123,41 @@ export async function handleWorkspaceMcpRequest(
       );
       return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(result) }] });
     }
+    if (call.name === CREATE_BOT_TOOL_NAME) {
+      const input = toCreateBotInput(call.arguments);
+      const role = await createRoleWithDefaultCapabilities(
+        { connectionString: identity.connectionString },
+        { tenantId: identity.tenantId, ...input },
+      );
+      if (identity.runId !== undefined && identity.runId.trim().length > 0) {
+        await insertAuditEvent(
+          { connectionString: identity.connectionString },
+          { tenantId: identity.tenantId, runId: identity.runId, actor: `agent:${identity.fromRoleId}`, eventType: "bot.created", payload: { roleId: role.roleId, name: role.name } },
+        );
+      }
+      return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, name: role.name, status: role.status }) }] });
+    }
+    if (call.name === RETIRE_BOT_TOOL_NAME) {
+      const targetRoleId = toRetireBotInput(call.arguments);
+      try {
+        const role = await retireRole(
+          { connectionString: identity.connectionString },
+          { tenantId: identity.tenantId, callerRoleId: identity.fromRoleId, targetRoleId },
+        );
+        if (identity.runId !== undefined && identity.runId.trim().length > 0) {
+          await insertAuditEvent(
+            { connectionString: identity.connectionString },
+            { tenantId: identity.tenantId, runId: identity.runId, actor: `agent:${identity.fromRoleId}`, eventType: "bot.retired", payload: { roleId: role.roleId, status: role.status } },
+          );
+        }
+        return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, status: role.status }) }] });
+      } catch (error) {
+        if (error instanceof RoleRetirementError) {
+          return resultResponse(request.id, { content: [{ type: "text", text: error.message }], isError: true });
+        }
+        throw error;
+      }
+    }
     const role = await updateRoleName({ connectionString: identity.connectionString }, identity.fromRoleId, toRenameInput(call.arguments));
     if (role === null) throw new Error("Calling role was not found.");
     return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify({ roleId: role.roleId, name: role.name }) }] });
@@ -120,16 +166,25 @@ export async function handleWorkspaceMcpRequest(
   }
 }
 
+type WorkspaceToolName =
+  | typeof SEND_TO_ROLE_TOOL_NAME
+  | typeof RENAME_SELF_TOOL_NAME
+  | typeof REQUEST_SECRET_TOOL_NAME
+  | typeof CREATE_ROUTINE_TOOL_NAME
+  | typeof CREATE_BOT_TOOL_NAME
+  | typeof RETIRE_BOT_TOOL_NAME;
+
 function parseToolCall(params: unknown): {
-  name: typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME | typeof CREATE_ROUTINE_TOOL_NAME;
+  name: WorkspaceToolName;
   arguments: Record<string, unknown>;
 } {
   if (typeof params !== "object" || params === null || Array.isArray(params)) throw new Error("tools/call requires params.");
   const call = params as { name?: unknown; arguments?: unknown };
   const knownName = call.name === SEND_TO_ROLE_TOOL_NAME || call.name === RENAME_SELF_TOOL_NAME
-    || call.name === REQUEST_SECRET_TOOL_NAME || call.name === CREATE_ROUTINE_TOOL_NAME;
+    || call.name === REQUEST_SECRET_TOOL_NAME || call.name === CREATE_ROUTINE_TOOL_NAME
+    || call.name === CREATE_BOT_TOOL_NAME || call.name === RETIRE_BOT_TOOL_NAME;
   if (!knownName || typeof call.arguments !== "object" || call.arguments === null || Array.isArray(call.arguments)) throw new Error("Unknown workspace tool.");
-  return { name: call.name as typeof SEND_TO_ROLE_TOOL_NAME | typeof RENAME_SELF_TOOL_NAME | typeof REQUEST_SECRET_TOOL_NAME | typeof CREATE_ROUTINE_TOOL_NAME, arguments: call.arguments as Record<string, unknown> };
+  return { name: call.name as WorkspaceToolName, arguments: call.arguments as Record<string, unknown> };
 }
 
 function toSendInput(args: Record<string, unknown>, identity: WorkspaceMcpServerIdentity): {
@@ -153,6 +208,24 @@ function toRenameInput(args: Record<string, unknown>): string {
     throw new Error("rename_self requires exactly one string name argument.");
   }
   return args.name;
+}
+
+function toCreateBotInput(args: Record<string, unknown>): { name: string; title: string; description?: string } {
+  if (typeof args.name !== "string" || args.name.trim().length === 0) throw new Error("create_bot requires a non-empty string name.");
+  if (typeof args.title !== "string" || args.title.trim().length === 0) throw new Error("create_bot requires a non-empty string title.");
+  if (args.description !== undefined && typeof args.description !== "string") throw new Error("create_bot's description must be a string.");
+  return {
+    name: args.name,
+    title: args.title,
+    ...(args.description === undefined ? {} : { description: args.description }),
+  };
+}
+
+function toRetireBotInput(args: Record<string, unknown>): string {
+  if (Object.keys(args).length !== 1 || typeof args.roleId !== "string" || args.roleId.trim().length === 0) {
+    throw new Error("retire_bot requires exactly one non-empty string roleId argument.");
+  }
+  return args.roleId;
 }
 
 function resultResponse(id: unknown, result: unknown): Record<string, unknown> { return { jsonrpc: "2.0", id: id ?? null, result }; }
@@ -182,6 +255,24 @@ const requestSecretInputSchema = {
     label: { type: "string", minLength: 1, maxLength: 200 },
     purpose: { type: "string", minLength: 1, maxLength: 2000 },
   },
+};
+
+const createBotInputSchema = {
+  type: "object",
+  required: ["name", "title"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 100 },
+    title: { type: "string", minLength: 1, maxLength: 200 },
+    description: { type: "string", maxLength: 2000 },
+  },
+};
+
+const retireBotInputSchema = {
+  type: "object",
+  required: ["roleId"],
+  additionalProperties: false,
+  properties: { roleId: { type: "string", minLength: 1 } },
 };
 
 function readIdentity(argv: readonly string[]): WorkspaceMcpServerIdentity {
