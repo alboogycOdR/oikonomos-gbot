@@ -60,6 +60,20 @@ integration("manager-bot tools — create_bot / retire_bot (TASK-282)", () => {
     expect(roles.some((role) => role.roleId === parsed.roleId)).toBe(true);
   });
 
+  it("Claude lane: create_bot enforces its advertised length bounds at runtime, not just in the schema (TASK-282 adversarial review finding)", async () => {
+    const identity = { connectionString: connectionString!, tenantId, fromRoleId: managerRoleId };
+    const oversizedDescription = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "create-bot-oversized", method: "tools/call",
+      params: { name: "create_bot", arguments: { name: "oversized", title: "Oversized", description: "x".repeat(2001) } },
+    }), identity);
+    expect(oversizedDescription).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining("at most 2000 characters") }] } });
+    const oversizedTitle = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "create-bot-oversized-title", method: "tools/call",
+      params: { name: "create_bot", arguments: { name: "oversized2", title: "x".repeat(201) } },
+    }), identity);
+    expect(oversizedTitle).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining("at most 200 characters") }] } });
+  });
+
   it("Claude lane: retire_bot moves the target to hidden, refuses self-retirement and cross-tenant retirement", async () => {
     const identity = { connectionString: connectionString!, tenantId, fromRoleId: managerRoleId };
     const created = await handleWorkspaceMcpRequest(JSON.stringify({
@@ -111,6 +125,15 @@ integration("manager-bot tools — create_bot / retire_bot (TASK-282)", () => {
     const retired = await retireBot!.execute({ roleId: created.roleId }) as { roleId: string; status: string };
     expect(retired).toMatchObject({ roleId: created.roleId, status: "hidden" });
     expect((await getRole(options, created.roleId))?.status).toBe("hidden");
+  });
+
+  it("Gemini lane: create_bot also enforces its advertised length bounds at runtime (TASK-282 adversarial review finding)", async () => {
+    const context = { connectionString: connectionString!, tenantId, roleId: managerRoleId };
+    const [createBot] = createWorkspaceGeminiTools(context, ["mcp__workspace__create_bot"]);
+    await expect(createBot!.execute({ name: "oversized", title: "Oversized", description: "x".repeat(2001) }))
+      .rejects.toThrow(/at most 2000 characters/);
+    await expect(createBot!.execute({ name: "oversized2", title: "x".repeat(201) }))
+      .rejects.toThrow(/at most 200 characters/);
   });
 
   it("both adapters reject a not-found target with a clear, non-generic denial", async () => {

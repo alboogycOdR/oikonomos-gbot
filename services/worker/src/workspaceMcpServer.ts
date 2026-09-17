@@ -212,8 +212,19 @@ function toRenameInput(args: Record<string, unknown>): string {
 
 function toCreateBotInput(args: Record<string, unknown>): { name: string; title: string; description?: string } {
   if (typeof args.name !== "string" || args.name.trim().length === 0) throw new Error("create_bot requires a non-empty string name.");
+  if (args.name.length > 100) throw new Error("create_bot's name must be at most 100 characters.");
   if (typeof args.title !== "string" || args.title.trim().length === 0) throw new Error("create_bot requires a non-empty string title.");
+  if (args.title.length > 200) throw new Error("create_bot's title must be at most 200 characters.");
   if (args.description !== undefined && typeof args.description !== "string") throw new Error("create_bot's description must be a string.");
+  // The advertised JSON-schema maxLength (200/2000) only guides the model's
+  // own generation -- it is not runtime-enforced by the schema itself, and
+  // description flows verbatim into the created bot's own system prompt
+  // (promptAssembly.ts), so an unbounded value here is a real injection
+  // surface once an autonomous agent (not just a human typing into a form)
+  // can trigger it. Found by adversarial review (TASK-282).
+  if (typeof args.description === "string" && args.description.length > 2000) {
+    throw new Error("create_bot's description must be at most 2000 characters.");
+  }
   return {
     name: args.name,
     title: args.title,

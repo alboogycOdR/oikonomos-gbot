@@ -714,8 +714,15 @@ const retireBotInputSchema = {
 
 function parseCreateBotInput(arguments_: Record<string, unknown>): { name: string; title: string; description?: string } {
   if (typeof arguments_.name !== "string" || arguments_.name.trim().length === 0) throw new Error("create_bot requires a non-empty string name.");
+  if (arguments_.name.length > 100) throw new Error("create_bot's name must be at most 100 characters.");
   if (typeof arguments_.title !== "string" || arguments_.title.trim().length === 0) throw new Error("create_bot requires a non-empty string title.");
+  if (arguments_.title.length > 200) throw new Error("create_bot's title must be at most 200 characters.");
   if (arguments_.description !== undefined && typeof arguments_.description !== "string") throw new Error("create_bot's description must be a string.");
+  // See workspaceMcpServer.ts's toCreateBotInput for why this is enforced at
+  // runtime, not just declared in the tool schema (TASK-282 adversarial review).
+  if (typeof arguments_.description === "string" && arguments_.description.length > 2000) {
+    throw new Error("create_bot's description must be at most 2000 characters.");
+  }
   return {
     name: arguments_.name,
     title: arguments_.title,
