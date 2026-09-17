@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 
-import { describe, expect, it } from "vitest";
-import type { Approval, AuditEvent, Run, Task } from "@oikonomos/db";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Approval, AuditEvent, Message, Role, Routine, Run, Task, Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResult } from "@oikonomos/approvals";
 
 import { buildApp, type BuildAppOptions } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
+import { createSessionToken, SESSION_TTL_MS } from "../src/auth.js";
 
 /**
  * TASK-101: every test in this file that exercises a protected route must
@@ -823,4 +824,220 @@ describe("N4 log redaction on the approvals edit route", () => {
     expect(logOutput).not.toContain(nonce);
     expect(logOutput).not.toContain(TEST_TOKEN);
   });
+});
+
+/**
+ * TASK-259 — the `/threads/:id/stream` SSE route's poll/heartbeat loop must
+ * re-validate the originating session (signature + expiry, and revocation)
+ * for the entire lifetime of the connection, not just once at the initial
+ * handshake (see app.ts's `sessionStillValid`). These tests need a real,
+ * held-open connection with a real elapsing clock — `app.inject()` cannot
+ * observe a server-initiated close of a genuinely still-open stream the way
+ * a real socket can — so, like `src/sse.test.ts` (TASK-129, out of this
+ * task's `Owned_Paths`), they use a real `app.listen()` + `fetch()` round
+ * trip over 127.0.0.1 rather than `inject()`.
+ */
+describe("GET /threads/:id/stream — session re-validation (TASK-259)", () => {
+  // The default 5000ms vitest budget is occasionally too tight for a real
+  // listen()/fetch() round trip the first time the module graph is warm
+  // (same observation as sse.test.ts).
+  const STREAM_TEST_TIMEOUT_MS = 15000;
+  const STREAM_TOKEN = "task-259-fixture-shared-secret";
+  const streamTenantId = "tenant-task-259";
+  const streamThreadId = "44444444-4444-4444-4444-444444444444";
+
+  function streamRole(overrides: Partial<Role> = {}): Role {
+    return {
+      roleId: "bot",
+      tenantId: streamTenantId,
+      name: "Bot",
+      title: "Bot",
+      description: "TASK-259 fixture bot",
+      instructions: null,
+      provider: null,
+      model: null,
+      status: "active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+  }
+
+  function streamThread(overrides: Partial<Thread> = {}): Thread {
+    return { id: streamThreadId, roleId: "bot", title: null, createdAt: new Date(), updatedAt: new Date(), ...overrides };
+  }
+
+  /** Minimal but complete `ControlApiDeps` fake — every required port filled, only `listMessages`/`listAllThreadsWithMembers`/`listRoles` matter for this route. */
+  function createStreamDeps(overrides: Partial<ControlApiDeps> = {}): ControlApiDeps {
+    return {
+      createTask: async () => {
+        throw new Error("unused in this test");
+      },
+      createRoutine: async () => {
+        throw new Error("unused in this test");
+      },
+      createRole: async () => {
+        throw new Error("unused in this test");
+      },
+      listCapabilities: async () => [],
+      upsertRoleGrant: async (input) => input,
+      listRoleGrants: async () => [],
+      revokeRoleGrant: async () => {},
+      listRoles: async () => [streamRole()],
+      updateRoleInstructions: async () => null,
+      listRoleMessages: async () => [],
+      listRoutines: async (): Promise<Routine[]> => [],
+      getOrCreateThreadForRole: async () => streamThread(),
+      listThreads: async () => [streamThread()],
+      createGroupThread: async () => {
+        throw new Error("unused in this test");
+      },
+      listAllThreadsWithMembers: async () => [streamThread()],
+      insertMessage: async () => {
+        throw new Error("unused in this test");
+      },
+      listMessages: async () => [],
+      listTasks: async () => ({ tasks: [], nextCursor: null }),
+      getTask: async () => null,
+      listRuns: async () => ({ runs: [], nextCursor: null }),
+      getRun: async () => null,
+      listPendingApprovals: async () => [],
+      decideApproval: async () => ({ decided: false, rowCount: 0 }),
+      editApproval: async () => ({ edited: false, rowCount: 0 }),
+      getAuditEventsForRun: async () => [],
+      registerDeviceToken: async (input) => ({ ...input, createdAt: new Date(), lastSeenAt: new Date() }),
+      runChatTask: async () => {},
+      requestGroupFanout: async () => ({ runId: randomUUID() }),
+      ...overrides,
+    };
+  }
+
+  async function startStreamServer(deps: ControlApiDeps, sseIntervalMs: number) {
+    const app = buildApp(deps, { authToken: STREAM_TOKEN, logger: false, sseIntervalMs });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("expected a bound TCP address");
+    }
+    return { app, baseUrl: `http://127.0.0.1:${address.port}` };
+  }
+
+  /** Drains an SSE body until the server itself ends the stream, or a bounded real-time budget elapses (whichever first). Returns whether the server actually closed it. */
+  async function waitForServerClose(body: ReadableStream<Uint8Array>, maxWaitMs: number): Promise<boolean> {
+    const reader = body.getReader();
+    const deadline = Date.now() + maxWaitMs;
+    try {
+      while (Date.now() < deadline) {
+        const remaining = deadline - Date.now();
+        const result = await Promise.race([
+          reader.read(),
+          new Promise<{ done: true; value: undefined }>((resolve) =>
+            setTimeout(() => resolve({ done: false as unknown as true, value: undefined }), Math.min(remaining, 250)),
+          ),
+        ]);
+        if (result.done) return true;
+      }
+      return false;
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // already closed server-side; cancelling a finished reader is a no-op error we don't care about.
+      }
+    }
+  }
+
+  const openApps: Array<Awaited<ReturnType<typeof startStreamServer>>["app"]> = [];
+
+  afterEach(async () => {
+    for (const app of openApps.splice(0)) {
+      await app.close();
+    }
+  });
+
+  it(
+    "force-closes an open stream once the originating session expires mid-connection, not merely rejecting a new one",
+    async () => {
+      const deps = createStreamDeps();
+      // Fast poll interval so the re-validation check (piggybacked on the
+      // poll tick) fires well within the test's real-time budget.
+      const { app, baseUrl } = await startStreamServer(deps, 20);
+      openApps.push(app);
+
+      // Minted immediately before connecting (not earlier) so the
+      // preHandler's own auth check at handshake time still passes: a
+      // real, non-mocked TTL short enough (~600ms) that it expires while
+      // the connection is held open, exactly like the acceptance
+      // criterion asks for, rather than a mocked clock.
+      const almostExpiredNow = Date.now() - SESSION_TTL_MS + 600;
+      const sessionToken = createSessionToken(STREAM_TOKEN, streamTenantId, almostExpiredNow);
+
+      const response = await fetch(`${baseUrl}/threads/${streamThreadId}/stream`, {
+        headers: { cookie: `control_api_session=${sessionToken}` },
+      });
+      expect(response.status).toBe(200);
+      expect(response.body).not.toBeNull();
+
+      // The session expires ~600ms after minting; the server must
+      // force-close the still-open connection on its own within a few
+      // poll ticks after that, not merely refuse a fresh connection
+      // attempt (that path is already covered by the existing 401 tests).
+      const closed = await waitForServerClose(response.body!, 5000);
+      expect(closed).toBe(true);
+    },
+    STREAM_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "force-closes an open stream the moment its session is revoked via POST /auth/logout, without waiting for a new connection",
+    async () => {
+      const sessionToken = createSessionToken(STREAM_TOKEN, streamTenantId);
+      const deps = createStreamDeps();
+      const { app, baseUrl } = await startStreamServer(deps, 20);
+      openApps.push(app);
+      const cookie = `control_api_session=${sessionToken}`;
+
+      const response = await fetch(`${baseUrl}/threads/${streamThreadId}/stream`, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      expect(response.body).not.toBeNull();
+
+      // Give the stream one round of poll ticks to settle before revoking,
+      // so this exercises "already open, then revoked" rather than a race
+      // at connection time.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const logoutRes = await fetch(`${baseUrl}/auth/logout`, { method: "POST", headers: { cookie } });
+      expect(logoutRes.status).toBe(204);
+
+      const closed = await waitForServerClose(response.body!, 5000);
+      expect(closed).toBe(true);
+    },
+    STREAM_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "does NOT close a service-bearer-authenticated stream, which has no session expiry to re-check",
+    async () => {
+      const deps = createStreamDeps();
+      const { app, baseUrl } = await startStreamServer(deps, 20);
+      openApps.push(app);
+
+      const controller = new AbortController();
+      const response = await fetch(`${baseUrl}/threads/${streamThreadId}/stream`, {
+        headers: { authorization: `Bearer ${STREAM_TOKEN}` },
+        signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      expect(response.body).not.toBeNull();
+
+      // Several poll ticks pass (20ms interval): a bearer-authenticated
+      // connection must survive all of them since there is no session to
+      // expire or revoke.
+      const closedPrematurely = await waitForServerClose(response.body!, 300);
+      expect(closedPrematurely).toBe(false);
+
+      controller.abort();
+      await response.body?.cancel().catch(() => {});
+    },
+    STREAM_TEST_TIMEOUT_MS,
+  );
 });

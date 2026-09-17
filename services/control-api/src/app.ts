@@ -1673,8 +1673,50 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     let polling = false;
     const pollIntervalMs = options.sseIntervalMs ?? 300;
 
+    // TASK-259: `request.tenantId` was resolved once by the global auth
+    // preHandler at connection time and this closure keeps using that
+    // resolved value for the lifetime of the connection -- neither the
+    // poll timer nor the heartbeat timer re-checked the originating
+    // session's signature or expiry, so a session that expires (24h TTL,
+    // see auth.ts SESSION_TTL_MS) or is explicitly revoked mid-stream kept
+    // receiving real-time messages indefinitely past its nominal expiry.
+    // A service-bearer connection (no session cookie) has no expiry to
+    // re-check, so it is exempt: `sessionToken` is undefined in that case
+    // and `sessionStillValid` always passes.
+    const sessionToken = parseCookieHeader(request.headers.cookie)[SESSION_COOKIE_NAME];
+    const sessionStillValid = (): boolean => {
+      if (sessionToken === undefined) return true;
+      if (revokedSessionTokens.has(sessionToken)) return false;
+      return verifySessionPrincipal(authToken, sessionToken) !== undefined;
+    };
+
+    // Declared before `cleanup` (which may be invoked synchronously from
+    // the very first `poll()` call below, before either timer is set up)
+    // so `clearInterval` always sees a defined-or-undefined value, never a
+    // temporal-dead-zone reference error.
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(pollTimer);
+      clearInterval(heartbeatTimer);
+      res.end();
+    };
+
     const poll = async () => {
       if (closed || polling) return;
+      // Re-validated on every poll tick (bounded by `pollIntervalMs`,
+      // independently configurable in tests) rather than only on the
+      // slower, fixed 15s heartbeat -- this is the connection's most
+      // frequent recurring timer, so it is the tightest real bound
+      // available on how stale an expired/revoked session can get before
+      // the connection is force-closed.
+      if (!sessionStillValid()) {
+        cleanup();
+        return;
+      }
       polling = true;
       try {
         const [messages, context] = await Promise.all([
@@ -1701,23 +1743,24 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     };
 
     void poll();
-    const pollTimer = setInterval(() => {
+    pollTimer = setInterval(() => {
       void poll();
     }, pollIntervalMs);
     // Keeps intermediary proxies/load balancers from idling the
     // connection out on a quiet thread; SSE comment lines are invisible
-    // to `EventSource`/`realtime.ts`'s frame parser.
-    const heartbeatTimer = setInterval(() => {
-      if (!closed) res.write(":hb\n\n");
+    // to `EventSource`/`realtime.ts`'s frame parser. Also re-validates
+    // the session (TASK-259): a very slow client whose `listMessages`
+    // poll rarely proceeds past the `polling` guard still gets checked at
+    // least once every 15s via this independent timer.
+    heartbeatTimer = setInterval(() => {
+      if (closed) return;
+      if (!sessionStillValid()) {
+        cleanup();
+        return;
+      }
+      res.write(":hb\n\n");
     }, 15000);
 
-    const cleanup = () => {
-      if (closed) return;
-      closed = true;
-      clearInterval(pollTimer);
-      clearInterval(heartbeatTimer);
-      res.end();
-    };
     request.raw.on("close", cleanup);
     reply.raw.on("error", cleanup);
   });
