@@ -146,6 +146,7 @@ function renderPage(initialPath = "/") {
             {/* TASK-243 (spec §1/§7, §2.6) — same routing pattern App.tsx uses: both segments mount the same page. */}
             <Route path="/workspace/:threadId/results" element={<ChatPage />} />
             <Route path="/workspace/:threadId/work" element={<ChatPage />} />
+            <Route path="/workspace/:threadId/computer" element={<ChatPage />} />
           </Routes>
         </AuthedProbe>
       </MemoryRouter>
@@ -880,6 +881,7 @@ describe("ChatPage", () => {
         if (url.includes("/threads/thread-1/stream")) return openStream();
         if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/roles/role-1/routines")) return new Response(JSON.stringify([ROUTINE]), { status: 200 });
+        if (url.endsWith("/roles/role-1/live-agent/status")) return new Response(JSON.stringify({ available: false }), { status: 200 });
         if (url.endsWith("/runs/run-9/receipt")) return new Response(JSON.stringify(RECEIPT), { status: 200 });
         return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
       }) as unknown as typeof fetch;
@@ -962,6 +964,16 @@ describe("ChatPage", () => {
 
       await screen.findByRole("tab", { name: "Chat" });
       expect(screen.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("mounts the Computer view for the computer segment and selects its tab", async () => {
+      global.fetch = baseHandler(() => undefined);
+
+      renderPage("/workspace/thread-1/computer");
+
+      await screen.findByRole("region", { name: "Computer" });
+      expect(screen.getByRole("tab", { name: "Computer" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByTestId("computer-interactive-notice")).toBeInTheDocument();
     });
   });
 

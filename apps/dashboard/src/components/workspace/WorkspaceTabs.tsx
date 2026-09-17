@@ -3,7 +3,7 @@
 // no notion of these segments, so the switch lives here, rendered by
 // `ChatPage` above whichever view is active. Deliberately dumb: it only
 // ever calls `onSelect`, navigation itself stays owned by `ChatPage`.
-export type WorkspaceView = "chat" | "results" | "work";
+export type WorkspaceView = "chat" | "results" | "work" | "computer";
 
 export interface WorkspaceTabsProps {
   active: WorkspaceView;
@@ -14,6 +14,7 @@ const TABS: Array<{ id: WorkspaceView; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "results", label: "Results" },
   { id: "work", label: "Work" },
+  { id: "computer", label: "Computer" },
 ];
 
 export function WorkspaceTabs({ active, onSelect }: WorkspaceTabsProps) {

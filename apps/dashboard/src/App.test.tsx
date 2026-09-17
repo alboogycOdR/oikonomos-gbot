@@ -46,11 +46,11 @@ describe("App auth flow", () => {
 
   /**
    * TASK-243 (spec §2.6, §7) — `/workspace/:threadId/results` and
-   * `.../work` are new routes this task adds; they must be guarded by
+   * `.../work`, and `.../computer` are workspace segments; they must be guarded by
    * `RequireAuth` exactly like every other workspace route, not
    * accidentally left public.
    */
-  it("redirects an unauthenticated visit to /workspace/:threadId/results or /work to the login screen", () => {
+  it("redirects an unauthenticated visit to every workspace segment to the login screen", () => {
     render(
       <MemoryRouter initialEntries={["/workspace/thread-1/results"]}>
         <App />
@@ -61,6 +61,14 @@ describe("App auth flow", () => {
 
     render(
       <MemoryRouter initialEntries={["/workspace/thread-1/work"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
+    cleanup();
+
+    render(
+      <MemoryRouter initialEntries={["/workspace/thread-1/computer"]}>
         <App />
       </MemoryRouter>,
     );

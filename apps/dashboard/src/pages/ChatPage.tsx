@@ -11,6 +11,7 @@ import type {
 } from "../components/chat/types";
 import { ResultsView } from "../components/workspace/ResultsView";
 import { WorkView } from "../components/workspace/WorkView";
+import { ComputerView } from "../components/workspace/computer/ComputerView";
 import { WorkspaceTabs, type WorkspaceView } from "../components/workspace/WorkspaceTabs";
 import {
   BUILD_SHA,
@@ -188,7 +189,8 @@ export function ChatPage() {
 
   /**
    * TASK-243 (spec §1/§7) — "two views inside a workspace, switched by a
-   * segment in the URL": `/workspace/:threadId/results` and `.../work`
+   * segment in the URL": `/workspace/:threadId/results`, `.../work`, and
+   * `.../computer`
    * (routes added in `App.tsx`, both mounting this same page). Any other
    * path (bare `/workspace/:threadId`, or anything unrecognized) falls
    * back to the chat view (spec §2.6 acceptance: "fall back to chat").
@@ -197,6 +199,8 @@ export function ChatPage() {
     ? "results"
     : location.pathname.endsWith("/work")
       ? "work"
+      : location.pathname.endsWith("/computer")
+        ? "computer"
       : "chat";
 
   const [bots, setBots] = useState<GroupAwareBotSummary[]>([]);
@@ -695,6 +699,8 @@ export function ChatPage() {
               onUnauthorized={markUnauthenticated}
               onError={setRoutinesError}
             />
+          ) : view === "computer" ? (
+            <ComputerView roleId={activeBot?.roleId} onUnauthorized={markUnauthenticated} />
           ) : (
             <ChatShell
               bots={botsWithStatus}
