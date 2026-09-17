@@ -74,7 +74,7 @@ import type { Socket } from "node:net";
 
 import type { FastifyInstance } from "fastify";
 
-import { authenticate } from "./auth.js";
+import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME } from "./auth.js";
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const PTY_PATH_PATTERN = /^\/roles\/([^/]+)\/live-agent\/pty$/;
@@ -151,6 +151,14 @@ export interface RegisterLiveAgentRoutesOptions {
   readonly onInputDiscarded?: (event: LiveAgentInputDiscardedEvent) => void;
   /** TASK-228 — fires when a takeover connection's input genuinely reaches execd. */
   readonly onInputForwarded?: (event: LiveAgentInputForwardedEvent) => void;
+  /**
+   * TASK-286 — how often an open viewer/takeover connection re-checks that
+   * its originating session is still valid (signature + not expired).
+   * Defaults to 15s, the same bound `app.ts`'s SSE heartbeat uses
+   * (TASK-259). Test-injectable so a test can observe a force-close within
+   * a real, bounded wait rather than the production interval.
+   */
+  readonly sessionRevalidationIntervalMs?: number;
 }
 
 function acceptKeyFor(key: string): string {
@@ -544,6 +552,53 @@ export function relayTakeover(
 }
 
 /**
+ * TASK-286 — periodic re-validation of the session that authenticated this
+ * WebSocket connection, mirroring `app.ts`'s own `sessionStillValid`
+ * pattern (TASK-259, SSE). A WS upgrade has no existing periodic timer of
+ * its own to piggyback re-validation on the way SSE's poll/heartbeat loop
+ * did, so this starts a dedicated one once the connection is live, and
+ * force-closes both legs of the relay (mirroring `relay`/`relayTakeover`'s
+ * own `.destroy()`-not-`.end()` reasoning — a WS-upgraded socket falls
+ * outside Node's HTTP connection bookkeeping) the moment the originating
+ * session is no longer valid. A bearer-token connection has no session to
+ * expire — `sessionToken` is `undefined` in that case and this is a no-op,
+ * exactly mirroring `sessionStillValid`'s own bearer exemption.
+ *
+ * Deliberately does NOT check the server's session-REVOCATION store
+ * (explicit logout): that store (`revokedSessionTokens`, created once in
+ * `app.ts`) is not threaded through `RegisterLiveAgentRoutesOptions`
+ * today, and wiring it would mean editing `app.ts`'s call site — outside
+ * this task's `Owned_Paths`. This still closes the core gap the task
+ * describes (an expired session keeping a privileged channel open
+ * indefinitely); the revocation-store gap is flagged in the dossier for
+ * ORCH, the same scope-narrowly-and-flag-the-rest precedent TASK-259 set
+ * when it filed this very task.
+ */
+function startSessionRevalidation(
+  sessionToken: string | undefined,
+  authToken: string,
+  socket: Socket,
+  upstream: UpstreamConnection,
+  intervalMs: number,
+): void {
+  if (sessionToken === undefined) return;
+  const timer: ReturnType<typeof setInterval> = setInterval(() => {
+    if (verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
+    clearInterval(timer);
+    try {
+      socket.destroy();
+    } catch {
+      // Already closed.
+    }
+    upstream.close();
+  }, intervalMs);
+  // Stop re-checking once the connection ends for any other reason
+  // (client disconnect, upstream close, teardown from either relay
+  // function) so this timer never outlives its socket.
+  socket.on("close", () => clearInterval(timer));
+}
+
+/**
  * Shared prefix for both the viewer and takeover upgrade paths: auth,
  * `liveAgent` presence, and sandbox resolution are identical for either
  * — only which execd endpoint gets resolved and which relay function
@@ -592,6 +647,7 @@ async function handleUpgrade(
   liveAgent: LiveAgentPort | undefined,
   dialUpstream: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>,
   onInputDiscarded: ((event: LiveAgentInputDiscardedEvent) => void) | undefined,
+  sessionRevalidationIntervalMs: number,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://live-agent.internal");
   const match = PTY_PATH_PATTERN.exec(url.pathname);
@@ -634,6 +690,8 @@ async function handleUpgrade(
   }
 
   relay(roleId, sandbox.sandboxId, socket, upstream, onInputDiscarded);
+  const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
 }
 
 /**
@@ -652,6 +710,7 @@ async function handleTakeoverUpgrade(
   liveAgent: LiveAgentPort | undefined,
   dialUpstream: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>,
   onInputForwarded: ((event: LiveAgentInputForwardedEvent) => void) | undefined,
+  sessionRevalidationIntervalMs: number,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://live-agent.internal");
   const match = TAKEOVER_PATH_PATTERN.exec(url.pathname);
@@ -697,11 +756,20 @@ async function handleTakeoverUpgrade(
   }
 
   relayTakeover(roleId, sandbox.sandboxId, socket, upstream, onInputForwarded);
+  const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
 }
 
 /** Registers the live-agent status route and the raw PTY-viewer/takeover WS upgrade handlers onto `app`. */
 export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterLiveAgentRoutesOptions): void {
-  const { authToken, liveAgent, dialUpstream = defaultDialUpstream, onInputDiscarded, onInputForwarded } = options;
+  const {
+    authToken,
+    liveAgent,
+    dialUpstream = defaultDialUpstream,
+    onInputDiscarded,
+    onInputForwarded,
+    sessionRevalidationIntervalMs = 15000,
+  } = options;
 
   app.get("/roles/:roleId/live-agent/status", async (request, reply) => {
     if (liveAgent === undefined) {
@@ -727,9 +795,11 @@ export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterL
       }
     };
     if (TAKEOVER_PATH_PATTERN.test(pathname)) {
-      handleTakeoverUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputForwarded).catch(onSocketError);
+      handleTakeoverUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputForwarded, sessionRevalidationIntervalMs).catch(
+        onSocketError,
+      );
       return;
     }
-    handleUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputDiscarded).catch(onSocketError);
+    handleUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputDiscarded, sessionRevalidationIntervalMs).catch(onSocketError);
   });
 }

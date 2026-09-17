@@ -79,7 +79,7 @@ import type { Socket } from "node:net";
 
 import type { FastifyInstance } from "fastify";
 
-import { authenticate } from "./auth.js";
+import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME } from "./auth.js";
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const BROWSER_TAKEOVER_PATH_PATTERN = /^\/runs\/([^/]+)\/browser-takeover$/;
@@ -148,6 +148,14 @@ export interface RegisterBrowserTakeoverRoutesOptions {
   readonly dialUpstream?: (endpoint: BrowserTakeoverEndpoint) => Promise<UpstreamConnection>;
   /** Test-only: observes the liveness assertion (fires whenever input is genuinely forwarded to Steel). */
   readonly onInputForwarded?: (event: BrowserTakeoverInputForwardedEvent) => void;
+  /**
+   * TASK-286 — how often an open browser-takeover connection re-checks
+   * that its originating session is still valid (signature + not
+   * expired). Defaults to 15s, the same bound `app.ts`'s SSE heartbeat
+   * uses (TASK-259). Test-injectable so a test can observe a force-close
+   * within a real, bounded wait rather than the production interval.
+   */
+  readonly sessionRevalidationIntervalMs?: number;
 }
 
 function acceptKeyFor(key: string): string {
@@ -437,6 +445,47 @@ export function relayBrowserTakeover(
 }
 
 /**
+ * TASK-286 — periodic re-validation of the session that authenticated this
+ * WebSocket connection, mirroring `app.ts`'s own `sessionStillValid`
+ * pattern (TASK-259, SSE) and `liveAgent.routes.ts`'s identical fix for
+ * its own two WS routes. A WS upgrade has no existing periodic timer of
+ * its own to piggyback re-validation on, so this starts a dedicated one
+ * once the connection is live, and force-closes both legs of the relay
+ * (`.destroy()`, not `.end()` — mirrors `relayBrowserTakeover`'s own
+ * reasoning: a WS-upgraded socket falls outside Node's HTTP connection
+ * bookkeeping) the moment the originating session is no longer valid. A
+ * bearer-token connection has no session to expire — `sessionToken` is
+ * `undefined` in that case and this is a no-op.
+ *
+ * Deliberately does NOT check the server's session-REVOCATION store
+ * (explicit logout): that store (`revokedSessionTokens`, created once in
+ * `app.ts`) is not threaded through `RegisterBrowserTakeoverRoutesOptions`
+ * today, and wiring it would mean editing `app.ts`'s call site — outside
+ * this task's `Owned_Paths`. Flagged in the dossier for ORCH, same as
+ * `liveAgent.routes.ts`'s identical note.
+ */
+function startSessionRevalidation(
+  sessionToken: string | undefined,
+  authToken: string,
+  socket: Socket,
+  upstream: UpstreamConnection,
+  intervalMs: number,
+): void {
+  if (sessionToken === undefined) return;
+  const timer: ReturnType<typeof setInterval> = setInterval(() => {
+    if (verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
+    clearInterval(timer);
+    try {
+      socket.destroy();
+    } catch {
+      // Already closed.
+    }
+    upstream.close();
+  }, intervalMs);
+  socket.on("close", () => clearInterval(timer));
+}
+
+/**
  * Handles one `GET /runs/:id/browser-takeover` upgrade attempt: auth,
  * the connect-time pending gate (file header point 2), CDP endpoint
  * resolution, upstream dial, then hands off to {@link relayBrowserTakeover}.
@@ -449,6 +498,7 @@ async function handleBrowserTakeoverUpgrade(
   takeoverStatus: TakeoverStatusPort | undefined,
   dialUpstream: (endpoint: BrowserTakeoverEndpoint) => Promise<UpstreamConnection>,
   onInputForwarded: ((event: BrowserTakeoverInputForwardedEvent) => void) | undefined,
+  sessionRevalidationIntervalMs: number,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://browser-takeover.internal");
   const match = BROWSER_TAKEOVER_PATH_PATTERN.exec(url.pathname);
@@ -521,11 +571,20 @@ async function handleBrowserTakeoverUpgrade(
   }
 
   relayBrowserTakeover(runId, socket, upstream, onInputForwarded);
+  const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
 }
 
 /** Registers the raw browser-takeover WS upgrade handler onto `app`. */
 export function registerBrowserTakeoverRoutes(app: FastifyInstance, options: RegisterBrowserTakeoverRoutesOptions): void {
-  const { authToken, browserTakeover, takeoverStatus, dialUpstream = defaultDialUpstream, onInputForwarded } = options;
+  const {
+    authToken,
+    browserTakeover,
+    takeoverStatus,
+    dialUpstream = defaultDialUpstream,
+    onInputForwarded,
+    sessionRevalidationIntervalMs = 15000,
+  } = options;
 
   app.server.on("upgrade", (req: IncomingMessage, socket: Socket, _head: Buffer) => {
     const pathname = new URL(req.url ?? "", "http://browser-takeover.internal").pathname;
@@ -537,6 +596,15 @@ export function registerBrowserTakeoverRoutes(app: FastifyInstance, options: Reg
         // Already destroyed.
       }
     };
-    handleBrowserTakeoverUpgrade(req, socket, authToken, browserTakeover, takeoverStatus, dialUpstream, onInputForwarded).catch(onSocketError);
+    handleBrowserTakeoverUpgrade(
+      req,
+      socket,
+      authToken,
+      browserTakeover,
+      takeoverStatus,
+      dialUpstream,
+      onInputForwarded,
+      sessionRevalidationIntervalMs,
+    ).catch(onSocketError);
   });
 }
