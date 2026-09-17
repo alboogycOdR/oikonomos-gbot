@@ -1670,3 +1670,21 @@ stays usable; UnauthorizedError pops the screen like the rest of the app.
 Merged --no-ff to master as 931c2a7. Closes T-3 mobile template work end to end.
 Note: TASK-293 (drift false positives) is still in flight and changes only how `changed` is computed
 server-side; this UI consumes the unchanged response shape, so no rework here is expected.
+
+## TASK-293 | S5 | approved | 2026-09-17T23:00:00Z
+
+Template-status drift: compare against an install-time baseline, not the raw template manifest.
+Filed by ORCH from an independent review of TASK-289 (which a prior ORCH session merged before that
+review finished). First-pass approval on the resumed run; the earlier block was ORCH's filing gap
+(migration 029's new column broke a column-count test that was not in Owned_Paths).
+
+Territory: clean. Verification was ORCH's own, isolated harness only.
+All four false-drift cases ran and passed by name: name override at install; template memory not opted
+into; reused same-named tenant skill with a genuinely different body (asserted, not vacuous); checklist
+integration -- no drift before granting, drift naming "integrations" after. TASK-289's own case retained.
+Build and typecheck clean. Full-suite red packages (sandbox-client, evals/harness, worker) all trace to
+TASK-292's live clawsrv sandbox port exhaustion, which is filed and blocked on the user.
+Residual, accepted: no automated assertion for migration 029's DOWN direction (ORCH hand-verified both
+directions against oikonomos_test). The round-trip test is 028-only and env-gated -- generalising it is
+future work, not rework here.
+Merged --no-ff to master.
