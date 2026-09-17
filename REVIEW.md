@@ -1554,3 +1554,27 @@ time: `packages/broker` 15/15 files (181/181 tests), `packages/policy` 100% cove
 
 Approved and merged (no-ff) to master. Closes the full T4-approval-routing gap TASK-282
 originally, correctly, deferred rather than rush.
+
+## TASK-248 | S5 | approved | 2026-09-17T13:25:00Z
+
+Web Computer view: a read-only live sandbox stream in the dashboard.
+
+- Backend: `isSameOriginOrAbsent` guards both live-agent WS upgrade paths (viewer and
+  takeover) against CSWSH -- a raw WS upgrade sits outside the browser's normal CORS preflight,
+  so without this a foreign page could ride a visitor's own session cookie. Fails closed on an
+  unparseable Origin; correctly exempts an absent Origin (mobile Bearer-token clients).
+- Dashboard: `lib/liveAgent.ts`'s `LiveAgentSubscription` type has exactly one method
+  (`close()`) -- no send/write exists anywhere in the client, structurally rather than just
+  conventionally impossible to inject input. `ComputerView.tsx` shows connection state,
+  last-update time, live output, and an always-visible "interactive control not available"
+  notice (never a disabled control).
+- Diff clean against Owned_Paths; both packages typecheck clean; control-api isolated suite
+  24/24 files (323/323 tests); dashboard suite 25/25 files (157/157 tests).
+- Read the origin guard and the client's own type surface directly to confirm both claims
+  rather than trusting the summary.
+- S5 honestly disclosed, rather than overclaimed: not yet wired into the workspace nav
+  (`WorkspaceTabs.tsx`/`ChatPage.tsx`, outside this task's own Owned_Paths), so AC1's live
+  C01 re-recording is satisfied at component/unit-test level only -- matching the exact
+  standard TASK-240 itself used to satisfy C01 on mobile. Filed TASK-288 for the real wiring.
+
+Approved and merged (no-ff) to master.
