@@ -1518,3 +1518,39 @@ browser-takeover WS connection since TASK-235.
   control for an unrelated revoked session) all real loopback TCP + real WS handshake.
 
 Approved and merged (no-ff) to master.
+
+## TASK-285 | CX9 | approved (after 3 adversarial-review REWORK rounds) | 2026-09-17T13:19:00Z
+
+Real T4_irreversible approval routing for `workspace.retire_bot`. Adds `EnforcedActionClass`
+member `E6_irreversible_role_mutation`, declares `retire_bot` with `enforcementEnabled: true` +
+that class, propagates the fields through `CapabilityRegistry`'s `DeclaredTool`/
+`getCapability` (previously silently dropped despite `RegisteredCapability` already declaring
+them). A real integration test exercises the actual production broker composition end to end:
+`create_bot`/`retire_bot` both correctly park `approval_pending`, the target role's status is
+confirmed unchanged while pending, and only a real granted approval's nonce lets the retry
+actually execute.
+
+Protected path (`packages/broker/**`, `packages/policy/**`) -- genuinely cross-model adversarial
+review via Codex, 3 rounds, since every author in this chain (CX9, then ORCH's own follow-up
+fixes) needed a non-Claude reviewer:
+
+- **Round 1 (REWORK):** shared `enforcedActionClasses` array wasn't deep-frozen -- a caller
+  mutating it could silently drop `retire_bot` to `default_autonomous` allow, process-wide, with
+  no error anywhere (HIGH). `getCapability` also leaked present-as-undefined fields for legacy
+  capabilities that never declare them (MEDIUM). Both fixed with real regression tests.
+- **Round 2 (REWORK):** the round-1 fix only froze the registry's own `build()`-time copy, not
+  `BUILTIN_TOOLS`'s own nested array at its actual declaration site (`Object.freeze` is
+  shallow) -- fixed at the true source, with a test proving the declaration itself is frozen.
+- **Round 3:** one cheap, real test-vacuity fix (`Object.isFrozen(undefined)` is `true`, so the
+  round-2 test could pass vacuously if the entry were ever missing). One further point --
+  defending against a deliberate `as any` cast bypassing `DeclaredTool`'s own `readonly` field
+  -- judged out of proportion for this codebase's real threat model (a normal, type-safe caller
+  accidentally mutating a shared reference, not someone who has already discarded TypeScript's
+  type safety on purpose) and documented as a considered decision, not an oversight.
+
+Independently re-verified by ORCH after every round, from a clean rebuilt dependency chain each
+time: `packages/broker` 15/15 files (181/181 tests), `packages/policy` 100% coverage on
+`enforcement.ts`, `services/worker`'s own integration test 7/7.
+
+Approved and merged (no-ff) to master. Closes the full T4-approval-routing gap TASK-282
+originally, correctly, deferred rather than rush.
