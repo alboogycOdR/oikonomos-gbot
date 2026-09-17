@@ -8237,7 +8237,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-278
 **Title:** Template export/import backend API (no UI) -- with the 5-class credential scan
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; specs/OIKONOMOS_TEMPLATES_v1.0.md §§ T-1/T-2
@@ -8258,12 +8258,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-17T00:20:30Z] [SV:S5] Confirmed packages/templates (manifest schema, projectRoleToManifest, credentialPolicy.ts 5-class scan, digest) and the role_template_installs migration do not exist anywhere in the codebase -- both are T-1's territory per specs/OIKONOMOS_TEMPLATES_v1.0.md section 9 and outside this task's Owned_Paths. Identical shape to TASK-264's own descoped finding. No code written; findings and unblock options recorded in dossier.
 - [2026-09-17T01:05:00Z] [ORCH] TASK-280 done and merged -- all three dependencies now satisfied. Added an explicit liveness-assertion AC (ADR-018 §2's own requirement, easy to miss since it's not in this task's original AC list) and pointed at TASK-280's real exports to call rather than reimplement. Dispatching CX9.
 - [2026-09-17T00:35:00Z] [ORCH] S5's finding was correct -- confirmed directly, packages/templates genuinely does not exist. Filed TASK-280 for the real T-1 scope (manifest schema, projection, 5-class credential scan, digest, the role_template_installs migration), added as a dependency here, left pending until TASK-280 lands. Redirecting S5 to TASK-280 instead.
+- [2026-09-17T01:38:25Z] [SV:CX9] Recorded the ownership conflict: template persistence and production composition cannot be implemented through the current owned paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T00:35:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Required production implementation changes services/control-api/src/ports.ts, services/control-api/src/index.ts, and services/control-api/package.json, all outside TASK-278 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T01:38:25Z
 
 ### TASK-280
 **Title:** `packages/templates` -- bot template manifest schema, role-to-manifest projection, 5-class credential scan, digest (ADR-018's real T-1 scope)
