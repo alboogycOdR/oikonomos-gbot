@@ -258,6 +258,7 @@ export {
   createRoleTemplateInstall,
   getBotTemplate,
   getLatestBotTemplate,
+  getRoleTemplateInstall,
   listBotTemplates,
   templateVisibilities,
   type BotTemplate,

@@ -65,6 +65,94 @@ function selectedMemoryKeys(keys: readonly string[] | undefined): Set<string> {
   return new Set((keys ?? []).map((key) => key.trim()).filter((key) => key.length > 0));
 }
 
+/**
+ * Re-projects a role's *current* live state into a `TemplateManifest`,
+ * restricted to the given `memoryKeys` (export: the caller's explicit
+ * opt-in list; status/drift, TASK-289 spec §6.1: the keys already present
+ * in the installed manifest, so the comparison is like-for-like rather than
+ * flagging every memory fact the role happens to hold today). Shared by the
+ * export route and the drift-detection route below so both build the
+ * "what does this role look like right now" half of a comparison the exact
+ * same way.
+ */
+async function projectCurrentManifest(
+  deps: ControlApiDeps,
+  tenantId: string,
+  role: Awaited<ReturnType<ControlApiDeps["listRoles"]>>[number],
+  memoryKeys: Set<string>,
+): Promise<TemplateManifest> {
+  if (deps.listEnabledSkillsForRole === undefined) {
+    throw new Error("templates are not configured");
+  }
+  const listEnabledSkillsForRole = deps.listEnabledSkillsForRole;
+  const [skills, routines, grants, memories] = await Promise.all([
+    listEnabledSkillsForRole(role.roleId),
+    deps.listRoutines({ tenantId, roleId: role.roleId }),
+    deps.listRoleGrants(role.roleId),
+    memoryKeys.size === 0
+      ? Promise.resolve([])
+      : deps.readProfileTier === undefined
+        ? Promise.reject(new Error("template memory is not configured"))
+        : deps.readProfileTier({ tenantId, roleId: role.roleId }),
+  ]);
+  const skillsById = new Map(skills.map((skill) => [skill.skillId, skill]));
+  const capabilitiesById = new Map((await deps.listCapabilities()).map((capability) => [capability.capabilityId, capability]));
+  return projectRoleToManifest({
+    identity: role,
+    skills,
+    routines: routines.map((routine) => ({
+      name: routine.name,
+      schedule: routine.schedule,
+      definition: routine.definition,
+      skillName: routine.skillId === null || routine.skillId === undefined ? null : skillsById.get(routine.skillId)?.name ?? null,
+      onMissingSource: routine.onMissingSource ?? "report_and_stop",
+      notifyThreshold: routine.notifyThreshold ?? "changes_only",
+    })),
+    integrations: grants
+      .filter((grant) => capabilitiesById.has(grant.capabilityId))
+      .map((grant) => ({ capabilityId: grant.capabilityId, requestedMaxTier: grant.maxTier })),
+    memories: memories
+      .filter((memory) => memory.scope === "agent" && memory.roleId === role.roleId && memory.tier === "profile" && memoryKeys.has(memory.key))
+      .map((memory) => ({ key: memory.key, value: memory.value })),
+    exportedFromTenantDigest: `tenant:${tenantId}`,
+    oikonomosVersion: "v1",
+  }, new Date());
+}
+
+/**
+ * The manifest's top-level content sections — everything except
+ * `template_version` (a schema-level constant, can't drift) and
+ * `provenance` (export metadata, deliberately excluded from
+ * `templateDigest` for the same reason: it never describes the bot).
+ */
+const TEMPLATE_STATUS_SECTIONS = ["identity", "skills", "routines", "integrations", "memories"] as const;
+
+/**
+ * Order-independent (object keys) / order-sensitive (arrays) structural
+ * equality. Used instead of a hash comparison because the installed
+ * manifest round-trips through a Postgres `jsonb` column, which does not
+ * preserve original key order — a naive `JSON.stringify` comparison (or a
+ * digest over one) would report false drift on an unchanged role. This
+ * route deliberately does not import `@oikonomos/shared`'s `canonicalJson`
+ * (not a `control-api` dependency; out of this task's Owned_Paths to add
+ * one) — a plain recursive equality check needs no such dependency and is
+ * exactly as correct for a yes/no "did this section change" comparison.
+ */
+function sectionsEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, index) => sectionsEqual(item, b[index]));
+  }
+  if (typeof a === "object" && a !== null && typeof b === "object" && b !== null) {
+    const aRecord = a as Record<string, unknown>;
+    const bRecord = b as Record<string, unknown>;
+    const aKeys = Object.keys(aRecord);
+    const bKeys = Object.keys(bRecord);
+    return aKeys.length === bKeys.length && aKeys.every((key) => Object.hasOwn(bRecord, key) && sectionsEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
+}
+
 export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDeps): void {
   app.post<{ Params: { roleId: string }; Body: { name?: string; include_memories?: string[] } }>(
     "/roles/:roleId/templates",
@@ -86,38 +174,7 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
       }
       try {
         const memoryKeys = selectedMemoryKeys(request.body.include_memories);
-        const [skills, routines, grants, memories] = await Promise.all([
-          deps.listEnabledSkillsForRole(role.roleId),
-          deps.listRoutines({ tenantId: request.tenantId, roleId: role.roleId }),
-          deps.listRoleGrants(role.roleId),
-          memoryKeys.size === 0
-            ? Promise.resolve([])
-            : deps.readProfileTier === undefined
-              ? Promise.reject(new Error("template memory is not configured"))
-              : deps.readProfileTier({ tenantId: request.tenantId, roleId: role.roleId }),
-        ]);
-        const skillsById = new Map(skills.map((skill) => [skill.skillId, skill]));
-        const capabilitiesById = new Map((await deps.listCapabilities()).map((capability) => [capability.capabilityId, capability]));
-        const manifest = projectRoleToManifest({
-          identity: role,
-          skills,
-          routines: routines.map((routine) => ({
-            name: routine.name,
-            schedule: routine.schedule,
-            definition: routine.definition,
-            skillName: routine.skillId === null || routine.skillId === undefined ? null : skillsById.get(routine.skillId)?.name ?? null,
-            onMissingSource: routine.onMissingSource ?? "report_and_stop",
-            notifyThreshold: routine.notifyThreshold ?? "changes_only",
-          })),
-          integrations: grants
-            .filter((grant) => capabilitiesById.has(grant.capabilityId))
-            .map((grant) => ({ capabilityId: grant.capabilityId, requestedMaxTier: grant.maxTier })),
-          memories: memories
-            .filter((memory) => memory.scope === "agent" && memory.roleId === role.roleId && memory.tier === "profile" && memoryKeys.has(memory.key))
-            .map((memory) => ({ key: memory.key, value: memory.value })),
-          exportedFromTenantDigest: `tenant:${request.tenantId}`,
-          oikonomosVersion: "v1",
-        }, new Date());
+        const manifest = await projectCurrentManifest(deps, request.tenantId, role, memoryKeys);
         const scan = scanManifestForCredentials(manifest);
         if (scan.refused) {
           await reply.code(422).send(await refuse(deps, request.tenantId, "template.export_refused", scan, role.roleId));
@@ -262,6 +319,58 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
         await reply.code(201).send({ role, grant_checklist: grantChecklist, next: "run one supervised turn before enabling routines" });
       } catch (error) {
         request.log.warn({ err: error }, "Template install failed");
+        await reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  /**
+   * TASK-289 / spec §6.1: "returns `{installed_from | null, drift: boolean,
+   * changed: [section...]}` by re-projecting the role (§3.4) and comparing
+   * the digest per top-level section with the installed version's
+   * manifest." Read-only; §6.2 ("drift is shown, never auto-synced") means
+   * this route never writes anything.
+   */
+  app.get<{ Params: { roleId: string } }>(
+    "/roles/:roleId/template-status",
+    async (request, reply) => {
+      if (deps.getRoleTemplateInstall === undefined || deps.getBotTemplate === undefined || deps.listEnabledSkillsForRole === undefined) {
+        await unavailable(reply);
+        return;
+      }
+      const role = (await deps.listRoles({ tenantId: request.tenantId, status: "active" }))
+        .find((candidate) => candidate.roleId === request.params.roleId);
+      if (role === undefined) {
+        await reply.code(404).send({ error: "role not found" });
+        return;
+      }
+      try {
+        const install = await deps.getRoleTemplateInstall(role.roleId);
+        if (install === null) {
+          await reply.code(200).send({ installed_from: null, drift: false, changed: [] });
+          return;
+        }
+        const installedTemplate = await deps.getBotTemplate(install.templateId, install.version);
+        if (installedTemplate === null) {
+          throw new Error("installed template version is missing");
+        }
+        const installedManifest = asManifest(installedTemplate.manifest);
+        if (installedManifest === null) {
+          await reply.code(400).send({ error: "stored template has an invalid manifest" });
+          return;
+        }
+        const memoryKeys = new Set(installedManifest.memories.map((memory) => memory.key));
+        const currentManifest = await projectCurrentManifest(deps, request.tenantId, role, memoryKeys);
+        const changed = TEMPLATE_STATUS_SECTIONS.filter(
+          (section) => !sectionsEqual(currentManifest[section], installedManifest[section]),
+        );
+        await reply.code(200).send({
+          installed_from: { templateId: install.templateId, version: install.version },
+          drift: changed.length > 0,
+          changed,
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, "Template status check failed");
         await reply.code(400).send({ error: (error as Error).message });
       }
     },

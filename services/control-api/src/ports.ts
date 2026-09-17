@@ -24,6 +24,7 @@ import {
   getRole as dbGetRole,
   getBotTemplate as dbGetBotTemplate,
   getLatestBotTemplate as dbGetLatestBotTemplate,
+  getRoleTemplateInstall as dbGetRoleTemplateInstall,
   insertMessage as dbInsertMessage,
   insertAuditEvent as dbInsertAuditEvent,
   getAuditEventsForRun as dbGetAuditEventsForRun,
@@ -75,6 +76,7 @@ import {
   type NewRole,
   type NewBotTemplate,
   type NewRoleTemplateInstall,
+  type RoleTemplateInstall,
   type NewThread,
   type NewGroupThread,
   type NewMessage,
@@ -182,6 +184,8 @@ export interface ControlApiDeps {
   getBotTemplate?(templateId: string, version: number): Promise<BotTemplate | null>;
   listBotTemplates?(filter: { tenantId: string }): Promise<BotTemplate[]>;
   createRoleTemplateInstall?(input: NewRoleTemplateInstall): Promise<void>;
+  /** TASK-289 / spec §6.1 — the install-provenance row a role was created from, or null if it wasn't installed from a template. */
+  getRoleTemplateInstall?(roleId: string): Promise<RoleTemplateInstall | null>;
   insertAuditEvent?(input: {
     tenantId: string;
     actor: string;
@@ -637,6 +641,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     getBotTemplate: (templateId, version) => dbGetBotTemplate(options, templateId, version),
     listBotTemplates: (filter) => dbListBotTemplates(options, filter),
     createRoleTemplateInstall: async (input) => { await dbCreateRoleTemplateInstall(options, input); },
+    getRoleTemplateInstall: (roleId) => dbGetRoleTemplateInstall(options, roleId),
     insertAuditEvent: async (input) => { await dbInsertAuditEvent(options, input); },
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
     upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),

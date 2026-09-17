@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
+import { createRole } from "./roles.js";
 
 /**
  * TASK-276 / ADR-018 "Storage" section (specs/OIKONOMOS_TEMPLATES_v1.0.md
@@ -293,6 +294,30 @@ export async function createRoleTemplateInstall(
   });
 }
 
+/**
+ * TASK-289 / spec §6.1 ("`GET /roles/:roleId/template-status` returns
+ * `{installed_from | null, drift, changed}` by re-projecting the role and
+ * comparing ... with the installed version's manifest"). The status route
+ * needs to read back the immutable install-provenance row this module can
+ * only write today; `role_id` is this table's primary key (one install per
+ * role, `028_role_template_installs.up.sql`), so at most one row can ever
+ * match.
+ */
+export async function getRoleTemplateInstall(
+  options: DatabaseOptions,
+  roleId: string,
+): Promise<RoleTemplateInstall | null> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleTemplateInstallRow>(
+      `SELECT role_id, template_id, version, digest, installed_at FROM role_template_installs WHERE role_id = $1`,
+      [normalizedRoleId],
+    );
+    return result.rows[0] === undefined ? null : toRoleTemplateInstall(result.rows[0]);
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
@@ -312,6 +337,12 @@ if (import.meta.vitest) {
       await expect(listBotTemplates(options, { tenantId: "basileia" })).rejects.toThrow(
         /connectionString/,
       );
+      await expect(getRoleTemplateInstall(options, "role-1")).rejects.toThrow(/connectionString/);
+    });
+
+    it("rejects an empty roleId on getRoleTemplateInstall", async () => {
+      const live: DatabaseOptions = { connectionString: "postgres://x" };
+      await expect(getRoleTemplateInstall(live, "   ")).rejects.toThrow(/roleId/);
     });
 
     it("rejects empty tenantId/name/digest/createdBy on createBotTemplate", async () => {
@@ -484,6 +515,66 @@ if (import.meta.vitest) {
           ),
         ),
       ).rejects.toThrow();
+    });
+  });
+
+  integration("@oikonomos/db templates — getRoleTemplateInstall (TASK-289)", () => {
+    const tenantId = "task-289-role-template-install";
+    const roleIds: string[] = [];
+
+    async function cleanup(): Promise<void> {
+      if (roleIds.length > 0) {
+        await withPool(dbOptions, (pool) =>
+          pool.query(`DELETE FROM role_template_installs WHERE role_id = ANY($1::text[])`, [roleIds]),
+        );
+      }
+      await withPool(dbOptions, (pool) => pool.query(`DELETE FROM bot_templates WHERE tenant_id = $1`, [tenantId]));
+    }
+
+    afterAll(cleanup);
+
+    it("returns null for a role with no install row", async () => {
+      const role = await createRole(dbOptions, {
+        roleId: `task-289-no-install-${crypto.randomUUID()}`,
+        tenantId,
+        name: "No Install",
+        title: "No Install",
+        description: "",
+      });
+      roleIds.push(role.roleId);
+
+      expect(await getRoleTemplateInstall(dbOptions, role.roleId)).toBeNull();
+    });
+
+    it("returns the immutable install row for a role installed from a template", async () => {
+      const role = await createRole(dbOptions, {
+        roleId: `task-289-installed-${crypto.randomUUID()}`,
+        tenantId,
+        name: "Installed",
+        title: "Installed",
+        description: "",
+      });
+      roleIds.push(role.roleId);
+      const created = await createBotTemplate(dbOptions, {
+        tenantId,
+        name: "Source",
+        manifest: { identity: { name: "s" } },
+        digest: "digest-289",
+        createdBy: "human:1",
+      });
+
+      const install = await createRoleTemplateInstall(dbOptions, {
+        roleId: role.roleId,
+        templateId: created.templateId,
+        version: created.version,
+        digest: created.digest,
+      });
+
+      const fetched = await getRoleTemplateInstall(dbOptions, role.roleId);
+      expect(fetched).toEqual(install);
+      expect(fetched?.templateId).toBe(created.templateId);
+      expect(fetched?.version).toBe(created.version);
+      expect(fetched?.digest).toBe("digest-289");
     });
   });
 }
