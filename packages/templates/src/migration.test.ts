@@ -65,6 +65,7 @@ integration("packages/templates -- role_template_installs migration (TASK-280)",
       { column_name: "version", data_type: "integer", is_nullable: "NO" },
       { column_name: "digest", data_type: "text", is_nullable: "NO" },
       { column_name: "installed_at", data_type: "timestamp with time zone", is_nullable: "NO" },
+      { column_name: "baseline_manifest", data_type: "jsonb", is_nullable: "YES" },
     ]);
   });
 
