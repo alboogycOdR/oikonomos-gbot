@@ -8,6 +8,17 @@ import 'package:oikonomos_mobile/api/models.dart';
 
 import '../support/fake_http_client.dart';
 
+Future<ApiClient> _loggedInForTemplates(FakeHttpClient fake) async {
+  fake.queueJson(
+    200,
+    {'authenticated': true},
+    headers: {'set-cookie': 'control_api_session=abc123; Path=/'},
+  );
+  final client = ApiClient(baseUrl: 'http://localhost:3000', httpClient: fake);
+  await client.login('shared-token');
+  return client;
+}
+
 void main() {
   group('ApiClient.login', () {
     test('captures the session cookie on success', () async {
@@ -72,6 +83,89 @@ void main() {
         );
       },
     );
+  });
+
+  group('ApiClient templates', () {
+    test('lists templates and parses their summaries', () async {
+      final fake = FakeHttpClient();
+      final client = await _loggedInForTemplates(fake);
+      fake.queueJson(200, [
+        {
+          'templateId': 'template-1',
+          'version': 2,
+          'name': 'Concierge',
+          'digest': 'digest-1',
+        },
+      ]);
+
+      final templates = await client.listTemplates();
+
+      expect(templates, hasLength(1));
+      expect(templates.single.name, 'Concierge');
+      expect(templates.single.version, 2);
+      final request = fake.requests.last;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/templates');
+    });
+
+    test('exports a template and preserves credential-refusal diagnostics',
+        () async {
+      final fake = FakeHttpClient();
+      final client = await _loggedInForTemplates(fake);
+      fake.queueJson(201, {
+        'templateId': 'template-1',
+        'version': 1,
+        'digest': 'digest-1',
+      });
+
+      final result = await client.exportRoleTemplate('role 1', 'Concierge');
+
+      expect(result.templateId, 'template-1');
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/roles/role%201/templates');
+      expect(jsonDecode(request.body), {'name': 'Concierge'});
+
+      fake.queueJson(422, {
+        'field_paths': ['/identity/instructions'],
+        'classes': ['jwt'],
+      });
+      await expectLater(
+        () => client.exportRoleTemplate('role-1', 'Unsafe'),
+        throwsA(
+          isA<TemplateExportRefusedException>().having(
+              (error) => error.fieldPaths, 'field paths', [
+            '/identity/instructions'
+          ]).having((error) => error.classes, 'classes', ['jwt']),
+        ),
+      );
+    });
+
+    test('installs a template and parses its manual grant checklist', () async {
+      final fake = FakeHttpClient();
+      final client = await _loggedInForTemplates(fake);
+      fake.queueJson(201, {
+        'role': {'roleId': 'role-new'},
+        'grant_checklist': [
+          {
+            'capability_id': 'mail.send',
+            'requested_max_tier': 'T2_internal',
+            'status': 'available',
+          },
+        ],
+        'next': 'run one supervised turn before enabling routines',
+      });
+
+      final result = await client.installTemplate('template 1', 3);
+
+      expect(result.roleId, 'role-new');
+      expect(result.grantChecklist.single.capabilityId, 'mail.send');
+      expect(result.grantChecklist.single.status, 'available');
+      final request = fake.requests.last as http.Request;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/templates/template%201/install');
+      expect(jsonDecode(request.body), {'version': 3});
+    });
   });
 
   group('ApiClient.loginWithGoogle', () {
@@ -181,7 +275,8 @@ void main() {
     test('registerDevice throws ApiException on a server rejection', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
-      fake.queueJson(400, {'error': 'platform must be one of: android, ios, web.'});
+      fake.queueJson(
+          400, {'error': 'platform must be one of: android, ios, web.'});
 
       await expectLater(
         () => client.registerDevice('fcm-token-abc', 'bogus'),
@@ -438,7 +533,8 @@ void main() {
       },
     );
 
-    test('uploadThreadAttachment posts base64 JSON and parses the structured ref',
+    test(
+        'uploadThreadAttachment posts base64 JSON and parses the structured ref',
         () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
@@ -469,7 +565,8 @@ void main() {
       });
     });
 
-    test('uploadThreadAttachment surfaces the server rejection message', () async {
+    test('uploadThreadAttachment surfaces the server rejection message',
+        () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
       fake.queueJson(400, {
@@ -572,7 +669,9 @@ void main() {
       expect(fake.requests.last.url.path, '/roles/role%201/routines');
     });
 
-    test('reconstructs routine history through the real tasks and runs endpoints', () async {
+    test(
+        'reconstructs routine history through the real tasks and runs endpoints',
+        () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
       fake.queueJson(200, {
@@ -604,7 +703,8 @@ void main() {
       expect(runs.single.startedAt, '2026-09-05T08:23:00Z');
     });
 
-    test('createRoutine sends definition.goal only when a goal is given', () async {
+    test('createRoutine sends definition.goal only when a goal is given',
+        () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
       fake.queueJson(201, {
@@ -633,7 +733,8 @@ void main() {
       });
     });
 
-    test('createRoutine omits definition entirely when no goal is given', () async {
+    test('createRoutine omits definition entirely when no goal is given',
+        () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
       fake.queueJson(201, {
@@ -655,7 +756,8 @@ void main() {
     test('createRoutine surfaces a server validation error', () async {
       final fake = FakeHttpClient();
       final client = await loggedIn(fake);
-      fake.queueJson(400, {'error': 'schedule must be a valid 5-field cron expression.'});
+      fake.queueJson(
+          400, {'error': 'schedule must be a valid 5-field cron expression.'});
 
       await expectLater(
         () => client.createRoutine('role 1', 'Bad cron', 'not-a-cron'),

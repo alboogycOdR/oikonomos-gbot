@@ -5,6 +5,20 @@ import 'package:http/http.dart' as http;
 import 'exceptions.dart';
 import 'models.dart';
 
+/// A credential scan refusal deliberately preserves the server's safe
+/// diagnostics: the affected JSON-pointer field paths and policy classes,
+/// never the credential-like source text.
+class TemplateExportRefusedException extends ApiException {
+  const TemplateExportRefusedException({
+    required this.fieldPaths,
+    required this.classes,
+  }) : super(
+            'Template export was refused because it contains credential-like content.');
+
+  final List<String> fieldPaths;
+  final List<String> classes;
+}
+
 /// TASK-144 (Mobile Wave 1a) — typed Dart client for control-api, mirroring
 /// `apps/dashboard/src/lib/api.ts`'s request/error semantics for the
 /// endpoints this task covers.
@@ -184,6 +198,74 @@ class ApiClient {
       body: {'name': name, 'description': description},
     );
     return Role.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `GET /templates` — lists templates private to the authenticated tenant.
+  Future<List<TemplateSummary>> listTemplates() async {
+    final json = await _request('GET', '/templates') as List<dynamic>;
+    return json
+        .map((entry) => TemplateSummary.fromJson(entry as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// `POST /roles/:roleId/templates`. A 422 is intentionally represented by
+  /// [TemplateExportRefusedException], so callers can show the server's
+  /// field-path/class diagnostics rather than replacing them with a generic
+  /// failure message.
+  Future<TemplateExportResult> exportRoleTemplate(
+    String roleId,
+    String name,
+  ) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/roles/${Uri.encodeComponent(roleId)}/templates'),
+      headers: _headers(),
+      body: jsonEncode({'name': name}),
+    );
+    _captureCookie(response);
+    if (response.statusCode == 401) throw const UnauthorizedError();
+    if (response.statusCode == 422) {
+      final decoded = _jsonObject(response.body);
+      throw TemplateExportRefusedException(
+        fieldPaths: _stringList(decoded['field_paths']),
+        classes: _stringList(decoded['classes']),
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _throwForError(response, response.body);
+    }
+    return TemplateExportResult.fromJson(_jsonObject(response.body));
+  }
+
+  /// `POST /templates/:id/install` — creates an independent role. Template
+  /// integrations are returned only as a checklist; this call does not grant
+  /// them.
+  Future<TemplateInstallResult> installTemplate(
+    String templateId,
+    int version, {
+    String? name,
+  }) async {
+    final trimmedName = name?.trim();
+    final json = await _request(
+      'POST',
+      '/templates/${Uri.encodeComponent(templateId)}/install',
+      body: {
+        'version': version,
+        if (trimmedName != null && trimmedName.isNotEmpty) 'name': trimmedName,
+      },
+    );
+    return TemplateInstallResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  static Map<String, dynamic> _jsonObject(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const ApiException('server returned an invalid response');
+    }
+    return decoded;
+  }
+
+  static List<String> _stringList(dynamic value) {
+    return value is List ? value.whereType<String>().toList() : const [];
   }
 
   /// `PATCH /roles/:roleId` — `{instructions: string}` is required. Send
@@ -437,7 +519,8 @@ class ApiClient {
   /// "nothing pending" rather than surfaced as errors: from the caller's
   /// perspective (polling for a card to show) both mean the same thing.
   Future<TakeoverStatus> getTakeoverStatus(String runId) async {
-    final uri = Uri.parse('$baseUrl/runs/${Uri.encodeComponent(runId)}/takeover');
+    final uri =
+        Uri.parse('$baseUrl/runs/${Uri.encodeComponent(runId)}/takeover');
     final response = await _client.get(uri, headers: _headers(json: false));
     _captureCookie(response);
     if (response.statusCode == 501 || response.statusCode == 404) {
