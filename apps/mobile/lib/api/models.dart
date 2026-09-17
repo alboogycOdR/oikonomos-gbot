@@ -432,3 +432,97 @@ class RoleHandoff {
         createdAt: json['createdAt'] as String,
       );
 }
+
+/// A tenant-scoped template returned by `GET /templates`.
+class TemplateSummary {
+  const TemplateSummary({
+    required this.templateId,
+    required this.version,
+    required this.name,
+    required this.digest,
+  });
+
+  final String templateId;
+  final int version;
+  final String name;
+  final String digest;
+
+  factory TemplateSummary.fromJson(Map<String, dynamic> json) {
+    return TemplateSummary(
+      templateId: json['templateId'] as String,
+      version: json['version'] as int,
+      name: json['name'] as String,
+      digest: json['digest'] as String,
+    );
+  }
+}
+
+/// The success response from `POST /roles/:roleId/templates`.
+class TemplateExportResult {
+  const TemplateExportResult({
+    required this.templateId,
+    required this.version,
+    required this.digest,
+  });
+
+  final String templateId;
+  final int version;
+  final String digest;
+
+  factory TemplateExportResult.fromJson(Map<String, dynamic> json) {
+    return TemplateExportResult(
+      templateId: json['templateId'] as String,
+      version: json['version'] as int,
+      digest: json['digest'] as String,
+    );
+  }
+}
+
+/// An integration a human may choose to grant after template installation.
+class GrantChecklistEntry {
+  const GrantChecklistEntry({
+    required this.capabilityId,
+    required this.requestedMaxTier,
+    required this.status,
+  });
+
+  final String capabilityId;
+  final String requestedMaxTier;
+
+  /// One of `available`, `unknown_capability`, or `disabled`.
+  final String status;
+
+  factory GrantChecklistEntry.fromJson(Map<String, dynamic> json) {
+    return GrantChecklistEntry(
+      capabilityId: json['capability_id'] as String,
+      requestedMaxTier: json['requested_max_tier'] as String,
+      status: json['status'] as String,
+    );
+  }
+}
+
+/// The role and manual-grant checklist returned after installing a template.
+class TemplateInstallResult {
+  const TemplateInstallResult({
+    required this.roleId,
+    required this.grantChecklist,
+    required this.next,
+  });
+
+  final String roleId;
+  final List<GrantChecklistEntry> grantChecklist;
+  final String next;
+
+  factory TemplateInstallResult.fromJson(Map<String, dynamic> json) {
+    final role = json['role'] as Map<String, dynamic>;
+    final checklist = json['grant_checklist'] as List<dynamic>? ?? const [];
+    return TemplateInstallResult(
+      roleId: role['roleId'] as String,
+      grantChecklist: checklist
+          .whereType<Map<String, dynamic>>()
+          .map(GrantChecklistEntry.fromJson)
+          .toList(),
+      next: json['next'] as String? ?? '',
+    );
+  }
+}

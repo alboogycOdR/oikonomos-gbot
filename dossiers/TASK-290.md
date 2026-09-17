@@ -1,0 +1,5 @@
+# TASK-290 — Mobile template UI (core)
+
+## Work Log
+
+- [2026-09-17T13:33:41Z] [CX9] Resumed on `task/TASK-290-cx9`; no review findings. Preflight result: `apps/mobile/lib/api/api_client.dart` FILE (571 lines), `apps/mobile/lib/api/models.dart` FILE (434 lines), `apps/mobile/lib/screens/templates_screen.dart` NEW (parent exists), `apps/mobile/lib/screens/chat_screen.dart` FILE (1410 lines). Implemented typed list/export/install client methods and models; export preserves 422 `field_paths` and `classes`. Added chat overflow actions for Export as template and Templates, plus template-library loading/empty/error/install states and returned grant checklist display. Validation: `flutter analyze lib/api/api_client.dart lib/api/models.dart lib/screens/chat_screen.dart lib/screens/templates_screen.dart` — no issues; `flutter test --reporter compact` — 150 passing. `git diff --check` — clean. Cannot add the acceptance-required flow-specific API/widget tests because every `apps/mobile/test/**` path is outside TASK-290 Owned_Paths under strict mode; needs an ownership extension before that criterion can be completed.

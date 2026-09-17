@@ -22,6 +22,7 @@ import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
 import 'skills_screen.dart';
 import 'takeover_screen.dart';
+import 'templates_screen.dart';
 
 /// TASK-235 (G-07 part 2b) — every takeover `kind` any current producer
 /// emits (`packages/connectors/src/steelSession.ts`'s `HumanTakeoverKind`,
@@ -232,6 +233,91 @@ class ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _exportAsTemplate() async {
+    final controller =
+        TextEditingController(text: '${widget.bot.botName} template');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share as template'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Template name'),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmedName = name?.trim();
+    if (trimmedName == null || trimmedName.isEmpty || !mounted) return;
+    try {
+      final result = await widget.apiClient.exportRoleTemplate(
+        widget.bot.roleId,
+        trimmedName,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Template created (version ${result.version}).')),
+      );
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } on TemplateExportRefusedException catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Template export refused'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Remove the secret from the source and try again.'),
+                const SizedBox(height: 12),
+                Text(
+                    'Field paths: ${error.fieldPaths.isEmpty ? 'none reported' : error.fieldPaths.join(', ')}'),
+                const SizedBox(height: 8),
+                Text(
+                    'Classes: ${error.classes.isEmpty ? 'none reported' : error.classes.join(', ')}'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Template export failed: ${error.message}')),
+      );
+    }
+  }
+
+  void _openTemplates() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TemplatesScreen(apiClient: widget.apiClient),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _subscription?.close();
@@ -305,9 +391,8 @@ class ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _secretRequestStatuses[message.id] = declined
-            ? 'Declined'
-            : 'Already decided or no longer valid.';
+        _secretRequestStatuses[message.id] =
+            declined ? 'Declined' : 'Already decided or no longer valid.';
       });
     } catch (_) {
       if (mounted) {
@@ -543,10 +628,19 @@ class ChatScreenState extends State<ChatScreen> {
             onSelected: (value) {
               if (value == 'fresh') {
                 _confirmStartFresh();
+              } else if (value == 'export-template') {
+                _exportAsTemplate();
+              } else if (value == 'templates') {
+                _openTemplates();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'fresh', child: Text('Start fresh')),
+              PopupMenuItem(
+                value: 'export-template',
+                child: Text('Export as template'),
+              ),
+              PopupMenuItem(value: 'templates', child: Text('Templates')),
             ],
           ),
           LiveAgentButton(
@@ -767,8 +861,7 @@ class ChatScreenState extends State<ChatScreen> {
               const SizedBox(height: 8),
               SecretRequestCard(
                 request: message.secretRequest!,
-                status:
-                    _secretRequestStatuses[message.id] ??
+                status: _secretRequestStatuses[message.id] ??
                     message.secretRequest!.status,
                 busy: _decidingSecretRequests.contains(message.id),
                 onProvide: (value) => _provideSecret(message, value),
