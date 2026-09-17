@@ -54,6 +54,8 @@ describe("registerCapabilities", () => {
         expect.objectContaining({ capabilityId: "workspace.rename_self", defaultTier: "T1_draft" }),
         expect.objectContaining({ capabilityId: "workspace.request_secret", defaultTier: "T3_external" }),
         expect.objectContaining({ capabilityId: "workspace.create_routine", defaultTier: "T1_draft" }),
+        expect.objectContaining({ capabilityId: "workspace.create_bot", defaultTier: "T3_external" }),
+        expect.objectContaining({ capabilityId: "workspace.retire_bot", defaultTier: "T4_irreversible" }),
       ],
     });
   });
