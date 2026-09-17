@@ -160,3 +160,69 @@ afterward.
   no retry cap and will keep trying every 2 minutes forever) is visible
   only in the logs, not pushed anywhere. Pairs naturally with TASK-230's
   latency monitoring as a future "is anything actually wrong" surface.
+
+## ORCH's own reboot recovery (2026-09-17, user request after a real power interruption)
+
+A real power cut mid-session (2026-09-17) left `control-api`/`worker`
+covered by the watchdog above, but the ORCH Claude Code session itself had
+no equivalent — the user would have had to remember to reopen it manually.
+`scripts/orch-reboot-recovery.ps1` closes that gap, registered as Windows
+Scheduled Task **`OIKONOMOS-ORCH-RebootRecovery`**.
+
+**Mechanism:** `claude -p --resume <session-id> --allowedTools "<narrow list>" -- "<check-in prompt>"`
+— a headless, one-shot resume of the standing ORCH session, scoped to a
+deliberately narrow tool allow-list (read-only git/status checks, `pnpm
+install`, `dispatch.ps1`/`test-isolated.ps1`). Anything outside that list
+is denied (fail closed) rather than hanging on an unanswerable prompt,
+since there is nobody present to answer one. Merges, pushes, and
+branch/worktree deletion are deliberately NOT on the list — those still
+wait for the user's own interactive review, per the standing review
+discipline in CLAUDE.md/COORDINATION_PROTOCOL.md. This is a narrower,
+deliberate alternative to `--dangerously-skip-permissions` — never add
+that flag here.
+
+**Trigger:** every 2 minutes, indefinitely — not `AtLogOn`. `schtasks
+/Create ... /SC ONLOGON` returns `Access is denied` in this environment
+(confirmed directly), the same elevation gap already documented above for
+the sibling watchdog; `/SC MINUTE` does not. Windows auto-logon
+(`AutoAdminLogon=1`, already set on this workstation) means the desktop is
+back unattended immediately after a reboot, so a 2-minute tick reaches the
+same outcome the denied `AtLogOn` trigger would have. The script checks
+`claude agents --json` first and skips the tick entirely if the session is
+already live and interactive (the user is back and driving it themselves).
+
+**A real, reproducible product limitation found while building this:**
+`claude --resume <id> --bg <prompt>` — the seemingly obvious mechanism —
+does **not** work for unattended kickoff. It starts a real background
+session, but the trailing prompt argument is silently never submitted; the
+session just sits idle ("send a prompt to start") until someone
+interactively `claude attach`es to it, which defeats the entire point of
+unattended recovery. This was confirmed three times (against a fresh
+session, and against a `--resume` of a live one) before switching to `-p
+--resume` instead, which does work and leaves no dangling process behind.
+Two further syntax gotchas found the same way: `--allowedTools` values
+must be comma-separated, not space-separated (space-separated silently
+swallows the trailing prompt text as if it were more tool names); and the
+prompt must follow a bare `--` so the parser cannot mistake it for more
+`--allowedTools` values.
+
+**How this was verified:** ran the actual registered scheduled task's
+script directly (not just the underlying `claude` command) twice — once
+while this ORCH session was live and interactive (correctly skipped,
+logged why) and once with the full real allow-list and check-in prompt
+invoked directly (correctly resumed the real session, read real live
+`PLAN.md` content, and replied describing exactly the scoped actions it
+would take on a genuine reboot). `claude agents --json` confirmed clean
+before and after — no dangling process or duplicate session left behind
+by the headless run, unlike the `--bg` attempts.
+
+**Known limitations:**
+- Same single-workstation caveat as the sibling watchdog: if the machine
+  is off, nothing runs regardless of any of this.
+- Not yet verified through an actual full reboot cycle — only through
+  direct invocation of the same script Task Scheduler runs. Worth
+  confirming end-to-end after the next real restart.
+- A genuinely unattended run can only make progress within its narrow
+  allow-list; anything needing a merge, push, or destructive action still
+  queues silently for the user's return rather than being reported
+  anywhere proactively (same "no alerting" gap as the sibling watchdog).
