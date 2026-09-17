@@ -87,6 +87,22 @@ export interface BotTemplateListFilter {
   templateId?: string;
 }
 
+/** Immutable provenance written when a role is installed from a template. */
+export interface RoleTemplateInstall {
+  roleId: string;
+  templateId: string;
+  version: number;
+  digest: string;
+  installedAt: Date;
+}
+
+export interface NewRoleTemplateInstall {
+  roleId: string;
+  templateId: string;
+  version: number;
+  digest: string;
+}
+
 interface BotTemplateRow extends QueryResultRow {
   template_id: string;
   version: number;
@@ -97,6 +113,14 @@ interface BotTemplateRow extends QueryResultRow {
   visibility: TemplateVisibility;
   created_by: string;
   created_at: Date;
+}
+
+interface RoleTemplateInstallRow extends QueryResultRow {
+  role_id: string;
+  template_id: string;
+  version: number;
+  digest: string;
+  installed_at: Date;
 }
 
 const botTemplateColumns = `template_id, version, tenant_id, name, manifest, digest, visibility, created_by, created_at`;
@@ -112,6 +136,16 @@ function toBotTemplate(row: BotTemplateRow): BotTemplate {
     visibility: row.visibility,
     createdBy: row.created_by,
     createdAt: row.created_at,
+  };
+}
+
+function toRoleTemplateInstall(row: RoleTemplateInstallRow): RoleTemplateInstall {
+  return {
+    roleId: row.role_id,
+    templateId: row.template_id,
+    version: row.version,
+    digest: row.digest,
+    installedAt: row.installed_at,
   };
 }
 
@@ -227,6 +261,35 @@ export async function listBotTemplates(
       params,
     );
     return result.rows.map(toBotTemplate);
+  });
+}
+
+/**
+ * Records the immutable template/version/digest a newly-created role came
+ * from. The database owns the foreign-key and one-install-per-role checks;
+ * this accessor only validates values before issuing that write.
+ */
+export async function createRoleTemplateInstall(
+  options: DatabaseOptions,
+  input: NewRoleTemplateInstall,
+): Promise<RoleTemplateInstall> {
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  const templateId = requireUuid(input.templateId, "templateId");
+  if (!Number.isInteger(input.version) || input.version < 1) {
+    throw new Error("version must be a positive integer.");
+  }
+  const digest = requireNonEmpty(input.digest, "digest");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleTemplateInstallRow>(
+      `INSERT INTO role_template_installs (role_id, template_id, version, digest)
+       VALUES ($1, $2, $3, $4)
+       RETURNING role_id, template_id, version, digest, installed_at`,
+      [roleId, templateId, input.version, digest],
+    );
+    const row = result.rows[0];
+    if (row === undefined) throw new Error("createRoleTemplateInstall did not return a persisted row.");
+    return toRoleTemplateInstall(row);
   });
 }
 

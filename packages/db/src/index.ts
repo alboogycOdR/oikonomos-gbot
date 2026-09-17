@@ -248,13 +248,16 @@ export {
 } from "./runPhaseTimings.js";
 export {
   createBotTemplate,
+  createRoleTemplateInstall,
   getBotTemplate,
   getLatestBotTemplate,
   listBotTemplates,
   templateVisibilities,
   type BotTemplate,
   type BotTemplateListFilter,
+  type NewRoleTemplateInstall,
   type NewBotTemplate,
+  type RoleTemplateInstall,
   type TemplateVisibility,
 } from "./templates.js";
 export {
