@@ -131,7 +131,16 @@ export class CapabilityRegistry {
     for (const entry of input.declared) {
       if (entries.has(entry.toolName)) throw new DuplicateToolDeclarationError(entry.toolName);
       if (!isValidDeclaration(entry)) throw new InvalidToolDeclarationError(entry.toolName);
-      entries.set(entry.toolName, Object.freeze({ ...entry }));
+      // `Object.freeze` is shallow: without also freezing `enforcedActionClasses`,
+      // a caller holding a reference to a resolved entry could mutate the
+      // SAME array `BUILTIN_TOOLS`'s own literal points at (found by
+      // adversarial review, TASK-285) -- e.g. clearing it would silently
+      // drop `workspace.retire_bot` to `default_autonomous` allow, process-
+      // wide, for every future request, with no error anywhere.
+      entries.set(entry.toolName, Object.freeze({
+        ...entry,
+        ...(entry.enforcedActionClasses === undefined ? {} : { enforcedActionClasses: Object.freeze([...entry.enforcedActionClasses]) }),
+      }));
     }
 
     const rows = await input.persisted.listCapabilities();
@@ -172,8 +181,13 @@ export class CapabilityRegistry {
           toolName,
           capabilityId: entry.capabilityId,
           defaultTier: entry.defaultTier,
-          enforcementEnabled: entry.enforcementEnabled,
-          enforcedActionClasses: entry.enforcedActionClasses,
+          // Conditional spread (adversarial review, TASK-285): a legacy
+          // capability that never declares these fields must project a
+          // RegisteredCapability with them genuinely ABSENT, not present
+          // with value `undefined` -- keeps this object's shape identical
+          // to what every pre-existing capability already produced.
+          ...(entry.enforcementEnabled === undefined ? {} : { enforcementEnabled: entry.enforcementEnabled }),
+          ...(entry.enforcedActionClasses === undefined ? {} : { enforcedActionClasses: entry.enforcedActionClasses }),
         };
       },
       getRoleGrant: async (roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null> => {
