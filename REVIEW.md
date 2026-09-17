@@ -1405,3 +1405,45 @@ TASK-281's own review. Root cause: two things, both real and both fixed in the t
   the same file twice more on the now-current master, both clean.
 
 Approved and merged (no-ff) to master.
+
+## TASK-282 | S5 | approved (after REWORK cycle) | 2026-09-17T09:35:00Z
+
+Manager-bot tools: `workspace.create_bot` (T3_external), `workspace.retire_bot`
+(T4_irreversible). Protected path (`packages/broker/**`) -- adversarial review required and
+genuinely satisfied: S5 (Claude) authored, Codex (GPT, via `codex exec review`) reviewed,
+since ORCH and S5 are both Claude Sonnet 5 and cannot review each other under this project's
+own rule.
+
+Verdict: REWORK, 3 findings. Each independently verified by ORCH, not accepted or dismissed on
+the reviewer's word alone:
+
+1. Gemini's `STAGE_TWO_MAXIMUM_TOOL_TIER=2` ceiling makes both tools unreachable via a
+   Gemini-provider bot. Confirmed real by direct code read (packages/harness-factory/src/
+   providers/gemini.ts, services/worker/src/chatRunDriver.ts:763's `maximumToolTier` wiring).
+   Confirmed NOT new: `workspace.request_secret` (T3_external, merged under TASK-272) is
+   already subject to the identical ceiling. Not blocking -- pre-existing, deliberate platform
+   constraint, not introduced by this diff.
+2. `retire_bot`'s T4 enforcement gap -- already known to ORCH and already deliberately
+   deferred to TASK-285 before this review ran. Independent confirmation, not new information.
+3. `create_bot`'s advertised title/description length bounds (JSON-schema `maxLength`) were
+   never runtime-enforced, and `description` flows verbatim into the created bot's own live
+   system prompt. Genuinely new finding -- unlike (1) and (2), not something ORCH or S5 had
+   already considered. Real injection surface once an autonomous agent, not just a human typing
+   into a form, can trigger it. FIXED: runtime length checks added to both adapters matching
+   the schema's own declared bounds (100/200/2000), 2 new tests added proving rejection.
+
+Independently re-verified after the fix: `packages/db` isolated suite 42/42 files (245 pass, 2
+skip); `packages/broker` isolated suite 15/15 files (177/177, including the manager-bot-scenario
+ADR-019 liveness test); this task's own worker test files (workspaceTools.test.ts 6/6,
+registerCapabilities.test.ts 3/3) both clean. Remaining `services/worker` suite failures
+independently root-caused as genuinely unrelated: `chatRunDriver.test.ts`/`.ts` (no sandbox
+container running on this workstation, confirmed via `docker ps`) and one order-dependent
+cross-file test-pollution finding (an earlier test mutates `email.send`'s enabled state and
+never restores it, matching TASK-162's already-tracked class).
+
+Operational note for the record: ADR-013's registration model means production (and any freshly
+`-Init`'d isolated test DB) needs `register-capabilities` re-run once after this merge, since
+boot never auto-registers new builtin tools by design -- not a defect, the documented intended
+mechanism.
+
+Approved and merged (no-ff) to master.
