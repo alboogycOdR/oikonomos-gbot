@@ -8237,7 +8237,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-278
 **Title:** Template export/import backend API (no UI) -- with the 5-class credential scan
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; specs/OIKONOMOS_TEMPLATES_v1.0.md §§ T-1/T-2
@@ -8254,12 +8254,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [2026-09-16T20:15:00Z] [ORCH] Filed as part of the user's 18-hour autopilot priority list (Tier 2, item 6). Left pending/TBD -- depends on TASK-276 landing first; will be dispatched to whichever builder frees up first.
 - [2026-09-16T22:05:00Z] [ORCH] TASK-276 done -- that dependency is met, but a NEW one surfaced: TASK-275 (CX9, in progress) also needs app.ts, and this project's own rule is two builders never touch one file concurrently. Added TASK-275 as a Depends_On for territorial reasons. Also fixed the same recurring Owned_Paths-parenthetical filing bug caught twice already this session, preemptively this time. S5 is free but has no other eligible task right now; will dispatch the moment TASK-275 clears.
 - [2026-09-16T23:50:00Z] [ORCH] TASK-275 done and merged -- both dependencies now met. Dispatching S5.
+- [2026-09-17T00:20:30Z] [SV:S5] Confirmed packages/templates (manifest schema, projectRoleToManifest, credentialPolicy.ts 5-class scan, digest) and the role_template_installs migration do not exist anywhere in the codebase -- both are T-1's territory per specs/OIKONOMOS_TEMPLATES_v1.0.md section 9 and outside this task's Owned_Paths. Identical shape to TASK-264's own descoped finding. No code written; findings and unblock options recorded in dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T23:50:00Z
+**Blocked_Reason:** MISSING_DEPENDENCY: packages/templates (schema/projection/credentialPolicy) and infra/postgres/migrations for role_template_installs do not exist and are outside Owned_Paths (services/control-api/src/templates.ts, templates.test.ts, app.ts only); per spec section 9 these are T-1's scope and must precede T-2 (this task), same pattern TASK-264 was descoped for.
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T00:20:30Z
 
 ### TASK-279
 **Title:** `chat.routes.test.ts`'s TASK-269 continuity test fails deterministically on plain master -- session_ref not seeded on the second turn
