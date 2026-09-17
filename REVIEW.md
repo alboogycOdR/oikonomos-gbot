@@ -1447,3 +1447,26 @@ boot never auto-registers new builtin tools by design -- not a defect, the docum
 mechanism.
 
 Approved and merged (no-ff) to master.
+
+## TASK-259 | S5 | approved | 2026-09-17T10:55:00Z
+
+SSE stream session re-validation: `/threads/:id/stream`'s auth was checked once at handshake;
+neither the poll timer nor the 15s heartbeat re-checked the originating session, so an expired
+or revoked session kept receiving real-time messages indefinitely on an already-open
+connection. Fixed with `sessionStillValid()`, checked on every tick, reusing the exact same
+`verifySessionPrincipal`/`revokedSessionTokens` pattern already used identically elsewhere in
+this file (not invented).
+
+- Diff clean against Owned_Paths; typecheck clean; isolated control-api suite 24/24 files,
+  306/306 tests.
+- Read the 3 new tests directly: genuinely rigorous, using a real `listen()`/`fetch()` round
+  trip rather than `app.inject()` (which cannot observe a server-initiated close of a still-open
+  stream) -- a real short-TTL session expiring mid-connection is actually force-closed, a real
+  mid-stream logout force-closes immediately, and a bearer-token connection correctly survives
+  (no session to expire).
+- S5 correctly scoped this to SSE only per its own AC's explicit allowance after checking
+  `liveAgent`/`browserTakeover` (WebSocket-upgrade routes, structurally different -- no
+  `setInterval` loop to piggyback on) and flagging rather than silently widening or dropping.
+  Confirmed directly by ORCH, filed as TASK-286.
+
+Approved and merged (no-ff) to master.
