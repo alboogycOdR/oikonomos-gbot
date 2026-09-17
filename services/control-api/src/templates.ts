@@ -209,7 +209,13 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
   app.post<{ Params: { id: string }; Body: { version?: number; name?: string; include_memories?: string[] } }>(
     "/templates/:id/install",
     async (request, reply) => {
-      if (deps.getLatestBotTemplate === undefined || deps.getBotTemplate === undefined || deps.createRoleTemplateInstall === undefined || deps.insertAuditEvent === undefined) {
+      if (
+        deps.getLatestBotTemplate === undefined ||
+        deps.getBotTemplate === undefined ||
+        deps.createRoleTemplateInstall === undefined ||
+        deps.insertAuditEvent === undefined ||
+        deps.listEnabledSkillsForRole === undefined
+      ) {
         await unavailable(reply);
         return;
       }
@@ -299,11 +305,20 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
             source: `template:${template.templateId}@${String(template.version)}`,
           });
         }
+        // TASK-293 / spec §6.1: project the role's own manifest now that
+        // every install write above has landed (skills enabled, routines
+        // paused, opted-in memories written, default-floor grants only --
+        // checklist integrations are deliberately not yet granted). That
+        // snapshot, not the template's raw manifest, is what "no drift"
+        // means for a freshly installed, unedited role -- see
+        // template-status below.
+        const baselineManifest = await projectCurrentManifest(deps, request.tenantId, role, memoryKeys);
         await deps.createRoleTemplateInstall({
           roleId: role.roleId,
           templateId: template.templateId,
           version: template.version,
           digest: template.digest,
+          baselineManifest,
         });
         const capabilities = await deps.listCapabilities();
         const grantChecklist = manifest.integrations.map((integration) => {
@@ -330,6 +345,17 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
    * the digest per top-level section with the installed version's
    * manifest." Read-only; §6.2 ("drift is shown, never auto-synced") means
    * this route never writes anything.
+   *
+   * TASK-293: compares against the install's own `baselineManifest` (the
+   * role as it actually looked the moment install finished — name
+   * override, opt-in memories, reused tenant skill bodies, un-granted
+   * checklist integrations already reflected) rather than the template's
+   * raw manifest, which install never promises to reproduce exactly.
+   * Comparing against the raw template manifest made a freshly installed,
+   * completely unedited role report false drift. Rows written before this
+   * column existed have `baselineManifest: null`; those fall back to the
+   * pre-293 template-manifest compare so legacy installs keep working,
+   * just without the corrected baseline.
    */
   app.get<{ Params: { roleId: string } }>(
     "/roles/:roleId/template-status",
@@ -350,19 +376,31 @@ export function registerTemplateRoutes(app: FastifyInstance, deps: ControlApiDep
           await reply.code(200).send({ installed_from: null, drift: false, changed: [] });
           return;
         }
-        const installedTemplate = await deps.getBotTemplate(install.templateId, install.version);
-        if (installedTemplate === null) {
-          throw new Error("installed template version is missing");
+        let compareManifest: TemplateManifest;
+        if (install.baselineManifest !== null) {
+          const baseline = asManifest(install.baselineManifest);
+          if (baseline === null) {
+            await reply.code(400).send({ error: "stored install baseline has an invalid manifest" });
+            return;
+          }
+          compareManifest = baseline;
+        } else {
+          // Legacy install row predating TASK-293's baseline_manifest column.
+          const installedTemplate = await deps.getBotTemplate(install.templateId, install.version);
+          if (installedTemplate === null) {
+            throw new Error("installed template version is missing");
+          }
+          const installedManifest = asManifest(installedTemplate.manifest);
+          if (installedManifest === null) {
+            await reply.code(400).send({ error: "stored template has an invalid manifest" });
+            return;
+          }
+          compareManifest = installedManifest;
         }
-        const installedManifest = asManifest(installedTemplate.manifest);
-        if (installedManifest === null) {
-          await reply.code(400).send({ error: "stored template has an invalid manifest" });
-          return;
-        }
-        const memoryKeys = new Set(installedManifest.memories.map((memory) => memory.key));
+        const memoryKeys = new Set(compareManifest.memories.map((memory) => memory.key));
         const currentManifest = await projectCurrentManifest(deps, request.tenantId, role, memoryKeys);
         const changed = TEMPLATE_STATUS_SECTIONS.filter(
-          (section) => !sectionsEqual(currentManifest[section], installedManifest[section]),
+          (section) => !sectionsEqual(currentManifest[section], compareManifest[section]),
         );
         await reply.code(200).send({
           installed_from: { templateId: install.templateId, version: install.version },
