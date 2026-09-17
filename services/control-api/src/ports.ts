@@ -139,6 +139,12 @@ import {
   type SandboxClient,
   type SecretResolver,
 } from "@oikonomos/sandbox-client";
+import {
+  readProfileTier as memoryReadProfileTier,
+  writeMemoryFact as memoryWriteMemoryFact,
+  type MemoryFact,
+  type NewMemoryFact,
+} from "@oikonomos/memory";
 import type { SecretRequestsPort, ThreadContextPort } from "./app.js";
 import type { LiveAgentExecdEndpoint, LiveAgentPort } from "./liveAgent.routes.js";
 import { createPushTransportFromEnv, type PushNotification, type PushTransportPort } from "./pushTransport.js";
@@ -262,6 +268,9 @@ export interface ControlApiDeps {
   /** The per-Bot enable list (`role_skills`). */
   setSkillEnabledForRole?(roleId: string, skillId: string, enabled: boolean): Promise<void>;
   listEnabledSkillsForRole?(roleId: string): Promise<Skill[]>;
+  /** Template memory is deliberately explicit at the route boundary. */
+  readProfileTier?(context: { tenantId: string; roleId: string }): Promise<MemoryFact[]>;
+  writeMemoryFact?(input: NewMemoryFact): Promise<MemoryFact>;
 }
 
 export interface CreateDatabaseBackedDepsOptions extends DatabaseOptions {
@@ -775,6 +784,8 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     listSkills: (filter) => dbListSkills(options, filter),
     setSkillEnabledForRole: (roleId, skillId, enabled) => dbSetEnabledForRole(options, roleId, skillId, enabled),
     listEnabledSkillsForRole: (roleId) => dbListEnabledForRole(options, roleId),
+    readProfileTier: (context) => memoryReadProfileTier(options, context),
+    writeMemoryFact: (input) => memoryWriteMemoryFact(options, input),
   };
 }
 
