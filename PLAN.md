@@ -8264,7 +8264,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-279
 **Title:** `chat.routes.test.ts`'s TASK-269 continuity test fails deterministically on plain master -- session_ref not seeded on the second turn
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** services/control-api/src/chat.routes.test.ts ("seeds a follow-up message's run with the thread's prior COMPLETED run's session_ref, never on the first message"); TASK-269/270 (the original continuity fix this test protects)
@@ -8281,10 +8281,11 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Progress_Notes:**
 - [2026-09-16T23:50:00Z] [ORCH] Found during TASK-275's review, confirmed pre-existing on master via two independent standalone runs, confirmed NOT caused by CX9's own stated theory. Filed at high priority given this protects the exact conversation-memory feature this session spent significant effort fixing and verifying earlier (TASK-269/270), and the Claude lane specifically cannot be live-verified right now due to the ongoing Anthropic billing gap.
 - [2026-09-16T23:52:00Z] [ORCH] Dispatching CX9 in parallel with S5 (TASK-278) -- disjoint territory, no conflict.
+- [2026-09-17T00:20:30Z] [SV:CX9] Root cause confirmed: stale ignored packages/db/dist output lacks both continuity exports despite correct source exports; recorded in dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-16T23:52:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: resolution requires rebuilding packages/db/dist/** or updating scripts/test-isolated.ps1 to build workspace dependencies, neither owned by TASK-279.
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T00:20:30Z
 
