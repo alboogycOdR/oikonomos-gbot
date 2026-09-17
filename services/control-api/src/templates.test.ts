@@ -13,11 +13,12 @@ import {
   updateRoleInstructions,
   type BotTemplate,
   type Role,
+  type RoleTemplateInstall,
 } from "@oikonomos/db";
 import { readProfileTier, writeMemoryFact } from "@oikonomos/memory";
 
 import { DEFAULT_ROLE_CAPABILITIES } from "./defaultCapabilities.js";
-import { registerTemplateRoutes } from "./templates.js";
+import { createRoleWithDefaultCapabilities, registerTemplateRoutes } from "./templates.js";
 import type { ControlApiDeps as ApiDeps } from "./ports.js";
 import { buildApp } from "./app.js";
 import { createDatabaseBackedDeps } from "./ports.js";
@@ -45,6 +46,7 @@ function routeFixture(source: Role = role()) {
   const audits: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
   const grants: string[] = [];
   const installs: string[] = [];
+  const installRows: RoleTemplateInstall[] = [];
   const deps: Partial<ApiDeps> = {
     listRoles: async () => [source],
     listEnabledSkillsForRole: async () => [],
@@ -65,12 +67,16 @@ function routeFixture(source: Role = role()) {
     insertAuditEvent: async (input) => { audits.push({ eventType: input.eventType, payload: input.payload }); },
     createRole: async (input) => role({ roleId: input.roleId, name: input.name, title: input.title, description: input.description }),
     upsertRoleGrant: async (input) => { grants.push(input.capabilityId); return input; },
-    createRoleTemplateInstall: async (input) => { installs.push(input.roleId); },
+    createRoleTemplateInstall: async (input) => {
+      installs.push(input.roleId);
+      installRows.push({ ...input, installedAt: new Date() });
+    },
+    getRoleTemplateInstall: async (roleId) => installRows.find((row) => row.roleId === roleId) ?? null,
   };
   const app = Fastify({ logger: false });
   app.addHook("preHandler", async (request) => { request.tenantId = TENANT; });
   registerTemplateRoutes(app, deps as ApiDeps);
-  return { app, templates, audits, grants, installs };
+  return { app, templates, audits, grants, installs, installRows };
 }
 
 describe("template route composition", () => {
@@ -109,6 +115,53 @@ describe("template route composition", () => {
     expect(installs).toHaveLength(1);
     expect(JSON.parse(installed.body).grant_checklist).toEqual([{ capability_id: "mail.send", requested_max_tier: "T2_internal", status: "available" }]);
     expect(audits.map((event) => event.eventType)).toEqual(["template.exported", "template.installed"]);
+    await app.close();
+  });
+
+  it("template-status reports no install and no drift for a role never installed from a template", async () => {
+    const { app } = routeFixture();
+    const result = await app.inject({ method: "GET", url: `/roles/${ROLE_ID}/template-status` });
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body)).toEqual({ installed_from: null, drift: false, changed: [] });
+    await app.close();
+  });
+
+  it("template-status reports no drift when nothing has changed since install", async () => {
+    const { app, installRows } = routeFixture();
+    const exported = await app.inject({ method: "POST", url: `/roles/${ROLE_ID}/templates`, payload: { name: "Status source" } });
+    expect(exported.statusCode).toBe(201);
+    const { templateId, version, digest } = JSON.parse(exported.body) as { templateId: string; version: number; digest: string };
+    installRows.push({ roleId: ROLE_ID, templateId, version, digest, installedAt: new Date() });
+
+    const status = await app.inject({ method: "GET", url: `/roles/${ROLE_ID}/template-status` });
+    expect(status.statusCode).toBe(200);
+    expect(JSON.parse(status.body)).toEqual({ installed_from: { templateId, version }, drift: false, changed: [] });
+    await app.close();
+  });
+
+  it("template-status reports drift naming the changed section once the role diverges from its install", async () => {
+    const source = role();
+    const { app, installRows } = routeFixture(source);
+    const exported = await app.inject({ method: "POST", url: `/roles/${ROLE_ID}/templates`, payload: { name: "Drift source" } });
+    expect(exported.statusCode).toBe(201);
+    const { templateId, version, digest } = JSON.parse(exported.body) as { templateId: string; version: number; digest: string };
+    installRows.push({ roleId: ROLE_ID, templateId, version, digest, installedAt: new Date() });
+
+    source.instructions = "Changed after install.";
+
+    const status = await app.inject({ method: "GET", url: `/roles/${ROLE_ID}/template-status` });
+    expect(status.statusCode).toBe(200);
+    const body = JSON.parse(status.body) as { installed_from: unknown; drift: boolean; changed: string[] };
+    expect(body.installed_from).toEqual({ templateId, version });
+    expect(body.drift).toBe(true);
+    expect(body.changed).toEqual(["identity"]);
+    await app.close();
+  });
+
+  it("template-status returns 404 for a role outside the tenant, never leaking existence", async () => {
+    const { app } = routeFixture();
+    const result = await app.inject({ method: "GET", url: `/roles/does-not-exist/template-status` });
+    expect(result.statusCode).toBe(404);
     await app.close();
   });
 });
@@ -206,5 +259,53 @@ integration("template export/install — production composition against real Pos
       await pool.end();
       await app.close();
     }
+  });
+
+  it("template-status: no install, no drift, then real drift after editing instructions post-install (TASK-289)", async () => {
+    const tenantId = "basileia";
+    const fixtureToken = "task-278-token";
+    const deps = createDatabaseBackedDeps({ connectionString: connectionString! });
+    const app = buildApp(deps, { authToken: fixtureToken, logger: false });
+    const headers = { authorization: `Bearer ${fixtureToken}` };
+
+    // Created via the same createRoleWithDefaultCapabilities() path install itself uses
+    // (see app.ts's POST /roles), so the source role starts with the identical default
+    // floor grants an installed role will also receive -- isolating this test's drift
+    // assertions to the one field (instructions) actually being edited, rather than
+    // an incidental mismatch in which floor capabilities each role happens to hold.
+    const sourceRole = await createRoleWithDefaultCapabilities(deps, {
+      tenantId, name: `status-${Date.now()}`, title: "Status Source", description: "TASK-289 status check.",
+    });
+    const sourceId = sourceRole.roleId;
+
+    const beforeInstall = await app.inject({ method: "GET", url: `/roles/${sourceId}/template-status`, headers });
+    expect(beforeInstall.statusCode).toBe(200);
+    expect(JSON.parse(beforeInstall.body)).toEqual({ installed_from: null, drift: false, changed: [] });
+
+    const exported = await app.inject({ method: "POST", url: `/roles/${sourceId}/templates`, headers, payload: { name: "Status round trip" } });
+    expect(exported.statusCode).toBe(201);
+    const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number };
+    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version } });
+    expect(installed.statusCode).toBe(201);
+    const installedRoleId = JSON.parse(installed.body).role.roleId as string;
+
+    const noDrift = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(noDrift.statusCode).toBe(200);
+    expect(JSON.parse(noDrift.body)).toEqual({
+      installed_from: { templateId: exportedBody.templateId, version: exportedBody.version },
+      drift: false,
+      changed: [],
+    });
+
+    await updateRoleInstructions({ connectionString: connectionString! }, installedRoleId, "Edited after install -- this should drift.");
+
+    const afterDrift = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(afterDrift.statusCode).toBe(200);
+    const driftBody = JSON.parse(afterDrift.body) as { installed_from: unknown; drift: boolean; changed: string[] };
+    expect(driftBody.installed_from).toEqual({ templateId: exportedBody.templateId, version: exportedBody.version });
+    expect(driftBody.drift).toBe(true);
+    expect(driftBody.changed).toEqual(["identity"]);
+
+    await app.close();
   });
 });
