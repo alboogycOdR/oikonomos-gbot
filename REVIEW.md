@@ -1625,3 +1625,34 @@ the mobile counterpart to TASK-283's already-shipped dashboard templates UI, sam
 
 Merged `--no-ff` to master. Unlocks nothing further by itself; TASK-291 (drift badge) still needs
 TASK-289 (drift-detection endpoint) to land first.
+
+## TASK-289 | S5 | approved | 2026-09-17T16:55:00Z
+
+`GET /roles/:roleId/template-status` drift-detection endpoint (ADR-018/spec S6.1), the mobile
+template UI's drift-badge dependency -- the real backend gap found while scoping TASK-290.
+
+- Diff clean against Owned_Paths (packages/db/src/templates.ts + index.ts, services/control-api/
+  src/ports.ts + templates.ts + templates.test.ts, plus the dossier).
+- Read the route directly: re-projects the role's live state via a shared `projectCurrentManifest()`
+  helper (refactored out of the existing export route, now reused by both), compares section-by-
+  section against the installed template version's own manifest via a structural `sectionsEqual()`
+  (deliberately not a digest -- the manifest round-trips through jsonb, which does not preserve key
+  order, so a naive stringify/digest would false-flag drift on an unchanged role). All 3 spec cases
+  covered: null install, no-drift, and named-section drift; plus a real Postgres integration test
+  exercising all three end-to-end through the actual export/install routes.
+- Rebuilt the full dependency chain by hand: `@oikonomos/db` 42/42 files, 248/250 tests (2 pre-
+  existing skips) clean; `@oikonomos/control-api` 24/24 files, 328/328 tests clean on two
+  consecutive runs (first run's single 5000ms timeout on a pre-existing TASK-278 test reproduced as
+  a clean 782ms pass in isolation -- pool-contention flake under full-package parallelism, same
+  class as the already-documented TASK-162 finding, not a regression).
+- Full recursive suite surfaces 3 failures (packages/sandbox-client, evals/harness, services/worker),
+  all traced to one shared root cause: a live OpenSandbox/clawsrv infra outage
+  (`DOCKER::SANDBOX_START_FAILED` on every real sandbox-creation call). Confirmed unrelated to this
+  diff -- neither package is touched, and sandbox-client passes 25/25 in isolation.
+
+**Process finding, not a rework item:** the dispatched S5 session ended without ever emitting a
+devteam-control report block (`.done` marker: `UNREPORTED`), despite the commit being real and
+complete. Reviewed entirely from scratch rather than trusted, per this session's own standing
+discipline. Second occurrence of this exact failure mode on this same task.
+
+Merged `--no-ff` to master. Unlocks TASK-291 (drift badge) together with TASK-290, both now done.
