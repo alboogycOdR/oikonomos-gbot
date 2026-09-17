@@ -61,6 +61,7 @@ describe("resolveEnforcement", () => {
     "E3_local_machine_execution",
     "E4_secret_handling",
     "E5_d3_path_access",
+    "E6_irreversible_role_mutation",
   ] as const)("keeps %s enforced despite a maximally permissive rule set", (actionClass) => {
     expect(
       resolveEnforcement(

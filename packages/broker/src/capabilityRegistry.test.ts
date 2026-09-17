@@ -143,6 +143,21 @@ describe("CapabilityRegistry resolution ports", () => {
     expect(store.getCapability).toHaveBeenCalledTimes(4);
   });
 
+  it("propagates declared enforcement metadata to the real broker port", async () => {
+    const enforced: DeclaredTool = {
+      ...gmail,
+      enforcementEnabled: true,
+      enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    };
+    const store = reader(rowsFor([enforced]));
+    const registry = await CapabilityRegistry.build({ declared: [enforced], persisted: store });
+
+    await expect(registry.brokerPorts(store).getCapability(enforced.toolName)).resolves.toMatchObject({
+      enforcementEnabled: true,
+      enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    });
+  });
+
   it("keeps declared-disabled capabilities out of ports and mounts regardless of grants", async () => {
     const disabled = { ...gmail, capabilityId: "project.create_role", enabled: false };
     const store = reader(rowsFor([disabled]), new Map([[`manager:${disabled.capabilityId}`, "T4_irreversible"]]));

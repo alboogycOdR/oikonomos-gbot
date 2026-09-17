@@ -73,5 +73,7 @@ export const BUILTIN_TOOLS = Object.freeze([
     adapter: "mcp:workspace",
     mcpServerName: "workspace",
     enabled: true,
+    enforcementEnabled: true,
+    enforcedActionClasses: ["E6_irreversible_role_mutation"],
   },
 ] as const satisfies readonly DeclaredTool[]);

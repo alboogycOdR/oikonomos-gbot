@@ -1,4 +1,4 @@
-import type { RiskTier } from "@oikonomos/policy";
+import type { EnforcedActionClass, RiskTier } from "@oikonomos/policy";
 
 import type { BrokerDependencies, RegisteredCapability, RoleGrantCeiling } from "./index.js";
 
@@ -8,6 +8,10 @@ export interface DeclaredTool {
   readonly defaultTier: RiskTier;
   readonly adapter: string;
   readonly enabled: boolean;
+  /** Opts this declaration into the policy enforcement resolver. */
+  readonly enforcementEnabled?: boolean;
+  /** Fixed-floor classifications propagated to the broker at call time. */
+  readonly enforcedActionClasses?: readonly EnforcedActionClass[];
   /** Connector server identity used only to close C2's raw SDK-name contract. */
   readonly mcpServerName?: string;
 }
@@ -164,7 +168,13 @@ export class CapabilityRegistry {
         if (entry === null || entry.enabled !== true) return null;
         const row = await persisted.getCapability(entry.capabilityId);
         if (row === null || row.enabled !== true || row.defaultTier !== entry.defaultTier || row.adapter !== entry.adapter) return null;
-        return { toolName, capabilityId: entry.capabilityId, defaultTier: entry.defaultTier };
+        return {
+          toolName,
+          capabilityId: entry.capabilityId,
+          defaultTier: entry.defaultTier,
+          enforcementEnabled: entry.enforcementEnabled,
+          enforcedActionClasses: entry.enforcedActionClasses,
+        };
       },
       getRoleGrant: async (roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null> => {
         const row = await persisted.getRoleGrant(roleId, capabilityId);
