@@ -166,6 +166,26 @@ void main() {
       expect(request.url.path, '/templates/template%201/install');
       expect(jsonDecode(request.body), {'version': 3});
     });
+
+    test('gets a role template status and parses changed sections', () async {
+      final fake = FakeHttpClient();
+      final client = await _loggedInForTemplates(fake);
+      fake.queueJson(200, {
+        'installed_from': {'templateId': 'template-1', 'version': 3},
+        'drift': true,
+        'changed': ['identity', 'skills'],
+      });
+
+      final status = await client.getRoleTemplateStatus('role 1');
+
+      expect(status.installedFrom?.templateId, 'template-1');
+      expect(status.installedFrom?.version, 3);
+      expect(status.drift, isTrue);
+      expect(status.changed, ['identity', 'skills']);
+      final request = fake.requests.last;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/roles/role%201/template-status');
+    });
   });
 
   group('ApiClient.loginWithGoogle', () {

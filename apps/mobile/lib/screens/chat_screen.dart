@@ -79,6 +79,7 @@ class ChatScreenState extends State<ChatScreen> {
   bool _uploading = false;
   String? _uploadError;
   bool _skillPickerOpen = false;
+  TemplateStatus? _templateStatus;
 
   /// TASK-235 (G-07 part 2b) — [TakeoverCard] wiring. Polled rather than
   /// pushed: there is no SSE event for "a run parked on a human-takeover
@@ -103,11 +104,27 @@ class ChatScreenState extends State<ChatScreen> {
     super.initState();
     _load();
     _loadHandoffs();
+    _loadTemplateStatus();
     _pollTakeover();
     _takeoverPollTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) => _pollTakeover(),
     );
+  }
+
+  /// Template status is informational only: §6.2 explicitly forbids
+  /// auto-syncing or offering an upgrade action in v1. A failed status fetch
+  /// must not prevent the chat itself from being usable.
+  Future<void> _loadTemplateStatus() async {
+    try {
+      final status =
+          await widget.apiClient.getRoleTemplateStatus(widget.bot.roleId);
+      if (mounted) setState(() => _templateStatus = status);
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // Supplemental decoration: retain the normal chat experience on error.
+    }
   }
 
   /// The thread's most recent message with a real run attached — see this
@@ -617,7 +634,40 @@ class ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(widget.bot.botName, overflow: TextOverflow.ellipsis),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.bot.botName,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_templateStatus?.drift == true) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message:
+                          'Modified since install: ${_templateStatus!.changed.join(', ')}',
+                      child: Container(
+                        key: const Key('template-drift-badge'),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'Modified: ${_templateStatus!.changed.join(', ')}',
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),

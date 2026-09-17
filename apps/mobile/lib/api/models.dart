@@ -526,3 +526,51 @@ class TemplateInstallResult {
     );
   }
 }
+
+/// The install origin and drift state returned by
+/// `GET /roles/:roleId/template-status`.
+///
+/// A null [installedFrom] deliberately means the role was never installed
+/// from a template, rather than an unavailable status result.
+class TemplateStatus {
+  const TemplateStatus({
+    required this.installedFrom,
+    required this.drift,
+    required this.changed,
+  });
+
+  final TemplateInstallSource? installedFrom;
+  final bool drift;
+  final List<String> changed;
+
+  factory TemplateStatus.fromJson(Map<String, dynamic> json) {
+    final installedFrom = json['installed_from'];
+    return TemplateStatus(
+      installedFrom: installedFrom is Map<String, dynamic>
+          ? TemplateInstallSource.fromJson(installedFrom)
+          : null,
+      drift: json['drift'] as bool? ?? false,
+      changed: (json['changed'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+    );
+  }
+}
+
+/// Identifies the immutable template version from which a role was installed.
+class TemplateInstallSource {
+  const TemplateInstallSource({
+    required this.templateId,
+    required this.version,
+  });
+
+  final String templateId;
+  final int version;
+
+  factory TemplateInstallSource.fromJson(Map<String, dynamic> json) {
+    return TemplateInstallSource(
+      templateId: json['templateId'] as String,
+      version: json['version'] as int,
+    );
+  }
+}
