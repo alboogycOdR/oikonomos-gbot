@@ -34,6 +34,16 @@ describe("App auth flow", () => {
     expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
   });
 
+  it("keeps the templates library behind the same authentication guard", () => {
+    render(
+      <MemoryRouter initialEntries={["/templates"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
+  });
+
   /**
    * TASK-243 (spec §2.6, §7) — `/workspace/:threadId/results` and
    * `.../work` are new routes this task adds; they must be guarded by
