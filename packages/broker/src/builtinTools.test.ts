@@ -29,7 +29,10 @@ describe("BUILTIN_TOOLS", () => {
     // points at would stay mutable at the true source, regardless of any
     // defensive copy CapabilityRegistry.build makes downstream.
     const retireBot = BUILTIN_TOOLS.find((tool) => tool.toolName === "mcp__workspace__retire_bot");
-    expect(Object.isFrozen(retireBot?.enforcedActionClasses)).toBe(true);
+    // Object.isFrozen(undefined) is true (primitives are always "frozen"),
+    // so this would pass vacuously if the entry were ever missing/renamed.
+    expect(retireBot).toBeDefined();
+    expect(Object.isFrozen(retireBot!.enforcedActionClasses)).toBe(true);
   });
 });
 
