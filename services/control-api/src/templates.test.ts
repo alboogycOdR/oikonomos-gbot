@@ -49,6 +49,7 @@ function routeFixture(source: Role = role()) {
     listRoles: async () => [source],
     listEnabledSkillsForRole: async () => [],
     listRoutines: async () => [],
+    listRoleGrants: async () => [],
     listCapabilities: async () => [
       { capabilityId: "fs.read", description: "read", defaultTier: "T0_observe", adapter: "sdk:builtin", enabled: true },
       { capabilityId: "mail.send", description: "mail", defaultTier: "T2_internal", adapter: "mcp", enabled: true },
