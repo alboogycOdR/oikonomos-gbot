@@ -1470,3 +1470,25 @@ this file (not invented).
   Confirmed directly by ORCH, filed as TASK-286.
 
 Approved and merged (no-ff) to master.
+
+## TASK-286 | S5 | approved | 2026-09-17T11:30:00Z
+
+WebSocket session re-validation for `liveAgent`/`browserTakeover`, the follow-up to TASK-259's
+SSE fix. Both routes now run a dedicated periodic re-check (`startSessionRevalidation`, since a
+WS upgrade has no existing timer to piggyback on the way SSE's poll/heartbeat did), force-
+closing both relay legs the moment the originating session's signature/expiry check fails.
+
+- Diff clean against Owned_Paths; typecheck clean; isolated control-api suite 24/24 files,
+  310/310 tests.
+- Read the fix directly: careful, well-commented code -- correctly distinguishes `.destroy()`
+  from `.end()` for a WS-upgraded socket (outside Node's HTTP connection bookkeeping), correctly
+  clears its own timer on connection close.
+- Honestly disclosed a real scope limitation rather than silently dropping or over-widening: the
+  fix checks signature+expiry only, not the session-revocation store (explicit logout), since
+  that store lives in `app.ts` and isn't threaded through these routes' registration options.
+  Filed as TASK-287.
+- 4 new tests confirmed matching TASK-259's own rigor: real loopback TCP + real WS handshake +
+  real elapsing clock for liveAgent viewer, liveAgent takeover, and browserTakeover, plus a
+  bearer-exemption negative control.
+
+Approved and merged (no-ff) to master.
