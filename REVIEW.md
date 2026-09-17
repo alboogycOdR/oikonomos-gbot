@@ -1330,3 +1330,30 @@ The landed implementation, once properly scoped and specified: `evaluateGroupRoo
 - Checked real live production data as a sanity check: session continuity is genuinely carrying correctly across 5 consecutive real runs today, so TASK-279 does not appear to be breaking real usage — though the Claude lane specifically can't be live-verified while Anthropic billing remains down, which TASK-279 records honestly as an open uncertainty rather than a closed one.
 
 Approved and merged.
+
+## TASK-278 | CX9 | approved | 2026-09-17T05:22:00Z
+
+Template export/import backend API (ADR-018): `POST /roles/:id/templates`, `GET /templates`,
+`POST /templates/:id/install`. Blocked 4 times total across this task's life (MISSING_DEPENDENCY
+on packages/templates -> split to TASK-280; two OWNERSHIP_CONFLICTs widening into ports.ts/
+index.ts/package.json and then packages/db/src/templates.ts; a final one-line barrel-export gap
+in packages/db/src/index.ts) -- each block was a real, legitimate finding, not builder error.
+
+- `git diff mainco/master...HEAD --stat`: all 8 changed files within Owned_Paths.
+- Rebuilt `@oikonomos/db` and `@oikonomos/templates` directly: clean.
+- Typechecked `@oikonomos/control-api` directly: clean.
+- Re-ran the full isolated control-api suite twice myself (not delegated, not trusted from the
+  control-summary): first run had 1 failure in an unrelated pre-existing TASK-155 approvals test
+  (run.queued audit assertion) -- confirmed via diff inspection that this task's changes never
+  touch the approval-decide path or pg-boss queuing; second run passed clean, 24/24 files,
+  303/303 tests, confirming pre-existing flakiness (same class as the still-open TASK-162
+  finding), not a regression.
+- Read templates.test.ts directly and confirmed the ADR-018 §2 liveness assertion is real: it
+  exports a role with a fragment-assembled key-shaped string through `buildApp`'s actual
+  DB-backed production composition (not the pure `scanManifestForCredentials` function in
+  isolation), keyed on refusal + a real `audit_events` row queried from Postgres + zero
+  persisted templates.
+- Round-trip integration test (export -> install -> new role, distinct role_id, correct default
+  capability floor) verified present and gated on real `DATABASE_URL`.
+
+Approved and merged (no-ff) to master as part of the 7e9d0bd merge commit.
