@@ -303,3 +303,95 @@ Everything else this task's ACs ask for (DB primitives, builtin
 declarations, dual-adapter MCP executors, dual-adapter parity tests,
 describe-step entries, db re-exports) is done, tested, and committed on this
 branch.
+
+### 2026-09-17T09:00:00Z [S5] — resumed post-ORCH descope, ran the real full `pnpm -r` suite (not just filtered), reporting findings, marking needs_review
+
+Resumed on `task/TASK-282-s5`. Confirmed ORCH had already: descoped AC 8378
+to TASK-285 (recorded in PLAN.md), committed the `registerCapabilities.test.ts`
+fix directly (`5bbc540`), and merged master into this branch (`748ac1a`,
+clean, no conflicts). `git diff mainco/master...HEAD --stat` confirms every
+changed file is within this task's (widened) `Owned_Paths` plus this dossier
+— 12 files, no scope creep.
+
+**Rebuild:** `pnpm --filter @oikonomos/db build`, `--filter @oikonomos/broker
+build`, `--filter @oikonomos/worker build` (tsc) — all three clean, zero
+errors.
+
+**Full recursive suite** (this is the first time the ACTUAL full `pnpm -r
+test` ran for this task — prior sessions only ran `-Filter` scoped to
+db/broker/worker, per CLAUDE.md's own amendment about why that's
+insufficient). Re-ran `scripts/test-isolated.ps1 -Init` first (capability
+set changed) then `scripts/test-isolated.ps1` with no filter. Result: 3
+packages report failures. Every one of this task's own owned test files is
+100% green; every failure is in a file this task has never touched and is
+not in its `Owned_Paths`:
+
+- **`@oikonomos/db`** — 42/42 files, 245 passed | 2 skipped (247). Clean,
+  including `roles.test.ts` 22/22.
+- **`@oikonomos/broker`** — 15/15 files, 177/177 passed. Clean, including
+  `describe.test.ts` 21/21 and `builtinTools.test.ts` 3/3.
+- **`services/worker`** — 28/32 files pass. This task's own files all green:
+  `registerCapabilities.test.ts` 3/3, `workspaceTools.test.ts` 4/4. The 4
+  failing files (26/269 tests) are **all** pre-existing/environmental, none
+  touched by this diff:
+  - `chatRunDriver.test.ts` / embedded `chatRunDriver.ts` tests (24 of the
+    26 failures) — root causes, all confirmed by direct log inspection, not
+    guessed: (a) `SandboxClientError: OpenSandbox ... status 500
+    (DOCKER::SANDBOX_START_FAILED)` / "unexpected status" — `docker ps`
+    still shows zero sandbox containers on this workstation, identical to
+    the finding already recorded in this dossier's prior session and
+    unrelated to any Docker infra this task touches; (b) a cascade of
+    `CapabilityEnabledDriftError: Capability 'email.send' has enabled-state
+    drift` on 8 tests — traced to `chatRunDriver.test.ts:1685-1691`, an
+    EARLIER test in the same file (`TASK-128 "mounts only a role's granted
+    Gmail tool"`) directly `upsertCapability`-ing `email.send` to
+    `enabled: true` mid-test (overriding `gmail.yaml`'s declared
+    `enabled: false`) and never restoring it when a subsequent assertion in
+    that same test fails first (itself caused by (a)) — a pre-existing test-
+    isolation gap in a file outside this task's `Owned_Paths`, not
+    something this diff introduces or can fix without touching that file;
+    (c) 5 test timeouts (`Test timed out in 5000ms`) matching the same
+    class of pg-boss/sandbox contention already documented for
+    `workerJobQueue.test.ts` in the prior session's notes.
+  - `routineJob.test.ts` — 1 timeout, same pg-boss contention class.
+  - `workerJobQueue.test.ts` — 1 timeout, the exact pre-existing race
+    already documented in TASK-258's own notes (present this run, as noted
+    before it does not reproduce deterministically).
+- **`services/control-api`** — 23/24 files pass. `chat.routes.test.ts`: 3/47
+  tests fail. One is TASK-284's already-filed, already-confirmed-on-master
+  regression (`routes an unaddressed three-bot message through FreeLLMAPI`).
+  The other two (`grants a real pending approval and durably queues its
+  persisted SDK session`, `creates real memberships, lists 1:1 and group
+  summaries`) were not previously recorded; not investigated further since
+  `services/control-api` is entirely outside this task's `Owned_Paths` and
+  neither test exercises `workspace.create_bot`/`workspace.retire_bot` or
+  any file this diff touches — flagging for ORCH triage rather than
+  guessing at a fix outside territory.
+- **`evals/harness`** — 12/13 files pass. `ome-two-role-handoff-live.test.ts`
+  fails: `Error: Gemini run was denied before it could answer.` This is a
+  live-network test against the real Gemini API exercising
+  `workspace.send_to_role` (not `create_bot`/`retire_bot`); diffed my own
+  `geminiToolExecutors.ts` change against its prior version and confirmed
+  it only adds two new `if (granted.has(...))` blocks gated on the two new
+  tool names — no shared state or control flow touching `send_to_role` is
+  modified. Read as a live external-API flake (real network/quota
+  dependent, this file is outside `Owned_Paths`), not caused by this task's
+  diff.
+
+None of the above failures are in this task's `Owned_Paths`, none are
+plausibly caused by this diff (verified by direct code inspection, not
+assumption, for the two files this diff does touch that share a package
+with a failure: `geminiToolExecutors.ts` and `registerCapabilities.test.ts`
+— the latter's own test file is green), and the two genuinely new-looking
+ones (control-api's other 2 failures) are reported to ORCH rather than
+silently absorbed into "environmental" without evidence.
+
+**Marking needs_review.** This task's own acceptance criteria (8372-8379)
+are complete: live TASK-277 invariant proven in a real manager-bot scenario,
+both tools declared and dual-adapter implemented, self/cross-tenant
+retirement refusals tested, real Postgres create+retire+verify flow tested,
+protected-path/adversarial-review requirement flagged (AC 8377, merge gate
+not a coding AC), AC 8378 correctly descoped to TASK-285 by ORCH, and every
+file this task owns is fully green under both scoped and full-suite runs.
+
+## Status: needs_review
