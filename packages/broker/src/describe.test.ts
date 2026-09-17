@@ -8,6 +8,7 @@ import { ALLOWLIST_MISS_REASON } from "./recheck.js";
 import {
   APPROVAL_TIER,
   TARGET_MAX_CHARS,
+  builtinDescribers,
   describeOrDeny,
   describeToolCall,
   formatDescribedAction,
@@ -257,6 +258,30 @@ describe("describeOrDeny — ADR-004 render provenance", () => {
     expect(formatDescribedAction(swappedDestination.description)).not.toBe(firstRender);
     expect(first.description.target).toContain("review@example.test");
     expect(swappedInput.description.target).toContain("eve@example.test");
+  });
+});
+
+describe("builtinDescribers — TASK-282 manager-bot tools", () => {
+  it("describes create_bot from its `name` input", () => {
+    const call: ToolCall = {
+      toolName: "mcp__workspace__create_bot",
+      input: { name: "chief-of-staff", title: "Chief of Staff" },
+    };
+    expect(describeToolCall(call, builtinDescribers)).toEqual({
+      action: "create bot",
+      target: "chief-of-staff",
+    });
+  });
+
+  it("describes retire_bot from its `roleId` input, never the caller's own id", () => {
+    const call: ToolCall = {
+      toolName: "mcp__workspace__retire_bot",
+      input: { roleId: "role-to-retire" },
+    };
+    expect(describeToolCall(call, builtinDescribers)).toEqual({
+      action: "retire bot",
+      target: "role-to-retire",
+    });
   });
 });
 

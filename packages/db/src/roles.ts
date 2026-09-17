@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
+import type { RiskTier } from "./types.js";
 
 /**
  * TASK-084 / Addendum F §3.1 (F4) — `role_id` becomes a real D0 identity.
@@ -259,6 +262,171 @@ export async function listRoles(
     );
     return result.rows.map(toRole);
   });
+}
+
+/**
+ * TASK-282 — the default capability floor a bot gets when another bot
+ * creates it via `workspace.create_bot`. Deliberately mirrors
+ * `services/control-api/src/defaultCapabilities.ts`'s `DEFAULT_ROLE_CAPABILITIES`
+ * (the human-facing `POST /roles` floor) byte-for-byte: a manager-created bot
+ * must start with exactly the same default floor a human-created one gets,
+ * never a wider one — a bot-creation path is not a place to smuggle in an
+ * extra capability nobody reviewed for that route. It is duplicated here
+ * rather than imported because `packages/db` has no dependency on
+ * `services/control-api` (separate services); keep the two lists in
+ * lockstep by inspection whenever either changes.
+ */
+export const MANAGER_BOT_DEFAULT_CAPABILITIES = Object.freeze([
+  "fs.read",
+  "fs.write",
+  "runtime.bash",
+  "browser.session",
+  "browser.navigate",
+  "browser.read",
+  "browser.screenshot",
+  "workspace.rename_self",
+  "workspace.send_to_role",
+  "workspace.create_routine",
+] as const);
+
+interface DefaultCapabilityRow extends QueryResultRow {
+  capability_id: string;
+  default_tier: RiskTier;
+}
+
+/**
+ * The one role-creation path a manager bot's `workspace.create_bot` tool
+ * uses, mirroring `createRoleWithDefaultCapabilities` in
+ * `services/control-api/src/templates.ts` (the human/template path): create
+ * the role, then grant it every enabled capability in
+ * `MANAGER_BOT_DEFAULT_CAPABILITIES` at that capability's live
+ * manifest-declared `default_tier` — never a hardcoded tier, so drift
+ * between this floor and the reviewed capability table is impossible.
+ */
+export interface NewBotRoleInput {
+  tenantId: string;
+  name: string;
+  title: string;
+  description?: string;
+}
+
+export async function createRoleWithDefaultCapabilities(
+  options: DatabaseOptions,
+  input: NewBotRoleInput,
+): Promise<Role> {
+  const role = await createRole(options, { roleId: randomUUID(), ...input });
+
+  return withPool(options, async (pool) => {
+    const capabilities = await pool.query<DefaultCapabilityRow>(
+      `SELECT capability_id, default_tier FROM capabilities
+       WHERE enabled = true AND capability_id = ANY($1::text[])`,
+      [[...MANAGER_BOT_DEFAULT_CAPABILITIES]],
+    );
+    await Promise.all(capabilities.rows.map((row) =>
+      pool.query(
+        `INSERT INTO role_grants (role_id, capability_id, max_tier, constraints)
+         VALUES ($1, $2, $3, '{}'::jsonb)
+         ON CONFLICT (role_id, capability_id) DO UPDATE SET max_tier = EXCLUDED.max_tier`,
+        [role.roleId, row.capability_id, row.default_tier],
+      ),
+    ));
+    return role;
+  });
+}
+
+/**
+ * Generic status transition, used today only by `retireRole` below. Kept
+ * separate (rather than folded into `retireRole`) so a future direct status
+ * change (e.g. a human re-activating a hidden role) has a function to call
+ * without re-deriving the retirement policy.
+ */
+export async function updateRoleStatus(
+  options: DatabaseOptions,
+  roleId: string,
+  status: RoleStatus,
+): Promise<Role | null> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+  const normalizedStatus = requireRoleStatus(status, "status");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `UPDATE roles
+       SET status = $2,
+           updated_at = now()
+       WHERE role_id = $1
+       RETURNING ${roleColumns}`,
+      [normalizedRoleId, normalizedStatus],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
+  });
+}
+
+export type RoleRetirementErrorCode = "self_retirement" | "not_found" | "cross_tenant";
+
+/**
+ * Thrown by `retireRole` so callers (the Claude and Gemini tool executors)
+ * can map each denial to a stable, non-generic message without re-deriving
+ * the policy themselves — the exact parity `workspace.retire_bot` needs
+ * across both adapters.
+ */
+export class RoleRetirementError extends Error {
+  public readonly code: RoleRetirementErrorCode;
+
+  public constructor(code: RoleRetirementErrorCode, message: string) {
+    super(message);
+    this.name = "RoleRetirementError";
+    this.code = code;
+  }
+}
+
+/**
+ * TASK-282 — `workspace.retire_bot`'s one enforcement point, shared
+ * verbatim by both adapters. A bot may never retire itself or a role
+ * outside its own tenant; retirement never deletes the row (no destructive
+ * delete exists in this codebase's role model, per this task's own
+ * acceptance criteria, and none is introduced here) — it moves `status` to
+ * `hidden`.
+ *
+ * NOTE on `hidden` vs. the literal word "inactive": `roles_status_check`
+ * (infra/postgres/migrations/004_roles_routines_rules.up.sql) only allows
+ * `active | hidden | deleted`, and `infra/postgres/migrations/**` is outside
+ * this task's Owned_Paths, so adding a fourth `inactive` value would require
+ * a migration this builder is not authorised to write. `hidden` is reused as
+ * the retirement target rather than `deleted`, because `deleted` already
+ * carries a distinct "gone" meaning elsewhere in this codebase (see the
+ * `status: "deleted"` fixture in `services/worker/src/roleMessageDelivery.ts`),
+ * and `hidden` is otherwise unused for any live product behaviour today.
+ * Functionally this satisfies the acceptance criterion's actual intent — a
+ * soft, non-destructive deactivation distinguishable from `active` — under
+ * a different literal status string. Flagged here for ORCH/review to
+ * confirm or to file a follow-up migration task if the literal string
+ * `inactive` is required.
+ */
+export async function retireRole(
+  options: DatabaseOptions,
+  input: { tenantId: string; callerRoleId: string; targetRoleId: string },
+): Promise<Role> {
+  const targetRoleId = requireNonEmpty(input.targetRoleId, "targetRoleId");
+  const callerRoleId = requireNonEmpty(input.callerRoleId, "callerRoleId");
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+
+  if (targetRoleId === callerRoleId) {
+    throw new RoleRetirementError("self_retirement", "A bot may not retire itself.");
+  }
+
+  const target = await getRole(options, targetRoleId);
+  if (target === null) {
+    throw new RoleRetirementError("not_found", `Role '${targetRoleId}' was not found.`);
+  }
+  if (target.tenantId !== tenantId) {
+    throw new RoleRetirementError("cross_tenant", "A bot may not retire a role outside its own tenant.");
+  }
+
+  const updated = await updateRoleStatus(options, targetRoleId, "hidden");
+  if (updated === null) {
+    throw new RoleRetirementError("not_found", `Role '${targetRoleId}' was not found.`);
+  }
+  return updated;
 }
 
 if (import.meta.vitest) {

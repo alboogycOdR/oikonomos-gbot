@@ -1,5 +1,12 @@
 import { parseRequestSecretInput } from "@oikonomos/broker";
-import { createSecretRequest, insertAuditEvent, updateRoleName } from "@oikonomos/db";
+import {
+  createRoleWithDefaultCapabilities,
+  createSecretRequest,
+  insertAuditEvent,
+  retireRole,
+  RoleRetirementError,
+  updateRoleName,
+} from "@oikonomos/db";
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
 import { sendToRole } from "@oikonomos/workspace";
@@ -687,6 +694,49 @@ function parseRenameSelfInput(arguments_: Record<string, unknown>): string {
   return arguments_.name;
 }
 
+/** Real behavior mirrored from `workspaceMcpServer.ts`'s `create_bot` handler. */
+const createBotInputSchema = {
+  type: "object",
+  required: ["name", "title"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 100 },
+    title: { type: "string", minLength: 1, maxLength: 200 },
+    description: { type: "string", maxLength: 2000 },
+  },
+} as const;
+
+/** Real behavior mirrored from `workspaceMcpServer.ts`'s `retire_bot` handler. */
+const retireBotInputSchema = {
+  type: "object",
+  required: ["roleId"],
+  properties: { roleId: { type: "string", minLength: 1 } },
+} as const;
+
+function parseCreateBotInput(arguments_: Record<string, unknown>): { name: string; title: string; description?: string } {
+  if (typeof arguments_.name !== "string" || arguments_.name.trim().length === 0) throw new Error("create_bot requires a non-empty string name.");
+  if (arguments_.name.length > 100) throw new Error("create_bot's name must be at most 100 characters.");
+  if (typeof arguments_.title !== "string" || arguments_.title.trim().length === 0) throw new Error("create_bot requires a non-empty string title.");
+  if (arguments_.title.length > 200) throw new Error("create_bot's title must be at most 200 characters.");
+  if (arguments_.description !== undefined && typeof arguments_.description !== "string") throw new Error("create_bot's description must be a string.");
+  // See workspaceMcpServer.ts's toCreateBotInput for why this is enforced at
+  // runtime, not just declared in the tool schema (TASK-282 adversarial review).
+  if (typeof arguments_.description === "string" && arguments_.description.length > 2000) {
+    throw new Error("create_bot's description must be at most 2000 characters.");
+  }
+  return {
+    name: arguments_.name,
+    title: arguments_.title,
+    ...(arguments_.description === undefined ? {} : { description: arguments_.description }),
+  };
+}
+
+function parseRetireBotInput(arguments_: Record<string, unknown>): string {
+  if (Object.keys(arguments_).length !== 1 || typeof arguments_.roleId !== "string" || arguments_.roleId.trim().length === 0) {
+    throw new Error("retire_bot requires exactly one non-empty string roleId argument.");
+  }
+  return arguments_.roleId;
+}
+
 export function createWorkspaceGeminiTools(
   context: WorkspaceGeminiContext,
   grantedToolNames: readonly string[],
@@ -757,6 +807,57 @@ export function createWorkspaceGeminiTools(
           { connectionString: context.connectionString, tenantId: context.tenantId, roleId: context.roleId, threadId: context.threadId },
           input,
         );
+      },
+    });
+  }
+
+  if (granted.has("mcp__workspace__create_bot")) {
+    tools.push({
+      name: "mcp__workspace__create_bot",
+      description: "Create a new bot with the default capability floor. External-facing and human-approvable.",
+      parameters: createBotInputSchema,
+      tier: tierNumber("T3_external"),
+      execute: async (arguments_) => {
+        const input = parseCreateBotInput(arguments_);
+        const role = await createRoleWithDefaultCapabilities(
+          { connectionString: context.connectionString },
+          { tenantId: context.tenantId, ...input },
+        );
+        if (context.runId !== undefined && context.runId.trim().length > 0) {
+          await insertAuditEvent(
+            { connectionString: context.connectionString },
+            { tenantId: context.tenantId, runId: context.runId, actor: `agent:${GEMINI_PROVIDER_ID}`, eventType: "bot.created", payload: { roleId: role.roleId, name: role.name } },
+          );
+        }
+        return { roleId: role.roleId, name: role.name, status: role.status };
+      },
+    });
+  }
+
+  if (granted.has("mcp__workspace__retire_bot")) {
+    tools.push({
+      name: "mcp__workspace__retire_bot",
+      description: "Retire another bot (soft deactivation, never itself, never cross-tenant). Irreversible-tier and human-approvable.",
+      parameters: retireBotInputSchema,
+      tier: tierNumber("T4_irreversible"),
+      execute: async (arguments_) => {
+        const targetRoleId = parseRetireBotInput(arguments_);
+        try {
+          const role = await retireRole(
+            { connectionString: context.connectionString },
+            { tenantId: context.tenantId, callerRoleId: context.roleId, targetRoleId },
+          );
+          if (context.runId !== undefined && context.runId.trim().length > 0) {
+            await insertAuditEvent(
+              { connectionString: context.connectionString },
+              { tenantId: context.tenantId, runId: context.runId, actor: `agent:${GEMINI_PROVIDER_ID}`, eventType: "bot.retired", payload: { roleId: role.roleId, status: role.status } },
+            );
+          }
+          return { roleId: role.roleId, status: role.status };
+        } catch (error) {
+          if (error instanceof RoleRetirementError) return { ok: false, error: error.message, code: error.code };
+          throw error;
+        }
       },
     });
   }

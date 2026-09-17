@@ -51,4 +51,27 @@ export const BUILTIN_TOOLS = Object.freeze([
     mcpServerName: "workspace",
     enabled: true,
   },
+  {
+    toolName: "mcp__workspace__create_bot",
+    capabilityId: "workspace.create_bot",
+    // TASK-282 — wraps the same createRoleWithDefaultCapabilities path the
+    // human `POST /roles` route uses. External-facing (a new bot is an
+    // observable, human-reviewable effect) and human-approvable, same tier
+    // as the existing workspace.request_secret.
+    defaultTier: "T3_external",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
+  {
+    toolName: "mcp__workspace__retire_bot",
+    capabilityId: "workspace.retire_bot",
+    // TASK-282 — the most consequential action a bot can take on another
+    // bot (removes it from active service; no destructive delete, but no
+    // existing precedent tier to match either), so it gets the ceiling tier.
+    defaultTier: "T4_irreversible",
+    adapter: "mcp:workspace",
+    mcpServerName: "workspace",
+    enabled: true,
+  },
 ] as const satisfies readonly DeclaredTool[]);

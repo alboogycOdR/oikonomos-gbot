@@ -194,6 +194,12 @@ export const builtinDescribers: Readonly<Record<string, Describer>> = Object.fre
   // This parser rejects malformed and oversized payloads before L1 can issue
   // an approval, keeping secret-request card text derived from bounded input.
   mcp__workspace__request_secret: describeRequestSecret,
+  // TASK-282 — manager-bot tools. `name` is the new bot's own human-facing
+  // identifier (create_bot's required input); `roleId` is the target bot
+  // being retired, never the caller's own id (retireRole's self-retirement
+  // guard runs downstream of this describe step, in the DB layer).
+  mcp__workspace__create_bot: describeAs("create bot", "name"),
+  mcp__workspace__retire_bot: describeAs("retire bot", "roleId"),
   mcp__gmail__send_message: describeAs("send email", "to"),
   mcp__gmail__create_draft: describeAs("create draft", "to"),
   mcp__gmail__list_messages: describeAs("list messages", "q"),

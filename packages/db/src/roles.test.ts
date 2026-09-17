@@ -5,6 +5,13 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
+import {
+  createRoleWithDefaultCapabilities,
+  MANAGER_BOT_DEFAULT_CAPABILITIES,
+  retireRole,
+  RoleRetirementError,
+  updateRoleStatus,
+} from "./roles.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -290,5 +297,146 @@ integration("packages/db roles — provider/model selection (TASK-213)", () => {
     // carrying a copy of it.
     expect(fresh?.provider).toBeNull();
     expect(fresh?.model).toBeNull();
+  });
+});
+
+// TASK-282 — manager-bot create/retire tools. retireRole's self-retirement
+// guard runs before any database access, so it is exercised here without a
+// live DATABASE_URL, alongside the other "no DB required" cases above.
+describe("packages/db roles — retireRole guards (no DB required)", () => {
+  it("rejects self-retirement before touching the database", async () => {
+    const poisoned = { connectionString: "postgres://unreachable-host-task-282/does-not-matter" };
+    await expect(
+      retireRole(poisoned, { tenantId: "basileia", callerRoleId: "bot-a", targetRoleId: "bot-a" }),
+    ).rejects.toThrow(RoleRetirementError);
+    await expect(
+      retireRole(poisoned, { tenantId: "basileia", callerRoleId: "bot-a", targetRoleId: "bot-a" }),
+    ).rejects.toMatchObject({ code: "self_retirement" });
+  });
+
+  it("rejects empty roleId/tenantId inputs before touching the database", async () => {
+    const poisoned = { connectionString: "postgres://unreachable-host-task-282/does-not-matter" };
+    await expect(
+      retireRole(poisoned, { tenantId: "basileia", callerRoleId: "bot-a", targetRoleId: "   " }),
+    ).rejects.toThrow(/targetRoleId/);
+    await expect(
+      retireRole(poisoned, { tenantId: "   ", callerRoleId: "bot-a", targetRoleId: "bot-b" }),
+    ).rejects.toThrow(/tenantId/);
+  });
+});
+
+// TASK-282 — Manager-bot / chief-of-staff tools. Real Postgres integration:
+// create a bot with the default capability floor, confirm it is listable,
+// retire it, and confirm the row is neither deleted nor left "active".
+integration("packages/db roles — createRoleWithDefaultCapabilities / retireRole (TASK-282)", () => {
+  const tenantId = "task-282-roles-suite";
+  const managerRoleId = "task-282-manager-bot";
+  const otherTenantId = "task-282-roles-suite-other-tenant";
+  const otherTenantRoleId = "task-282-other-tenant-role";
+  let pool: Pool;
+  let createdRoleIds: string[] = [];
+
+  async function cleanup(): Promise<void> {
+    const ids = [managerRoleId, otherTenantRoleId, ...createdRoleIds];
+    await pool.query(`DELETE FROM role_grants WHERE role_id = ANY($1::text[])`, [ids]);
+    await pool.query(`DELETE FROM roles WHERE role_id = ANY($1::text[]) OR tenant_id = ANY($2::text[])`, [
+      ids,
+      [tenantId, otherTenantId],
+    ]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: managerRoleId, tenantId, name: "Manager", title: "TASK-282 manager bot fixture" },
+    );
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: otherTenantRoleId, tenantId: otherTenantId, name: "Other tenant", title: "TASK-282 other-tenant fixture" },
+    );
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("creates a bot with only the reviewed default capability floor granted", async () => {
+    const options = { connectionString: connectionString! };
+    const created = await createRoleWithDefaultCapabilities(options, {
+      tenantId,
+      name: "task-282-created-bot",
+      title: "Created by manager",
+      description: "Created via workspace.create_bot",
+    });
+    createdRoleIds.push(created.roleId);
+
+    expect(created.tenantId).toBe(tenantId);
+    expect(created.status).toBe("active");
+
+    const listed = await listRoles(options, { tenantId });
+    expect(listed.map((role) => role.roleId)).toContain(created.roleId);
+
+    const grants = await pool.query<{ capability_id: string }>(
+      `SELECT capability_id FROM role_grants WHERE role_id = $1`,
+      [created.roleId],
+    );
+    const grantedIds = grants.rows.map((row) => row.capability_id);
+    for (const id of grantedIds) {
+      expect(MANAGER_BOT_DEFAULT_CAPABILITIES as readonly string[]).toContain(id);
+    }
+    // Never a wider floor than the human/template path grants.
+    expect(grantedIds.every((id) => (MANAGER_BOT_DEFAULT_CAPABILITIES as readonly string[]).includes(id))).toBe(true);
+  });
+
+  it("retires a bot: status moves off 'active', row is not deleted, and it is excluded from an active-only listing", async () => {
+    const options = { connectionString: connectionString! };
+    const created = await createRoleWithDefaultCapabilities(options, {
+      tenantId,
+      name: "task-282-retired-bot",
+      title: "Will be retired",
+    });
+    createdRoleIds.push(created.roleId);
+
+    const retired = await retireRole(options, {
+      tenantId,
+      callerRoleId: managerRoleId,
+      targetRoleId: created.roleId,
+    });
+    expect(retired.status).not.toBe("active");
+    expect(retired.status).not.toBe("deleted");
+
+    const fetched = await getRole(options, created.roleId);
+    expect(fetched).not.toBeNull();
+    expect(fetched?.status).toBe(retired.status);
+
+    const activeOnly = await listRoles(options, { tenantId, status: "active" });
+    expect(activeOnly.map((role) => role.roleId)).not.toContain(created.roleId);
+  });
+
+  it("refuses to retire a role outside the caller's own tenant", async () => {
+    const options = { connectionString: connectionString! };
+    await expect(
+      retireRole(options, { tenantId, callerRoleId: managerRoleId, targetRoleId: otherTenantRoleId }),
+    ).rejects.toMatchObject({ code: "cross_tenant" });
+
+    const stillActive = await getRole(options, otherTenantRoleId);
+    expect(stillActive?.status).toBe("active");
+  });
+
+  it("refuses to retire an unknown roleId", async () => {
+    const options = { connectionString: connectionString! };
+    await expect(
+      retireRole(options, { tenantId, callerRoleId: managerRoleId, targetRoleId: "task-282-does-not-exist" }),
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("updateRoleStatus rejects an invalid status", async () => {
+    const options = { connectionString: connectionString! };
+    await expect(
+      updateRoleStatus(options, managerRoleId, "not-a-real-status" as never),
+    ).rejects.toThrow(/status/);
   });
 });
