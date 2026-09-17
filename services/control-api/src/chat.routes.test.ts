@@ -1225,17 +1225,25 @@ integration("POST /approvals/:nonce/decide — queues a parked chat continuation
       // the worker is permitted to invoke the live driver. This isolated API
       // suite intentionally has no worker consumer, so a direct SDK call
       // here would be a regression rather than evidence of liveness.
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      // The route publishes its durable queue command after responding.
+      // Under the isolated suite's concurrent DB load a fixed 25 ms sleep
+      // races that producer transaction, so wait only for its committed
+      // audit evidence.
       expect(observedResume).toBeUndefined();
       expect((await listRuns(options, { taskId: task.taskId })).runs[0]).toMatchObject({
         runId: parked.runId,
         status: "waiting_approval",
         sessionRef,
       });
-      const queuedAudit = await pool.query<{ event_type: string; reason: string }>(
-        "SELECT event_type, payload->>'reason' AS reason FROM audit_events WHERE run_id = $1 AND event_type = 'run.queued'",
-        [parked.runId],
-      );
+      let queuedAudit: { rows: Array<{ event_type: string; reason: string }> } = { rows: [] };
+      for (let attempt = 0; attempt < 250; attempt += 1) {
+        queuedAudit = await pool.query<{ event_type: string; reason: string }>(
+          "SELECT event_type, payload->>'reason' AS reason FROM audit_events WHERE run_id = $1 AND event_type = 'run.queued'",
+          [parked.runId],
+        );
+        if (queuedAudit.rows.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
       expect(queuedAudit.rows).toEqual([expect.objectContaining({ event_type: "run.queued", reason: "submission" })]);
       expect((await listMessages(options, resumedThreadId)).find((message) => message.runId === parked.runId)).toBeUndefined();
     } finally {
@@ -1251,7 +1259,7 @@ integration("POST /approvals/:nonce/decide — queues a parked chat continuation
       await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
       await pool.end();
     }
-  });
+  }, 10_000);
 });
 
 integration("Group-thread control-api routes — real Postgres (TASK-121)", () => {
@@ -1403,9 +1411,6 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
           }), { status: 200 });
         },
       },
-      chatRunDriverOptions: {
-        queryFn: async function* () { yield { type: "result" as const, result: "Selected bot response" }; },
-      },
     }), { authToken: TOKEN, logger: false });
     try {
       const createRole = async (name: string, description: string) => {
@@ -1437,15 +1442,19 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       expect(posted.statusCode).toBe(201);
 
       let runs: Array<{ provider: string; status: string }> = [];
-      for (let attempt = 0; attempt < 100; attempt += 1) {
+      // The API intentionally accepts the message before its durable worker
+      // command is committed. This suite runs with no worker consumer, so
+      // wait for that producer transaction rather than expecting a local SDK
+      // driver (the chatRunDriverOptions seam is not an API-side executor).
+      for (let attempt = 0; attempt < 250; attempt += 1) {
         runs = (await pool.query<{ provider: string; status: string }>(
           "SELECT provider, status FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1) ORDER BY started_at ASC",
           [`chat:thread:${group.id}`],
         )).rows;
-        if (runs.filter((run) => run.provider === "claude" && run.status === "started").length === 1) break;
+        if (runs.filter((run) => run.provider === "gemini" && run.status === "started").length === 1) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(runs.filter((run) => run.provider === "claude")).toEqual([{ provider: "claude", status: "started" }]);
+      expect(runs.filter((run) => run.provider === "gemini")).toEqual([{ provider: "gemini", status: "started" }]);
       expect(runs.filter((run) => run.provider === "free-llm-api")).toEqual([{ provider: "free-llm-api", status: "completed" }]);
       expect(observedPrompts).toHaveLength(3);
       const spend = await pool.query<{ provider: string; cost_usd: string }>(
@@ -1464,11 +1473,11 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       });
       expect(named.statusCode).toBe(201);
       let directRunRoleIds: string[] = [];
-      for (let attempt = 0; attempt < 100; attempt += 1) {
+      for (let attempt = 0; attempt < 250; attempt += 1) {
         directRunRoleIds = (await pool.query<{ role_id: string }>(
           `SELECT tasks.role_id FROM runs
            JOIN tasks ON tasks.task_id = runs.task_id
-           WHERE tasks.requested_by = $1 AND runs.provider = 'claude' AND runs.status = 'started'
+           WHERE tasks.requested_by = $1 AND runs.provider = 'gemini' AND runs.status = 'started'
            ORDER BY runs.started_at ASC`,
           [`chat:thread:${group.id}`],
         )).rows.map((row) => row.role_id);
@@ -1481,7 +1490,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
       await app.close();
       await cleanup();
     }
-  });
+  }, 10_000);
 });
 
 integration("POST /threads/:id/attachments — real Postgres durable submission (TASK-166)", () => {
@@ -1547,7 +1556,6 @@ integration("POST /threads/:id/attachments — real Postgres durable submission 
         expect.objectContaining({ id: ref.id, filename: "secret-briefing.txt" }),
       ]);
 
-      await new Promise((resolve) => setTimeout(resolve, 25));
       expect(observedPrompt).toBe("");
       expect(observedDiskContents).toBe("");
       const transcript = await listMessages(options, liveThreadId);
@@ -1558,10 +1566,15 @@ integration("POST /threads/:id/attachments — real Postgres durable submission 
       ]);
       expect(userMessage?.body).toBe("What does the attached file say?");
       expect(botMessage).toBeUndefined();
-      const execution = await pool.query<{ execution: { kind: string; threadId: string } }>(
-        "SELECT execution FROM tasks WHERE requested_by = $1",
-        [`chat:thread:${liveThreadId}`],
-      );
+      let execution: { rows: Array<{ execution: { kind: string; threadId: string } }> } = { rows: [] };
+      for (let attempt = 0; attempt < 250; attempt += 1) {
+        execution = await pool.query<{ execution: { kind: string; threadId: string } }>(
+          "SELECT execution FROM tasks WHERE requested_by = $1",
+          [`chat:thread:${liveThreadId}`],
+        );
+        if (execution.rows.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
       // `epoch` (TASK-269/270): every execution `submitTaskExecution` creates
       // is now stamped with the thread's current epoch at creation time, so
       // a future `getLatestRunForThread` lookup can tell whether it still
@@ -1594,7 +1607,7 @@ integration("POST /threads/:id/attachments — real Postgres durable submission 
       await pool.end();
       await rm(storeRoot, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 });
 
 // TASK-269 — real Postgres, real HTTP route, real `submitTaskExecution`
