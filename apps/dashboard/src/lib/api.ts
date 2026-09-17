@@ -316,6 +316,81 @@ export async function listRoles(): Promise<Role[]> {
   return request<Role[]>("/roles");
 }
 
+export interface TemplateSummary {
+  templateId: string;
+  version: number;
+  tenantId: string;
+  name: string;
+  digest: string;
+  visibility: "private";
+  createdBy: string;
+  createdAt: string;
+  manifest: Record<string, unknown>;
+}
+
+export interface TemplateExportResult {
+  templateId: string;
+  version: number;
+  digest: string;
+}
+
+export class TemplateExportRefusedError extends Error {
+  readonly fieldPaths: readonly string[];
+  readonly classes: readonly string[];
+
+  constructor(fieldPaths: readonly string[], classes: readonly string[]) {
+    super("Template export was refused because it contains credential-like content.");
+    this.name = "TemplateExportRefusedError";
+    this.fieldPaths = fieldPaths;
+    this.classes = classes;
+  }
+}
+
+export interface GrantChecklistEntry {
+  capability_id: string;
+  requested_max_tier: string;
+  status: "available" | "unknown_capability" | "disabled";
+}
+
+export interface TemplateInstallResult {
+  role: { roleId: string; name: string; title: string; description: string };
+  grant_checklist: GrantChecklistEntry[];
+  next: string;
+}
+
+export async function listTemplates(): Promise<TemplateSummary[]> {
+  return request<TemplateSummary[]>("/templates");
+}
+
+export async function exportRoleTemplate(roleId: string, name: string): Promise<TemplateExportResult> {
+  const response = await fetch(`${BASE_URL}/roles/${encodeURIComponent(roleId)}/templates`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (response.status === 401) throw new UnauthorizedError();
+  if (response.status === 422) {
+    const body = (await response.json()) as { field_paths?: unknown; classes?: unknown };
+    throw new TemplateExportRefusedError(
+      Array.isArray(body.field_paths) ? body.field_paths.filter((path): path is string => typeof path === "string") : [],
+      Array.isArray(body.classes) ? body.classes.filter((kind): kind is string => typeof kind === "string") : [],
+    );
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `template export failed with ${response.status}`);
+  }
+  return (await response.json()) as TemplateExportResult;
+}
+
+export async function installTemplate(templateId: string, version: number, name?: string): Promise<TemplateInstallResult> {
+  return request<TemplateInstallResult>(`/templates/${encodeURIComponent(templateId)}/install`, {
+    method: "POST",
+    body: JSON.stringify(name === undefined || name.trim() === "" ? { version } : { version, name }),
+  });
+}
+
 export interface Thread {
   id: string;
   roleId: string;

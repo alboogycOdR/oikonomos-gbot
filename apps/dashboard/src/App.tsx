@@ -8,6 +8,7 @@ import { EvidenceBrowserPage } from "./pages/EvidenceBrowserPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RunDetailPage } from "./pages/RunDetailPage";
 import { RunListPage } from "./pages/RunListPage";
+import { TemplatesPage } from "./pages/TemplatesPage";
 
 /**
  * TASK-104 — a minimal top nav so the evidence browser (a direct run_id
@@ -23,7 +24,7 @@ function TopNav() {
   return (
     <nav aria-label="Primary">
       <Link to="/ops/runs">Runs</Link> · <Link to="/ops/approvals">Approvals</Link> ·{" "}
-      <Link to="/ops/evidence">Evidence browser</Link>
+      <Link to="/ops/evidence">Evidence browser</Link> · <Link to="/templates">Templates</Link>
     </nav>
   );
 }
@@ -139,6 +140,15 @@ export function App() {
             <RequireAuth>
               <TopNav />
               <EvidenceBrowserPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/templates"
+          element={
+            <RequireAuth>
+              <TopNav />
+              <TemplatesPage />
             </RequireAuth>
           }
         />

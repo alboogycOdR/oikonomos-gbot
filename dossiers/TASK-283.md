@@ -1,0 +1,7 @@
+# TASK-283 Dossier
+
+## Work Log
+
+- [2026-09-17T08:12:00Z] [CX9] Resumed on `task/TASK-283-cx9`; preflight output: `[preflight] TASK-283 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE`; `6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.`; `NEW apps/dashboard/src/pages/TemplatesPage.tsx -> does not exist; parent apps/dashboard/src/pages/ exists`; `NEW apps/dashboard/src/pages/TemplatesPage.test.tsx -> does not exist; parent apps/dashboard/src/pages/ exists`; `FILE apps/dashboard/src/lib/api.ts -> exists, 556 line(s), 19072 bytes`; `NEW apps/dashboard/src/lib/api.test.ts -> does not exist; parent apps/dashboard/src/lib/ exists`; `FILE apps/dashboard/src/App.tsx -> exists, 154 line(s), 5227 bytes`; `FILE apps/dashboard/src/App.test.tsx -> exists, 107 line(s), 3558 bytes`.
+- [2026-09-17T08:20:00Z] [CX9] Implemented the authenticated `/templates` route, typed template client calls, structured 422 export-refusal preservation, and TemplatesPage list/export/install flows. Added mocked-api component coverage plus API request tests and route-guard coverage.
+- [2026-09-17T08:24:00Z] [CX9] Verification complete: `pnpm --filter @oikonomos/dashboard typecheck` passed; `pnpm --filter @oikonomos/dashboard test` passed (23 files, 137 tests); `pnpm --filter @oikonomos/dashboard build` passed; `powershell -ExecutionPolicy Bypass -File scripts\\test-isolated.ps1` completed successfully against `oikonomos_test`.
