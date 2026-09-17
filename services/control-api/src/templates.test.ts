@@ -11,6 +11,7 @@ import {
   listRoutines,
   setEnabledForRole,
   updateRoleInstructions,
+  updateSkill,
   type BotTemplate,
   type Role,
   type RoleTemplateInstall,
@@ -69,7 +70,7 @@ function routeFixture(source: Role = role()) {
     upsertRoleGrant: async (input) => { grants.push(input.capabilityId); return input; },
     createRoleTemplateInstall: async (input) => {
       installs.push(input.roleId);
-      installRows.push({ ...input, installedAt: new Date() });
+      installRows.push({ ...input, baselineManifest: input.baselineManifest ?? null, installedAt: new Date() });
     },
     getRoleTemplateInstall: async (roleId) => installRows.find((row) => row.roleId === roleId) ?? null,
   };
@@ -126,12 +127,12 @@ describe("template route composition", () => {
     await app.close();
   });
 
-  it("template-status reports no drift when nothing has changed since install", async () => {
+  it("template-status (legacy, null baseline) reports no drift when nothing has changed since install", async () => {
     const { app, installRows } = routeFixture();
     const exported = await app.inject({ method: "POST", url: `/roles/${ROLE_ID}/templates`, payload: { name: "Status source" } });
     expect(exported.statusCode).toBe(201);
     const { templateId, version, digest } = JSON.parse(exported.body) as { templateId: string; version: number; digest: string };
-    installRows.push({ roleId: ROLE_ID, templateId, version, digest, installedAt: new Date() });
+    installRows.push({ roleId: ROLE_ID, templateId, version, digest, baselineManifest: null, installedAt: new Date() });
 
     const status = await app.inject({ method: "GET", url: `/roles/${ROLE_ID}/template-status` });
     expect(status.statusCode).toBe(200);
@@ -139,13 +140,13 @@ describe("template route composition", () => {
     await app.close();
   });
 
-  it("template-status reports drift naming the changed section once the role diverges from its install", async () => {
+  it("template-status (legacy, null baseline) reports drift naming the changed section once the role diverges from its install", async () => {
     const source = role();
     const { app, installRows } = routeFixture(source);
     const exported = await app.inject({ method: "POST", url: `/roles/${ROLE_ID}/templates`, payload: { name: "Drift source" } });
     expect(exported.statusCode).toBe(201);
     const { templateId, version, digest } = JSON.parse(exported.body) as { templateId: string; version: number; digest: string };
-    installRows.push({ roleId: ROLE_ID, templateId, version, digest, installedAt: new Date() });
+    installRows.push({ roleId: ROLE_ID, templateId, version, digest, baselineManifest: null, installedAt: new Date() });
 
     source.instructions = "Changed after install.";
 
@@ -157,6 +158,7 @@ describe("template route composition", () => {
     expect(body.changed).toEqual(["identity"]);
     await app.close();
   });
+
 
   it("template-status returns 404 for a role outside the tenant, never leaking existence", async () => {
     const { app } = routeFixture();
@@ -305,6 +307,178 @@ integration("template export/install — production composition against real Pos
     expect(driftBody.installed_from).toEqual({ templateId: exportedBody.templateId, version: exportedBody.version });
     expect(driftBody.drift).toBe(true);
     expect(driftBody.changed).toEqual(["identity"]);
+
+    await app.close();
+  });
+
+  it("template-status (TASK-293): a name override at install with zero edits reports no drift, not a false 'identity' drift", async () => {
+    const tenantId = "basileia";
+    const fixtureToken = "task-278-token";
+    const deps = createDatabaseBackedDeps({ connectionString: connectionString! });
+    const app = buildApp(deps, { authToken: fixtureToken, logger: false });
+    const headers = { authorization: `Bearer ${fixtureToken}` };
+
+    const sourceRole = await createRoleWithDefaultCapabilities(deps, {
+      tenantId, name: `t293-name-src-${crypto.randomUUID().slice(0, 8)}`, title: "Name Override Source", description: "TASK-293 name override check.",
+    });
+
+    const exported = await app.inject({ method: "POST", url: `/roles/${sourceRole.roleId}/templates`, headers, payload: { name: "Name Override Template" } });
+    expect(exported.statusCode).toBe(201);
+    const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number };
+
+    const overrideName = `overridden-${Date.now()}`;
+    const installed = await app.inject({
+      method: "POST",
+      url: `/templates/${exportedBody.templateId}/install`,
+      headers,
+      payload: { version: exportedBody.version, name: overrideName },
+    });
+    expect(installed.statusCode).toBe(201);
+    const installedBody = JSON.parse(installed.body) as { role: { roleId: string; name: string } };
+    expect(installedBody.role.name).toBe(overrideName);
+
+    const status = await app.inject({ method: "GET", url: `/roles/${installedBody.role.roleId}/template-status`, headers });
+    expect(status.statusCode).toBe(200);
+    expect(JSON.parse(status.body)).toEqual({
+      installed_from: { templateId: exportedBody.templateId, version: exportedBody.version },
+      drift: false,
+      changed: [],
+    });
+
+    await app.close();
+  });
+
+  it("template-status (TASK-293): a template carrying a memory the installer did not opt into reports no drift", async () => {
+    const tenantId = "basileia";
+    const fixtureToken = "task-278-token";
+    const deps = createDatabaseBackedDeps({ connectionString: connectionString! });
+    const app = buildApp(deps, { authToken: fixtureToken, logger: false });
+    const headers = { authorization: `Bearer ${fixtureToken}` };
+
+    const sourceRole = await createRoleWithDefaultCapabilities(deps, {
+      tenantId, name: `t293-mem-src-${crypto.randomUUID().slice(0, 8)}`, title: "Memory Source", description: "TASK-293 memory opt-out check.",
+    });
+    await writeMemoryFact({ connectionString: connectionString! }, {
+      tenantId, roleId: sourceRole.roleId, scope: "agent", tier: "profile", key: "favorite-color", value: "teal", source: "task-293-test",
+    });
+
+    const exported = await app.inject({
+      method: "POST", url: `/roles/${sourceRole.roleId}/templates`, headers,
+      payload: { name: "Memory Template", include_memories: ["favorite-color"] },
+    });
+    expect(exported.statusCode).toBe(201);
+    const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number };
+
+    // Install WITHOUT opting into the memory this time -- the installed role
+    // never receives it, so comparing against the template's raw manifest
+    // (which still carries it) would wrongly report a "memories" drift.
+    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version } });
+    expect(installed.statusCode).toBe(201);
+    const installedRoleId = (JSON.parse(installed.body) as { role: { roleId: string } }).role.roleId;
+
+    const status = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(status.statusCode).toBe(200);
+    expect(JSON.parse(status.body)).toEqual({
+      installed_from: { templateId: exportedBody.templateId, version: exportedBody.version },
+      drift: false,
+      changed: [],
+    });
+
+    await app.close();
+  });
+
+  it("template-status (TASK-293): reusing an existing same-named tenant skill whose body now differs reports no drift immediately after install", async () => {
+    const tenantId = "basileia";
+    const fixtureToken = "task-278-token";
+    const skillName = `task-293-skill-${crypto.randomUUID().slice(0, 8)}`;
+    const deps = createDatabaseBackedDeps({ connectionString: connectionString! });
+    const app = buildApp(deps, { authToken: fixtureToken, logger: false });
+    const headers = { authorization: `Bearer ${fixtureToken}` };
+
+    const sourceRole = await createRoleWithDefaultCapabilities(deps, {
+      tenantId, name: `t293-skill-src-${crypto.randomUUID().slice(0, 8)}`, title: "Skill Source", description: "TASK-293 skill reuse check.",
+    });
+    const sourceSkill = await createSkill({ connectionString: connectionString! }, {
+      tenantId, name: skillName, description: "Original skill", whenToUse: "When testing.", body: "Original body.",
+    });
+    await setEnabledForRole({ connectionString: connectionString! }, sourceRole.roleId, sourceSkill.skillId, true);
+
+    const exported = await app.inject({ method: "POST", url: `/roles/${sourceRole.roleId}/templates`, headers, payload: { name: "Skill Reuse Template" } });
+    expect(exported.statusCode).toBe(201);
+    const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number };
+
+    // The tenant's real skill (same name the template captured) diverges
+    // from the template's stored manifest AFTER export -- install (spec §5)
+    // reuses the existing same-named skill rather than recreating it, so the
+    // installed role's actual skill body is "Changed", not the template's
+    // stored "Original body.".
+    await updateSkill({ connectionString: connectionString! }, sourceSkill.skillId, { body: "Changed body after export." });
+
+    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version } });
+    expect(installed.statusCode).toBe(201);
+    const installedRoleId = (JSON.parse(installed.body) as { role: { roleId: string } }).role.roleId;
+    expect((await listEnabledForRole({ connectionString: connectionString! }, installedRoleId)).map((skill) => skill.body)).toEqual(["Changed body after export."]);
+
+    const status = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(status.statusCode).toBe(200);
+    expect(JSON.parse(status.body)).toEqual({
+      installed_from: { templateId: exportedBody.templateId, version: exportedBody.version },
+      drift: false,
+      changed: [],
+    });
+
+    await app.close();
+  });
+
+  it("template-status (TASK-293): a checklist integration beyond the default floor is not drift until granted, then IS drift naming 'integrations'", async () => {
+    const tenantId = "basileia";
+    const fixtureToken = "task-278-token";
+    const integrationId = `task-293-integration-${crypto.randomUUID().slice(0, 8)}`;
+    const deps = createDatabaseBackedDeps({ connectionString: connectionString! });
+    const app = buildApp(deps, { authToken: fixtureToken, logger: false });
+    const headers = { authorization: `Bearer ${fixtureToken}` };
+
+    const sourceRole = await createRoleWithDefaultCapabilities(deps, {
+      tenantId, name: `t293-int-src-${crypto.randomUUID().slice(0, 8)}`, title: "Integration Source", description: "TASK-293 integration checklist check.",
+    });
+    const sourceDatabase = new Database({ connectionString: connectionString! });
+    await sourceDatabase.upsertCapability({ capabilityId: integrationId, description: "TASK-293 fixture", defaultTier: "T2_internal", adapter: "test", enabled: true });
+    await sourceDatabase.upsertRoleGrant({ roleId: sourceRole.roleId, capabilityId: integrationId, maxTier: "T2_internal", constraints: {} });
+    await sourceDatabase.close();
+
+    const exported = await app.inject({ method: "POST", url: `/roles/${sourceRole.roleId}/templates`, headers, payload: { name: "Integration Template" } });
+    expect(exported.statusCode).toBe(201);
+    const exportedBody = JSON.parse(exported.body) as { templateId: string; version: number };
+
+    const installed = await app.inject({ method: "POST", url: `/templates/${exportedBody.templateId}/install`, headers, payload: { version: exportedBody.version } });
+    expect(installed.statusCode).toBe(201);
+    const installedBody = JSON.parse(installed.body) as { role: { roleId: string }; grant_checklist: Array<{ capability_id: string; status: string }> };
+    expect(installedBody.grant_checklist).toEqual(expect.arrayContaining([
+      expect.objectContaining({ capability_id: integrationId, status: "available" }),
+    ]));
+    const installedRoleId = installedBody.role.roleId;
+
+    const beforeGrant = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(beforeGrant.statusCode).toBe(200);
+    expect(JSON.parse(beforeGrant.body)).toEqual({
+      installed_from: { templateId: exportedBody.templateId, version: exportedBody.version },
+      drift: false,
+      changed: [],
+    });
+
+    // Granting the checklist integration after install IS a real change to
+    // the role (spec §5: integrations are surfaced as a checklist, never
+    // auto-granted) -- this should report drift, unlike the false positives
+    // above.
+    const database = new Database({ connectionString: connectionString! });
+    await database.upsertRoleGrant({ roleId: installedRoleId, capabilityId: integrationId, maxTier: "T2_internal", constraints: {} });
+    await database.close();
+
+    const afterGrant = await app.inject({ method: "GET", url: `/roles/${installedRoleId}/template-status`, headers });
+    expect(afterGrant.statusCode).toBe(200);
+    const body = JSON.parse(afterGrant.body) as { drift: boolean; changed: string[] };
+    expect(body.drift).toBe(true);
+    expect(body.changed).toEqual(["integrations"]);
 
     await app.close();
   });

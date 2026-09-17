@@ -45,6 +45,19 @@ function requireOptionalUuid(value: string | undefined, field: string): string |
   return requireUuid(value, field);
 }
 
+function requireOptionalManifestObject(
+  value: Record<string, unknown> | null | undefined,
+  field: string,
+): Record<string, unknown> | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "object") {
+    throw new Error(`${field} must be a JSON object.`);
+  }
+  return value;
+}
+
 function requireTemplateVisibility(value: TemplateVisibility, field: string): TemplateVisibility {
   if (!templateVisibilities.includes(value)) {
     throw new Error(`${field} must be one of: ${templateVisibilities.join(", ")}.`);
@@ -94,6 +107,16 @@ export interface RoleTemplateInstall {
   templateId: string;
   version: number;
   digest: string;
+  /**
+   * TASK-293 / spec §6.1: the role's own projected manifest at the moment
+   * install finished (name override, opt-in memories, reused tenant skill
+   * bodies, un-granted integrations all already reflected), so drift
+   * detection compares against what was actually installed rather than the
+   * template's raw manifest. Null for installs that predate this column
+   * (pre-TASK-293 rows) -- the status route falls back to the legacy
+   * template-manifest compare for those.
+   */
+  baselineManifest: Record<string, unknown> | null;
   installedAt: Date;
 }
 
@@ -102,6 +125,8 @@ export interface NewRoleTemplateInstall {
   templateId: string;
   version: number;
   digest: string;
+  /** See `RoleTemplateInstall.baselineManifest`. Omit or pass null for a legacy-style install with no baseline. */
+  baselineManifest?: Record<string, unknown> | null;
 }
 
 interface BotTemplateRow extends QueryResultRow {
@@ -121,6 +146,7 @@ interface RoleTemplateInstallRow extends QueryResultRow {
   template_id: string;
   version: number;
   digest: string;
+  baseline_manifest: Record<string, unknown> | null;
   installed_at: Date;
 }
 
@@ -146,6 +172,7 @@ function toRoleTemplateInstall(row: RoleTemplateInstallRow): RoleTemplateInstall
     templateId: row.template_id,
     version: row.version,
     digest: row.digest,
+    baselineManifest: row.baseline_manifest,
     installedAt: row.installed_at,
   };
 }
@@ -280,13 +307,14 @@ export async function createRoleTemplateInstall(
     throw new Error("version must be a positive integer.");
   }
   const digest = requireNonEmpty(input.digest, "digest");
+  const baselineManifest = requireOptionalManifestObject(input.baselineManifest, "baselineManifest");
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RoleTemplateInstallRow>(
-      `INSERT INTO role_template_installs (role_id, template_id, version, digest)
-       VALUES ($1, $2, $3, $4)
-       RETURNING role_id, template_id, version, digest, installed_at`,
-      [roleId, templateId, input.version, digest],
+      `INSERT INTO role_template_installs (role_id, template_id, version, digest, baseline_manifest)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       RETURNING role_id, template_id, version, digest, baseline_manifest, installed_at`,
+      [roleId, templateId, input.version, digest, baselineManifest === null ? null : JSON.stringify(baselineManifest)],
     );
     const row = result.rows[0];
     if (row === undefined) throw new Error("createRoleTemplateInstall did not return a persisted row.");
@@ -311,7 +339,7 @@ export async function getRoleTemplateInstall(
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RoleTemplateInstallRow>(
-      `SELECT role_id, template_id, version, digest, installed_at FROM role_template_installs WHERE role_id = $1`,
+      `SELECT role_id, template_id, version, digest, baseline_manifest, installed_at FROM role_template_installs WHERE role_id = $1`,
       [normalizedRoleId],
     );
     return result.rows[0] === undefined ? null : toRoleTemplateInstall(result.rows[0]);
@@ -408,6 +436,19 @@ if (import.meta.vitest) {
           visibility: "public" as TemplateVisibility,
         }),
       ).rejects.toThrow(/visibility/);
+    });
+
+    it("rejects a non-object baselineManifest on createRoleTemplateInstall", async () => {
+      const live: DatabaseOptions = { connectionString: "postgres://x" };
+      await expect(
+        createRoleTemplateInstall(live, {
+          roleId: "role-1",
+          templateId: "11111111-1111-1111-1111-111111111111",
+          version: 1,
+          digest: "d",
+          baselineManifest: "not-an-object" as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toThrow(/baselineManifest/);
     });
   });
 }
