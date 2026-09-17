@@ -74,7 +74,7 @@ import type { Socket } from "node:net";
 
 import type { FastifyInstance } from "fastify";
 
-import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME } from "./auth.js";
+import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME, type SessionRevocationStore } from "./auth.js";
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const PTY_PATH_PATTERN = /^\/roles\/([^/]+)\/live-agent\/pty$/;
@@ -159,6 +159,17 @@ export interface RegisterLiveAgentRoutesOptions {
    * a real, bounded wait rather than the production interval.
    */
   readonly sessionRevalidationIntervalMs?: number;
+  /**
+   * TASK-287 — the explicit-logout revocation store instantiated once in
+   * `app.ts` (`createSessionRevocationStore`), now threaded through so the
+   * periodic re-validation timer below can force-close a connection the
+   * moment its session is revoked, not just when it expires. Optional
+   * (undefined in a test that constructs these routes directly without an
+   * `app.ts`, e.g. `liveAgent.routes.test.ts`) — revocation checking is
+   * simply skipped in that case, the same fail-open-on-absent-port shape
+   * every other optional port in this file uses.
+   */
+  readonly revokedSessionTokens?: SessionRevocationStore;
 }
 
 function acceptKeyFor(key: string): string {
@@ -564,15 +575,15 @@ export function relayTakeover(
  * expire — `sessionToken` is `undefined` in that case and this is a no-op,
  * exactly mirroring `sessionStillValid`'s own bearer exemption.
  *
- * Deliberately does NOT check the server's session-REVOCATION store
- * (explicit logout): that store (`revokedSessionTokens`, created once in
- * `app.ts`) is not threaded through `RegisterLiveAgentRoutesOptions`
- * today, and wiring it would mean editing `app.ts`'s call site — outside
- * this task's `Owned_Paths`. This still closes the core gap the task
- * describes (an expired session keeping a privileged channel open
- * indefinitely); the revocation-store gap is flagged in the dossier for
- * ORCH, the same scope-narrowly-and-flag-the-rest precedent TASK-259 set
- * when it filed this very task.
+ * TASK-287 — also checks the server's session-REVOCATION store (explicit
+ * logout via `POST /auth/logout`) on every tick, mirroring `app.ts`'s own
+ * `sessionStillValid`/SSE poll check: a token present in
+ * `revokedSessionTokens` force-closes the connection immediately, without
+ * waiting for its signature/expiry to lapse naturally. `revokedSessionTokens`
+ * is optional here (undefined when these routes are registered directly
+ * without an `app.ts`, e.g. `liveAgent.routes.test.ts`'s own fixtures) —
+ * in that case only the pre-existing signature+expiry check runs, same as
+ * before TASK-287.
  */
 function startSessionRevalidation(
   sessionToken: string | undefined,
@@ -580,10 +591,11 @@ function startSessionRevalidation(
   socket: Socket,
   upstream: UpstreamConnection,
   intervalMs: number,
+  revokedSessionTokens: SessionRevocationStore | undefined,
 ): void {
   if (sessionToken === undefined) return;
   const timer: ReturnType<typeof setInterval> = setInterval(() => {
-    if (verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
+    if (revokedSessionTokens?.has(sessionToken) !== true && verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
     clearInterval(timer);
     try {
       socket.destroy();
@@ -648,12 +660,15 @@ async function handleUpgrade(
   dialUpstream: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>,
   onInputDiscarded: ((event: LiveAgentInputDiscardedEvent) => void) | undefined,
   sessionRevalidationIntervalMs: number,
+  revokedSessionTokens: SessionRevocationStore | undefined,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://live-agent.internal");
   const match = PTY_PATH_PATTERN.exec(url.pathname);
   if (match === null) {
-    // Not our route: nothing else in this app handles 'upgrade', so this
-    // mirrors Fastify's own unhandled-route behaviour (destroy, no leak).
+    // Unreachable via `registerLiveAgentRoutes`'s own dispatcher (TASK-287:
+    // it now only calls this function once `PTY_PATH_PATTERN.test` has
+    // already passed) -- kept as a defensive fallback for any other caller
+    // and because TypeScript needs the null check to narrow `match` below.
     socket.destroy();
     return;
   }
@@ -691,7 +706,7 @@ async function handleUpgrade(
 
   relay(roleId, sandbox.sandboxId, socket, upstream, onInputDiscarded);
   const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
-  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs, revokedSessionTokens);
 }
 
 /**
@@ -711,6 +726,7 @@ async function handleTakeoverUpgrade(
   dialUpstream: (endpoint: LiveAgentExecdEndpoint) => Promise<UpstreamConnection>,
   onInputForwarded: ((event: LiveAgentInputForwardedEvent) => void) | undefined,
   sessionRevalidationIntervalMs: number,
+  revokedSessionTokens: SessionRevocationStore | undefined,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://live-agent.internal");
   const match = TAKEOVER_PATH_PATTERN.exec(url.pathname);
@@ -757,7 +773,7 @@ async function handleTakeoverUpgrade(
 
   relayTakeover(roleId, sandbox.sandboxId, socket, upstream, onInputForwarded);
   const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
-  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs, revokedSessionTokens);
 }
 
 /** Registers the live-agent status route and the raw PTY-viewer/takeover WS upgrade handlers onto `app`. */
@@ -769,6 +785,7 @@ export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterL
     onInputDiscarded,
     onInputForwarded,
     sessionRevalidationIntervalMs = 15000,
+    revokedSessionTokens,
   } = options;
 
   app.get("/roles/:roleId/live-agent/status", async (request, reply) => {
@@ -795,11 +812,42 @@ export function registerLiveAgentRoutes(app: FastifyInstance, options: RegisterL
       }
     };
     if (TAKEOVER_PATH_PATTERN.test(pathname)) {
-      handleTakeoverUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputForwarded, sessionRevalidationIntervalMs).catch(
-        onSocketError,
-      );
+      handleTakeoverUpgrade(
+        req,
+        socket,
+        authToken,
+        liveAgent,
+        dialUpstream,
+        onInputForwarded,
+        sessionRevalidationIntervalMs,
+        revokedSessionTokens,
+      ).catch(onSocketError);
       return;
     }
-    handleUpgrade(req, socket, authToken, liveAgent, dialUpstream, onInputDiscarded, sessionRevalidationIntervalMs).catch(onSocketError);
+    if (PTY_PATH_PATTERN.test(pathname)) {
+      handleUpgrade(
+        req,
+        socket,
+        authToken,
+        liveAgent,
+        dialUpstream,
+        onInputDiscarded,
+        sessionRevalidationIntervalMs,
+        revokedSessionTokens,
+      ).catch(onSocketError);
+      return;
+    }
+    // TASK-287 fix: previously fell through to `handleUpgrade` unconditionally,
+    // whose own internal "not our route" branch unconditionally destroyed the
+    // socket. `app.server`'s 'upgrade' event is shared with
+    // `browserTakeover.routes.ts`'s own listener (registered on the same
+    // Fastify instance in `app.ts`), and EventEmitter invokes every listener
+    // for an event -- this one running first (registration order) destroyed
+    // the socket before browserTakeover's listener got a chance to claim a
+    // `/runs/:id/browser-takeover` upgrade it legitimately owns, silently
+    // breaking every real browser-takeover WS connection once both route
+    // modules were registered together (which `buildApp` always does). A
+    // path neither pattern here recognizes may still belong to another
+    // registered 'upgrade' listener -- do nothing and let it decide.
   });
 }
