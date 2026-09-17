@@ -8265,7 +8265,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-280
 **Title:** `packages/templates` -- bot template manifest schema, role-to-manifest projection, 5-class credential scan, digest (ADR-018's real T-1 scope)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-018-bot-templates.md; specs/OIKONOMOS_TEMPLATES_v1.0.md section 9 (T-1's own scope definition, the authoritative source for what belongs here vs. T-2/TASK-278)
@@ -8282,12 +8282,13 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Started_At:** 2026-09-17T00:35:00Z
 **Progress_Notes:**
 - [2026-09-17T00:35:00Z] [ORCH] Filed after S5 correctly found this real gap while working TASK-278. Dispatching S5 directly onto this corrected scope.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-17T01:00:14Z] [SV:S5] Built packages/templates: manifest schema, pure projectRoleToManifest, 5-class credential scan (reusing @oikonomos/audit's redactPayload through its public contract since matchesSecretPattern isn't exported and packages/audit is outside territory), stable digest via @oikonomos/shared canonicalJson. Added infra/postgres/migrations/028_role_template_installs (the table TASK-276 deferred), with a real-Postgres migration test (shape, both FKs, PK uniqueness) plus an opt-in MIGRATION_ROUND_TRIP=1 reversibility test. All 4 Acceptance_Criteria met.
+**Artifacts:** packages/templates/package.json, packages/templates/tsconfig.json, packages/templates/vitest.config.ts, packages/templates/src/manifest.ts, packages/templates/src/projection.ts, packages/templates/src/credentialPolicy.ts, packages/templates/src/digest.ts, packages/templates/src/index.ts, packages/templates/src/migration.test.ts, infra/postgres/migrations/028_role_template_installs.up.sql, infra/postgres/migrations/028_role_template_installs.down.sql
+**Test_Evidence:** pnpm -r typecheck and pnpm -r build clean (19/19 packages/services). packages/templates: 28/29 pass + 1 correctly-skipped by default, 29/29 with MIGRATION_ROUND_TRIP=1. Full recursive suite via scripts/test-isolated.ps1 -Init run twice: packages/templates green both times; only failures both runs are in services/worker (chatRunDriver.test.ts, workerJobQueue.test.ts, main.test.ts) and once in services/control-api (chat.routes.test.ts) -- different specific tests failing each run, none referencing templates/role_template_installs/bot_templates, consistent with this session's own orchestrator_notes on known worker-lock concurrency collisions and TASK-276's own prior dossier finding of the same flake class.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T00:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T01:00:14Z
 
 
 ### TASK-279
