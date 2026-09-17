@@ -79,7 +79,7 @@ import type { Socket } from "node:net";
 
 import type { FastifyInstance } from "fastify";
 
-import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME } from "./auth.js";
+import { authenticate, parseCookieHeader, verifySessionPrincipal, SESSION_COOKIE_NAME, type SessionRevocationStore } from "./auth.js";
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const BROWSER_TAKEOVER_PATH_PATTERN = /^\/runs\/([^/]+)\/browser-takeover$/;
@@ -156,6 +156,18 @@ export interface RegisterBrowserTakeoverRoutesOptions {
    * within a real, bounded wait rather than the production interval.
    */
   readonly sessionRevalidationIntervalMs?: number;
+  /**
+   * TASK-287 — the explicit-logout revocation store instantiated once in
+   * `app.ts` (`createSessionRevocationStore`), now threaded through so the
+   * periodic re-validation timer below can force-close a connection the
+   * moment its session is revoked, not just when it expires. Optional
+   * (undefined in a test that constructs this route directly without an
+   * `app.ts`, e.g. `browserTakeover.routes.test.ts`'s own fixtures) —
+   * revocation checking is simply skipped in that case, the same
+   * fail-open-on-absent-port shape every other optional port in this file
+   * uses.
+   */
+  readonly revokedSessionTokens?: SessionRevocationStore;
 }
 
 function acceptKeyFor(key: string): string {
@@ -457,12 +469,16 @@ export function relayBrowserTakeover(
  * bearer-token connection has no session to expire — `sessionToken` is
  * `undefined` in that case and this is a no-op.
  *
- * Deliberately does NOT check the server's session-REVOCATION store
- * (explicit logout): that store (`revokedSessionTokens`, created once in
- * `app.ts`) is not threaded through `RegisterBrowserTakeoverRoutesOptions`
- * today, and wiring it would mean editing `app.ts`'s call site — outside
- * this task's `Owned_Paths`. Flagged in the dossier for ORCH, same as
- * `liveAgent.routes.ts`'s identical note.
+ * TASK-287 — also checks the server's session-REVOCATION store (explicit
+ * logout via `POST /auth/logout`) on every tick, mirroring `app.ts`'s own
+ * `sessionStillValid`/SSE poll check and `liveAgent.routes.ts`'s identical
+ * fix for its own two WS routes: a token present in `revokedSessionTokens`
+ * force-closes the connection immediately, without waiting for its
+ * signature/expiry to lapse naturally. `revokedSessionTokens` is optional
+ * here (undefined when this route is registered directly without an
+ * `app.ts`, e.g. `browserTakeover.routes.test.ts`'s own fixtures) — in
+ * that case only the pre-existing signature+expiry check runs, same as
+ * before TASK-287.
  */
 function startSessionRevalidation(
   sessionToken: string | undefined,
@@ -470,10 +486,11 @@ function startSessionRevalidation(
   socket: Socket,
   upstream: UpstreamConnection,
   intervalMs: number,
+  revokedSessionTokens: SessionRevocationStore | undefined,
 ): void {
   if (sessionToken === undefined) return;
   const timer: ReturnType<typeof setInterval> = setInterval(() => {
-    if (verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
+    if (revokedSessionTokens?.has(sessionToken) !== true && verifySessionPrincipal(authToken, sessionToken) !== undefined) return;
     clearInterval(timer);
     try {
       socket.destroy();
@@ -499,6 +516,7 @@ async function handleBrowserTakeoverUpgrade(
   dialUpstream: (endpoint: BrowserTakeoverEndpoint) => Promise<UpstreamConnection>,
   onInputForwarded: ((event: BrowserTakeoverInputForwardedEvent) => void) | undefined,
   sessionRevalidationIntervalMs: number,
+  revokedSessionTokens: SessionRevocationStore | undefined,
 ): Promise<void> {
   const url = new URL(req.url ?? "", "http://browser-takeover.internal");
   const match = BROWSER_TAKEOVER_PATH_PATTERN.exec(url.pathname);
@@ -572,7 +590,7 @@ async function handleBrowserTakeoverUpgrade(
 
   relayBrowserTakeover(runId, socket, upstream, onInputForwarded);
   const sessionToken = parseCookieHeader(req.headers.cookie)[SESSION_COOKIE_NAME];
-  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs);
+  startSessionRevalidation(sessionToken, authToken, socket, upstream, sessionRevalidationIntervalMs, revokedSessionTokens);
 }
 
 /** Registers the raw browser-takeover WS upgrade handler onto `app`. */
@@ -584,6 +602,7 @@ export function registerBrowserTakeoverRoutes(app: FastifyInstance, options: Reg
     dialUpstream = defaultDialUpstream,
     onInputForwarded,
     sessionRevalidationIntervalMs = 15000,
+    revokedSessionTokens,
   } = options;
 
   app.server.on("upgrade", (req: IncomingMessage, socket: Socket, _head: Buffer) => {
@@ -605,6 +624,7 @@ export function registerBrowserTakeoverRoutes(app: FastifyInstance, options: Reg
       dialUpstream,
       onInputForwarded,
       sessionRevalidationIntervalMs,
+      revokedSessionTokens,
     ).catch(onSocketError);
   });
 }

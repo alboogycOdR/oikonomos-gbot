@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Approval, AuditEvent, Message, Role, Routine, Run, Task, Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResult } from "@oikonomos/approvals";
 
-import { buildApp, type BuildAppOptions } from "../src/app.js";
+import { buildApp, type BuildAppOptions, type TakeoverPort } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
 import { createSessionToken, SESSION_TTL_MS } from "../src/auth.js";
 import {
@@ -1301,5 +1301,335 @@ describe("liveAgent/browserTakeover WS routes — session re-validation (TASK-28
 
     const closed = await waitForSocketClose(client.socket, 3000);
     expect(closed).toBe(true);
+  });
+});
+
+/**
+ * TASK-287 — the explicit-logout revocation store instantiated once in
+ * `app.ts` (`revokedSessionTokens`) must now reach `liveAgent.routes.ts`'s
+ * two WS routes and `browserTakeover.routes.ts`'s one WS route, the same
+ * way TASK-259 threaded it into the SSE stream (see the "force-closes an
+ * open stream the moment its session is revoked via POST /auth/logout"
+ * test above). Unlike TASK-286's own tests above (which construct
+ * `registerLiveAgentRoutes`/`registerBrowserTakeoverRoutes` directly on a
+ * hand-rolled Fastify instance, bypassing `app.ts` entirely and therefore
+ * having no `/auth/logout` route to call), these tests go through the
+ * real `buildApp` so a real, unmocked revoke round-trip is exercised end
+ * to end: open the WS connection, call `POST /auth/logout` with the same
+ * session cookie mid-connection, and assert the server force-closes the
+ * socket on its own, without waiting for the (much slower, 15s default)
+ * signature/expiry re-check to ever matter — `sessionRevalidationIntervalMs`
+ * is still set fast here only so the test doesn't have to wait a full
+ * production tick for the *next* check after revocation to run.
+ */
+describe("liveAgent/browserTakeover WS routes — revocation-store parity (TASK-287)", () => {
+  const REVOKE_TOKEN = "task-287-fixture-shared-secret";
+  const REVOKE_WEBSOCKET_GUID_FIXTURE = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  const FAST_REVALIDATION_MS = 20;
+
+  /** Minimal but complete `ControlApiDeps` fake — none of these methods are exercised by the WS-upgrade routes or `/auth/logout` under test. */
+  function createRevokeDeps(): ControlApiDeps {
+    return {
+      createTask: async () => {
+        throw new Error("unused in this test");
+      },
+      createRoutine: async () => {
+        throw new Error("unused in this test");
+      },
+      createRole: async () => {
+        throw new Error("unused in this test");
+      },
+      listCapabilities: async () => [],
+      upsertRoleGrant: async (input) => input,
+      listRoleGrants: async () => [],
+      revokeRoleGrant: async () => {},
+      listRoles: async () => [],
+      updateRoleInstructions: async () => null,
+      listRoleMessages: async () => [],
+      listRoutines: async (): Promise<Routine[]> => [],
+      getOrCreateThreadForRole: async () => {
+        throw new Error("unused in this test");
+      },
+      listThreads: async () => [],
+      createGroupThread: async () => {
+        throw new Error("unused in this test");
+      },
+      listAllThreadsWithMembers: async () => [],
+      insertMessage: async () => {
+        throw new Error("unused in this test");
+      },
+      listMessages: async () => [],
+      listTasks: async () => ({ tasks: [], nextCursor: null }),
+      getTask: async () => null,
+      listRuns: async () => ({ runs: [], nextCursor: null }),
+      getRun: async () => null,
+      listPendingApprovals: async () => [],
+      decideApproval: async () => ({ decided: false, rowCount: 0 }),
+      editApproval: async () => ({ edited: false, rowCount: 0 }),
+      getAuditEventsForRun: async () => [],
+      registerDeviceToken: async (input) => ({ ...input, createdAt: new Date(), lastSeenAt: new Date() }),
+      runChatTask: async () => {},
+      requestGroupFanout: async () => ({ runId: randomUUID() }),
+    };
+  }
+
+  /** A minimal raw-TCP "upstream" (stands in for execd or Steel): completes the WS handshake and otherwise never sends anything unprompted. Mirrors TASK-286's own fixture above. */
+  function startFakeUpstream(): Promise<{ port: number; close(): void }> {
+    return new Promise((resolve) => {
+      let clientSocket: Socket | undefined;
+      const server: Server = createServer((socket) => {
+        let buffer = Buffer.alloc(0);
+        socket.on("data", (chunk: Buffer) => {
+          buffer = Buffer.concat([buffer, chunk]);
+          const headerEnd = buffer.indexOf("\r\n\r\n");
+          if (headerEnd === -1 || clientSocket !== undefined) return;
+          const headerText = buffer.subarray(0, headerEnd).toString("latin1");
+          const keyMatch = /Sec-WebSocket-Key:\s*(.+)/i.exec(headerText);
+          const key = keyMatch?.[1]?.trim() ?? "";
+          const acceptKey = createHash("sha1").update(key + REVOKE_WEBSOCKET_GUID_FIXTURE).digest("base64");
+          socket.write(
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+              `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`,
+          );
+          clientSocket = socket;
+        });
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        const port = typeof address === "object" && address !== null ? address.port : 0;
+        resolve({
+          port,
+          close(): void {
+            try {
+              clientSocket?.destroy();
+            } catch {
+              // Already destroyed.
+            }
+            server.close();
+          },
+        });
+      });
+    });
+  }
+
+  /** A minimal hand-rolled test client: performs the WS handshake over real loopback TCP against the app's own HTTP server. Mirrors TASK-286's own fixture above. */
+  function connectWsClient(port: number, path: string, headers: Record<string, string>): Promise<{ socket: Socket; statusLine: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = new Socket();
+      let buffer = Buffer.alloc(0);
+      let handshakeDone = false;
+      socket.on("data", (chunk: Buffer) => {
+        if (handshakeDone) return;
+        buffer = Buffer.concat([buffer, chunk]);
+        const headerEnd = buffer.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        const statusLine = buffer.subarray(0, buffer.indexOf("\r\n")).toString("latin1");
+        handshakeDone = true;
+        resolve({ socket, statusLine });
+      });
+      socket.on("error", reject);
+      socket.connect(port, "127.0.0.1", () => {
+        const fixtureKeyMaterial = `task-287-fixture-${Math.random().toString(16).slice(2)}`;
+        const headerLines = Object.entries({
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Version": "13",
+          "Sec-WebSocket-Key": Buffer.from(fixtureKeyMaterial).toString("base64").slice(0, 24),
+          ...headers,
+        })
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n");
+        socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\n${headerLines}\r\n\r\n`);
+      });
+    });
+  }
+
+  /** Resolves true once `socket` actually closes, false if `maxWaitMs` elapses first. Mirrors TASK-286's own fixture above. */
+  function waitForSocketClose(socket: Socket, maxWaitMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (socket.destroyed) {
+        resolve(true);
+        return;
+      }
+      const timer = setTimeout(() => {
+        socket.removeListener("close", onClose);
+        resolve(false);
+      }, maxWaitMs);
+      function onClose(): void {
+        clearTimeout(timer);
+        resolve(true);
+      }
+      socket.once("close", onClose);
+    });
+  }
+
+  let app: FastifyInstance | undefined;
+  let fakeUpstream: Awaited<ReturnType<typeof startFakeUpstream>> | undefined;
+  let acceptedSockets: Socket[] = [];
+
+  function trackAcceptedSockets(target: FastifyInstance): void {
+    target.server.on("connection", (socket: Socket) => acceptedSockets.push(socket));
+  }
+
+  afterEach(async () => {
+    for (const socket of acceptedSockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // Already destroyed.
+      }
+    }
+    acceptedSockets = [];
+    if (app !== undefined) await app.close();
+    fakeUpstream?.close();
+    app = undefined;
+    fakeUpstream = undefined;
+  });
+
+  it("force-closes an open live-agent VIEWER connection the moment its session is revoked via POST /auth/logout, without waiting for a new connection", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-287", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-287/ws?mode=viewer&since=0` }),
+    };
+
+    app = buildApp(createRevokeDeps(), {
+      authToken: REVOKE_TOKEN,
+      logger: false,
+      liveAgent,
+      sessionRevalidationIntervalMs: FAST_REVALIDATION_MS,
+    });
+    trackAcceptedSockets(app);
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const sessionToken = createSessionToken(REVOKE_TOKEN, "tenant-task-287");
+    const cookie = `control_api_session=${sessionToken}`;
+
+    const client = await connectWsClient(port, "/roles/bot-287/live-agent/pty", { cookie });
+    expect(client.statusLine).toContain("101");
+
+    // Revoke mid-connection through the real /auth/logout route — the
+    // SAME `revokedSessionTokens` store threaded into
+    // `registerLiveAgentRoutes` above, not a fake test-only shortcut.
+    const logoutRes = await fetch(`http://127.0.0.1:${port}/auth/logout`, { method: "POST", headers: { cookie } });
+    expect(logoutRes.status).toBe(204);
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  }, 15000);
+
+  it("force-closes an open live-agent TAKEOVER connection the moment its session is revoked via POST /auth/logout", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-287t", state: "waiting_approval" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => {
+        throw new Error("unused in this test");
+      },
+      getPtyTakeoverEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-287t/ws?mode=holder&takeover=1` }),
+    };
+
+    app = buildApp(createRevokeDeps(), {
+      authToken: REVOKE_TOKEN,
+      logger: false,
+      liveAgent,
+      sessionRevalidationIntervalMs: FAST_REVALIDATION_MS,
+    });
+    trackAcceptedSockets(app);
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const sessionToken = createSessionToken(REVOKE_TOKEN, "tenant-task-287");
+    const cookie = `control_api_session=${sessionToken}`;
+
+    const client = await connectWsClient(port, "/roles/bot-287/live-agent/takeover", { cookie });
+    expect(client.statusLine).toContain("101");
+
+    const logoutRes = await fetch(`http://127.0.0.1:${port}/auth/logout`, { method: "POST", headers: { cookie } });
+    expect(logoutRes.status).toBe(204);
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  }, 15000);
+
+  it("force-closes an open browser-takeover connection the moment its session is revoked via POST /auth/logout", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const endpoint = { url: `ws://127.0.0.1:${fakeUpstream.port}/cdp` };
+    const runId = "33333333-3333-3333-3333-333333333333";
+    const browserTakeover: BrowserTakeoverPort = { getCdpEndpoint: async () => endpoint };
+    // `BuildAppOptions.takeover` is typed as `TakeoverPort` (getStatus +
+    // complete), a superset of the `TakeoverStatusPort` (getStatus only)
+    // `registerBrowserTakeoverRoutes` itself duck-types against -- `complete`
+    // is unused by the WS route under test but required to satisfy the
+    // wider `buildApp` option's type.
+    const takeoverStatus: TakeoverPort = {
+      getStatus: async () => ({ pending: true }),
+      complete: async () => {
+        throw new Error("unused in this test");
+      },
+    };
+
+    app = buildApp(createRevokeDeps(), {
+      authToken: REVOKE_TOKEN,
+      logger: false,
+      browserTakeover,
+      takeover: takeoverStatus,
+      sessionRevalidationIntervalMs: FAST_REVALIDATION_MS,
+    });
+    trackAcceptedSockets(app);
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const sessionToken = createSessionToken(REVOKE_TOKEN, "tenant-task-287");
+    const cookie = `control_api_session=${sessionToken}`;
+
+    const client = await connectWsClient(port, `/runs/${runId}/browser-takeover`, { cookie });
+    expect(client.statusLine).toContain("101");
+
+    const logoutRes = await fetch(`http://127.0.0.1:${port}/auth/logout`, { method: "POST", headers: { cookie } });
+    expect(logoutRes.status).toBe(204);
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  }, 15000);
+
+  it("does NOT close a bearer-authenticated live-agent viewer connection when a DIFFERENT session token is revoked", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-287b", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-287b/ws?mode=viewer&since=0` }),
+    };
+
+    app = buildApp(createRevokeDeps(), {
+      authToken: REVOKE_TOKEN,
+      logger: false,
+      liveAgent,
+      sessionRevalidationIntervalMs: FAST_REVALIDATION_MS,
+    });
+    trackAcceptedSockets(app);
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const client = await connectWsClient(port, "/roles/bot-287b/live-agent/pty", { authorization: `Bearer ${REVOKE_TOKEN}` });
+    expect(client.statusLine).toContain("101");
+
+    // A different, unrelated session gets revoked -- must not affect this
+    // bearer-authenticated connection, which never had a session token.
+    const unrelatedSessionToken = createSessionToken(REVOKE_TOKEN, "tenant-other-287");
+    const logoutRes = await fetch(`http://127.0.0.1:${port}/auth/logout`, {
+      method: "POST",
+      headers: { cookie: `control_api_session=${unrelatedSessionToken}` },
+    });
+    expect(logoutRes.status).toBe(204);
+
+    const closedPrematurely = await waitForSocketClose(client.socket, 300);
+    expect(closedPrematurely).toBe(false);
   });
 });

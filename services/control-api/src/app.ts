@@ -188,6 +188,16 @@ export interface BuildAppOptions {
   dialBrowserTakeoverUpstream?: (endpoint: BrowserTakeoverEndpoint) => Promise<BrowserTakeoverUpstreamConnection>;
   /** Test-only: observes the liveness assertion (fires whenever a browser-takeover connection's input genuinely reaches Steel). */
   onBrowserTakeoverInputForwarded?: (event: BrowserTakeoverInputForwardedEvent) => void;
+  /**
+   * TASK-287 — how often an open live-agent/browser-takeover WS connection
+   * re-checks that its originating session is still valid (signature,
+   * expiry, and now revocation). Defaults to 15s in both route modules
+   * when omitted. Test-injectable (mirrors `sseIntervalMs` above) so a
+   * test can observe a force-close within a real, bounded wait — via
+   * `POST /auth/logout` through the real `buildApp` route, not a fake
+   * `revokedSessionTokens` port — rather than the production interval.
+   */
+  sessionRevalidationIntervalMs?: number;
 }
 
 /** One secret request awaiting a human's decision — the `GET /secret-requests` list shape. */
@@ -2335,11 +2345,17 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   });
 
   // TASK-171 — mobile live-agent PTY viewer: status route + raw WS upgrade.
+  // TASK-287: `revokedSessionTokens` is the same store the global auth
+  // preHandler and `/auth/logout` above use, so an explicit logout
+  // force-closes an already-open viewer/takeover connection the same way
+  // it already does for new connections and for TASK-259's SSE stream.
   registerLiveAgentRoutes(app, {
     authToken,
     liveAgent: options.liveAgent,
     dialUpstream: options.dialLiveAgentUpstream,
     onInputDiscarded: options.onLiveAgentInputDiscarded,
+    sessionRevalidationIntervalMs: options.sessionRevalidationIntervalMs,
+    revokedSessionTokens,
   });
 
   // TASK-235 (G-07 part 2b) — Steel/CDP interactive browser hand-off: raw
@@ -2348,12 +2364,16 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   // already depends on for this route's own connect-time defense-in-depth
   // pending gate (see browserTakeover.routes.ts's file header, point 2) —
   // structurally compatible (duck-typed `getStatus`), not duplicated.
+  // TASK-287: same `revokedSessionTokens` wiring as `registerLiveAgentRoutes`
+  // above.
   registerBrowserTakeoverRoutes(app, {
     authToken,
     browserTakeover: options.browserTakeover,
     takeoverStatus: options.takeover,
     dialUpstream: options.dialBrowserTakeoverUpstream,
     onInputForwarded: options.onBrowserTakeoverInputForwarded,
+    sessionRevalidationIntervalMs: options.sessionRevalidationIntervalMs,
+    revokedSessionTokens,
   });
 
   return app;
