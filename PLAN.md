@@ -8697,7 +8697,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-293
 **Title:** template-status false drift on freshly installed roles -- compare against an install-time baseline, not the raw template manifest
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_TEMPLATES_v1.0.md §6.1 (drift = role changed since install), §6.2 ("Drift is shown, never auto-synced"); §5 install semantics (name override, opt-in `include_memories`, reuse of same-named tenant skills, integrations surfaced as a grant checklist rather than auto-granted).
@@ -8712,14 +8712,14 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Existing TASK-289 cases (never installed / unchanged / instructions edited) still pass.
 - [ ] Migration 029 up and down both apply cleanly; register-capabilities/test-isolated -Init re-run if the harness requires it.
 - [ ] Full recursive suite via `scripts/test-isolated.ps1` only (never a direct DATABASE_URL run -- production spend risk, see 2026-09-15 incident). Pre-existing sandbox failures caused by TASK-292's live port exhaustion must be named as such in Test_Evidence, not hidden.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-293-s5
+**Started_At:** 2026-09-17T16:07:33Z
 **Progress_Notes:**
 - [2026-09-17T15:50:00Z] [ORCH] Filed from independent review of TASK-289's merged code. TASK-291 (drift badge) proceeds in parallel since the response contract is unchanged.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T15:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-17T16:07:33Z
 
