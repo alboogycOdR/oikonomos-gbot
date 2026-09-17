@@ -50,7 +50,7 @@ if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { $env:Path = 'C:
 # Update this if the standing ORCH session's local ID ever changes (a fresh
 # `claude` invocation without --resume, or the transcript file rotating under
 # C:\Users\User\.claude\projects\E--DELL-PROJECTS-GROKBOT-CLONE\).
-$SessionId = '0f7f6a88-a6f7-4782-81cc-87914c8141f9'
+$SessionId = '32399cb5-18cd-4fd2-ac66-ce305c676c37'
 $ProjectPath = 'E:\DELL-PROJECTS\GROKBOT-CLONE'
 
 $Prompt = 'The machine just rebooted (auto-logon, unattended). This is a scheduled reboot-recovery check-in, not an interactive request from the user -- treat it like a normal autopilot check-in turn. Verify infra/compose/service-watchdog.ps1''s own scheduled task brought control-api and worker back up (check infra/compose/logs/watchdog.log for a recent tick). Check PLAN.md for any tasks left in_progress/blocked and .devteam/runs/*.done markers that may have landed or died mid-flight during the outage. Allowed: reading files, git status/fetch/log/diff, pnpm install, scripts/dispatch.ps1 to re-launch a builder on an already-filed task, python scripts/validate_plan.py. NOT allowed here: git merge, git push, deleting branches/worktrees, or any other destructive/write action -- queue those for the user''s own review when they are back, exactly as the standing review discipline requires. Report what you found and did in plain terms.'
