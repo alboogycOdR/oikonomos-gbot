@@ -1,0 +1,5 @@
+# TASK-285 Dossier
+
+## Work Log
+
+- [2026-09-17T07:42:46Z] [CX9] Resume preflight completed. `task/TASK-285-cx9` exists and is checked out with no branch-only commits or working-tree changes. `python scripts/preflight_paths.py TASK-285` reports all six owned source/test files exist: `packages/broker/src/capabilityRegistry.ts` (178 lines), `packages/broker/src/index.ts` (807 lines), `packages/broker/src/builtinTools.ts` (77 lines), `packages/policy/src/enforcement.ts` (90 lines), `packages/policy/src/enforcement.test.ts` (128 lines), and `packages/broker/src/enforcementGate.test.ts` (190 lines). No prior dossier exists and PLAN.md has no REWORK findings. Blocked before implementation: acceptance criterion 1 mandates recording the security-policy classification decision in an ADR amendment/new ADR, but `docs/**` is outside `Owned_Paths` and this strict-mode dispatch expressly prohibits all writes to `docs/`. A docs ownership expansion (for the chosen ADR path) is required before a compliant implementation can begin; otherwise the task cannot meet its acceptance bar.
