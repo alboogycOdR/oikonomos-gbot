@@ -77,3 +77,56 @@ PLAN.md task block → `project_tasks`; Owned_Paths → artifact ownership; `nee
 - Unchanged: ADR-010's enforced set; ADR-012's locator-only handoff rule; ADR-013's two authorities; `GROUP_MEMBER_CAP = 6`; the single-owner routing rule.
 - Sequencing: after Wave Workspace-1's TASK-237/238/242/243/244/246 where files overlap (`app.ts`, `ports.ts`, `chatRunDriver.ts`, the Work view).
 - Open for a later ADR: enabling `project.create_role` / `project.request_grant` (with the `require_approval_rules` row as a precondition), cross-project artifact sharing, and a Project template (a Project recipe is a Templates v2 question).
+
+## Amendment 2026-09-17 (ORCH) — `workspace.retire_bot`'s T4 enforcement classification (TASK-285)
+
+TASK-282 shipped `workspace.create_bot` (T3_external) and `workspace.retire_bot`
+(T4_irreversible) as real, enabled, dual-adapter tools — a different track from
+§4's `project.*` tools above, which stayed `enabled: false` by design until a
+later ADR. `retire_bot` ended up **accidentally** inert rather than
+**deliberately** declared-disabled: no capability in the codebase had ever set
+`enforcementEnabled: true`, so `packages/broker/src/index.ts`'s legacy branch
+unconditionally denies any T4 call as `tier.irreversible`, regardless of
+grants. Neither TASK-282's author (S5) nor the adversarial reviewer (Codex, an
+independent `codex exec review`) found an existing `EnforcedActionClass`
+(`E1_payment` / `E2_auth_security_friction` / `E3_local_machine_execution` /
+`E4_secret_handling` / `E5_d3_path_access`) that fits "retire another bot,"
+and both correctly refused to force-fit one or flip `enforcementEnabled`
+without a matching class — doing so would have made `retire_bot` reach
+`resolveEnforcement`'s rank-6 `default_autonomous` **allow**, with zero human
+approval, which is strictly worse than today's accidental deny.
+
+**Decision:** add a sixth class, **`E6_irreversible_role_mutation`** — an
+action that durably changes another role's own operational status in a way
+the acting agent cannot itself undo (`retire_bot` today; a future
+`suspend_role`/`demote_role` would also qualify). Declare `retire_bot` with
+`enforcementEnabled: true` and `enforcedActionClasses:
+["E6_irreversible_role_mutation"]`.
+
+**Why this mechanism, not `require_approval_rules`:** `resolveEnforcement`
+(`packages/policy/src/enforcement.ts`) offers two independent routes to
+forced approval — rank 2 (`enforcedActionClasses.length > 0`) and rank 3
+(a matching `require_approval_rules` entry). Rank 3 was rejected: its
+production dependency, `BrokerDependencies.getRequireApprovalRules`, is
+declared in the broker's interface but has **no real implementation
+anywhere in this codebase** — using it here would mean building a whole new
+rules table/config and its production wiring from scratch. Rank 2 needs only
+a new enum member plus the two fields on `retire_bot`'s existing
+`builtinTools.ts` entry; `resolveApprovalRequired` (the same, already-live
+`packages/approvals` issue/consume pipeline every other T2+ governed action
+already uses — Gmail sends, Bash, etc.) handles everything downstream with
+no new plumbing. `E2_auth_security_friction` is the only class with
+special-cased routing (`human.takeover`, for browser/auth friction); every
+other class, including the new one, correctly falls through to a real
+issued, pending, human-decidable approval.
+
+**Consequences:** `packages/policy/src/enforcement.ts` gains one enum
+member (`EnforcedActionClass`); `packages/broker/src/builtinTools.ts`'s
+`retire_bot` entry gains two fields. No changes needed to
+`capabilityRegistry.ts` or the routing logic in `index.ts` — both already
+handle any enforcement-enabled, classified capability correctly, proven by
+this exact codepath already serving every other enforced tool in
+production. Adversarial, different-model review still required (protected
+path). A real integration test must prove a live `retire_bot` call parks
+pending approval (not autonomous-allow, not unconditional deny) and
+executes only once that approval is granted through the real pipeline.
