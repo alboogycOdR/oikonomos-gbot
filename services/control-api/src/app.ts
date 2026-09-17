@@ -10,7 +10,7 @@ import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
-import { DEFAULT_ROLE_CAPABILITIES } from "./defaultCapabilities.js";
+import { createRoleWithDefaultCapabilities, registerTemplateRoutes } from "./templates.js";
 import { registerLiveAgentRoutes, type LiveAgentPort, type LiveAgentExecdEndpoint, type LiveAgentInputDiscardedEvent, type UpstreamConnection } from "./liveAgent.routes.js";
 import {
   registerBrowserTakeoverRoutes,
@@ -1090,6 +1090,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     await reply.code(200).send({ status: "ok", buildSha });
   });
 
+  registerTemplateRoutes(app, deps);
+
   app.get("/workspace/summary", async (request, reply) => {
     if (deps.listWorkspaceSummary === undefined) {
       await reply.code(501).send({ error: "workspace summary not implemented" });
@@ -1153,33 +1155,12 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           await reply.code(400).send({ error: "name must not be empty." });
           return;
         }
-        const role = await deps.createRole({
-          roleId: randomUUID(),
+        const role = await createRoleWithDefaultCapabilities(deps, {
           tenantId: request.tenantId,
           name,
           title: name,
           description,
         });
-        // TASK-264 / ADR-018 Amendment 2026-09-16: the automatic
-        // role-creation floor is now the named `DEFAULT_ROLE_CAPABILITIES`
-        // set (see services/control-api/src/defaultCapabilities.ts), not
-        // an adapter-tag filter. Tier resolution is unchanged: each grant
-        // still reads its `maxTier` live from `deps.listCapabilities()`
-        // (the same `capabilities` table CapabilityRegistry enforces
-        // against), never hardcoded here.
-        const defaultCapabilities = (await deps.listCapabilities()).filter((capability) =>
-          (DEFAULT_ROLE_CAPABILITIES as readonly string[]).includes(capability.capabilityId),
-        );
-        await Promise.all(
-          defaultCapabilities.map((capability) =>
-            deps.upsertRoleGrant({
-              roleId: role.roleId,
-              capabilityId: capability.capabilityId,
-              maxTier: capability.defaultTier,
-              constraints: {},
-            }),
-          ),
-        );
         await reply.code(201).send(serializeRole(role));
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });

@@ -16,10 +16,14 @@ import {
   createTaskExecutionRun as dbCreateTaskExecutionRun,
   createRoutine as dbCreateRoutine,
   createRole as dbCreateRole,
+  createBotTemplate as dbCreateBotTemplate,
+  createRoleTemplateInstall as dbCreateRoleTemplateInstall,
   createGroupThread as dbCreateGroupThread,
   getOrCreateThreadForRole as dbGetOrCreateThreadForRole,
   getTask as dbGetTask,
   getRole as dbGetRole,
+  getBotTemplate as dbGetBotTemplate,
+  getLatestBotTemplate as dbGetLatestBotTemplate,
   insertMessage as dbInsertMessage,
   insertAuditEvent as dbInsertAuditEvent,
   getAuditEventsForRun as dbGetAuditEventsForRun,
@@ -31,6 +35,7 @@ import {
   listMessages as dbListMessages,
   listWorkspaceSummary as dbListWorkspaceSummary,
   listRoles as dbListRoles,
+  listBotTemplates as dbListBotTemplates,
   listRoleMessages as dbListRoleMessages,
   updateRoleInstructions as dbUpdateRoleInstructions,
   listRoutines as dbListRoutines,
@@ -61,12 +66,15 @@ import {
   SECRET_VAULT_WRITE_EVENT,
   RoutineLimitError,
   type AuditEvent,
+  type BotTemplate,
   type Capability,
   type DatabaseOptions,
   type NewTask,
   type TaskExecution,
   type NewRoutine,
   type NewRole,
+  type NewBotTemplate,
+  type NewRoleTemplateInstall,
   type NewThread,
   type NewGroupThread,
   type NewMessage,
@@ -162,6 +170,18 @@ export interface ControlApiDeps {
   submitTaskExecution?(input: { task: NewTask; execution: TaskExecution }): Promise<{ task: Task; runId: string }>;
   createRoutine(input: NewRoutine): Promise<Routine>;
   createRole(input: NewRole): Promise<Role>;
+  /** Template persistence is optional only for legacy route fixtures. Production always provides it. */
+  createBotTemplate?(input: NewBotTemplate): Promise<BotTemplate>;
+  getLatestBotTemplate?(templateId: string): Promise<BotTemplate | null>;
+  getBotTemplate?(templateId: string, version: number): Promise<BotTemplate | null>;
+  listBotTemplates?(filter: { tenantId: string }): Promise<BotTemplate[]>;
+  createRoleTemplateInstall?(input: NewRoleTemplateInstall): Promise<void>;
+  insertAuditEvent?(input: {
+    tenantId: string;
+    actor: string;
+    eventType: string;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
   listCapabilities(): Promise<Capability[]>;
   upsertRoleGrant(input: RoleGrant): Promise<RoleGrant>;
   listRoleGrants(roleId: string): Promise<RoleGrant[]>;
@@ -603,6 +623,12 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     submitTaskExecution,
     createRoutine: async (input) => dbCreateRoutine(options, input),
     createRole: (input) => dbCreateRole(options, input),
+    createBotTemplate: (input) => dbCreateBotTemplate(options, input),
+    getLatestBotTemplate: (templateId) => dbGetLatestBotTemplate(options, templateId),
+    getBotTemplate: (templateId, version) => dbGetBotTemplate(options, templateId, version),
+    listBotTemplates: (filter) => dbListBotTemplates(options, filter),
+    createRoleTemplateInstall: async (input) => { await dbCreateRoleTemplateInstall(options, input); },
+    insertAuditEvent: async (input) => { await dbInsertAuditEvent(options, input); },
     listCapabilities: () => withDatabase(options, (database) => database.listCapabilities()),
     upsertRoleGrant: (input) => withDatabase(options, (database) => database.upsertRoleGrant(input)),
     listRoleGrants: (roleId) => withDatabase(options, (database) => database.listRoleGrants(roleId)),

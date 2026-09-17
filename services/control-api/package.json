@@ -36,6 +36,7 @@
     "@oikonomos/connectors": "workspace:*",
     "@oikonomos/db": "workspace:*",
     "@oikonomos/sandbox-client": "workspace:*",
+    "@oikonomos/templates": "workspace:*",
     "@oikonomos/worker": "workspace:*",
     "cron-parser": "^5.10.0",
     "fastify": "^5.12.1",
