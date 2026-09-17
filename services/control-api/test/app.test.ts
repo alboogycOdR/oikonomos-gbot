@@ -1,6 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createServer, Socket, type Server } from "node:net";
 import { Writable } from "node:stream";
 
+import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Approval, AuditEvent, Message, Role, Routine, Run, Task, Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResult } from "@oikonomos/approvals";
@@ -8,6 +10,16 @@ import { DEFAULT_APPROVAL_TTL_MS, type ApprovalWaitSignal, type EditApprovalResu
 import { buildApp, type BuildAppOptions } from "../src/app.js";
 import type { ControlApiDeps } from "../src/ports.js";
 import { createSessionToken, SESSION_TTL_MS } from "../src/auth.js";
+import {
+  registerLiveAgentRoutes,
+  type LiveAgentPort,
+  type LiveAgentSandboxRef,
+} from "../src/liveAgent.routes.js";
+import {
+  registerBrowserTakeoverRoutes,
+  type BrowserTakeoverPort,
+  type TakeoverStatusPort,
+} from "../src/browserTakeover.routes.js";
 
 /**
  * TASK-101: every test in this file that exercises a protected route must
@@ -1040,4 +1052,254 @@ describe("GET /threads/:id/stream — session re-validation (TASK-259)", () => {
     },
     STREAM_TEST_TIMEOUT_MS,
   );
+});
+
+/**
+ * TASK-286 — `liveAgent.routes.ts`'s two WS-upgrade routes (viewer + human
+ * takeover) and `browserTakeover.routes.ts`'s one route must each
+ * force-close an open connection once its originating session is no longer
+ * valid, mirroring TASK-259's SSE fix. Unlike SSE, these routes are raw
+ * `node:http` upgrade handlers with no Fastify `inject()` support and no
+ * poll/heartbeat timer of their own to piggyback re-validation on — TASK-259
+ * gave them a dedicated `startSessionRevalidation` timer instead (see
+ * `liveAgent.routes.ts`/`browserTakeover.routes.ts`).
+ *
+ * These tests register the routes directly on a hand-rolled Fastify
+ * instance (the same rig `liveAgent.routes.test.ts`/
+ * `browserTakeover.routes.test.ts` already use for their own real-upgrade
+ * tests) rather than going through `buildApp`: `sessionRevalidationIntervalMs`
+ * is not threaded through `BuildAppOptions` (that would mean editing
+ * `app.ts`'s call site, outside this task's `Owned_Paths` — see the fix's
+ * own doc comment), so a fast, deterministic interval can only be injected
+ * by calling `registerLiveAgentRoutes`/`registerBrowserTakeoverRoutes`
+ * directly. Every socket here is real loopback TCP; a real WS handshake
+ * genuinely completes and a real clock genuinely elapses past the fixture
+ * session's real expiry.
+ */
+describe("liveAgent/browserTakeover WS routes — session re-validation (TASK-286)", () => {
+  const WS_TOKEN = "task-286-fixture-shared-secret";
+  const WEBSOCKET_GUID_FIXTURE = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  const FAST_REVALIDATION_MS = 20;
+
+  /** A minimal raw-TCP "upstream" (stands in for execd or Steel): completes the WS handshake and otherwise never sends anything unprompted. */
+  function startFakeUpstream(): Promise<{ port: number; close(): void }> {
+    return new Promise((resolve) => {
+      let clientSocket: Socket | undefined;
+      const server: Server = createServer((socket) => {
+        let buffer = Buffer.alloc(0);
+        socket.on("data", (chunk: Buffer) => {
+          buffer = Buffer.concat([buffer, chunk]);
+          const headerEnd = buffer.indexOf("\r\n\r\n");
+          if (headerEnd === -1 || clientSocket !== undefined) return;
+          const headerText = buffer.subarray(0, headerEnd).toString("latin1");
+          const keyMatch = /Sec-WebSocket-Key:\s*(.+)/i.exec(headerText);
+          const key = keyMatch?.[1]?.trim() ?? "";
+          const acceptKey = createHash("sha1").update(key + WEBSOCKET_GUID_FIXTURE).digest("base64");
+          socket.write(
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+              `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`,
+          );
+          clientSocket = socket;
+        });
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        const port = typeof address === "object" && address !== null ? address.port : 0;
+        resolve({
+          port,
+          close(): void {
+            try {
+              clientSocket?.destroy();
+            } catch {
+              // Already destroyed.
+            }
+            server.close();
+          },
+        });
+      });
+    });
+  }
+
+  /** A minimal hand-rolled test client: performs the WS handshake over real loopback TCP against the app's own HTTP server, mirroring `liveAgent.routes.test.ts`'s own `connectViewerClient`. */
+  function connectWsClient(port: number, path: string, headers: Record<string, string>): Promise<{ socket: Socket; statusLine: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = new Socket();
+      let buffer = Buffer.alloc(0);
+      let handshakeDone = false;
+      socket.on("data", (chunk: Buffer) => {
+        if (handshakeDone) return;
+        buffer = Buffer.concat([buffer, chunk]);
+        const headerEnd = buffer.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        const statusLine = buffer.subarray(0, buffer.indexOf("\r\n")).toString("latin1");
+        handshakeDone = true;
+        resolve({ socket, statusLine });
+      });
+      socket.on("error", reject);
+      socket.connect(port, "127.0.0.1", () => {
+        const fixtureKeyMaterial = `task-286-fixture-${Math.random().toString(16).slice(2)}`;
+        const headerLines = Object.entries({
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Version": "13",
+          "Sec-WebSocket-Key": Buffer.from(fixtureKeyMaterial).toString("base64").slice(0, 24),
+          ...headers,
+        })
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n");
+        socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\n${headerLines}\r\n\r\n`);
+      });
+    });
+  }
+
+  /** Resolves true once `socket` actually closes, false if `maxWaitMs` elapses first. */
+  function waitForSocketClose(socket: Socket, maxWaitMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (socket.destroyed) {
+        resolve(true);
+        return;
+      }
+      const timer = setTimeout(() => {
+        socket.removeListener("close", onClose);
+        resolve(false);
+      }, maxWaitMs);
+      function onClose(): void {
+        clearTimeout(timer);
+        resolve(true);
+      }
+      socket.once("close", onClose);
+    });
+  }
+
+  let app: FastifyInstance | undefined;
+  let fakeUpstream: Awaited<ReturnType<typeof startFakeUpstream>> | undefined;
+  let acceptedSockets: Socket[] = [];
+
+  function trackAcceptedSockets(target: FastifyInstance): void {
+    target.server.on("connection", (socket: Socket) => acceptedSockets.push(socket));
+  }
+
+  afterEach(async () => {
+    for (const socket of acceptedSockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // Already destroyed.
+      }
+    }
+    acceptedSockets = [];
+    if (app !== undefined) await app.close();
+    fakeUpstream?.close();
+    app = undefined;
+    fakeUpstream = undefined;
+  });
+
+  it("force-closes an open live-agent VIEWER connection once its session expires mid-connection", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-286", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-286/ws?mode=viewer&since=0` }),
+    };
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    registerLiveAgentRoutes(app, { authToken: WS_TOKEN, liveAgent, sessionRevalidationIntervalMs: FAST_REVALIDATION_MS });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    // A real TTL short enough (~150ms) that it expires while the
+    // connection is held open, minted immediately before connecting so
+    // the initial handshake's own auth check still passes.
+    const almostExpiredNow = Date.now() - SESSION_TTL_MS + 150;
+    const sessionToken = createSessionToken(WS_TOKEN, "tenant-task-286", almostExpiredNow);
+
+    const client = await connectWsClient(port, "/roles/bot-286/live-agent/pty", { cookie: `control_api_session=${sessionToken}` });
+    expect(client.statusLine).toContain("101");
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  });
+
+  it("force-closes an open live-agent TAKEOVER connection once its session expires mid-connection", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-286t", state: "waiting_approval" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => {
+        throw new Error("unused in this test");
+      },
+      getPtyTakeoverEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-286t/ws?mode=holder&takeover=1` }),
+    };
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    registerLiveAgentRoutes(app, { authToken: WS_TOKEN, liveAgent, sessionRevalidationIntervalMs: FAST_REVALIDATION_MS });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const almostExpiredNow = Date.now() - SESSION_TTL_MS + 150;
+    const sessionToken = createSessionToken(WS_TOKEN, "tenant-task-286", almostExpiredNow);
+
+    const client = await connectWsClient(port, "/roles/bot-286/live-agent/takeover", { cookie: `control_api_session=${sessionToken}` });
+    expect(client.statusLine).toContain("101");
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  });
+
+  it("does NOT close a bearer-authenticated live-agent viewer connection, which has no session expiry to re-check", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const sandbox: LiveAgentSandboxRef = { sandboxId: "sbx-286b", state: "Running" };
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: async () => sandbox,
+      getPtyViewerEndpoint: async () => ({ url: `ws://127.0.0.1:${fakeUpstream!.port}/pty/sbx-286b/ws?mode=viewer&since=0` }),
+    };
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    registerLiveAgentRoutes(app, { authToken: WS_TOKEN, liveAgent, sessionRevalidationIntervalMs: FAST_REVALIDATION_MS });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const client = await connectWsClient(port, "/roles/bot-286/live-agent/pty", { authorization: `Bearer ${WS_TOKEN}` });
+    expect(client.statusLine).toContain("101");
+
+    // Several fast re-validation ticks pass; a bearer connection has no
+    // session to expire or revoke, so it must survive all of them.
+    const closedPrematurely = await waitForSocketClose(client.socket, 300);
+    expect(closedPrematurely).toBe(false);
+  });
+
+  it("force-closes an open browser-takeover connection once its session expires mid-connection", async () => {
+    fakeUpstream = await startFakeUpstream();
+    const endpoint = { url: `ws://127.0.0.1:${fakeUpstream.port}/cdp` };
+    const runId = "22222222-2222-2222-2222-222222222222";
+    const browserTakeover: BrowserTakeoverPort = { getCdpEndpoint: async () => endpoint };
+    const takeoverStatus: TakeoverStatusPort = { getStatus: async () => ({ pending: true }) };
+
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    registerBrowserTakeoverRoutes(app, {
+      authToken: WS_TOKEN,
+      browserTakeover,
+      takeoverStatus,
+      sessionRevalidationIntervalMs: FAST_REVALIDATION_MS,
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const almostExpiredNow = Date.now() - SESSION_TTL_MS + 150;
+    const sessionToken = createSessionToken(WS_TOKEN, "tenant-task-286", almostExpiredNow);
+
+    const client = await connectWsClient(port, `/runs/${runId}/browser-takeover`, { cookie: `control_api_session=${sessionToken}` });
+    expect(client.statusLine).toContain("101");
+
+    const closed = await waitForSocketClose(client.socket, 3000);
+    expect(closed).toBe(true);
+  });
 });
