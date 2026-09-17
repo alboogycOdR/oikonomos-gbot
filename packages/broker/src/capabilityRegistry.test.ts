@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+import type { EnforcedActionClass } from "@oikonomos/policy";
 import { describe, expect, it, vi } from "vitest";
 
 import { handlePreToolUse, type BrokerDependencies, type PreToolUseRequest } from "./index.js";
@@ -141,6 +142,46 @@ describe("CapabilityRegistry resolution ports", () => {
     vi.mocked(store.getCapability).mockResolvedValueOnce(null);
     await expect(ports.getCapability(gmail.toolName)).resolves.toBeNull();
     expect(store.getCapability).toHaveBeenCalledTimes(4);
+  });
+
+  it("propagates declared enforcement metadata to the real broker port", async () => {
+    const enforced: DeclaredTool = {
+      ...gmail,
+      enforcementEnabled: true,
+      enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    };
+    const store = reader(rowsFor([enforced]));
+    const registry = await CapabilityRegistry.build({ declared: [enforced], persisted: store });
+
+    await expect(registry.brokerPorts(store).getCapability(enforced.toolName)).resolves.toMatchObject({
+      enforcementEnabled: true,
+      enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    });
+  });
+
+  it("keeps enforcement metadata genuinely ABSENT (not present-as-undefined) for a legacy capability that never declares it", async () => {
+    const store = reader(rowsFor([gmail]));
+    const registry = await CapabilityRegistry.build({ declared: [gmail], persisted: store });
+    const resolved = await registry.brokerPorts(store).getCapability(gmail.toolName);
+    expect(resolved).not.toBeNull();
+    expect("enforcementEnabled" in resolved!).toBe(false);
+    expect("enforcedActionClasses" in resolved!).toBe(false);
+  });
+
+  it("freezes a declared tool's own enforcedActionClasses array so a caller cannot mutate the shared declaration (adversarial review, TASK-285)", async () => {
+    const mutableClasses: EnforcedActionClass[] = ["E6_irreversible_role_mutation"];
+    const enforced: DeclaredTool = { ...gmail, enforcementEnabled: true, enforcedActionClasses: mutableClasses };
+    const store = reader(rowsFor([enforced]));
+    const registry = await CapabilityRegistry.build({ declared: [enforced], persisted: store });
+    const resolved = await registry.brokerPorts(store).getCapability(enforced.toolName);
+    expect(() => (resolved!.enforcedActionClasses as EnforcedActionClass[]).push("E1_payment")).toThrow(TypeError);
+    // Mutating the ORIGINAL array the caller declared with must not reach
+    // into the registry's own frozen copy -- proves a real defensive copy
+    // was made, not just a frozen reference to the same array.
+    mutableClasses.push("E1_payment");
+    await expect(registry.brokerPorts(store).getCapability(enforced.toolName)).resolves.toMatchObject({
+      enforcedActionClasses: ["E6_irreversible_role_mutation"],
+    });
   });
 
   it("keeps declared-disabled capabilities out of ports and mounts regardless of grants", async () => {

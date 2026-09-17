@@ -1,4 +1,4 @@
-import type { RiskTier } from "@oikonomos/policy";
+import type { EnforcedActionClass, RiskTier } from "@oikonomos/policy";
 
 import type { BrokerDependencies, RegisteredCapability, RoleGrantCeiling } from "./index.js";
 
@@ -8,6 +8,10 @@ export interface DeclaredTool {
   readonly defaultTier: RiskTier;
   readonly adapter: string;
   readonly enabled: boolean;
+  /** Opts this declaration into the policy enforcement resolver. */
+  readonly enforcementEnabled?: boolean;
+  /** Fixed-floor classifications propagated to the broker at call time. */
+  readonly enforcedActionClasses?: readonly EnforcedActionClass[];
   /** Connector server identity used only to close C2's raw SDK-name contract. */
   readonly mcpServerName?: string;
 }
@@ -127,7 +131,16 @@ export class CapabilityRegistry {
     for (const entry of input.declared) {
       if (entries.has(entry.toolName)) throw new DuplicateToolDeclarationError(entry.toolName);
       if (!isValidDeclaration(entry)) throw new InvalidToolDeclarationError(entry.toolName);
-      entries.set(entry.toolName, Object.freeze({ ...entry }));
+      // `Object.freeze` is shallow: without also freezing `enforcedActionClasses`,
+      // a caller holding a reference to a resolved entry could mutate the
+      // SAME array `BUILTIN_TOOLS`'s own literal points at (found by
+      // adversarial review, TASK-285) -- e.g. clearing it would silently
+      // drop `workspace.retire_bot` to `default_autonomous` allow, process-
+      // wide, for every future request, with no error anywhere.
+      entries.set(entry.toolName, Object.freeze({
+        ...entry,
+        ...(entry.enforcedActionClasses === undefined ? {} : { enforcedActionClasses: Object.freeze([...entry.enforcedActionClasses]) }),
+      }));
     }
 
     const rows = await input.persisted.listCapabilities();
@@ -164,7 +177,18 @@ export class CapabilityRegistry {
         if (entry === null || entry.enabled !== true) return null;
         const row = await persisted.getCapability(entry.capabilityId);
         if (row === null || row.enabled !== true || row.defaultTier !== entry.defaultTier || row.adapter !== entry.adapter) return null;
-        return { toolName, capabilityId: entry.capabilityId, defaultTier: entry.defaultTier };
+        return {
+          toolName,
+          capabilityId: entry.capabilityId,
+          defaultTier: entry.defaultTier,
+          // Conditional spread (adversarial review, TASK-285): a legacy
+          // capability that never declares these fields must project a
+          // RegisteredCapability with them genuinely ABSENT, not present
+          // with value `undefined` -- keeps this object's shape identical
+          // to what every pre-existing capability already produced.
+          ...(entry.enforcementEnabled === undefined ? {} : { enforcementEnabled: entry.enforcementEnabled }),
+          ...(entry.enforcedActionClasses === undefined ? {} : { enforcedActionClasses: entry.enforcedActionClasses }),
+        };
       },
       getRoleGrant: async (roleId: string, capabilityId: string): Promise<RoleGrantCeiling | null> => {
         const row = await persisted.getRoleGrant(roleId, capabilityId);

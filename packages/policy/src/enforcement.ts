@@ -12,7 +12,9 @@ export type EnforcedActionClass =
   | "E2_auth_security_friction"
   | "E3_local_machine_execution"
   | "E4_secret_handling"
-  | "E5_d3_path_access";
+  | "E5_d3_path_access"
+  /** A durable status mutation on another role that the actor cannot undo. */
+  | "E6_irreversible_role_mutation";
 
 export type EnforcementRank = 1 | 2 | 3 | 4 | 5 | 6;
 
