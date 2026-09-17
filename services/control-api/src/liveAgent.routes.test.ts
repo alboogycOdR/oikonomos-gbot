@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import type { IncomingMessage } from "node:http";
 import { createServer, Socket, type Server } from "node:net";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,7 @@ import {
   FrameReader,
   encodeFrame,
   defaultDialUpstream,
+  isSameOriginOrAbsent,
   relay,
   relayTakeover,
   registerLiveAgentRoutes,
@@ -230,6 +232,41 @@ describe("relayTakeover() — genuinely interactive take-over, and only within o
     // against) must not be forwarded — teardown is a one-way door.
     downstream.emit("data", encodeFrame(OPCODE_TEXT, Buffer.from("too late"), true));
     expect(forwarded).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isSameOriginOrAbsent() — TASK-248's own unit-level coverage, ahead of the
+// end-to-end upgrade tests below which exercise it via a real connection.
+// ---------------------------------------------------------------------------
+
+describe("isSameOriginOrAbsent()", () => {
+  function reqWith(headers: Record<string, string | undefined>): IncomingMessage {
+    return { headers } as unknown as IncomingMessage;
+  }
+
+  it("allows a request with no Origin header at all (non-browser client)", () => {
+    expect(isSameOriginOrAbsent(reqWith({ host: "dashboard.example" }))).toBe(true);
+  });
+
+  it("allows an Origin whose host matches the request's Host header", () => {
+    expect(
+      isSameOriginOrAbsent(reqWith({ origin: "https://dashboard.example", host: "dashboard.example" })),
+    ).toBe(true);
+  });
+
+  it("rejects an Origin naming a different host than the request's Host header", () => {
+    expect(
+      isSameOriginOrAbsent(reqWith({ origin: "https://evil.example", host: "dashboard.example" })),
+    ).toBe(false);
+  });
+
+  it("rejects a present-but-unparseable Origin header (fails closed)", () => {
+    expect(isSameOriginOrAbsent(reqWith({ origin: "not a url", host: "dashboard.example" }))).toBe(false);
+  });
+
+  it("rejects when Origin is present but Host is somehow absent (fails closed)", () => {
+    expect(isSameOriginOrAbsent(reqWith({ origin: "https://dashboard.example", host: undefined }))).toBe(false);
   });
 });
 
@@ -519,6 +556,77 @@ describe("GET /roles/:roleId/live-agent/pty — real upgrade + relay over loopba
     expect(viewer.statusLine).toContain("404");
   });
 
+  // -------------------------------------------------------------------------
+  // TASK-248 — same-origin guard (AC2: "A WebSocket upgrade from a foreign
+  // origin is rejected; same-origin succeeds"). connectViewerClient's fixed
+  // `Host: 127.0.0.1` (no port) is why the matching Origin below is exactly
+  // `http://127.0.0.1` — `req.headers.host` never carries a port in this
+  // test rig, so neither does a genuinely same-origin `Origin`.
+  // -------------------------------------------------------------------------
+
+  it("TASK-248: rejects a WS upgrade whose Origin header names a foreign host (403, no 101)", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue({ sandboxId: "sbx-1", state: "Running" }),
+      getPtyViewerEndpoint: vi.fn(),
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", {
+      ...authHeaders(),
+      Origin: "https://evil.example",
+    });
+    expect(viewer.statusLine).not.toContain("101");
+    expect(viewer.statusLine).toContain("403");
+    // Rejected before even resolving the sandbox — the foreign origin never
+    // gets far enough to learn anything about the role's live state.
+    expect(liveAgent.getActiveSandbox).not.toHaveBeenCalled();
+  });
+
+  it("TASK-248: accepts a WS upgrade whose Origin header matches the request's own Host (same-origin)", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue({ sandboxId: "sbx-1", state: "Running" }),
+      getPtyViewerEndpoint: vi.fn().mockRejectedValue(new Error("no execd fixture needed for this test")),
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const viewer = await connectViewerClient(port, "/roles/bot-1/live-agent/pty", {
+      ...authHeaders(),
+      Origin: "http://127.0.0.1",
+    });
+    // Same-origin passes the guard and proceeds into real route logic —
+    // proven here by reaching getActiveSandbox/getPtyViewerEndpoint (which
+    // then fails for an unrelated, deliberate reason: 502, never 403).
+    expect(viewer.statusLine).not.toContain("403");
+    expect(viewer.statusLine).toContain("502");
+    expect(liveAgent.getActiveSandbox).toHaveBeenCalledWith("bot-1", "basileia");
+  });
+
   it("refuses the upgrade for an unauthenticated request", async () => {
     const liveAgent: LiveAgentPort = { getActiveSandbox: vi.fn(), getPtyViewerEndpoint: vi.fn() };
     app = Fastify({ logger: false });
@@ -689,6 +797,68 @@ describe("GET /roles/:roleId/live-agent/takeover — real upgrade + relay over l
     const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", authHeaders());
     expect(human.statusLine).not.toContain("101");
     expect(human.statusLine).toContain("501");
+  });
+
+  // TASK-248 — same guard, same-origin/foreign-origin pair as the viewer
+  // route's own tests above.
+  it("TASK-248: rejects a takeover WS upgrade whose Origin header names a foreign host (403, no 101)", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue({ sandboxId: "sbx-1", state: "waiting_approval" }),
+      getPtyViewerEndpoint: vi.fn(),
+      getPtyTakeoverEndpoint: vi.fn(),
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", {
+      ...authHeaders(),
+      Origin: "https://evil.example",
+    });
+    expect(human.statusLine).not.toContain("101");
+    expect(human.statusLine).toContain("403");
+    expect(liveAgent.getActiveSandbox).not.toHaveBeenCalled();
+  });
+
+  it("TASK-248: accepts a takeover WS upgrade whose Origin header matches the request's own Host (same-origin)", async () => {
+    const liveAgent: LiveAgentPort = {
+      getActiveSandbox: vi.fn().mockResolvedValue({ sandboxId: "sbx-1", state: "waiting_approval" }),
+      getPtyViewerEndpoint: vi.fn(),
+      getPtyTakeoverEndpoint: vi.fn().mockRejectedValue(new Error("no execd fixture needed for this test")),
+    };
+    app = Fastify({ logger: false });
+    trackAcceptedSockets(app);
+    app.decorateRequest("tenantId", "");
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      request.tenantId = "basileia";
+    });
+    registerLiveAgentRoutes(app, { authToken: TOKEN, liveAgent });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    const human = await connectViewerClient(port, "/roles/bot-1/live-agent/takeover", {
+      ...authHeaders(),
+      Origin: "http://127.0.0.1",
+    });
+    expect(human.statusLine).not.toContain("403");
+    expect(human.statusLine).toContain("502");
+    expect(liveAgent.getActiveSandbox).toHaveBeenCalledWith("bot-1", "basileia");
   });
 
   it("refuses the upgrade for an unauthenticated request", async () => {

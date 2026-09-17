@@ -66,6 +66,24 @@
  * connection passing `takeover=1` evicts the current holder and becomes
  * the new one. `getPtyTakeoverEndpoint` below requests exactly that
  * (`mode=holder&takeover=1`), never `mode=viewer`.
+ *
+ * TASK-248 — same-origin guard on both upgrade paths (`isSameOriginOrAbsent`
+ * below). A WS upgrade never goes through the browser's normal CORS
+ * preflight, so without this a malicious page could open
+ * `wss://<host>/roles/:roleId/live-agent/pty` (or `/takeover`) from a
+ * foreign origin and ride the visitor's own `Secure; SameSite=Strict`
+ * session cookie (`auth.ts`) — exactly the cross-site request TASK-240's
+ * single-origin design otherwise prevents for ordinary `fetch` calls, but
+ * a raw WS upgrade sits outside that protection. Enforced only when the
+ * browser actually sends an `Origin` header (every real browser WS
+ * handshake does): a request with none at all is a non-browser client
+ * (the mobile app's Bearer-token connections from TASK-171/TASK-228, or a
+ * test/CLI tool) and is not subject to CSWSH, so it is left entirely to
+ * the existing Bearer/cookie authentication check below to accept or
+ * refuse. The comparison is against `req.headers.host` — the one
+ * externally-visible host TASK-240's proxy always presents — rather than
+ * a hardcoded allowlist, so it holds across dev/prod without
+ * configuration.
  */
 import { randomBytes, createHash } from "node:crypto";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -266,6 +284,26 @@ function writeRawResponseAndDestroy(socket: Socket, status: number, message: str
     socket.destroy();
   } catch {
     // Already destroyed.
+  }
+}
+
+/**
+ * TASK-248 — see this file's header for the full CSWSH rationale. Returns
+ * `true` when there is no `Origin` header to check (non-browser client) or
+ * when the `Origin` header's host matches the request's own `Host` header;
+ * `false` (reject) when a browser-sent `Origin` names a different host, or
+ * is present but not a parseable URL at all (fails closed, same posture as
+ * every other malformed-input branch in this file).
+ */
+export function isSameOriginOrAbsent(req: IncomingMessage): boolean {
+  const originHeader = req.headers.origin;
+  if (originHeader === undefined) return true;
+  const hostHeader = req.headers.host;
+  if (hostHeader === undefined) return false;
+  try {
+    return new URL(originHeader).host === hostHeader;
+  } catch {
+    return false;
   }
 }
 
@@ -676,6 +714,10 @@ async function handleUpgrade(
     writeRawResponseAndDestroy(socket, 400, "Bad Request");
     return;
   }
+  if (!isSameOriginOrAbsent(req)) {
+    writeRawResponseAndDestroy(socket, 403, "Forbidden");
+    return;
+  }
   const roleId = decodeURIComponent(match[1]!);
 
   const resolved = await authenticateAndResolveSandbox(req, socket, authToken, liveAgent, roleId);
@@ -736,6 +778,10 @@ async function handleTakeoverUpgrade(
   }
   if ((req.headers.upgrade ?? "").toLowerCase() !== "websocket") {
     writeRawResponseAndDestroy(socket, 400, "Bad Request");
+    return;
+  }
+  if (!isSameOriginOrAbsent(req)) {
+    writeRawResponseAndDestroy(socket, 403, "Forbidden");
     return;
   }
   const roleId = decodeURIComponent(match[1]!);
