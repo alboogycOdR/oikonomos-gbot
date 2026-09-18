@@ -8780,7 +8780,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-296
 **Title:** Sandbox office lifecycle -- reap orphaned/idle offices, request a server-side TTL, pause the Gemini lane, alert on leak growth
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-010-persistent-office-computer-pivot.md (a persistent per-role office is INTENDED -- do not destroy after every run); docs/decisions/ADR-005-control-liveness.md (every mechanical control ships a liveness assertion keyed on evidence the control emits by doing its job); infra/sandbox/README.md:120 (server-side TTL reaping verified working).
@@ -8794,16 +8794,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Both Claude and Gemini lanes pause the office in a `finally`; a test where the turn throws proves the office is still released.
 - [ ] A liveness assertion that fails when the reaper is inert, keyed on emitted sweep evidence rather than configuration.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only, never a direct DATABASE_URL (2026-09-15 production-spend incident).
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-296-s5
+**Started_At:** 2026-09-18T18:45:23Z
 **Progress_Notes:**
 - [2026-09-18T13:50:00Z] [ORCH] Filed from the TASK-292 investigation. Framing deliberately corrected: persistent offices are intended, so this is reaping + TTL + release-on-failure, NOT destroy-after-every-run.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-18T13:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-18T18:45:23Z
 
 ### TASK-297
 **Title:** scripts/test-isolated.ps1 hangs indefinitely on a wedged Task Scheduler query
