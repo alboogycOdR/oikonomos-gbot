@@ -8,6 +8,8 @@ import {
 import type {
   CreateSandboxRequest,
   CreateSandboxResponse,
+  ListSandboxesRequest,
+  ListSandboxesResponse,
   Sandbox,
   SandboxApiErrorBody,
   SandboxEndpoint,
@@ -58,6 +60,23 @@ export interface SandboxClient {
   createSandbox(request: CreateSandboxRequest): Promise<CreateSandboxResponse>;
   /** GET /v1/sandboxes/{id} — authoritative lifecycle state for resume polling. */
   getSandbox(sandboxId: string): Promise<Sandbox>;
+  /**
+   * GET /v1/sandboxes — list sandboxes with optional state filter and
+   * pagination (TASK-296). Used by the sandbox reaper to reconcile the
+   * server's own view against `role_sandboxes`, since a role hard-deleted
+   * out from under a live office (cascade-deleted `role_sandboxes` row,
+   * `scripts/db-cleanup.mjs`) leaves nothing in our own DB to iterate.
+   *
+   * Optional (unlike every other method here) deliberately: making it
+   * required would force every existing hand-written `SandboxClient` test
+   * fixture across this repo to grow a new method it has no use for,
+   * including several outside this task's own `Owned_Paths`. The real
+   * client returned by `createSandboxClient` always implements it; only a
+   * caller that genuinely cannot list (a narrow test double) omits it, and
+   * `sandboxReaper.ts`'s reconciliation pass degrades by skipping
+   * reconciliation rather than throwing when it is absent.
+   */
+  listSandboxes?(request?: ListSandboxesRequest): Promise<ListSandboxesResponse>;
   /** DELETE /v1/sandboxes/{id} — destroy a sandbox. Resolves on 204; throws otherwise. */
   destroySandbox(sandboxId: string): Promise<void>;
   /** POST /v1/sandboxes/{id}/pause. */
@@ -322,6 +341,26 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
       return parsed;
     },
 
+    async listSandboxes(listRequest: ListSandboxesRequest = {}): Promise<ListSandboxesResponse> {
+      const params = new URLSearchParams();
+      for (const state of listRequest.state ?? []) params.append("state", state);
+      if (listRequest.page !== undefined) params.set("page", String(listRequest.page));
+      if (listRequest.pageSize !== undefined) params.set("pageSize", String(listRequest.pageSize));
+      const query = params.toString();
+      const response = await request(`/v1/sandboxes${query.length > 0 ? `?${query}` : ""}`, { method: "GET" }, true);
+      if (!response.ok) {
+        const body = await readErrorBody(response);
+        throw new SandboxClientError("OpenSandbox list-sandboxes returned an unexpected status", "UNEXPECTED_STATUS", {
+          status: response.status, apiErrorCode: body?.code,
+        });
+      }
+      const parsed: unknown = await response.json();
+      if (!isListSandboxesResponse(parsed)) {
+        throw new SandboxClientError("OpenSandbox list-sandboxes response was not the expected shape", "INVALID_RESPONSE");
+      }
+      return parsed;
+    },
+
     async pauseSandbox(sandboxId: string): Promise<void> {
       await lifecycleAction(sandboxId, "pause");
     },
@@ -404,4 +443,12 @@ function isSandbox(value: unknown): value is Sandbox {
   return typeof candidate.id === "string" && typeof candidate.createdAt === "string"
     && typeof candidate.status === "object" && candidate.status !== null
     && typeof (candidate.status as Record<string, unknown>).state === "string";
+}
+
+function isListSandboxesResponse(value: unknown): value is ListSandboxesResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return Array.isArray(candidate.items) && candidate.items.every(isSandbox)
+    && typeof candidate.pagination === "object" && candidate.pagination !== null
+    && typeof (candidate.pagination as Record<string, unknown>).hasNextPage === "boolean";
 }

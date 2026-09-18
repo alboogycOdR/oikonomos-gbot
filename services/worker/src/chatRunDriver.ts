@@ -48,6 +48,7 @@ import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startT
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
 import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
 import { createSandboxGeminiTools, createSteelGeminiTools, createWorkspaceGeminiTools } from "./geminiToolExecutors.js";
+import { withSandboxRelease } from "./sandboxReaper.js";
 import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
   BUDGET_READ_TIMEOUT_MS,
@@ -184,6 +185,24 @@ export function sandboxResourceLimitsFor(image: string): { readonly cpu: string;
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
+/**
+ * TASK-296 — server-side TTL passed to `createSandbox` (OpenSandbox's own
+ * `timeout`, seconds, absolute from creation). This is a BACKSTOP, not the
+ * primary reaper: `sandboxReaper.ts`'s idle sweep (`DEFAULT_SANDBOX_IDLE_MS`,
+ * 3 days) is what normally reclaims an unused office, and it runs far more
+ * often than this window elapses. This number exists for the case the app
+ * -level sweep can't reach — the whole worker process down, or a role's
+ * office created and then the worker crashing before any sweep ever runs
+ * again — so OpenSandbox's own reaper (`infra/sandbox/README.md:120`,
+ * verified live: a sandbox created with `timeout: 120` was gone after its
+ * window) eventually reclaims it regardless. Deliberately much LARGER than
+ * the idle window: a role used at least once a week never has its office
+ * killed out from under it by this alone, since the idle sweep would have
+ * already reaped (and this TTL would already have been superseded by a
+ * fresh `createSandbox` call, which reissues a fresh absolute deadline) long
+ * before 14 days of total worker downtime could elapse.
+ */
+const SANDBOX_SERVER_SIDE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 const SANDBOX_MANAGED_SETTINGS_PATH = "/etc/claude-code/managed-settings.json";
 // SHA-256 of infra/sandbox/images/office-base/managed-settings.json. Keep this
 // paired with the image asset: stale or altered managed settings fail closed.
@@ -779,7 +798,40 @@ export async function executeGeminiChatRun(
   const adapter = composed.gemini;
   if (adapter === undefined) throw new Error("Gemini composition did not produce an adapter.");
   const prompt = await buildGeminiTurnPrompt(options, request.threadId, systemPrompt, request.task.goal);
-  const result = await adapter.run(prompt);
+  // TASK-296: the Gemini lane never paused the office before this — release
+  // in a `finally` (wrapped by withSandboxRelease) so a thrown error from
+  // adapter.run (broker denial, network failure, a tool crash) can't leave
+  // the office Running/Resuming forever, mirroring the Claude lane's fix
+  // below.
+  // Explicit return-type annotation on the callback (rather than leaning on
+  // inference from `adapter.run`'s own declared type) is deliberate: this
+  // repo's `ComposedRuntime.gemini` field resolves structurally to `any` at
+  // this call site (a pre-existing gap in `composeHarness`'s generics,
+  // `packages/harness-factory` — out of this task's Owned_Paths and a
+  // CLAUDE.md protected path besides, not touched here). Consuming `any`
+  // directly is silently permissive either way, but TypeScript infers a
+  // generic type PARAMETER from an `any`-typed source as `unknown` rather
+  // than `any` (deliberate anti-contamination behaviour) — which
+  // `withSandboxRelease<T>` would otherwise surface as `result: unknown`
+  // below. Annotating the callback's own return type here sidesteps that by
+  // giving the compiler a real shape to infer `T` from instead, matching
+  // the fields this function already reads off `result` beneath it.
+  const result = await withSandboxRelease(
+    client,
+    options,
+    request.task.roleId,
+    resolvedSandbox.sandboxId,
+    (): Promise<{
+      readonly text: string;
+      readonly denied: boolean;
+      readonly usage: {
+        readonly promptTokenCount: number;
+        readonly candidatesTokenCount: number;
+        readonly thoughtsTokenCount: number;
+        readonly totalTokenCount: number;
+      };
+    }> => adapter.run(prompt),
+  );
 
   // Record spend BEFORE the denied check below (Fable review U1). A run
   // can make up to 11 real billed API calls and then exhaust the 12-turn
@@ -845,49 +897,54 @@ async function executeSandboxChatRun(
   await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
   await ensureSandboxWorkspace(client, resolvedSandbox.endpoint, workspace);
-  const response = await client.runCommand(resolvedSandbox.endpoint, {
-    command,
-    cwd: workspace,
-    // This is the whole child environment. Never spread process.env here:
-    // only the per-turn broker identity and model credential cross the
-    // worker/sandbox boundary — the image itself carries neither (TASK-154).
-    // PATH is required too: execd spawns the child directly (no interactive
-    // shell to supply a compiled-in default), so without it `claude` — an
-    // `npm install --global` binary living in /usr/local/bin, outside the
-    // POSIX execvp() fallback search path (/bin:/usr/bin) — resolves to
-    // "command not found" (exit 127). Confirmed live 2026-09-07: a bare
-    // `env -i` invocation lacking PATH reproduces exit 127 byte-for-byte
-    // against the real office-browser image; adding PATH back fixes it.
-    envs: {
-      [sandboxHookEnvironment.brokerUrl]: requiredSandboxBrokerUrl(),
-      [sandboxHookEnvironment.brokerToken]: token,
-      [sandboxHookEnvironment.runId]: run.runId,
-      [sandboxHookEnvironment.roleId]: request.task.roleId,
-      [sandboxHookEnvironment.tenantId]: request.task.tenantId,
-      [sandboxHookEnvironment.agentProvider]: agentRef.provider,
-      [sandboxHookEnvironment.agentSessionRef]: agentRef.sessionRef,
-      ANTHROPIC_API_KEY: requiredSandboxAnthropicApiKey(),
-      PATH: SANDBOX_CHILD_PATH,
-      // The steel-mcp stdio server (spawned as `claude`'s own child, so it
-      // inherits this same env) defaults to Steel Cloud and throws without
-      // an API key we don't provision. office-browser's own entrypoint runs
-      // Steel local-only on 127.0.0.1:3000 (browser-entrypoint.sh) — telling
-      // the MCP server that is what makes it actually reach the browser
-      // instead of the bot silently reporting "browser tools unavailable"
-      // (confirmed live 2026-09-07: this was the last gap after the
-      // shellQuote/PATH fixes — the command ran clean but steel-mcp had
-      // nothing to connect to). Harmless to set when no connector is mounted.
-      STEEL_LOCAL: "true",
-    },
-    timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
-  });
+  // TASK-296: release-on-failure. Previously `pauseSandbox` sat AFTER both
+  // this call and the exit-code check below, so a thrown `runCommand`
+  // (network failure, execd timeout) skipped it entirely and left the
+  // office Running until the reaper's idle sweep eventually caught it.
+  // `withSandboxRelease` pauses in a `finally` regardless of how
+  // `runCommand` settles; the exit-code check still runs afterward and can
+  // still throw for a non-zero exit — that throw now happens AFTER release
+  // rather than before it.
+  const response = await withSandboxRelease(client, options, request.task.roleId, resolvedSandbox.sandboxId, () =>
+    client.runCommand(resolvedSandbox.endpoint, {
+      command,
+      cwd: workspace,
+      // This is the whole child environment. Never spread process.env here:
+      // only the per-turn broker identity and model credential cross the
+      // worker/sandbox boundary — the image itself carries neither (TASK-154).
+      // PATH is required too: execd spawns the child directly (no interactive
+      // shell to supply a compiled-in default), so without it `claude` — an
+      // `npm install --global` binary living in /usr/local/bin, outside the
+      // POSIX execvp() fallback search path (/bin:/usr/bin) — resolves to
+      // "command not found" (exit 127). Confirmed live 2026-09-07: a bare
+      // `env -i` invocation lacking PATH reproduces exit 127 byte-for-byte
+      // against the real office-browser image; adding PATH back fixes it.
+      envs: {
+        [sandboxHookEnvironment.brokerUrl]: requiredSandboxBrokerUrl(),
+        [sandboxHookEnvironment.brokerToken]: token,
+        [sandboxHookEnvironment.runId]: run.runId,
+        [sandboxHookEnvironment.roleId]: request.task.roleId,
+        [sandboxHookEnvironment.tenantId]: request.task.tenantId,
+        [sandboxHookEnvironment.agentProvider]: agentRef.provider,
+        [sandboxHookEnvironment.agentSessionRef]: agentRef.sessionRef,
+        ANTHROPIC_API_KEY: requiredSandboxAnthropicApiKey(),
+        PATH: SANDBOX_CHILD_PATH,
+        // The steel-mcp stdio server (spawned as `claude`'s own child, so it
+        // inherits this same env) defaults to Steel Cloud and throws without
+        // an API key we don't provision. office-browser's own entrypoint runs
+        // Steel local-only on 127.0.0.1:3000 (browser-entrypoint.sh) — telling
+        // the MCP server that is what makes it actually reach the browser
+        // instead of the bot silently reporting "browser tools unavailable"
+        // (confirmed live 2026-09-07: this was the last gap after the
+        // shellQuote/PATH fixes — the command ran clean but steel-mcp had
+        // nothing to connect to). Harmless to set when no connector is mounted.
+        STEEL_LOCAL: "true",
+      },
+      timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
+    }),
+  );
   if (response.exitCode !== 0) throw new Error(`Sandboxed Claude command failed with exit code ${response.exitCode}.`);
 
-  // A completed turn is idle. Persist Paused only after the lifecycle API has
-  // accepted the transition; the next turn resumes, polls Running, then gets a
-  // fresh execd endpoint rather than reusing a stale pre-pause URL.
-  await client.pauseSandbox(resolvedSandbox.sandboxId);
-  await updateRoleSandboxState(options, request.task.roleId, "Paused");
   const event = eventFromSandboxStdout(response.stdout);
   const events: unknown[] = [];
   const tapped = withBudgetTap(async function* () { yield event; }, tap);
@@ -1015,6 +1072,10 @@ async function resolveRoleSandbox(
       // exercised by the real deployment).
       entrypoint: sandboxEntrypointFor(image),
       resourceLimits: sandboxResourceLimitsFor(image),
+      // TASK-296: a backstop TTL so OpenSandbox's own reaper eventually
+      // reclaims this office even if our app-level sweep never runs again
+      // (see SANDBOX_SERVER_SIDE_TTL_SECONDS's own comment for the number).
+      timeout: SANDBOX_SERVER_SIDE_TTL_SECONDS,
       metadata: { roleId },
       ...(networkPolicy === undefined ? {} : { networkPolicy }),
     });
@@ -1905,6 +1966,72 @@ if (import.meta.vitest) {
         }).run({ task, threadId });
         // 0.25 from the local-path test + 0.15 from this sandbox turn.
         expect(await getRoutineSpendUsd(db, routineId)).toBeCloseTo(0.4);
+      } finally {
+        if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
+        else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+        if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+        else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+        if (previousAnthropic === undefined) delete process.env[anthropicVar];
+        else process.env[anthropicVar] = previousAnthropic;
+      }
+    });
+
+    it("releases the office in a finally when the Claude lane's sandboxed command throws (TASK-296 AC3/4)", async () => {
+      const { createTask, getRoleSandbox } = await import("@oikonomos/db");
+      const task = await createTask(db, {
+        roleId,
+        title: "TASK-296 release-on-failure",
+        goal: "This turn fails mid-command.",
+        requestedBy: "task-296-suite",
+        routineId,
+      });
+      const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+      const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+      const anthropicVar = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+      const previousAnthropic = process.env[anthropicVar];
+      process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+      process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-296-test-signing-key";
+      process.env[anthropicVar] = "task-296-test-anthropic-credential";
+      let state: "Running" | "Paused" = "Running";
+      let pauseCalls = 0;
+      const fakeSandbox = {
+        health: async () => ({ status: "ok" as const }),
+        createSandbox: async () => ({ id: "task-296-office", createdAt: "2026-09-18T00:00:00Z", status: { state } }),
+        getSandbox: async () => ({ id: "task-296-office", createdAt: "2026-09-18T00:00:00Z", status: { state } }),
+        destroySandbox: async () => undefined,
+        pauseSandbox: async () => { pauseCalls += 1; state = "Paused"; },
+        resumeSandbox: async () => { state = "Running"; },
+        getEndpoint: async () => ({ endpoint: "http://execd.test/296" }),
+        ping: async () => undefined,
+        runCommand: async (_endpoint: unknown, command: { command: string }) => {
+          if (command.command.startsWith("/usr/bin/sha256sum")) {
+            return {
+              stdout: "886c6ad71724d395fd4600dd8cc0625df68686808409d6657fab8e9737083854  /etc/claude-code/managed-settings.json\n",
+              stderr: "",
+              exitCode: 0,
+            };
+          }
+          if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+          if (command.command.startsWith("mkdir")) return { stdout: "", stderr: "", exitCode: 0 };
+          // The real turn command — simulate a network/execd failure mid-turn.
+          // Before TASK-296, `pauseSandbox` sat after this call AND after the
+          // exit-code check, so a throw here skipped release entirely and
+          // left the office Running until the reaper's idle sweep eventually
+          // caught it, possibly days later.
+          throw new Error("simulated execd network failure");
+        },
+      };
+      try {
+        await expect(
+          createChatRunDriver({
+            ...db,
+            manifests: [],
+            sandboxClient: fakeSandbox as SandboxClient,
+            platformCeilingZar: 1_000_000,
+          }).run({ task, threadId }),
+        ).rejects.toThrow("simulated execd network failure");
+        expect(pauseCalls).toBe(1);
+        expect((await getRoleSandbox(db, roleId))?.state).toBe("Paused");
       } finally {
         if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL;
         else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
