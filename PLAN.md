@@ -8754,7 +8754,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 ### TASK-295
 **Title:** Banned-modes scanner misses non-Claude permission-bypass vocabulary (`codex exec -s danger-full-access`)
 **Status:** pending
-**Assigned_To:** TBD
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B, "Second finding" + "Residual risk (d)": "CX's invocation is `codex exec -s danger-full-access`. That is functionally equivalent permission bypass, but it is not one of the three tokens CAN-03 greps for ... CAN-03's token list tracks the Claude Code vocabulary and does not generalise across CLIs" and "(d) The CAN-03 token-list gap for non-Claude CLIs is not closed by this amendment and remains open -- a future change should either generalise the grep or record why it need not be."
 **Owned_Paths:** infra/ci/banned-modes.mjs, infra/ci/test-banned-modes.mjs
