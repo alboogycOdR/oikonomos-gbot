@@ -1688,3 +1688,19 @@ Residual, accepted: no automated assertion for migration 029's DOWN direction (O
 directions against oikonomos_test). The round-trip test is 028-only and env-gated -- generalising it is
 future work, not rework here.
 Merged --no-ff to master.
+
+## TASK-294 | CX9 | approved | 2026-09-18T18:40:00Z
+
+CAN-03 banned-modes eval hardening: explicit timeout + a genuine positive control, closing the
+liveness gap ORCH found while investigating the permissions-bypass false alarm.
+
+Territory: clean -- 1 file (evals/harness/test/can-03-banned-modes.test.ts) + its own dossier.
+Verification (ORCH's own, isolated harness only): 5 consecutive runs, CAN-03 passed every time
+(1.2-9.8s). Confirmed the test's temp directories are actually cleaned up (finally block verified,
+not just read). Confirmed the positive control is real, not vacuous: infra/ci/lib/walk.mjs skips
+directories by exact basename only (no dotfile convention), so the planted-violation temp dir under
+evals/** is genuinely scanned and caught by the real scanner. Token is assembled at runtime so the
+test file doesn't trip the very scanner it tests, mirroring the scanner's own technique.
+One harness-suite failure recurs across all 5 runs (ome-two-role-handoff-live.test.ts, live
+Gemini/sandbox infra) -- unrelated to this task, present before and after.
+Merged --no-ff to master.
