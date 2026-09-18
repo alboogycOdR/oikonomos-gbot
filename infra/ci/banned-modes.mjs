@@ -2,7 +2,7 @@
 /**
  * OIK-004 / CAN-03 banned-mode grep.
  *
- * Implements ADR-002 Amendment A: scan the repo for the three banned
+ * Implements ADR-002 Amendment A: scan the repo for the banned
  * permission-mode tokens; fail the build on any hit outside the prose /
  * dev-tooling carve-out. Enforcement surfaces (packages/**, apps/**,
  * services/**, infra/**, evals/**, .github/**, .claude/settings*.json,
@@ -11,6 +11,35 @@
  *
  * Tokens are assembled at runtime. ADR-002 §1 forbids those literals under
  * infra/** (this path), so this source must never contain them contiguously.
+ *
+ * Non-Claude CLI vocabulary (TASK-295, closing ADR-002 Amendment B residual
+ * risk (d)): the first three tokens below are Claude Code's own bypass
+ * vocabulary. The Codex tokens that follow are its functional equivalent —
+ * see scripts/dispatch.ps1 / dispatch.sh for CX's exact live invocation, and
+ * `codex exec --help` (confirmed against the installed CLI) for the full
+ * flag surface: the short `-s` and long `--sandbox` forms both take the
+ * highest-privilege sandbox value as their argument, and a separate,
+ * stronger flag skips approvals and sandboxing outright ("dangerously
+ * bypass approvals and sandbox"). Both flag forms are matched as the flag
+ * *and* its value TOGETHER, never the value alone: that value on its own is
+ * also a legitimate CodexSandbox enum member declared by
+ * `packages/agent-providers` (config.ts, codex.ts) for its own broker-gated,
+ * user-selectable sandbox setting (ADR-011) — a bare-value token would flag
+ * that real, reviewed product feature and break "current repo passes clean".
+ *
+ * Grok Build's equivalent, `--always-approve` ("Auto-approve all tool
+ * executions" per `grok --help`), was checked and is deliberately NOT added
+ * here: unlike the Codex flags it is a standalone flag with no value to pair
+ * it with, and `packages/agent-providers/src/providers/grok.ts` already
+ * constructs it literally and legitimately (broker-gated per-spawn gate,
+ * sandbox profile as the compensating control — same ADR-011 feature). No
+ * substring distinguishes an ungoverned dispatch-layer `--always-approve`
+ * from that reviewed product code in the same enforcement surface
+ * (packages/**). Closing that half of the gap needs a policy call (either
+ * an ADR-002 amendment scoping the product's own multi-provider gate as
+ * distinct from the banned vocabulary, or an enforcement-surface-aware
+ * per-file exemption mechanism that does not exist today), not a token
+ * choice — flagged to ORCH via TASK-295's blocked status/dossier.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -25,6 +54,9 @@ export function bannedTokens() {
     ['bypass', 'Permissions'].join(''),
     ['accept', 'Edits'].join(''),
     ['--dangerously-skip-', 'permissions'].join(''),
+    ['-s ', 'danger-full-access'].join(''),
+    ['--sandbox ', 'danger-full-access'].join(''),
+    ['--dangerously-bypass-approvals-and-', 'sandbox'].join(''),
   ];
 }
 

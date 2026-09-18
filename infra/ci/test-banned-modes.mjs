@@ -82,7 +82,7 @@ test('path globs: root *.md and settings*.json do not leak into nested dirs', ()
 
 test('each banned token in a temp packages/ path fails the scan', () => {
   const tokens = bannedTokens();
-  assert.equal(tokens.length, 3);
+  assert.equal(tokens.length, 6);
 
   const root = mkdtempSync(join(tmpdir(), 'oik-banned-'));
   try {
@@ -174,6 +174,95 @@ test('Amendment A prose and §2(2) surfaces are not violations', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('Codex bypass-vocabulary tokens (TASK-295) are caught on enforcement surfaces, both flag forms', () => {
+  // ADR-002 Amendment B residual risk (d): CAN-03's token list tracked only
+  // Claude Code vocabulary. Codex's short/long sandbox-escalation flags and
+  // its separate "dangerously bypass approvals and sandbox" flag (see
+  // banned-modes.mjs's header comment and scripts/dispatch.ps1/.sh for the
+  // exact literals) are the functional equivalent and must be caught too.
+  const tokens = bannedTokens();
+  const codexTokens = [
+    ['-s ', 'danger-full-access'].join(''),
+    ['--sandbox ', 'danger-full-access'].join(''),
+    ['--dangerously-bypass-approvals-and-', 'sandbox'].join(''),
+  ];
+  for (const t of codexTokens) assert.ok(tokens.includes(t), `expected bannedTokens() to include ${t}`);
+
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-codex-'));
+  try {
+    const pkgDir = join(root, 'packages', 'harness-factory', 'src');
+    mkdirSync(pkgDir, { recursive: true });
+    const planted = join(pkgDir, 'violation.ts');
+
+    for (const token of codexTokens) {
+      writeFileSync(planted, `// spawn(['codex', 'exec', ${JSON.stringify(token)}])\n`, 'utf8');
+      const { violations } = scanBannedModes({ root, allowlistPath });
+      assert.ok(
+        violations.some((v) => v.token === token && v.file === 'packages/harness-factory/src/violation.ts'),
+        `expected to catch Codex bypass token "${token}" under packages/`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex bypass-vocabulary tokens do not fire on Amendment A prose surfaces', () => {
+  const codexTokens = [
+    ['-s ', 'danger-full-access'].join(''),
+    ['--sandbox ', 'danger-full-access'].join(''),
+    ['--dangerously-bypass-approvals-and-', 'sandbox'].join(''),
+  ];
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-codex-prose-'));
+  try {
+    mkdirSync(join(root, 'docs', 'decisions'), { recursive: true });
+    mkdirSync(join(root, 'dossiers'), { recursive: true });
+    const lines = codexTokens.map((t) => `mentions ${t}`).join('\n');
+    writeFileSync(join(root, 'docs', 'decisions', 'ADR-002-permission-bypass-ban-scope.md'), lines, 'utf8');
+    writeFileSync(join(root, 'dossiers', 'TASK-295.md'), lines, 'utf8');
+
+    const { violations } = scanBannedModes({ root, allowlistPath });
+    assert.deepEqual(violations, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a bare CodexSandbox enum value (no flag) is NOT flagged -- guards packages/agent-providers real use', () => {
+  // packages/agent-providers/src/config.ts and providers/codex.ts declare
+  // "danger-full-access" as one of three legitimate, broker-gated sandbox
+  // enum values (ADR-011). The Codex tokens must be flag+value compounds,
+  // never the bare value alone, or this real reviewed feature would trip
+  // the scanner and break "current repo passes clean".
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-bare-value-'));
+  try {
+    const pkgDir = join(root, 'packages', 'agent-providers', 'src');
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, 'config.ts'),
+      'export type CodexSandbox = "read-only" | "workspace-write" | "danger-full-access";\n',
+      'utf8',
+    );
+    const { violations } = scanBannedModes({ root, allowlistPath });
+    assert.deepEqual(violations, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Grok Build --always-approve is deliberately NOT a banned token (open item, see banned-modes.mjs header)', () => {
+  // It is a standalone flag (no value to pair it with) and
+  // packages/agent-providers/src/providers/grok.ts already constructs it
+  // literally and legitimately (broker-gated spawn, sandbox as the
+  // compensating control -- same ADR-011 feature as the Codex case above).
+  // Adding it as a bare token would break "current repo passes clean" on
+  // that real file. This assertion pins the deliberate choice so a future
+  // edit doesn't silently re-introduce the collision; TASK-295 left this as
+  // an open policy question for ORCH.
+  const tokens = bannedTokens();
+  assert.ok(!tokens.includes('--always-approve'));
 });
 
 test('current repo has no hits outside the ADR-002 Amendment A allowlist', () => {
