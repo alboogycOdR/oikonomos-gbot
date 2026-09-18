@@ -8753,7 +8753,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-295
 **Title:** Banned-modes scanner misses non-Claude permission-bypass vocabulary (`codex exec -s danger-full-access`)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B, "Second finding" + "Residual risk (d)": "CX's invocation is `codex exec -s danger-full-access`. That is functionally equivalent permission bypass, but it is not one of the three tokens CAN-03 greps for ... CAN-03's token list tracks the Claude Code vocabulary and does not generalise across CLIs" and "(d) The CAN-03 token-list gap for non-Claude CLIs is not closed by this amendment and remains open -- a future change should either generalise the grep or record why it need not be."
@@ -8766,8 +8766,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Token list is documented in-file with a pointer to ADR-002 Amendment B residual risk (d), so the next reader sees why it is CLI-plural.
 - [ ] ADR-002 gets a short amendment recording that residual risk (d) is now closed (ORCH writes the ADR -- builders never own docs/**; supply the text in the dossier).
 - [ ] Adversarial review by a different model than the author, recorded in REVIEW.md.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-295-s5
+**Started_At:** 2026-09-18T21:00:51Z
 **Progress_Notes:**
 - [2026-09-17T22:35:00Z] [ORCH] Filed 2026-09-17 while confirming the flag on dispatch.ps1 was a false alarm (it is: ADR-002 §2(2) carves out scripts/**). This gap is the real finding underneath that false alarm.
 - [2026-09-18T18:55:00Z] [ORCH] QUEUED for S5 -- assigned to S5 already (TASK-296, high priority) is running first on the only available non-Codex builder; dispatch this one as soon as 296 lands or a second S5-class unit frees up. Do not assign to CX9: this task governs CX9's own invocation vocabulary.
@@ -8775,8 +8775,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-17T22:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-18T21:00:51Z
 
 ### TASK-296
 **Title:** Sandbox office lifecycle -- reap orphaned/idle offices, request a server-side TTL, pause the Gemini lane, alert on leak growth
