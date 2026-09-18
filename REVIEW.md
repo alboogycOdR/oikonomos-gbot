@@ -1722,3 +1722,31 @@ there) -- the self-test failed to even launch on this workstation. Fixed to use 
 process's own executable path; both the self-test and a real filtered run were then verified
 directly.
 Committed to master directly as 836ea61 (ORCH commit, no task branch -- scripts/** work).
+
+## TASK-296 | S5 | approved | 2026-09-18T23:10:00Z
+
+Sandbox office lifecycle: idle/orphan reaper, server-side TTL backstop, release-on-failure on
+both chat lanes, liveness assertion. Closes the code half of the TASK-292 incident.
+
+Territory: clean -- 7 files (2 new: sandboxReaper.ts, sandboxReaper.test.ts), all in Owned_Paths,
+plus its own dossier. Two dispatch sessions ended mid-run (not failures -- the full suite is
+sequential and outran the session's own time budget each time); the implementation was complete
+and correct both times, ORCH verified and committed on S5's behalf.
+
+Code quality: idempotent reaps (terminal-state skip), per-role error isolation in the sweep,
+deliberately layered idle window (3d, primary) vs server TTL (14d, backstop-only), listSandboxes
+made optional on the client interface specifically to avoid breaking every other hand-written test
+fixture in the repo. Exceptionally thorough test coverage: both directions of the idle-reap
+criterion, the orphan-reconciliation criterion, release-on-throw proven against the real DB, and
+a liveness assertion keyed on genuine emitted sweep evidence (ADR-005), not configuration.
+
+Verification: build+typecheck clean (19/19 packages). sandboxReaper.test.ts 11/11 passed.
+packages/sandbox-client 25/25 passed including the live clawsrv integration test. services/worker
+full run showed 25 pre-existing failures -- CONFIRMED not a regression by direct comparison: the
+identical failures (same names, same error classes -- timeouts, CapabilityEnabledDriftError on
+email.send, sandbox 500s) reproduce on clean master with this diff stashed out entirely. Recorded
+as a real, separate concern: this exact signature persists under full-suite load even after
+TASK-292's cleanup hours ago -- worth a follow-up look at whether the suite's own live-sandbox
+load is enough to reproduce contention on its own.
+
+Merged --no-ff to master.
