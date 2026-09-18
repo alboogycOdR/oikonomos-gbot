@@ -20,9 +20,61 @@
 param(
   [switch]$Init,
   [string]$Filter = "",
-  [string]$Root = ""        # checkout to run tests in (a review worktree); defaults to this repo
+  [string]$Root = "",       # checkout to run tests in (a review worktree); defaults to this repo
+  [switch]$SelfTestWatchdogQueryTimeout
 )
 $ErrorActionPreference = "Stop"
+
+function Get-WatchdogReady {
+  param(
+    [string]$QueryExecutable = "schtasks.exe",
+    [string]$QueryArguments = "/Query /TN `"OIKONOMOS-ServiceWatchdog`" /FO LIST",
+    [int]$TimeoutSeconds = 10
+  )
+
+  $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $QueryExecutable
+  $startInfo.Arguments = $QueryArguments
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $process = [System.Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+
+  try {
+    if (-not $process.Start()) { throw "could not start watchdog status query" }
+    # Task Scheduler has hung indefinitely on this workstation. Ten seconds is
+    # ample for a local task query, while keeping the only sanctioned test
+    # harness responsive when the Scheduler service is wedged.
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      $process.Kill()
+      $process.WaitForExit()
+      Write-Warning "[test-isolated] watchdog status query timed out after ${TimeoutSeconds}s; proceeding without disabling the watchdog."
+      return $false
+    }
+    $output = $process.StandardOutput.ReadToEnd()
+    return $process.ExitCode -eq 0 -and $output -match "Status:\s+Ready"
+  } finally {
+    $process.Dispose()
+  }
+}
+
+if ($SelfTestWatchdogQueryTimeout) {
+  $timer = [System.Diagnostics.Stopwatch]::StartNew()
+  # Inject a deliberately hanging query executable so this verifies the
+  # timeout path without depending on the workstation's Task Scheduler state.
+  # Use THIS process's own executable rather than a hardcoded name -- $PSHOME
+  # holds pwsh.exe under PowerShell 7 and powershell.exe under Windows
+  # PowerShell 5.1, and assuming the wrong one made this self-test itself
+  # fail to even launch on a pwsh-based workstation (found live, 2026-09-18).
+  $selfExe = (Get-Process -Id $PID).Path
+  $ready = Get-WatchdogReady -QueryExecutable $selfExe -QueryArguments "-NoProfile -NonInteractive -Command `"Start-Sleep -Seconds 30`"" -TimeoutSeconds 1
+  $timer.Stop()
+  if ($ready) { throw "watchdog timeout self-test unexpectedly reported Ready" }
+  if ($timer.Elapsed.TotalSeconds -gt 5) { throw "watchdog timeout self-test exceeded five seconds" }
+  Write-Host "[test-isolated] watchdog timeout self-test passed in $([Math]::Round($timer.Elapsed.TotalSeconds, 2))s"
+  exit 0
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ($Root) { $repoRoot = (Resolve-Path $Root).Path }
 $container = "oikonomos-postgres-local"
@@ -90,7 +142,7 @@ $mainRepoRoot = Split-Path -Parent $PSScriptRoot
 $watchdogMarker = Join-Path $mainRepoRoot "infra\compose\logs\watchdog-disabled.marker"
 $watchdogMarkerDir = Split-Path -Parent $watchdogMarker
 if (-not (Test-Path $watchdogMarkerDir)) { New-Item -ItemType Directory -Path $watchdogMarkerDir -Force | Out-Null }
-$watchdogWasReady = (schtasks /Query /TN $taskName /FO LIST 2>$null | Select-String "Status:\s+Ready") -ne $null
+$watchdogWasReady = Get-WatchdogReady
 try {
   if ($watchdogWasReady) {
     schtasks /Change /TN $taskName /DISABLE | Out-Null
