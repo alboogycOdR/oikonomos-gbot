@@ -8780,7 +8780,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-296
 **Title:** Sandbox office lifecycle -- reap orphaned/idle offices, request a server-side TTL, pause the Gemini lane, alert on leak growth
-**Status:** claimed
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-010-persistent-office-computer-pivot.md (a persistent per-role office is INTENDED -- do not destroy after every run); docs/decisions/ADR-005-control-liveness.md (every mechanical control ships a liveness assertion keyed on evidence the control emits by doing its job); infra/sandbox/README.md:120 (server-side TTL reaping verified working).
