@@ -8807,7 +8807,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-297
 **Title:** scripts/test-isolated.ps1 hangs indefinitely on a wedged Task Scheduler query
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** none (tooling defect found during TASK-292 verification).
@@ -8819,14 +8819,14 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] On timeout the script emits an unmissable message and takes a defined path (proceed-degraded or abort), never a silent indefinite wait.
 - [ ] Existing watchdog disable/restore behaviour is unchanged when the query succeeds, including the finally-block restore.
 - [ ] Verified by simulating a hanging query (injected stub), not by reasoning alone.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-297-cx9
+**Started_At:** 2026-09-18T18:45:49Z
 **Progress_Notes:**
 - [2026-09-18T13:50:00Z] [ORCH] Filed from a real 15-minute hang during TASK-292 verification; workaround was killing the stuck child process.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-18T18:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-18T18:45:49Z
 
