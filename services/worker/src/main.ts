@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 
+import { createSandboxClient } from "@oikonomos/sandbox-client";
+
 import { createWorkerJobQueue } from "./jobs/workerJobQueue.js";
 import { createChatRunDriver, type CreateChatRunDriverOptions } from "./chatRunDriver.js";
 import { createRunGate } from "./runConcurrency.js";
@@ -7,6 +9,7 @@ import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, listMessag
 import { failTaskRun, parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { deliverBotToBotMessage } from "./groupFanout.js";
 import { createRoleMessageDeliveryPoller } from "./roleMessageDelivery.js";
+import { createSandboxReaperScheduler, type SandboxReaperScheduler } from "./sandboxReaper.js";
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -37,6 +40,14 @@ import { createRoleMessageDeliveryPoller } from "./roleMessageDelivery.js";
  *    than folded into it: that class's file is outside this task's
  *    `Owned_Paths`, so this mirrors its start/schedule/stop shape instead
  *    of editing it.
+ * 4. Start the sandbox reaper scheduler (TASK-296) — a plain in-process
+ *    interval, gated on `SANDBOX_INTEGRATION_URL` being set (same gate
+ *    `chatRunDriver.ts`'s own `productionSandboxClient` uses), so a local
+ *    dev boot without OpenSandbox configured never throws just for lacking
+ *    something to reap. Reclaims idle/deleted-role offices and reconciles
+ *    server-side orphans a cascade-deleted role left behind
+ *    (`scripts/db-cleanup.mjs`) — see `sandboxReaper.ts`'s own module
+ *    comment for the full incident this closes (TASK-292).
  *
  * `TENANT_ID` follows the existing `DEFAULT_TENANT_ID = "basileia"`
  * precedent in `packages/approvals/src/editApproval.ts` — routine polling
@@ -133,6 +144,22 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
     onError: (error, context) => console.error(`role-message delivery poller error (${context.job}):`, error),
   });
   await roleMessageDeliveryPoller.start();
+  // TASK-296: only wired when a real OpenSandbox integration URL is
+  // configured — mirrors chatRunDriver.ts's own productionSandboxClient
+  // gate, so OIKONOMOS_CHAT_EXECUTION_MODE=local development boots without
+  // throwing just because nothing is there to reap.
+  const sandboxIntegrationUrl = process.env.SANDBOX_INTEGRATION_URL?.trim();
+  const sandboxReaperScheduler: SandboxReaperScheduler | undefined =
+    sandboxIntegrationUrl === undefined || sandboxIntegrationUrl.length === 0
+      ? undefined
+      : createSandboxReaperScheduler({
+          ...database,
+          tenantId: options.tenantId,
+          client: createSandboxClient({ baseUrl: sandboxIntegrationUrl }),
+          onSweep: (summary) => log(`sandbox reaper sweep: ${JSON.stringify(summary)}`),
+          onError: (error) => console.error("sandbox reaper sweep error:", error),
+        });
+  sandboxReaperScheduler?.start();
   const reconciled = await reconcileInterruptedRuns(database, options.reconcileFilter ?? {}, async (run) => {
     if (run.provider === "claude" && run.sessionRef !== null) {
       await queue.enqueueRunExecution(run.runId);
@@ -147,10 +174,14 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
     return { runId: replacement.runId, mode: "new_run" };
   });
   if (reconciled.length > 0) log(`reconciled ${reconciled.length} interrupted run(s) at boot: queued for execution.`);
-  log("worker started: heartbeat + routine polling + role-message delivery polling live.");
+  log(
+    `worker started: heartbeat + routine polling + role-message delivery polling live` +
+      `${sandboxReaperScheduler === undefined ? " (sandbox reaper not configured)" : " + sandbox reaper sweeping"}.`,
+  );
 
   return {
     stop: async () => {
+      sandboxReaperScheduler?.stop();
       await roleMessageDeliveryPoller.stop();
       await queue.stop();
     },

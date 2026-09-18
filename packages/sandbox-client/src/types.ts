@@ -107,3 +107,32 @@ export interface SandboxApiErrorBody {
   readonly code: string;
   readonly message: string;
 }
+
+/**
+ * TASK-296 — request shape for `GET /v1/sandboxes` (verified against the live
+ * server's own `/openapi.json`, `list_sandboxes_v1_sandboxes_get`, 2026-09-18).
+ * `state`/`page`/`pageSize` are query parameters; `state` repeats for OR
+ * logic across multiple values per the server's own documented behaviour.
+ */
+export interface ListSandboxesRequest {
+  readonly state?: readonly SandboxState[];
+  /** 1-based. Server default 1. */
+  readonly page?: number;
+  /** Server default 20, max 200. */
+  readonly pageSize?: number;
+}
+
+/** Matches the server's `PaginationInfo` schema exactly (field names verified live). */
+export interface SandboxPaginationInfo {
+  readonly page: number;
+  readonly pageSize: number;
+  readonly totalItems: number;
+  readonly totalPages: number;
+  readonly hasNextPage: boolean;
+}
+
+/** Matches the server's `ListSandboxesResponse` schema exactly (field names verified live). */
+export interface ListSandboxesResponse {
+  readonly items: readonly Sandbox[];
+  readonly pagination: SandboxPaginationInfo;
+}
