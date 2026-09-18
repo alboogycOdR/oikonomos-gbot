@@ -1704,3 +1704,21 @@ test file doesn't trip the very scanner it tests, mirroring the scanner's own te
 One harness-suite failure recurs across all 5 runs (ome-two-role-handoff-live.test.ts, live
 Gemini/sandbox infra) -- unrelated to this task, present before and after.
 Merged --no-ff to master.
+
+## TASK-297 | CX9 (applied by ORCH) | approved | 2026-09-18T22:05:00Z
+
+Bound the wedged watchdog scheduled-task query in scripts/test-isolated.ps1 so it can no longer
+hang the only sanctioned test harness indefinitely.
+
+CX9's engineering was correct and genuinely tested (bounded Process.Start query, 10s timeout,
+degrades to "proceed without disabling the watchdog" rather than hanging, success path unchanged).
+It could not be committed by CX9: territory-precommit correctly rejected scripts/test-isolated.ps1
+as builder-off-limits regardless of what Owned_Paths said -- this was ORCH's own filing mistake,
+assigning a scripts/** task to a builder when scripts/** is pack infrastructure, never builder
+territory. Applied directly by ORCH instead.
+ORCH's own verification caught one real bug the builder's environment had masked: the self-test
+hardcoded $PSHOME/powershell.exe, which does not exist under PowerShell 7 ($PSHOME holds pwsh.exe
+there) -- the self-test failed to even launch on this workstation. Fixed to use the running
+process's own executable path; both the self-test and a real filtered run were then verified
+directly.
+Committed to master directly as 836ea61 (ORCH commit, no task branch -- scripts/** work).
