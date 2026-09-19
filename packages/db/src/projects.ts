@@ -397,6 +397,29 @@ export async function updateProjectTaskState(
   });
 }
 
+/**
+ * Set the owner of an existing project task. Roster membership and manager
+ * authority are intentionally enforced by the project-tool handler (TASK-302),
+ * not this storage-layer accessor.
+ */
+export async function assignProjectTaskOwner(
+  options: DatabaseOptions,
+  taskId: string,
+  ownerRoleId: string,
+): Promise<ProjectTask | null> {
+  const normalizedTaskId = requireUuid(taskId, "taskId");
+  const normalizedOwnerRoleId = requireUuid(ownerRoleId, "ownerRoleId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ProjectTaskRow>(
+      `UPDATE project_tasks SET owner_role_id = $2, updated_at = now() WHERE task_id = $1
+       RETURNING ${projectTaskColumns}`,
+      [normalizedTaskId, normalizedOwnerRoleId],
+    );
+    return result.rows[0] === undefined ? null : toProjectTask(result.rows[0]);
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* project_artifacts                                                    */
 /* ------------------------------------------------------------------ */

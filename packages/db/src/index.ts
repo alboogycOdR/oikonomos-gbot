@@ -285,6 +285,7 @@ export {
   createProjectArtifact,
   createProjectDecision,
   createProjectTask,
+  assignProjectTaskOwner,
   getProject,
   getProjectArtifact,
   getProjectByThreadId,
