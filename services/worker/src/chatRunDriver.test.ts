@@ -1194,7 +1194,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     }
   });
 
-  it("records a real non-zero cost derived from the turn's own reported token usage (TASK-220 AC)", async () => {
+  it("records the role's actual Gemini model and its usage-derived cost (TASK-318 AC4)", async () => {
     const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
     const previousApiKey = process.env.GEMINI_API_KEY;
     process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
@@ -1209,7 +1209,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     await deleteFixtureThreads(pool, [costRoleId]);
     await pool.query("DELETE FROM roles WHERE role_id = $1", [costRoleId]);
     await createRole(options, { roleId: costRoleId, name: costRoleId, title: "TASK-220 cost fixture", description: "" });
-    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [costRoleId]);
+    await pool.query("UPDATE roles SET provider = 'gemini', model = $2 WHERE role_id = $1", [costRoleId, "gemini-3.1-flash-lite"]);
     const costTask = await createTask(options, { roleId: costRoleId, title: "TASK-220 cost", goal: "Say hello.", requestedBy: "task-220-suite" });
     const costThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [costRoleId])).rows[0]!.id;
 
@@ -1236,8 +1236,11 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     // 9/4/130 (prompt/candidates/thoughts), which is exactly what motivated
     // TASK-215's own thinking-token pricing fix; reused here as a realistic
     // fixture rather than round numbers that wouldn't catch a units bug.
-    const fakeGeminiFetch: typeof globalThis.fetch = (async () =>
-      geminiTextResponse("Hello!", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 })) as typeof globalThis.fetch;
+    let requestedUrl: string | undefined;
+    const fakeGeminiFetch: typeof globalThis.fetch = (async (url: string | URL | Request) => {
+      requestedUrl = String(url);
+      return geminiTextResponse("Hello!", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 });
+    }) as typeof globalThis.fetch;
 
     try {
       await createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch }).run({ task: costTask, threadId: costThreadId });
@@ -1246,12 +1249,14 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const run = runsPage.runs[0]!;
       expect(run.status).toBe("completed");
 
-      const spendRows = await pool.query<{ provider: string; cost_usd: string; tokens: string | null }>(
-        "SELECT provider, cost_usd, tokens FROM spend_records WHERE run_id = $1",
+      const spendRows = await pool.query<{ provider: string; model: string; cost_usd: string; tokens: string | null }>(
+        "SELECT provider, model, cost_usd, tokens FROM spend_records WHERE run_id = $1",
         [run.runId],
       );
       expect(spendRows.rows).toHaveLength(1);
       expect(spendRows.rows[0]?.provider).toBe("gemini");
+      expect(spendRows.rows[0]?.model).toBe("gemini-3.1-flash-lite");
+      expect(requestedUrl).toContain("/models/gemini-3.1-flash-lite:generateContent?");
       // Not merely non-zero — actually derived from real usage: the record
       // this session measured live was ~30x more than counting candidates
       // alone would give, so a regression back to under-counting or to a
@@ -1264,7 +1269,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // value on a rounding tie (the 2027 rate step prices this fixture at
       // 0.0010185) differs from its stored form by exactly 5e-7 and would
       // have failed on that date (Fable review of 4c74c09).
-      const expectedCostUsd = geminiTurnCostUsd({ promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 });
+      const expectedCostUsd = geminiTurnCostUsd("gemini-3.1-flash-lite", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 130, totalTokenCount: 143 });
       expect(Math.abs(Number(spendRows.rows[0]?.cost_usd) - expectedCostUsd)).toBeLessThanOrEqual(0.5e-6 + 1e-12);
       // The real token total is now persisted (Fable review U2), not null.
       expect(Number(spendRows.rows[0]?.tokens)).toBe(143);

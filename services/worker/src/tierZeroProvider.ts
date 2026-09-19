@@ -1,4 +1,4 @@
-import { costForUsage, FreeLlmApiProvider, withBudgetSink, type FreeLlmApiFetch } from "@oikonomos/agent-providers";
+import { costForUsage, DEFAULT_GEMINI_MODEL, FreeLlmApiProvider, withBudgetSink, type FreeLlmApiFetch } from "@oikonomos/agent-providers";
 import {
   getPlatformSpendUsd,
   getRoutine,
@@ -55,7 +55,7 @@ export interface CreateTierZeroProviderOptions {
 export const GEMINI_OPENAI_COMPATIBLE_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 /** ADR-011's chosen Gemini model; matches packages/agent-providers' price table. */
-export const GEMINI_TIER_ZERO_MODEL = "gemini-3.7-flash";
+export const GEMINI_TIER_ZERO_MODEL = DEFAULT_GEMINI_MODEL;
 
 /**
  * Tier-0 configuration derived from the environment.
@@ -78,7 +78,7 @@ export function resolveTierZeroEnvConfig(
       endpoint: GEMINI_OPENAI_COMPATIBLE_ENDPOINT,
       model: env.GEMINI_TIER_ZERO_MODEL?.trim() || GEMINI_TIER_ZERO_MODEL,
       apiKey: geminiKey,
-      costFromUsage: costForUsage,
+      costFromUsage: (usage) => costForUsage(env.GEMINI_TIER_ZERO_MODEL?.trim() || GEMINI_TIER_ZERO_MODEL, usage),
       providerId: "gemini",
     };
   }
