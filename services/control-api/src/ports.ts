@@ -27,6 +27,37 @@ import {
   getRoleTemplateInstall as dbGetRoleTemplateInstall,
   insertMessage as dbInsertMessage,
   insertAuditEvent as dbInsertAuditEvent,
+  assignProjectTaskOwner as dbAssignProjectTaskOwner,
+  createProjectArtifact as dbCreateProjectArtifact,
+  createProjectTask as dbCreateProjectTask,
+  createProjectWithRoster as dbCreateProjectWithRoster,
+  getProject as dbGetProject,
+  getProjectOverview as dbGetProjectOverview,
+  getProjectTask as dbGetProjectTask,
+  listProjectArtifacts as dbListProjectArtifacts,
+  listProjectDecisions as dbListProjectDecisions,
+  listProjectRoleMembers as dbListProjectRoleMembers,
+  listProjects as dbListProjects,
+  listProjectTasks as dbListProjectTasks,
+  mirrorApprovalDecisionToProjects as dbMirrorApprovalDecisionToProjects,
+  updateProjectTaskState as dbUpdateProjectTaskState,
+  updateProjectWithRoster as dbUpdateProjectWithRoster,
+  type NewProjectArtifact,
+  type NewProjectTask,
+  type NewProjectWithRoster,
+  type Project,
+  type ProjectArtifact,
+  type ProjectArtifactListFilter,
+  type ProjectDecision,
+  type ProjectDecisionListFilter,
+  type ProjectListFilter,
+  type ProjectOverview,
+  type ProjectRoleMember,
+  type ProjectTask,
+  type ProjectTaskListFilter,
+  type ProjectTaskState,
+  type ProjectUpdate,
+  type ProjectWithRoster,
   getAuditEventsForRun as dbGetAuditEventsForRun,
   getRunReceipt as dbGetRunReceipt,
   getRun as dbGetRun,
@@ -167,7 +198,31 @@ export type GroupRoutingDecision =
   | { route: GroupRoute; routingRunId: string | null }
   | { route: null; routingRunId: null; stopReason: "consecutive_bot_cap" | "quiet_room" };
 
+/**
+ * TASK-304 (P-5) — the project workspace port (spec §9.1). Optional on
+ * `ControlApiDeps` (like the template ports) so the many route-test
+ * fixtures that predate it stay valid; the routes answer 501 without it.
+ */
+export interface ProjectPorts {
+  createProject(input: NewProjectWithRoster): Promise<ProjectWithRoster>;
+  getProject(projectId: string): Promise<Project | null>;
+  listProjects(filter: ProjectListFilter): Promise<Project[]>;
+  updateProject(input: ProjectUpdate): Promise<ProjectWithRoster | null>;
+  getOverview(input: { tenantId: string; projectId: string }): Promise<ProjectOverview>;
+  listRoster(projectId: string): Promise<ProjectRoleMember[]>;
+  listTasks(filter: ProjectTaskListFilter): Promise<ProjectTask[]>;
+  createTask(input: NewProjectTask): Promise<ProjectTask>;
+  getTask(taskId: string): Promise<ProjectTask | null>;
+  updateTaskState(taskId: string, state: ProjectTaskState, blockedReason?: string): Promise<ProjectTask | null>;
+  assignTaskOwner(taskId: string, ownerRoleId: string): Promise<ProjectTask | null>;
+  listArtifacts(filter: ProjectArtifactListFilter): Promise<ProjectArtifact[]>;
+  createArtifact(input: NewProjectArtifact): Promise<ProjectArtifact>;
+  listDecisions(filter: ProjectDecisionListFilter): Promise<ProjectDecision[]>;
+}
+
 export interface ControlApiDeps {
+  /** TASK-304: project workspace routes; `501` when absent. */
+  projects?: ProjectPorts;
   createTask(input: NewTask): Promise<Task>;
   /**
    * Persist a reference-only worker command and its initial run together,
@@ -679,6 +734,22 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     createGroupThread: (input) => dbCreateGroupThread(options, input),
     listAllThreadsWithMembers: () => dbListAllThreadsWithMembers(options),
     listWorkspaceSummary: (tenantId) => dbListWorkspaceSummary(options, tenantId),
+    projects: {
+      createProject: (input) => dbCreateProjectWithRoster(options, input),
+      getProject: (projectId) => dbGetProject(options, projectId),
+      listProjects: (filter) => dbListProjects(options, filter),
+      updateProject: (input) => dbUpdateProjectWithRoster(options, input),
+      getOverview: (input) => dbGetProjectOverview(options, input),
+      listRoster: (projectId) => dbListProjectRoleMembers(options, projectId),
+      listTasks: (filter) => dbListProjectTasks(options, filter),
+      createTask: (input) => dbCreateProjectTask(options, input),
+      getTask: (taskId) => dbGetProjectTask(options, taskId),
+      updateTaskState: (taskId, state, blockedReason) => dbUpdateProjectTaskState(options, taskId, state, blockedReason),
+      assignTaskOwner: (taskId, ownerRoleId) => dbAssignProjectTaskOwner(options, taskId, ownerRoleId),
+      listArtifacts: (filter) => dbListProjectArtifacts(options, filter),
+      createArtifact: (input) => dbCreateProjectArtifact(options, input),
+      listDecisions: (filter) => dbListProjectDecisions(options, filter),
+    },
     insertMessage: (input) => dbInsertMessage(options, input),
     listMessages: (threadId, listOptions) => dbListMessages(options, threadId, listOptions),
     listTasks: (filter) => dbListTasks(options, filter),
@@ -688,8 +759,18 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     getRunReceipt: (runId, tenantId) => dbGetRunReceipt(options, { runId, tenantId }),
     getRunLatencyStats: (limit) => dbQueryRunLatencyStats(options, { ...(limit === undefined ? {} : { limit }) }),
     listPendingApprovals: (filter) => dbListPendingApprovals(options, filter),
-    decideApproval: (nonce, decision, decidedBy) =>
-      approvalsDecideApproval(nonce, decision, decidedBy, { database: options }),
+    decideApproval: async (nonce, decision, decidedBy) => {
+      const result = await approvalsDecideApproval(nonce, decision, decidedBy, { database: options });
+      if (result.decided) {
+        // Spec §8.1: an approval decided on a project-attributed run is
+        // mirrored into the project's decision log BY REFERENCE. The decision
+        // itself is already committed and single-use, so a mirror failure must
+        // not turn it into an error response; the row is idempotent per
+        // (project, approval) and a later decision or backfill can repair it.
+        await dbMirrorApprovalDecisionToProjects(options, { nonce, decision, decidedBy }).catch(() => 0);
+      }
+      return result;
+    },
     editApproval: (nonce, editedRequest) =>
       approvalsEditApproval(nonce, editedRequest, { database: options }),
     getAuditEventsForRun: (runId) => dbGetAuditEventsForRun(options, runId),

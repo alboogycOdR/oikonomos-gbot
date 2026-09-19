@@ -11,6 +11,7 @@ import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 import { getOpenApiDocument } from "./openapi.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
 import { createRoleWithDefaultCapabilities, registerTemplateRoutes } from "./templates.js";
+import { registerProjectRoutes } from "./projects.js";
 import { registerLiveAgentRoutes, type LiveAgentPort, type LiveAgentExecdEndpoint, type LiveAgentInputDiscardedEvent, type UpstreamConnection } from "./liveAgent.routes.js";
 import {
   registerBrowserTakeoverRoutes,
@@ -691,22 +692,28 @@ async function loadMessageShapingContext(
  */
 const GROUP_QUIET_ROOM_NOTICE = "Group routing paused: consecutive bot replies repeated without new information. Mention a bot directly to continue.";
 
+async function listTenantOwnedThreads(
+  deps: ControlApiDeps,
+  tenantId: string,
+): Promise<Array<Thread | GroupThread>> {
+  const [threads, roles] = await Promise.all([
+    deps.listAllThreadsWithMembers(),
+    deps.listRoles({ tenantId, status: "active" }),
+  ]);
+  const ownedRoleIds = new Set(roles.map((role) => role.roleId));
+  return threads.filter((thread) =>
+    "memberRoleIds" in thread
+      ? thread.memberRoleIds.every((roleId) => ownedRoleIds.has(roleId))
+      : ownedRoleIds.has(thread.roleId),
+  );
+}
+
 async function findTenantOwnedThread(
   deps: ControlApiDeps,
   tenantId: string,
   threadId: string,
 ): Promise<Thread | GroupThread | undefined> {
-  const [threads, roles] = await Promise.all([
-    deps.listAllThreadsWithMembers(),
-    deps.listRoles({ tenantId, status: "active" }),
-  ]);
-  const thread = threads.find((candidate) => candidate.id === threadId);
-  if (thread === undefined) return undefined;
-  const ownedRoleIds = new Set(roles.map((role) => role.roleId));
-  if ("memberRoleIds" in thread) {
-    return thread.memberRoleIds.every((roleId) => ownedRoleIds.has(roleId)) ? thread : undefined;
-  }
-  return ownedRoleIds.has(thread.roleId) ? thread : undefined;
+  return (await listTenantOwnedThreads(deps, tenantId)).find((candidate) => candidate.id === threadId);
 }
 
 function serializeRole(role: {
@@ -1101,6 +1108,10 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   });
 
   registerTemplateRoutes(app, deps);
+  registerProjectRoutes(app, deps, {
+    findOwnedThread: (tenantId, threadId) => findTenantOwnedThread(deps, tenantId, threadId),
+    listOwnedThreads: (tenantId) => listTenantOwnedThreads(deps, tenantId),
+  });
 
   app.get("/workspace/summary", async (request, reply) => {
     if (deps.listWorkspaceSummary === undefined) {
