@@ -8973,12 +8973,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T15:33:00Z] [SV:CX9] Fast-forwarded the task branch, repeated preflight, and identified that the subprocess factory is test-only with no project/role attribution inputs or production composition caller.
 - [2026-09-19T16:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to services/worker/src/executeRun.ts and services/worker/test/executeRun.test.ts (no active task owns them). Production Codex/Grok config source: none exists and none is to be invented; live subprocess admission must fail closed (deny) when the provider config is absent, and the test must prove that deny.
 - [2026-09-19T16:38:01Z] [SV:CX9] Chat admission/attribution slice committed; remaining required concurrency, forged-handoff, failure-release tests and subprocess admission wiring are recorded in the dossier. NEXT: Add real-driver project/role concurrency, forged-handoff, and release tests; then implement and test subprocess fail-closed reservation admission.
+- [2026-09-19T16:58:01Z] [SV:CX9] Committed subprocess fail-closed atomic-admission wiring; targeted isolated worker suite passed. Full suite is blocked by the shared test DB lock, and remaining TASK-301 real-path scenario tests still need adding. NEXT: After the isolated-test DB lock clears, add the remaining real-path concurrency, attribution, forged-handoff, and exactly-once-release tests; run the full isolated recursive suite.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T16:38:01Z
+**Updated_At:** 2026-09-19T16:58:01Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
