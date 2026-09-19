@@ -105,15 +105,24 @@ export async function resolveGeminiBudget(input: GeminiBudgetInput): Promise<Gem
  * 9/4/130, so pricing on the candidate count alone under-counted that turn's
  * output roughly thirty-fold (see `e4b8289`).
  */
-export function geminiTurnCostUsd(
-  usage: {
+type GeminiTurnUsage = {
     promptTokenCount?: number | null;
     candidatesTokenCount?: number | null;
     thoughtsTokenCount?: number | null;
     totalTokenCount?: number | null;
-  } | null | undefined,
+  } | null | undefined;
+
+export function geminiTurnCostUsd(model: string, usage: GeminiTurnUsage, at?: Date): number;
+/** Compatibility overload: existing 3.7 callers retain their historical rate. */
+export function geminiTurnCostUsd(usage: GeminiTurnUsage, at?: Date): number;
+export function geminiTurnCostUsd(
+  modelOrUsage: string | GeminiTurnUsage,
+  usageOrAt?: GeminiTurnUsage | Date,
   at: Date = new Date(),
 ): number {
+  const model = typeof modelOrUsage === "string" ? modelOrUsage : "gemini-3.7-flash";
+  const usage = typeof modelOrUsage === "string" ? usageOrAt as GeminiTurnUsage : modelOrUsage;
+  const effectiveAt = typeof modelOrUsage === "string" ? at : usageOrAt instanceof Date ? usageOrAt : at;
   const inputTokens = nonNegative(usage?.promptTokenCount);
   const candidates = nonNegative(usage?.candidatesTokenCount);
   const thoughts = nonNegative(usage?.thoughtsTokenCount);
@@ -128,7 +137,7 @@ export function geminiTurnCostUsd(
   // place.
   const remainder = total - inputTokens >= 0 ? total - inputTokens : 0;
   const outputTokens = thoughts > 0 ? candidates + thoughts : Math.max(candidates, remainder);
-  return costForUsage({ inputTokens, outputTokens }, at);
+  return costForUsage(model, { inputTokens, outputTokens }, effectiveAt);
 }
 
 function nonNegative(value: number | null | undefined): number {

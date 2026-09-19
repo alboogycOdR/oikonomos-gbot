@@ -69,6 +69,10 @@ export {
  */
 export {
   costForUsage,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS,
+  GEMINI_PRICING,
+  type GeminiModel,
   GEMINI_3_7_FLASH_INPUT_USD_PER_MILLION_TOKENS,
   GEMINI_3_7_FLASH_OUTPUT_USD_PER_MILLION_TOKENS,
   type UsageTokens,

@@ -104,7 +104,7 @@ describe("geminiTurnCostUsd — thinking tokens are billed output (TASK-215)", (
     // Real shape measured live 2026-09-07: 9 prompt, 4 candidate, 130 total.
     // The 117 unreported tokens are thinking tokens, billed at OUTPUT rate.
     const before2027 = new Date("2026-09-07T00:00:00Z");
-    const cost = geminiTurnCostUsd({ promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 130 }, before2027);
+    const cost = geminiTurnCostUsd("gemini-3.7-flash", { promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 130 }, before2027);
 
     const expected = (9 / 1_000_000) * 0.75 + (121 / 1_000_000) * 3.75;
     expect(cost).toBeCloseTo(expected, 12);
@@ -117,25 +117,25 @@ describe("geminiTurnCostUsd — thinking tokens are billed output (TASK-215)", (
     const before2027 = new Date("2026-09-07T00:00:00Z");
     // total = prompt + thoughts + candidates, per Google's documentation.
     const withThoughts = geminiTurnCostUsd(
-      { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 117, totalTokenCount: 130 },
+      "gemini-3.7-flash", { promptTokenCount: 9, candidatesTokenCount: 4, thoughtsTokenCount: 117, totalTokenCount: 130 },
       before2027,
     );
     const fromRemainder = geminiTurnCostUsd(
-      { promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 130 },
+      "gemini-3.7-flash", { promptTokenCount: 9, candidatesTokenCount: 4, totalTokenCount: 130 },
       before2027,
     );
     expect(withThoughts).toBeCloseTo(fromRemainder, 12);
   });
 
   it("never returns a negative or NaN cost for a malformed usage record", () => {
-    expect(geminiTurnCostUsd(null)).toBe(0);
-    expect(geminiTurnCostUsd({ promptTokenCount: -5, totalTokenCount: 3 })).toBeGreaterThanOrEqual(0);
-    expect(Number.isNaN(geminiTurnCostUsd({ totalTokenCount: Number.NaN }))).toBe(false);
+    expect(geminiTurnCostUsd("gemini-3.7-flash", null)).toBe(0);
+    expect(geminiTurnCostUsd("gemini-3.7-flash", { promptTokenCount: -5, totalTokenCount: 3 })).toBeGreaterThanOrEqual(0);
+    expect(Number.isNaN(geminiTurnCostUsd("gemini-3.7-flash", { totalTokenCount: Number.NaN }))).toBe(false);
   });
 
   it("follows the published 2027 price increase", () => {
     const usage = { promptTokenCount: 1_000_000, candidatesTokenCount: 0, totalTokenCount: 1_000_000 };
-    expect(geminiTurnCostUsd(usage, new Date("2026-12-01T00:00:00Z"))).toBeCloseTo(0.75, 10);
-    expect(geminiTurnCostUsd(usage, new Date("2027-01-01T00:00:00Z"))).toBeCloseTo(1.5, 10);
+    expect(geminiTurnCostUsd("gemini-3.7-flash", usage, new Date("2026-12-01T00:00:00Z"))).toBeCloseTo(0.75, 10);
+    expect(geminiTurnCostUsd("gemini-3.7-flash", usage, new Date("2027-01-01T00:00:00Z"))).toBeCloseTo(1.5, 10);
   });
 });

@@ -57,6 +57,14 @@ if (import.meta.vitest) {
       });
     });
 
+    it("offers exactly the three model ids that have a pricing entry", () => {
+      expect(makeProvider().availableModels).toEqual([
+        "gemini-3.7-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+      ]);
+    });
+
     it("fails closed with a fatal error when no query function was injected", async () => {
       const events = await collect(makeProvider());
       expect(events).toEqual([
@@ -94,6 +102,18 @@ if (import.meta.vitest) {
       const events = await collect(makeProvider(queryFn));
       const turnComplete = events.find((e) => e.type === "turn_complete");
       expect(turnComplete).toMatchObject({ costUsd: (500_000 / 1_000_000) * 0.75 + (200_000 / 1_000_000) * 3.75 });
+    });
+
+    it("keeps a caller model override in both the query and its cost", async () => {
+      let selectedModel: string | undefined;
+      const provider = makeProvider(async (input) => {
+        selectedModel = input.model;
+        return { text: "ok", denied: false, usageMetadata: { promptTokenCount: 1_000_000, candidatesTokenCount: 0 } };
+      });
+      const events: ProviderEvent[] = [];
+      for await (const event of provider.sendPrompt({ prompt: "hello", cwd: "/tmp", sessionId: null, model: "gemini-3.7-flash", signal: new AbortController().signal })) events.push(event);
+      expect(selectedModel).toBe("gemini-3.7-flash");
+      expect(events.find((event) => event.type === "turn_complete")).toMatchObject({ costUsd: 0.75 });
     });
 
     it("treats missing usageMetadata as zero cost, never null and never a placeholder", async () => {
@@ -171,7 +191,7 @@ if (import.meta.vitest) {
     it("is undefined when absent, same as the other optional provider keys", () => {
       const config = loadConfig(baseEnv);
       expect(config.GEMINI_API_KEY).toBeUndefined();
-      expect(config.GEMINI_MODEL).toBe("gemini-3.7-flash");
+      expect(config.GEMINI_MODEL).toBe("gemini-3.1-flash-lite");
     });
 
     it("loads a present, non-empty GEMINI_API_KEY verbatim", () => {
