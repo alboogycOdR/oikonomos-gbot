@@ -1858,3 +1858,15 @@ All out-of-territory failures CLASSIFIED pre-existing vs master baseline (ORCH r
 Non-blocking notes: (a) mojibake replacement char for the section sign in a spend.ts comment; (b) no explicit ls/find filesystem-check evidence in commit/dossier — first-occurrence protocol gap, not rework (builder clearly inspected the schema, correctly noting spend_records has no role column and routine_id carries the role, which TASK-301 must attribute).
 
 UNLOCKS: TASK-314 (Depends_On TASK-298 + TASK-300, both now done) is fully ready — it was sequenced after TASK-300 to keep packages/db/src/index.ts edits disjoint; TASK-314 in turn unblocks TASK-302. TASK-301 still gated on TASK-311 (done) + this; ready pending CX9 availability.
+
+## TASK-300 | S5 | POST-MERGE FINDING (ORCH, 2026-09-19T09:30Z) -- autopilot approval stands as merged, defect filed
+
+Autopilot's Opus review approved the atomic reservation protocol, and the concurrency proofs are genuine.
+It missed that the ROLE axis reads recorded spend from spend_records.routine_id = <roleId>. Real chat runs
+record routineId = task.routineId (NULL for plain chat, the routine's own id otherwise; chatRunDriver.ts
+:858 and :1323), so the role axis sums to zero for all real spend and budget.role_exceeded can never fire.
+S5 disclosed the keying in its own note; the reviewer read it as "TASK-301 will attribute accordingly",
+which cannot work without destroying per-routine attribution. Not deployed and not yet called by anything,
+so no live impact. Fixed forward: TASK-315 (high), and TASK-301 now depends on it. Lesson recorded for the
+unattended reviewer: a control whose tests cannot fail against the code is not proven -- require one test
+that drives the real production recording path.
