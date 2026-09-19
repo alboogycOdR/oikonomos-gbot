@@ -1785,3 +1785,14 @@ missing sandbox throws, and Terminated makes waitForSandboxRunning throw. The re
 turn after a reap. Found when deploying (the same gap had left the two real bots unable to chat after the
 2026-09-18 cleanup; ORCH repaired their stale records by hand). Fixed forward: TASK-311 (critical).
 Deployed and verified: first sweep reclaimed 8 orphaned sandboxes, 0 errors, real bots' offices untouched.
+
+## TASK-299 | CX9 | approved (second pass) | 2026-09-19T08:00:00Z
+
+All four rework items verified in code and by ORCH's own runs: stale mailbox pin fixed; project handoffs
+require BOTH sender and recipient on the project's group-thread roster (fails closed: no roster row ->
+NULL -> rejected); artifact_ids verified for every kind; new tests for cross-project task, other-project
+artifact on a non-completion kind, outsider sender, outsider recipient, malformed id. db 254/0 fail,
+workspace 33/0 fail, migration 031 down/up clean. CX9's claim that runs.test.ts:650 fails
+reproducibly outside its territory did NOT reproduce (19/19 alone, after its fixtures, and on master) --
+leftover shared-test-DB state from concurrent sessions. first-pass: no. Merged --no-ff.
+Deploy note: apply migration 031 to production by hand before deploying this code.

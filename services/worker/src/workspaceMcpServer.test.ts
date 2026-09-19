@@ -90,6 +90,19 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
     ]);
   });
 
+  it("advertises all project handoff kinds through the Claude MCP schema", async () => {
+    const response = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "project-handoff-schema", method: "tools/list",
+    }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId });
+    const tools = (response?.result as {
+      tools: Array<{ name: string; inputSchema: { properties: Record<string, { enum?: readonly string[] }> } }>;
+    }).tools;
+    const tool = tools.find((candidate) => candidate.name === "send_to_role");
+    expect(tool?.inputSchema.properties.handoffKind?.enum).toEqual([
+      "research.complete", "draft.ready_for_review", "task.assigned", "task.completed", "task.blocked", "status.requested",
+    ]);
+  });
+
   it("renames only the worker-bound calling role and rejects cross-role input", async () => {
     const identity = { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId };
     const listed = await handleWorkspaceMcpRequest(JSON.stringify({ jsonrpc: "2.0", id: "tool-list", method: "tools/list" }), identity);

@@ -360,6 +360,17 @@ describe("createSteelGeminiTools — Steel Browser tools for the Gemini lane (TA
 });
 
 describe("createWorkspaceGeminiTools — deliberately NOT sandboxed, unlike every tool above", () => {
+  it("advertises all project handoff kinds through the Gemini executor schema", () => {
+    const tools = createWorkspaceGeminiTools(
+      { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },
+      ["mcp__workspace__send_to_role"],
+    );
+    const tool = tools.find((candidate) => candidate.name === "mcp__workspace__send_to_role");
+    expect((tool?.parameters as { properties: { handoffKind: { enum: readonly string[] } } }).properties.handoffKind.enum).toEqual([
+      "research.complete", "draft.ready_for_review", "task.assigned", "task.completed", "task.blocked", "status.requested",
+    ]);
+  });
+
   it("mounts create_routine only when granted", () => {
     const granted = createWorkspaceGeminiTools(
       { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },

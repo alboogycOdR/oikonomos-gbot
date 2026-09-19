@@ -75,6 +75,28 @@ if ($SelfTestWatchdogQueryTimeout) {
   exit 0
 }
 
+# 2026-09-19: ONE shared test database, many concurrent builders. Each builder
+# runs -Init from its own worktree, which applies only THAT worktree's
+# migrations, so two overlapping runs corrupt each other (relation
+# "project_roles" does not exist, FK failures on leftover fixtures, a
+# "reproducible" failure that no one else can reproduce). Serialise every
+# database-touching run behind a machine-wide named mutex. Windows releases it
+# automatically if the holder dies, so a killed session cannot deadlock the
+# queue (the next waiter just sees AbandonedMutexException and proceeds).
+$script:TestDbLock = New-Object System.Threading.Mutex($false, 'Global\OIKONOMOS-test-isolated')
+$lockAcquired = $false
+try {
+  $lockAcquired = $script:TestDbLock.WaitOne(0)
+  if (-not $lockAcquired) {
+    Write-Host "[test-isolated] another test run holds the shared test-database lock; waiting (up to 60 min)..."
+    $lockAcquired = $script:TestDbLock.WaitOne(60 * 60 * 1000)
+  }
+} catch [System.Threading.AbandonedMutexException] {
+  $lockAcquired = $true   # previous holder died; the lock is ours
+}
+if (-not $lockAcquired) { Write-Error "[test-isolated] gave up waiting for the shared test-database lock after 60 minutes."; exit 2 }
+Write-Host "[test-isolated] holding the shared test-database lock"
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ($Root) { $repoRoot = (Resolve-Path $Root).Path }
 $container = "oikonomos-postgres-local"

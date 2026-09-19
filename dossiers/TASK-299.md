@@ -21,3 +21,24 @@ Keep one source of truth for the kind list in roleMessages.ts and have both tool
 - Full recursive suite via scripts/test-isolated.ps1 only.
 
 ## Work Log
+
+- [2026-09-19T06:05:00Z] [CX9] Preflight complete before implementation:
+  ```text
+  [preflight] TASK-299 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 10 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    infra/postgres/migrations/031_project_handoff_kinds.up.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    NEW    infra/postgres/migrations/031_project_handoff_kinds.down.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    FILE   packages/db/src/roleMessages.ts  -> exists, 337 line(s), 12304 bytes
+    FILE   packages/db/src/roleMessages.test.ts  -> exists, 135 line(s), 4897 bytes
+    FILE   services/workspace/src/mailbox.ts  -> exists, 289 line(s), 11443 bytes
+    FILE   services/workspace/src/mailbox.test.ts  -> exists, 127 line(s), 5379 bytes
+    FILE   services/worker/src/workspaceMcpServer.ts  -> exists, 298 line(s), 15921 bytes
+    FILE   services/worker/src/workspaceMcpServer.test.ts  -> exists, 175 line(s), 9422 bytes
+    FILE   services/worker/src/geminiToolExecutors.ts  -> exists, 866 line(s), 42375 bytes
+    FILE   services/worker/src/geminiToolExecutors.test.ts  -> exists, 423 line(s), 21990 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+
+- [2026-09-19T08:15:00Z] [CX9] Implemented the closed six-kind handoff set and migration 031. Project handoffs now require the exact locator `{project_id, task_id, artifact_ids}`; `task.completed` rejects empty, missing, or cross-project artifacts against real Postgres. Both Claude MCP and Gemini schemas consume the single exported kind list. Evidence: `pnpm --filter @oikonomos/db build`, `pnpm --filter @oikonomos/workspace build`, and `pnpm --filter @oikonomos/worker build` passed; the TASK-299 real-Postgres cases passed in `scripts/test-isolated.ps1 -Init -Filter @oikonomos/db` (7 `roleMessages.test.ts` integration tests), and both updated lane-schema suites passed inside `scripts/test-isolated.ps1 -Filter @oikonomos/worker` (`workspaceMcpServer.test.ts`, `geminiToolExecutors.test.ts`). The aggregate filtered suites still report pre-existing unrelated failures: `projects.ts` cleanup deletes group threads before `thread_members`; worker `chatRunDriver.ts` fixture FK failures and one `routineJob.test.ts` timeout. Migration 031 down then up applied cleanly to `oikonomos_test`; the restored check listed all six kinds. A full recursive isolated-suite run was also invoked after `-Init`; its streamed console output was truncated by the runner after dashboard tests, so its aggregate exit summary was not available to record.
+
+- [2026-09-19T09:15:00Z] [CX9] REWORK addressed: project handoffs now require both sender and recipient to be roster members of the referenced project's group thread; every supplied artifact ID on every project handoff is validated against that project. Added real-Postgres coverage for non-member sender/recipient, cross-project task ID, cross-project artifact on `task.blocked`, and non-UUID artifact ID; corrected the stale workspace closed-set assertion. `pnpm --filter @oikonomos/db build` and `pnpm --filter @oikonomos/workspace build` passed. `scripts/test-isolated.ps1 -Init -Filter @oikonomos/db` passed fully (43 files, 254 passed, 2 skipped); `scripts/test-isolated.ps1 -Filter @oikonomos/workspace` passed fully (4 files, 33 passed); `pnpm --filter @oikonomos/worker build` passed and its isolated worker suite showed both lane schema suites green plus `workerJobQueue` shutdown passing. The requested stale-epoch rerun reproduced the unrelated `packages/db/src/runs.test.ts:650` `thread_members_thread_id_fkey` cleanup failure (253 passed, 1 failed); it is outside this task's territory. A full recursive `scripts/test-isolated.ps1` was invoked after database initialization; the runner's captured stream ended during the DB package, so no aggregate exit summary was available.
