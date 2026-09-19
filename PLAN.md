@@ -9376,7 +9376,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-316
 **Title:** A failed chat run leaves the user in silence and hides the provider's reason -- surface both
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** services/worker/src/chatRunDriver.ts executeGeminiChatRun (throws "Gemini run was denied before it could answer." and drops `result.deniedReason`); packages/agent-providers/src/providers/gemini.ts (`deniedReason`); ADR-005 (a control or path that fails silently is a defect).
@@ -9393,12 +9393,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T11:34:23Z
 **Progress_Notes:**
 - [2026-09-19T11:25:00Z] [ORCH] Filed from the BossMan "no reply" incident. TASK-301 now depends on this (both edit chatRunDriver.ts).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T11:53:01Z] [SV:S5] Provider failure reason captured at the fetch seam (harness-factory adapter drops it; protected path) into the thrown error and failure_note (sanitized, bounded 240). Terminal chat-run failures in either lane insert one plain system message; park signals return earlier and post none. New regression test drives the real driver with a fake 429 fetch containing a key-shaped token and passes. Worker suite failures match the master baseline apart from one pg-boss shutdown flake.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-316.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/worker: new TASK-316 test passes (also run alone: 1 passed). Worker package: master baseline 41 failed/255 passed of 296; this branch 42 failed/255 passed of 297. Failures are environmental: platform budget exceeded in the test DB and real provider calls. The one extra failure is a pg-boss shutdown test that passed on one of my runs and failed on the others (flake). tsc --noEmit clean for @oikonomos/worker. Full recursive suite across other packages not run.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T11:34:23Z
+**Updated_At:** 2026-09-19T11:53:01Z
 
 ### TASK-317
 **Title:** Cross-model adversarial review of TASK-295 (banned-modes scanner: Codex/Grok vocabulary, .codex enforcement, pinned exemptions)
