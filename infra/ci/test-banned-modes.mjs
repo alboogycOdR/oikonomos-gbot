@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import { bannedTokens, scanBannedModes } from './banned-modes.mjs';
 import {
   ENFORCEMENT_SURFACES,
+  TOKEN_PINS,
   isAllowlisted,
   isEnforcementSurface,
   loadAllowlist,
@@ -55,6 +56,7 @@ const EXPECTED_ENFORCEMENT = [
   '.github/**',
   '.claude/settings*.json',
   '.claude/agents/**',
+  '.codex/**',
 ];
 
 test('allowlist cites ADR-002 Amendment A and is the prose + §2(2) set', () => {
@@ -82,7 +84,7 @@ test('path globs: root *.md and settings*.json do not leak into nested dirs', ()
 
 test('each banned token in a temp packages/ path fails the scan', () => {
   const tokens = bannedTokens();
-  assert.equal(tokens.length, 6);
+  assert.equal(tokens.length, 8);
 
   const root = mkdtempSync(join(tmpdir(), 'oik-banned-'));
   try {
@@ -91,7 +93,7 @@ test('each banned token in a temp packages/ path fails the scan', () => {
     const planted = join(pkgDir, 'violation.ts');
 
     for (const token of tokens) {
-      writeFileSync(planted, `export const mode = ${JSON.stringify(token)};\n`, 'utf8');
+      writeFileSync(planted, `// mode: ${token}\n`, 'utf8');
       const { violations } = scanBannedModes({ root, allowlistPath });
       assert.ok(
         violations.some((v) => v.token === token && v.file === 'packages/policy/src/violation.ts'),
@@ -252,17 +254,95 @@ test('a bare CodexSandbox enum value (no flag) is NOT flagged -- guards packages
   }
 });
 
-test('Grok Build --always-approve is deliberately NOT a banned token (open item, see banned-modes.mjs header)', () => {
-  // It is a standalone flag (no value to pair it with) and
-  // packages/agent-providers/src/providers/grok.ts already constructs it
-  // literally and legitimately (broker-gated spawn, sandbox as the
-  // compensating control -- same ADR-011 feature as the Codex case above).
-  // Adding it as a bare token would break "current repo passes clean" on
-  // that real file. This assertion pins the deliberate choice so a future
-  // edit doesn't silently re-introduce the collision; TASK-295 left this as
-  // an open policy question for ORCH.
-  const tokens = bannedTokens();
-  assert.ok(!tokens.includes('--always-approve'));
+const AA = ['--always-', 'approve'].join('');
+const SBXV = ['danger-full-', 'access'].join('');
+const KEY = (q = '"') => `sandbox_mode = ${q}${SBXV}${q}`;
+const CODEX_PIN_TEXT = [`# note: codex exec -s ${SBXV}`, KEY(), '[profiles.builder]', KEY(), ''].join('\n');
+const GROK_PATH = 'packages/agent-providers/src/providers/grok.ts';
+const GROK_TEXT = [`// passes \`${AA}\``, `args.push("${AA}");`, ''].join('\n');
+
+function withRoot(files, fn) {
+  const root = mkdtempSync(join(tmpdir(), 'oik-banned-pin-'));
+  try {
+    for (const [rel, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), text, 'utf8');
+    }
+    return fn(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test('Codex config-key form is banned, tolerant of whitespace and quote style, on .codex/**', () => {
+  assert.ok(bannedTokens().includes(KEY()));
+  assert.ok(isEnforcementSurface('.codex/config.toml'));
+  for (const text of [KEY(), KEY("'"), `sandbox_mode=${'"'}${SBXV}${'"'}`, `sandbox_mode   =   "${SBXV}"`]) {
+    const { violations } = withRoot({ '.codex/other.toml': `${text}\n` }, (root) => scanBannedModes({ root, allowlistPath }));
+    assert.equal(violations.length, 1, `expected a hit for: ${text}`);
+  }
+  // other sandbox values are fine
+  const { violations } = withRoot({ '.codex/other.toml': 'sandbox_mode = "workspace-write"\n' }, (root) =>
+    scanBannedModes({ root, allowlistPath }),
+  );
+  assert.deepEqual(violations, []);
+  // flag long form with = also caught
+  const eq = withRoot({ 'infra/x.sh': `codex --sandbox=${SBXV}\n` }, (root) => scanBannedModes({ root, allowlistPath }));
+  assert.equal(eq.violations.length, 1);
+});
+
+test('.codex/config.toml pin: exact current count passes; a planted extra profile fails; a lowered count fails', () => {
+  const run = (text) => withRoot({ '.codex/config.toml': text }, (root) => scanBannedModes({ root, allowlistPath }).violations);
+  assert.deepEqual(run(CODEX_PIN_TEXT), []);
+  // growth (new profile) rejected
+  assert.ok(run(`${CODEX_PIN_TEXT}[profiles.new]\n${KEY()}\n`).length > 0);
+  // shrink without lowering the pin rejected
+  assert.ok(run([`# note: codex exec -s ${SBXV}`, KEY(), ''].join('\n')).length > 0);
+  // same count but on a different file is not exempt
+  const other = withRoot({ '.codex/other.toml': CODEX_PIN_TEXT }, (root) => scanBannedModes({ root, allowlistPath }).violations);
+  assert.ok(other.length > 0);
+});
+
+test('.codex pin cannot be widened via the allowlist file: an allowlist line does not override the enforcement surface', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'oik-banned-al-'));
+  try {
+    const al = join(dir, 'al.txt');
+    writeFileSync(al, '.codex/**\n', 'utf8');
+    const v = withRoot({ '.codex/other.toml': `${KEY()}\n` }, (root) => scanBannedModes({ root, allowlistPath: al }).violations);
+    assert.equal(v.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the real repo pin registry is exactly the measured set and the real files match it', () => {
+  const summary = TOKEN_PINS.map((p) => `${p.file}|${p.token}|${p.count}`).sort();
+  assert.equal(summary.length, 4);
+  for (const p of TOKEN_PINS) {
+    const text = readFileSync(join(here, '..', '..', p.file), 'utf8');
+    const { violations } = scanBannedModes({ allowlistPath, pins: [] });
+    const actual = violations.filter((v) => v.file === p.file && v.token === p.token).length;
+    assert.equal(actual, p.count, `${p.file} ${p.token}`);
+    assert.ok(text.length > 0);
+  }
+});
+
+test('Grok always-approve is a banned token; one pinned exemption in grok.ts; elsewhere and a third occurrence fail', () => {
+  assert.ok(bannedTokens().includes(AA));
+  const run = (files) => withRoot(files, (root) => scanBannedModes({ root, allowlistPath }).violations);
+  assert.deepEqual(run({ [GROK_PATH]: GROK_TEXT }), []);
+  assert.ok(run({ [GROK_PATH]: `${GROK_TEXT}args.push("${AA}");\n` }).length > 0);
+  assert.ok(run({ [GROK_PATH]: `// only one ${AA}\n` }).length > 0);
+  assert.equal(run({ 'packages/agent-providers/src/providers/other.ts': GROK_TEXT }).length, 2);
+  assert.equal(run({ '.github/workflows/x.yml': `run: grok ${AA}\n` }).length, 1);
+});
+
+test('a bare CodexSandbox enum value beside a pinned grok.ts is still not flagged', () => {
+  const v = withRoot(
+    { [GROK_PATH]: GROK_TEXT, 'packages/agent-providers/src/config.ts': `type S = "${SBXV}";\n` },
+    (root) => scanBannedModes({ root, allowlistPath }).violations,
+  );
+  assert.deepEqual(v, []);
 });
 
 test('current repo has no hits outside the ADR-002 Amendment A allowlist', () => {

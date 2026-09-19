@@ -27,50 +27,70 @@
  * user-selectable sandbox setting (ADR-011) — a bare-value token would flag
  * that real, reviewed product feature and break "current repo passes clean".
  *
- * Grok Build's equivalent, `--always-approve` ("Auto-approve all tool
- * executions" per `grok --help`), was checked and is deliberately NOT added
- * here: unlike the Codex flags it is a standalone flag with no value to pair
- * it with, and `packages/agent-providers/src/providers/grok.ts` already
- * constructs it literally and legitimately (broker-gated per-spawn gate,
- * sandbox profile as the compensating control — same ADR-011 feature). No
- * substring distinguishes an ungoverned dispatch-layer `--always-approve`
- * from that reviewed product code in the same enforcement surface
- * (packages/**). Closing that half of the gap needs a policy call (either
- * an ADR-002 amendment scoping the product's own multi-provider gate as
- * distinct from the banned vocabulary, or an enforcement-surface-aware
- * per-file exemption mechanism that does not exist today), not a token
- * choice — flagged to ORCH via TASK-295's blocked status/dossier.
+ * Config-file key form (TASK-295 ORCH decision A): Codex's config.toml can
+ * set the same bypass via its `sandbox_mode` key with the top sandbox value, which no CLI
+ * flag token matches; it is matched by regex, tolerant of whitespace and
+ * quote style.
+ *
+ * Grok Build's always-approve flag ("Auto-approve all tool executions") is a
+ * banned token too. Unlike the Codex flags it has no value to pair with, and
+ * reviewed product code legitimately constructs it, so both it and the Codex
+ * config occurrences are handled by COUNT-PINNED exemptions (TOKEN_PINS in
+ * lib/allowlist.mjs): keyed on (exact file, exact token) with an exact
+ * expected hit count, in code rather than the free-text allowlist. The pin
+ * fails in EITHER direction, so growth is rejected and a removed occurrence
+ * forces the pin down. Residual: a genuine bypass added inside a pinned file
+ * is caught only through the count change. See ADR-002 Amendment B (d) and
+ * ADR-011 (grok.ts); dossiers/TASK-295.md carries the Amendment C text.
  */
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { isAllowlisted, loadAllowlist } from './lib/allowlist.mjs';
+import { TOKEN_PINS, isAllowlisted, loadAllowlist } from './lib/allowlist.mjs';
 import { relPosix, repoRoot, walkFiles } from './lib/walk.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export function bannedTokens() {
+const SBX = ['danger-full-', 'access'].join('');
+
+// [display token, matcher]. Display strings are what violations report.
+function tokenSpecs() {
   return [
     ['bypass', 'Permissions'].join(''),
     ['accept', 'Edits'].join(''),
     ['--dangerously-skip-', 'permissions'].join(''),
-    ['-s ', 'danger-full-access'].join(''),
-    ['--sandbox ', 'danger-full-access'].join(''),
+    ['-s ', SBX].join(''),
+    ['--sandbox ', SBX].join(''),
     ['--dangerously-bypass-approvals-and-', 'sandbox'].join(''),
-  ];
+    ['sandbox_mode = "', SBX, '"'].join(''),
+    ['--always-', 'approve'].join(''),
+  ].map((token) => {
+    let re;
+    if (token.startsWith('-s ')) re = new RegExp(`-s\\s+${SBX}`, 'g');
+    else if (token.startsWith('--sandbox ')) re = new RegExp(`--sandbox[\\s=]+${SBX}`, 'g');
+    else if (token.startsWith('sandbox_mode')) re = new RegExp(`sandbox_mode\\s*=\\s*["']${SBX}["']`, 'g');
+    else re = new RegExp(token.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'), 'g');
+    return { token, re };
+  });
+}
+
+export function bannedTokens() {
+  return tokenSpecs().map((t) => t.token);
 }
 
 export function scanBannedModes({
   root = repoRoot(),
   allowlistPath = join(here, 'banned-modes-allowlist.txt'),
   extraFiles = [],
+  pins = TOKEN_PINS,
 } = {}) {
-  const tokens = bannedTokens();
+  const specs = tokenSpecs();
+  const tokens = specs.map((t) => t.token);
   const allowlist = loadAllowlist(allowlistPath);
   const files = new Set(walkFiles(root));
   for (const extra of extraFiles) files.add(extra);
 
-  const violations = [];
+  const hits = [];
   for (const abs of files) {
     const rel = relPosix(root, abs);
     if (rel.startsWith('..')) continue;
@@ -83,12 +103,43 @@ export function scanBannedModes({
       continue;
     }
 
-    for (const token of tokens) {
-      if (!text.includes(token)) continue;
-      const lines = text.split(/\r?\n/);
+    const lines = text.split(/\r?\n/);
+    for (const { token, re } of specs) {
       for (let i = 0; i < lines.length; i += 1) {
-        if (!lines[i].includes(token)) continue;
-        violations.push({ file: rel, line: i + 1, token });
+        const n = (lines[i].match(re) ?? []).length;
+        for (let k = 0; k < n; k += 1) hits.push({ file: rel, line: i + 1, token });
+      }
+    }
+  }
+
+  // Count-pinned exemptions: exact (file, token) with an exact expected count.
+  const violations = [];
+  const pinned = new Map(pins.map((p) => [`${p.file}|${p.token}`, p]));
+  const counts = new Map();
+  for (const hit of hits) {
+    const key = `${hit.file}|${hit.token}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const hit of hits) {
+    const key = `${hit.file}|${hit.token}`;
+    const pin = pinned.get(key);
+    if (pin && counts.get(key) === pin.count) continue;
+    violations.push(
+      pin
+        ? { ...hit, note: `pin mismatch: ${counts.get(key)} hit(s), pinned ${pin.count} (${pin.adr})` }
+        : hit,
+    );
+  }
+  // A pin whose occurrences vanished is stale; only checkable on the real repo tree.
+  if (resolve(root) === resolve(repoRoot())) {
+    for (const pin of pins) {
+      if (!counts.has(`${pin.file}|${pin.token}`)) {
+        violations.push({
+          file: pin.file,
+          line: 0,
+          token: pin.token,
+          note: `stale pin: 0 hit(s), pinned ${pin.count} (${pin.adr})`,
+        });
       }
     }
   }
@@ -141,7 +192,7 @@ function main(argv = process.argv.slice(2)) {
     `banned-modes: ${violations.length} hit(s) outside the ADR-002 allowlist\n`,
   );
   for (const hit of violations) {
-    process.stderr.write(`  ${hit.file}:${hit.line}: ${hit.token}\n`);
+    process.stderr.write(`  ${hit.file}:${hit.line}: ${hit.token}${hit.note ? ` [${hit.note}]` : ''}\n`);
   }
   return 1;
 }
