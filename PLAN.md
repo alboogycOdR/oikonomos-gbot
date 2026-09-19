@@ -9046,7 +9046,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.1 (the exact route list, tenant-scoped via thread ownership), §2.2 (create via the existing group-thread path, roster in one transaction, 404-never-403), §1.2 (charter stored as project-scope profile-tier facts), §3.3 (summary blockedTasks), §8.1 (approvals mirrored by reference), §11 (first bullet).
@@ -9067,12 +9067,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended: manager grant set now includes workspace.create_bot / retire_bot (owner decision), with revocation on demotion.
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review (CX9, accept-with-changes): create_bot only; transactional approval-invalidating demotion. See ADR-019 Amendment 2026-09-19 (b).
+- [2026-09-19T14:48:00Z] [SV:S5] Branch task/TASK-304-s5 created; no code written. Atomic project create, atomic manager demotion (grants revoke + pending create_bot approval invalidation) and approval-to-project decision mirroring each need new packages/db functions (and possibly a packages/approvals primitive) that lie outside Owned_Paths; control-api may not hold SQL/Pool. Analysis in dossiers/TASK-304.md.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: need packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts (new createProjectWithRoster, demoteProjectManager, approval->run->project decision-mirror functions); demotion approval invalidation may additionally need a tx-composable primitive in packages/approvals/src/invalidatePending.ts (protected path, adversarial review).
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T14:40:09Z
+**Updated_At:** 2026-09-19T14:48:00Z
 
 ### TASK-305
 **Title:** Manager charter (Engineering Manager / Chief of Staff) and the changes-only status routine (P-6)
