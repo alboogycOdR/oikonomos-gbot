@@ -20,12 +20,21 @@ describe("project tools", () => {
     await expect(tools({ audit, updateTask }).update_task({ taskId, state: "done" })).rejects.toThrow("Illegal");
     await expect(tools({ audit, updateTask }).update_task({ taskId, state: "doing" })).resolves.toMatchObject({ state: "doing" });
     expect(audit).toHaveBeenCalledWith("project.task_transition", { task_id: taskId, from: "todo", to: "doing", actor: `role:${manager}` });
-    await expect(tools({ getTask: vi.fn(async () => ({ ...task, state: "doing" })) }).update_task({ taskId, state: "blocked" })).rejects.toThrow("Illegal");
+    const doing = { ...task, state: "doing" as const };
+    await expect(tools({ getTask: vi.fn(async () => doing) }).update_task({ taskId, state: "blocked" })).rejects.toThrow("Illegal");
+    await expect(tools({ getTask: vi.fn(async () => doing) }).update_task({ taskId, state: "blocked", blockedReason: "Waiting for approval" })).resolves.toMatchObject({ state: "blocked" });
+    for (const state of ["todo", "doing", "blocked", "review"] as const) {
+      await expect(tools({ getTask: vi.fn(async () => ({ ...task, state })) }).update_task({ taskId, state: "cancelled" })).resolves.toMatchObject({ state: "cancelled" });
+    }
   });
 
   it("denies non-managers, non-roster owners, and caps assignment handoffs at roster size", async () => {
-    const denied = createProjectTools({ connectionString: "x", tenantId: "t", fromRoleId: member }, { members: async () => [{ projectId, roleId: member, isManager: false, responsibility: "" }] });
+    const denied = createProjectTools({ connectionString: "x", tenantId: "t", fromRoleId: member }, { getTask: async () => task, members: async () => [{ projectId, roleId: member, isManager: false, responsibility: "" }] });
     await expect(denied.create_task({ projectId, title: "no" })).rejects.toThrow("manager");
+    await expect(denied.update_task({ taskId, state: "doing" })).rejects.toThrow("manager");
+    await expect(denied.assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("manager");
+    await expect(denied.register_artifact({ projectId, kind: "attachment", ref: "attachment-1", label: "no" })).rejects.toThrow("manager");
+    await expect(denied.record_decision({ projectId, kind: "human_decision", summary: "no" })).rejects.toThrow("manager");
     await expect(tools().assign_task({ taskId, ownerRoleId: "55555555-5555-5555-5555-555555555555" })).rejects.toThrow("roster");
     const audit = vi.fn(async () => undefined); const assign = tools({ audit });
     await assign.assign_task({ taskId, ownerRoleId: member }); await assign.assign_task({ taskId, ownerRoleId: member });

@@ -200,6 +200,18 @@ export const builtinDescribers: Readonly<Record<string, Describer>> = Object.fre
   // guard runs downstream of this describe step, in the DB layer).
   mcp__workspace__create_bot: describeAs("create bot", "name"),
   mcp__workspace__retire_bot: describeAs("retire bot", "roleId"),
+  // TASK-302 — project-manager MCP tools. Targets are identifiers or the
+  // registered artifact reference supplied to the handler, so an approval
+  // card describes the concrete project operation rather than opaque JSON.
+  mcp__project__list_board: describeAs("list project board", "projectId"),
+  mcp__project__create_task: describeAs("create project task", "projectId", "title"),
+  mcp__project__update_task: describeAs("update project task", "taskId"),
+  mcp__project__assign_task: describeAs("assign project task", "taskId"),
+  mcp__project__register_artifact: describeAs("register project artifact", "ref", "projectId"),
+  mcp__project__record_decision: describeAs("record project decision", "taskId", "projectId"),
+  // Declared-disabled tools still need a describer: L1 must remain
+  // fail-closed if an operator later enables the capability through review.
+  mcp__project__request_grant: describeAs("request project grant", "projectId"),
   mcp__gmail__send_message: describeAs("send email", "to"),
   mcp__gmail__create_draft: describeAs("create draft", "to"),
   mcp__gmail__list_messages: describeAs("list messages", "q"),
