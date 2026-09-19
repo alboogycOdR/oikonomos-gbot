@@ -9313,7 +9313,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-314
 **Title:** packages/db: add assignProjectTaskOwner to (re)assign an existing project task's owner (P-4a unblock)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §3.2 (assign sets an existing task's owner to a roster member and sends task.assigned); §7.3 Invariant B (project tool handlers reach only packages/db project functions); docs/decisions/ADR-019-project-entity-and-manager-role.md §4.
@@ -9326,16 +9326,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] taskId and ownerRoleId are validated as UUIDs; updated_at advances on assignment.
 - [ ] Exported from packages/db/src/index.ts and importable from @oikonomos/db; the roster-membership / manager check is explicitly NOT added here (belongs to TASK-302).
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-314-cx9
+**Started_At:** 2026-09-19T09:23:08Z
 **Progress_Notes:**
 - [2026-09-19T08:44:00Z] [ORCH] Filed to unblock TASK-302 by re-sequencing (protocol §7). CX9's block was a correct find of an ORCH decomposition gap, not a builder fault; branch task/TASK-302-cx9 is retained.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T08:44:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T09:23:08Z
 
 ### TASK-315
 **Title:** Role budget axis reads zero for real spend -- derive a role's recorded spend from run -> task -> role, not from spend_records.routine_id
