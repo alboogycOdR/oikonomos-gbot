@@ -9046,11 +9046,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.1 (the exact route list, tenant-scoped via thread ownership), §2.2 (create via the existing group-thread path, roster in one transaction, 404-never-403), §1.2 (charter stored as project-scope profile-tier facts), §3.3 (summary blockedTasks), §8.1 (approvals mirrored by reference), §11 (first bullet).
-**Owned_Paths:** services/control-api/src/projects.ts, services/control-api/src/projects.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, packages/db/src/workspaceSummary.ts, packages/db/src/workspaceSummary.test.ts
+**Owned_Paths:** services/control-api/src/projects.ts, services/control-api/src/projects.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, packages/db/src/workspaceSummary.ts, packages/db/src/workspaceSummary.test.ts, packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts
 **Depends_On:** TASK-298, TASK-302
 **Description:** Mirror templates.ts: a registerProjectRoutes(app, deps) registrar in projects.ts called once from app.ts (the templates call is at app.ts:1103), ports added to ControlApiDeps in ports.ts. POST /projects creates the group thread through the SAME code path POST /threads/group uses (app.ts:1521 -- reuse, do not duplicate), writes projects + project_roles + thread_members in one transaction, caps the roster at 6, allows at most one manager, and writes the charter (goal, done criterion, boundaries, 'check with me before') as scope='project' tier='profile' facts via @oikonomos/memory writeMemoryFact. If a manager is chosen, grant that role the six ENABLED project.* capabilities AND workspace.create_bot ONLY (workspace.retire_bot is NOT granted in v1: TASK-310 review, scoped by TASK-313) (human-initiated via this route, same grant port the existing grant route uses; ADR-019 Amendment 2026-09-19: managers create and retire bots through the existing approval-gated workspace tools) -- never project.request_grant (declared disabled) and never any capability that writes grants. When a role stops being a manager (PATCH /projects/:id), ONE transaction must (a) revoke those grants and (b) invalidate every pending workspace.create_bot approval issued to that role. TASK-310 finding 3: approvals bind only the action digest and a nonce, not manager state, so a stale pending approval would otherwise stay human-grantable after demotion. Use the existing approvals invalidation primitives (packages/approvals is a protected path: if none fits, stop with OWNERSHIP_CONFLICT naming the function needed rather than editing it). Prove it: create a pending create_bot approval, demote, and a consume attempt must fail. Every route is tenant-scoped via findTenantOwnedThread (app.ts:694), 404 never 403. Approvals decided on any run attributed to the project are mirrored into project_decisions by approval_id reference in the decideApproval port (ports.ts ~:691), never by copying the render. Add blockedTasks per project thread to db/workspaceSummary.ts. D1 project directory: there is no server-side mkdir for D1 (it lives in the sandbox; ensureSandboxWorkspace creates dirs at run time) -- RESOLVED by ORCH: the directory is created lazily by the first writer; the route does not create it, and register_artifact (TASK-302) validates the prefix. Visibility of the charter to member runs depends on TASK-306 (memory injection); this task only proves the facts are written with the right scope.
 **Acceptance_Criteria:**
@@ -9068,12 +9068,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T03:25:00Z] [ORCH] Amended: manager grant set now includes workspace.create_bot / retire_bot (owner decision), with revocation on demotion.
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review (CX9, accept-with-changes): create_bot only; transactional approval-invalidating demotion. See ADR-019 Amendment 2026-09-19 (b).
 - [2026-09-19T14:48:00Z] [SV:S5] Branch task/TASK-304-s5 created; no code written. Atomic project create, atomic manager demotion (grants revoke + pending create_bot approval invalidation) and approval-to-project decision mirroring each need new packages/db functions (and possibly a packages/approvals primitive) that lie outside Owned_Paths; control-api may not hold SQL/Pool. Analysis in dossiers/TASK-304.md.
+- [2026-09-19T15:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to packages/db/src/projects.ts, projects.test.ts, index.ts (TASK-314 done; no active task owns them). Demotion approval invalidation: do NOT edit packages/approvals (protected). Do it inside the demotion transaction in packages/db with one status-guarded UPDATE of the role's pending workspace.create_bot approvals (pending -> invalidated, consumed_at untouched), matching invalidatePendingApproval semantics; prove with a consume attempt that fails. If that is impossible without editing packages/approvals, stop with OWNERSHIP_CONFLICT naming the function.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: need packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts (new createProjectWithRoster, demoteProjectManager, approval->run->project decision-mirror functions); demotion approval invalidation may additionally need a tx-composable primitive in packages/approvals/src/invalidatePending.ts (protected path, adversarial review).
-**Updated_By:** SV
-**Updated_At:** 2026-09-19T14:48:00Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-19T15:20:00Z
 
 ### TASK-305
 **Title:** Manager charter (Engineering Manager / Chief of Staff) and the changes-only status routine (P-6)
@@ -9268,7 +9269,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Priority:** medium
 **Spec_References:** services/worker/src/sandboxReaper.ts pass 1 (`listRoles(options, { tenantId })`); TASK-273's tenant-model finding (role_messages and worker polling use the "basileia" literal while real roles carry a per-user tenant).
 **Owned_Paths:** packages/db/src/roleSandboxes.ts, packages/db/src/roleSandboxes.test.ts, packages/db/src/index.ts, services/worker/src/sandboxReaper.ts, services/worker/src/sandboxReaper.test.ts, services/worker/src/main.ts
-**Depends_On:** TASK-298, TASK-300, TASK-311, TASK-314
+**Depends_On:** TASK-298, TASK-300, TASK-304, TASK-311, TASK-314
 **Description:** Found on the TASK-296 deployment: the reaper's idle sweep iterates roles of ONE tenant (OIK_TENANT_ID, default "basileia"), but the real bots live in a per-user tenant, so their idle offices are never reaped (the orphan-reconciliation pass is unaffected: it looks roles up by id). Add a db accessor that lists role_sandboxes rows across all tenants (joined to roles for status), and drive pass 1 from it. Must not weaken the never-reap-a-live-recently-used-office guarantee, and must rely on TASK-311's recreate-on-missing so a reaped active role recovers on its next turn.
 **Acceptance_Criteria:**
 - [ ] A new db accessor lists every role_sandboxes row with its role's tenant and status; real-Postgres test.
