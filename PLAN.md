@@ -9485,7 +9485,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-319
 **Title:** CX9 re-verification of TASK-295 after S5's fix for the single required change (extra Grok test-file pin)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** dossiers/TASK-317.md (CX9's REJECT verdict and its one required change); branch task/TASK-295-s5 (tip 45f30b4); TASK-295 Description and Acceptance_Criteria in PLAN.md; CLAUDE.md protected paths (infra/ci/**).
@@ -9497,13 +9497,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Both mutation probes re-demonstrated to fail CI on the reworked branch.
 - [ ] An overall accept / reject with exact required changes if any.
 - [ ] No file other than dossiers/TASK-319.md modified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-319-cx9
+**Started_At:** 2026-09-19T15:35:22Z
 **Progress_Notes:**
 - [2026-09-19T13:50:00Z] [ORCH] Filed after S5's rework of TASK-295 (tip 45f30b4) answered CX9's TASK-317 rejection.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T13:50:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T15:35:22Z
