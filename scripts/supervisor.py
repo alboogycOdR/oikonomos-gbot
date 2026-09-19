@@ -225,7 +225,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
            dossier_heartbeats: dict[str, datetime] | None = None,
            usage: dict | None = None,
-           registry_views: tuple | None = None) -> list[Action]:
+           registry_views: tuple | None = None,
+           live_tasks: "set[str] | None" = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -321,6 +322,60 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                               f"{t.task_id} heartbeat stale ({int(age_min)}m > {cfg['stale_minutes']}m) — "
                                               f"redispatch {t.get('Assigned_To')}; its resume-first rule (protocol §10a) continues the existing branch",
                                               unit=t.get("Assigned_To"), task_id=t.task_id))
+
+    # 4b. Ended-session redispatch (2026-09-19). A unit whose claimed/in_progress task has NO
+    # live session is idle in fact even though the stale window has not elapsed: restart it
+    # now instead of after 90 minutes. Rules: never when the unit has ANY live session (one
+    # worktree per unit, one session at a time); at most one restart per unit per tick; a
+    # short grace so a session launched moments ago that is not yet visible is not doubled;
+    # capped so a crash-looping task escalates instead of spinning. live_tasks is None when
+    # detection failed: then only the old stale-heartbeat rule above applies.
+    if live_tasks is not None:
+        units_with_live = {t.get("Assigned_To") for t in real if t.task_id in live_tasks}
+        already = {a.unit for a in actions if a.kind == "REDISPATCH_STALE"}
+        grace = float(cfg.get("ended_grace_minutes", 8))
+
+        def _touched_age_min(task) -> "float | None":
+            stamp = _parse_ts(task.get("Updated_At"))
+            beat = dossier_heartbeats.get(task.task_id)
+            if beat is not None and (stamp is None or beat > stamp):
+                stamp = beat
+            return None if stamp is None else (now - stamp).total_seconds() / 60.0
+
+        # A unit with ANY task touched inside the grace window may have a session that was
+        # launched moments ago and is not visible yet: skip the whole unit, or a second
+        # session would start in the same worktree for its other in-progress task.
+        units_recent = set()
+        for task in real:
+            if task.get("Status") in ("claimed", "in_progress"):
+                a_min = _touched_age_min(task)
+                if a_min is not None and a_min < grace:
+                    units_recent.add(task.get("Assigned_To"))
+        for t in real:
+            if t.get("Status") not in ("claimed", "in_progress"):
+                continue
+            unit = t.get("Assigned_To")
+            if not unit or t.task_id in live_tasks or unit in units_with_live or unit in already or unit in units_recent:
+                continue
+            if unit not in _active_builders(cfg):
+                continue
+            ts = _parse_ts(t.get("Updated_At"))
+            hb = dossier_heartbeats.get(t.task_id)
+            if hb is not None and (ts is None or hb > ts):
+                ts = hb
+            if ts is None or (now - ts).total_seconds() / 60.0 < grace:
+                continue
+            n = state.stale_resets.get(t.task_id, 0)
+            if n >= 6:
+                actions.append(Action("ESCALATE_P2",
+                                      f"{t.task_id}: {n} session restarts without finishing -- builder cannot complete it",
+                                      task_id=t.task_id))
+            else:
+                actions.append(Action("REDISPATCH_STALE",
+                                      f"{t.task_id} in progress but {unit} has no live session -- restart {unit} "
+                                      f"(resume-first rule continues the existing branch)",
+                                      unit=unit, task_id=t.task_id))
+            already.add(unit)
 
     # 5. Dispatch idle builders onto eligible work
     active_by_unit = {t.get("Assigned_To") for t in real
@@ -648,6 +703,44 @@ def maybe_drain_control(repo: Path, cfg: dict, state: RuntimeState, now: datetim
                 state.unreported_counts[task_id] = 0  # escalated — restart the streak
     except Exception as exc:  # never let a bad control queue break a tick
         print(f"[control] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+
+def _live_builder_tasks(repo: Path) -> "set[str] | None":
+    """Task ids that have a builder session running RIGHT NOW, or None if that
+    cannot be determined (callers then fall back to the stale-heartbeat rule).
+
+    2026-09-19: a builder with any claimed/in_progress task counted as busy for
+    the whole stale window (90 min) even after its session had ended, so a task
+    sent back for rework (or a session that hit its limit) sat idle for up to
+    90 minutes before anything restarted it. Detected from the process table:
+    dispatch.ps1 launches every session through a runner named
+    .devteam/runs/TASK-<n>-<timestamp>.run.ps1 and the Claude prompt says
+    "Your task is TASK-<n>". Windows only; any failure returns None.
+
+    A runner PROCESS existing is not enough: finished runners linger in their
+    windows, so hours-old tasks look alive. A session is live only if its runner
+    exists AND its run has not written the matching .done marker (written when
+    the session ends and its control block is extracted).
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'run[.]ps1' } | "
+             "ForEach-Object { $_.CommandLine }"],
+            capture_output=True, text=True, timeout=45,
+        )
+        if out.returncode != 0:
+            return None
+    except Exception:
+        return None
+    live: set[str] = set()
+    for line in out.stdout.splitlines():
+        m = re.search(r"runs[\\/]((TASK-\d+)-\d{4}-\d{2}-\d{2}T[0-9-]+Z)\.run\.ps1", line)
+        if m and not (repo / ".devteam" / "runs" / (m.group(1) + ".done")).exists():
+            live.add(m.group(2))
+    return live
 
 
 def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
@@ -1066,7 +1159,8 @@ def main(argv: list[str]) -> int:
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage,
-                                          registry_views=_apply_registry(str(repo)))
+                                          registry_views=_apply_registry(str(repo)),
+                                          live_tasks=_live_builder_tasks(repo))
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             state.save(state_path)
 
