@@ -22,3 +22,11 @@ Read templates.ts first; it is the closest shape. No raw SQL in routes (test/no-
 - openapi.ts documents the new routes; full recursive suite via scripts/test-isolated.ps1 -Init only.
 
 ## Work Log
+
+- [2026-09-19T17:10:00Z] [S5] BLOCKED: OWNERSHIP_CONFLICT. Branch task/TASK-304-s5 created from 15dde74; no code written. Read packages/db/src/projects.ts, templates.ts, app.ts (/threads/group, decide, grants), ports.ts, packages/approvals invalidatePending.
+  Owned_Paths only reach packages/db/src/workspaceSummary.*; control-api may not hold a Pool or SQL (test/no-raw-sql.test.ts). Three ACs need multi-table transactions or queries that exist nowhere:
+  1. POST /projects "one transaction / rolls back as a unit": createGroupThread, createProject, addProjectRoleMember (each its own tx) cannot compose atomically from control-api. Needs a new db function e.g. `createProjectWithRoster` (thread + thread_members + projects + project_roles + charter facts + manager grants, one tx). Path: packages/db/src/projects.ts (or new packages/db/src/projectCreate.ts) + test + index.ts export.
+  2. Demotion "revoke grants AND invalidate pending workspace.create_bot approvals in one tx": needs a db function (e.g. `demoteProjectManager`) that deletes role_grants and marks that role's pending create_bot approvals invalidated in one statement-set. packages/approvals is protected and invalidatePendingApproval is per-nonce/own-store, not composable into a caller tx. Paths: packages/db/src/projects.ts (or new file) and/or a new function in packages/approvals/src/invalidatePending.ts (protected, adversarial review).
+  3. Decisions mirror "approval decided on a project-attributed run": runs have NO project attribution column/lookup (grep: project_id only in projects, roleMessages, spend*, memory). Needs a db function resolving approval->run->project (spend_records.project_id or project_task_runs join) and a mirror insert. Path: packages/db/src/projects.ts or new file.
+  Also needed by ports.ts: db/src/index.ts export for all of the above.
+  Recommended re-carve: widen 304 Owned_Paths with packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts (or split a P-5a db-layer task before 304). Approvals piece: ORCH decide whether a protected-path task supplies a tx-composable invalidate-by-role primitive.
