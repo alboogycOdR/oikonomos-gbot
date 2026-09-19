@@ -21,3 +21,11 @@ Mirror 027's style and 028/029's comment density. Extend projects.ts rather than
 - Full recursive suite via scripts/test-isolated.ps1 only, never a direct DATABASE_URL; any failures named as pre-existing with evidence.
 
 ## Work Log
+
+### 2026-09-19 S5 session
+- Branch task/TASK-298-s5 created; had to `git merge --ff-only master` first because the worktree PLAN.md was stale (firewall saw no claim).
+- Migration 030 up/down written. Verified against oikonomos_test: down drops all 4 tables + 2 columns (to_regclass all NULL, 0 columns), re-up schema dump identical to the original up.
+- projects.ts: PROJECT_ROSTER_CAP=6 (mirrors worker GROUP_MEMBER_CAP, cannot import), addProjectRoleMember/removeProjectRoleMember (one txn with thread_members, project row FOR UPDATE, cap check), listProjectRoleMembers, setProjectManager, linkProjectTaskRun, listProjectTaskRunIds. roles.ts: getRoleBudgetUsd/setRoleBudgetUsd (kept off Role shape). spend.ts: optional projectId on recordSpend + SpendRecord.projectId. index.ts additive exports.
+- Tests: new projects.test.ts (7), appended roles.test.ts + spend.test.ts. `test-isolated.ps1 -Init` then `-Filter @oikonomos/db`: 261 passed, 2 skipped, 0 failed. tsc --noEmit clean.
+- Full recursive run: failures in db suites were the shared oikonomos_test DB being re-Init'd by another session without 030 (relation project_roles does not exist); chatRunDriver/worker failures are OpenSandbox 500 SANDBOX_START_FAILED (docker env). database.test.ts "flips every registered capability" (35 vs 36) fails on master too. Not caused by this task.
+- Note for reviewer: rerun `-Init -Root <this worktree>` immediately before the db suite; concurrent -Init from other worktrees wipes 030.
