@@ -317,7 +317,7 @@ test('.codex pin cannot be widened via the allowlist file: an allowlist line doe
 
 test('the real repo pin registry is exactly the measured set and the real files match it', () => {
   const summary = TOKEN_PINS.map((p) => `${p.file}|${p.token}|${p.count}`).sort();
-  assert.equal(summary.length, 4);
+  assert.equal(summary.length, 3);
   for (const p of TOKEN_PINS) {
     const text = readFileSync(join(here, '..', '..', p.file), 'utf8');
     const { violations } = scanBannedModes({ allowlistPath, pins: [] });

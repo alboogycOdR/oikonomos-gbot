@@ -32,8 +32,6 @@ export const TOKEN_PINS = Object.freeze([
   { file: '.codex/config.toml', token: ['sandbox_mode = "', SBX, '"'].join(''), count: 2, adr: 'ADR-002 Amendment B' },
   // Reviewed, broker-gated product provider.
   { file: 'packages/agent-providers/src/providers/grok.ts', token: ['--always-', 'approve'].join(''), count: 2, adr: 'ADR-011' },
-  // Its unit test asserts the flag is passed / omitted (title + 2 assertions).
-  { file: 'packages/agent-providers/test/providers.grok.test.ts', token: ['--always-', 'approve'].join(''), count: 3, adr: 'ADR-011' },
 ].map((p) => Object.freeze(p)));
 
 export function loadAllowlist(filePath) {

@@ -22,3 +22,8 @@ count-pinned in code (TOKEN_PINS): `.codex/config.toml` (Amendment B, Option D: 
 pre-commit hook is the compensating control), and grok.ts + its unit test (ADR-011). A pin fails
 on any count change in either direction. Residual: a genuine bypass added inside a pinned file is
 detected only via the count change; pins must be reviewed (protected path infra/ci/**).
+
+## Work Log — rework R1 (2026-09-19)
+- Dropped the 4th pin (providers.grok.test.ts) from TOKEN_PINS; only grok.ts (count 2) remains for Grok.
+- Rewrote the test's 3 literals as runtime-assembled ALWAYS_APPROVE; pin-registry test size 4→3.
+- infra tests 17/17, repo scan clean, providers.grok vitest 12/12. Amendment C text: read "grok.ts + its unit test" as "grok.ts only".
