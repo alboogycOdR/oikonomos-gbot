@@ -107,3 +107,27 @@ integration("packages/db spend — recordSpend / getRoutineSpendUsd / getPlatfor
     await expect(getProviderSpendUsd({ connectionString: connectionString! }, "  ")).rejects.toThrow(/provider/);
   });
 });
+
+integration("packages/db spend — project_id attribution (TASK-298, spec 6.1)", () => {
+  let pool: Pool;
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await pool.query(`DELETE FROM spend_records WHERE run_id LIKE 'task-298-run-%'`);
+  });
+  afterAll(async () => {
+    await pool.query(`DELETE FROM spend_records WHERE run_id LIKE 'task-298-run-%'`);
+    await pool.end();
+  });
+
+  it("persists and reads back a project_id; absent stays null", async () => {
+    const options = { connectionString: connectionString! };
+    const withProject = await recordSpend(options, {
+      runId: "task-298-run-1", projectId: " proj-1 ", provider: "claude", model: "m", costUsd: 0.5,
+    });
+    expect(withProject.projectId).toBe("proj-1");
+    const stored = await pool.query("SELECT project_id FROM spend_records WHERE spend_id = $1", [withProject.spendId]);
+    expect(stored.rows[0].project_id).toBe("proj-1");
+    const without = await recordSpend(options, { runId: "task-298-run-2", provider: "claude", model: "m", costUsd: 0.1 });
+    expect(without.projectId).toBeNull();
+  });
+});

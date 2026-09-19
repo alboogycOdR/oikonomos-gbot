@@ -7,6 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
 import {
   createRoleWithDefaultCapabilities,
+  getRoleBudgetUsd,
+  setRoleBudgetUsd,
   MANAGER_BOT_DEFAULT_CAPABILITIES,
   retireRole,
   RoleRetirementError,
@@ -438,5 +440,41 @@ integration("packages/db roles — createRoleWithDefaultCapabilities / retireRol
     await expect(
       updateRoleStatus(options, managerRoleId, "not-a-real-status" as never),
     ).rejects.toThrow(/status/);
+  });
+});
+
+integration("packages/db roles — budget_usd (TASK-298, spec 6.2)", () => {
+  let pool: Pool;
+  const budgetRoleId = "task-298-roles-budget-role";
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [budgetRoleId]);
+    await pool.query(
+      "INSERT INTO roles (role_id, tenant_id, name, title, description, status) VALUES ($1, 'task-298-roles-budget', 'B', 'B', '', 'active')",
+      [budgetRoleId],
+    );
+  });
+
+  afterAll(async () => {
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [budgetRoleId]);
+    await pool.end();
+  });
+
+  it("defaults to no ceiling, then reads back a set value and a cleared one", async () => {
+    const options = { connectionString: connectionString! };
+    expect(await getRoleBudgetUsd(options, budgetRoleId)).toBeNull();
+    expect(await setRoleBudgetUsd(options, budgetRoleId, 12.5)).toBe(true);
+    expect(await getRoleBudgetUsd(options, budgetRoleId)).toBe(12.5);
+    expect(await setRoleBudgetUsd(options, budgetRoleId, null)).toBe(true);
+    expect(await getRoleBudgetUsd(options, budgetRoleId)).toBeNull();
+  });
+
+  it("distinguishes an unknown role and rejects a negative or non-finite ceiling", async () => {
+    const options = { connectionString: connectionString! };
+    expect(await getRoleBudgetUsd(options, "task-298-no-such-role")).toBeUndefined();
+    expect(await setRoleBudgetUsd(options, "task-298-no-such-role", 1)).toBe(false);
+    await expect(setRoleBudgetUsd(options, budgetRoleId, -1)).rejects.toThrow(/budgetUsd/);
+    await expect(setRoleBudgetUsd(options, budgetRoleId, Number.NaN)).rejects.toThrow(/budgetUsd/);
   });
 });

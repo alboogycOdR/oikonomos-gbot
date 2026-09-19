@@ -669,6 +669,241 @@ export async function listProjectDecisions(
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* project_roles (roster + manager) and project_task_runs — TASK-298   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Spec §1.1: a project roster is bounded by the group-thread member cap.
+ * Mirrors `GROUP_MEMBER_CAP` in services/worker/src/groupRouting.ts, which
+ * packages/db cannot import (dependency direction) — keep the two in step.
+ */
+export const PROJECT_ROSTER_CAP = 6;
+
+export interface ProjectRoleMember {
+  projectId: string;
+  roleId: string;
+  isManager: boolean;
+  responsibility: string;
+}
+
+interface ProjectRoleRow extends QueryResultRow {
+  project_id: string;
+  role_id: string;
+  is_manager: boolean;
+  responsibility: string;
+}
+
+const projectRoleColumns = `project_id, role_id, is_manager, responsibility`;
+
+function toProjectRoleMember(row: ProjectRoleRow): ProjectRoleMember {
+  return {
+    projectId: row.project_id,
+    roleId: row.role_id,
+    isManager: row.is_manager,
+    responsibility: row.responsibility,
+  };
+}
+
+export interface NewProjectRoleMember {
+  projectId: string;
+  roleId: string;
+  isManager?: boolean;
+  responsibility?: string;
+}
+
+/**
+ * Adds (or updates) a roster member. Spec §2.2: `thread_members` and
+ * `project_roles` change in ONE transaction, so a failure leaves neither
+ * touched. The project row is locked first so concurrent adds cannot both
+ * pass the cap check. A second `is_manager = true` row for the project is
+ * rejected by the partial unique index (spec §2.1), which rolls the whole
+ * transaction back.
+ */
+export async function addProjectRoleMember(
+  options: DatabaseOptions,
+  input: NewProjectRoleMember,
+): Promise<ProjectRoleMember> {
+  const projectId = requireUuid(input.projectId, "projectId");
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  const isManager = input.isManager ?? false;
+  const responsibility = input.responsibility ?? "";
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const project = await client.query<{ thread_id: string }>(
+        "SELECT thread_id FROM projects WHERE project_id = $1 FOR UPDATE",
+        [projectId],
+      );
+      const threadId = project.rows[0]?.thread_id;
+      if (threadId === undefined) {
+        throw new Error(`project ${projectId} does not exist.`);
+      }
+      const existing = await client.query<{ role_id: string }>(
+        "SELECT role_id FROM project_roles WHERE project_id = $1",
+        [projectId],
+      );
+      const alreadyMember = existing.rows.some((row) => row.role_id === roleId);
+      if (!alreadyMember && existing.rows.length >= PROJECT_ROSTER_CAP) {
+        throw new Error(`a project roster supports at most ${PROJECT_ROSTER_CAP} members.`);
+      }
+      await client.query(
+        `INSERT INTO thread_members (thread_id, role_id) VALUES ($1, $2)
+         ON CONFLICT (thread_id, role_id) DO NOTHING`,
+        [threadId, roleId],
+      );
+      const result = await client.query<ProjectRoleRow>(
+        `INSERT INTO project_roles (project_id, role_id, is_manager, responsibility)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (project_id, role_id)
+         DO UPDATE SET is_manager = EXCLUDED.is_manager, responsibility = EXCLUDED.responsibility
+         RETURNING ${projectRoleColumns}`,
+        [projectId, roleId, isManager, responsibility],
+      );
+      const row = result.rows[0];
+      if (row === undefined) {
+        throw new Error("addProjectRoleMember did not return a persisted row.");
+      }
+      await client.query("COMMIT");
+      return toProjectRoleMember(row);
+    } catch (error: unknown) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+/**
+ * Removes a roster member from `project_roles` and `thread_members` in one
+ * transaction (spec §2.2). Returns false when the role was not on the roster.
+ */
+export async function removeProjectRoleMember(
+  options: DatabaseOptions,
+  input: { projectId: string; roleId: string },
+): Promise<boolean> {
+  const projectId = requireUuid(input.projectId, "projectId");
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const project = await client.query<{ thread_id: string }>(
+        "SELECT thread_id FROM projects WHERE project_id = $1 FOR UPDATE",
+        [projectId],
+      );
+      const threadId = project.rows[0]?.thread_id;
+      if (threadId === undefined) {
+        throw new Error(`project ${projectId} does not exist.`);
+      }
+      const removed = await client.query(
+        "DELETE FROM project_roles WHERE project_id = $1 AND role_id = $2",
+        [projectId, roleId],
+      );
+      await client.query("DELETE FROM thread_members WHERE thread_id = $1 AND role_id = $2", [
+        threadId,
+        roleId,
+      ]);
+      await client.query("COMMIT");
+      return (removed.rowCount ?? 0) > 0;
+    } catch (error: unknown) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+export async function listProjectRoleMembers(
+  options: DatabaseOptions,
+  projectId: string,
+): Promise<ProjectRoleMember[]> {
+  const id = requireUuid(projectId, "projectId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<ProjectRoleRow>(
+      `SELECT ${projectRoleColumns} FROM project_roles WHERE project_id = $1 ORDER BY role_id`,
+      [id],
+    );
+    return result.rows.map(toProjectRoleMember);
+  });
+}
+
+/**
+ * Makes `roleId` the project's manager, or clears the manager when `roleId`
+ * is null (the human is the manager, spec §2.1). Demote-then-promote runs in
+ * one transaction so the one-manager index is never violated mid-swap. The
+ * role must already be on the roster.
+ */
+export async function setProjectManager(
+  options: DatabaseOptions,
+  input: { projectId: string; roleId: string | null },
+): Promise<void> {
+  const projectId = requireUuid(input.projectId, "projectId");
+  const roleId = input.roleId === null ? null : requireNonEmpty(input.roleId, "roleId");
+
+  await withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT 1 FROM projects WHERE project_id = $1 FOR UPDATE", [projectId]);
+      await client.query(
+        "UPDATE project_roles SET is_manager = false WHERE project_id = $1 AND is_manager",
+        [projectId],
+      );
+      if (roleId !== null) {
+        const promoted = await client.query(
+          "UPDATE project_roles SET is_manager = true WHERE project_id = $1 AND role_id = $2",
+          [projectId, roleId],
+        );
+        if (promoted.rowCount !== 1) {
+          throw new Error(`role ${roleId} is not on the roster of project ${projectId}.`);
+        }
+      }
+      await client.query("COMMIT");
+    } catch (error: unknown) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+/** Links a work item to a run (spec §3); idempotent on the (task, run) pair. */
+export async function linkProjectTaskRun(
+  options: DatabaseOptions,
+  input: { taskId: string; runId: string },
+): Promise<void> {
+  const taskId = requireUuid(input.taskId, "taskId");
+  const runId = requireUuid(input.runId, "runId");
+  await withPool(options, async (pool) => {
+    await pool.query(
+      `INSERT INTO project_task_runs (task_id, run_id) VALUES ($1, $2)
+       ON CONFLICT (task_id, run_id) DO NOTHING`,
+      [taskId, runId],
+    );
+  });
+}
+
+export async function listProjectTaskRunIds(
+  options: DatabaseOptions,
+  taskId: string,
+): Promise<string[]> {
+  const id = requireUuid(taskId, "taskId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ run_id: string }>(
+      "SELECT run_id FROM project_task_runs WHERE task_id = $1 ORDER BY run_id",
+      [id],
+    );
+    return result.rows.map((row) => row.run_id);
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 

@@ -25,6 +25,8 @@ export interface NewSpendRecord {
   runId: string;
   /** Owning routine, when the run was fired from one. */
   routineId?: string | null;
+  /** Owning project (spec 6.1); text like runId/routineId, no FK. */
+  projectId?: string | null;
   provider: string;
   model: string;
   costUsd: number;
@@ -38,6 +40,7 @@ export interface SpendRecord {
   tenantId: string;
   runId: string;
   routineId: string | null;
+  projectId: string | null;
   provider: string;
   model: string;
   costUsd: number;
@@ -50,6 +53,7 @@ interface SpendRecordRow extends QueryResultRow {
   tenant_id: string;
   run_id: string;
   routine_id: string | null;
+  project_id: string | null;
   provider: string;
   model: string;
   cost_usd: string | number;
@@ -88,6 +92,7 @@ function toSpendRecord(row: SpendRecordRow): SpendRecord {
     tenantId: row.tenant_id,
     runId: row.run_id,
     routineId: row.routine_id,
+    projectId: row.project_id,
     provider: row.provider,
     model: row.model,
     costUsd: typeof row.cost_usd === "string" ? Number.parseFloat(row.cost_usd) : row.cost_usd,
@@ -119,18 +124,22 @@ export async function recordSpend(
     entry.routineId === undefined || entry.routineId === null || entry.routineId.trim().length === 0
       ? null
       : entry.routineId.trim();
+  const projectId =
+    entry.projectId === undefined || entry.projectId === null || entry.projectId.trim().length === 0
+      ? null
+      : entry.projectId.trim();
 
   return withPool(options, async (pool) => {
     const result = await pool.query<SpendRecordRow>(
       `INSERT INTO spend_records (
-         tenant_id, run_id, routine_id, provider, model, cost_usd, tokens, occurred_at
+         tenant_id, run_id, routine_id, provider, model, cost_usd, tokens, occurred_at, project_id
        )
        VALUES (
          COALESCE($1, 'basileia'),
          $2, $3, $4, $5, $6, $7,
-         COALESCE($8, now())
+         COALESCE($8, now()), $9
        )
-       RETURNING spend_id, tenant_id, run_id, routine_id, provider, model, cost_usd, tokens, occurred_at`,
+       RETURNING spend_id, tenant_id, run_id, routine_id, project_id, provider, model, cost_usd, tokens, occurred_at`,
       [
         entry.tenantId ?? null,
         runId,
@@ -140,6 +149,7 @@ export async function recordSpend(
         costUsd,
         tokens,
         entry.occurredAt ?? null,
+        projectId,
       ],
     );
     const row = result.rows[0];

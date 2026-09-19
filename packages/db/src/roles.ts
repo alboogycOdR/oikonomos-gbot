@@ -205,6 +205,47 @@ export async function updateRoleInstructions(
   });
 }
 
+/**
+ * TASK-298 / spec §6.2 — a role's monthly USD ceiling. NULL means no ceiling.
+ * Kept off the `Role` shape deliberately: budget is a control-plane input the
+ * reservation gate (TASK-300) reads, not persona material. Returns `undefined`
+ * for an unknown role so callers can tell "no role" from "no ceiling" (null).
+ */
+export async function getRoleBudgetUsd(
+  options: DatabaseOptions,
+  roleId: string,
+): Promise<number | null | undefined> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ budget_usd: string | null }>(
+      "SELECT budget_usd FROM roles WHERE role_id = $1",
+      [normalizedRoleId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    return row.budget_usd === null ? null : Number(row.budget_usd);
+  });
+}
+
+/** Sets (or clears, with null) a role's monthly USD ceiling; false when the role does not exist. */
+export async function setRoleBudgetUsd(
+  options: DatabaseOptions,
+  roleId: string,
+  budgetUsd: number | null,
+): Promise<boolean> {
+  const normalizedRoleId = requireNonEmpty(roleId, "roleId");
+  if (budgetUsd !== null && (typeof budgetUsd !== "number" || !Number.isFinite(budgetUsd) || budgetUsd < 0)) {
+    throw new Error("budgetUsd must be null or a finite number >= 0.");
+  }
+  return withPool(options, async (pool) => {
+    const result = await pool.query(
+      "UPDATE roles SET budget_usd = $2, updated_at = now() WHERE role_id = $1",
+      [normalizedRoleId, budgetUsd],
+    );
+    return (result.rowCount ?? 0) > 0;
+  });
+}
+
 /** Persist a bot's display name. Unlike instructions, a name cannot be blank. */
 export async function updateRoleName(
   options: DatabaseOptions,

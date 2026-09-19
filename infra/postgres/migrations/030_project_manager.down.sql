@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS budget_ledgers;
+DROP INDEX IF EXISTS spend_reservations_open_idx;
+DROP TABLE IF EXISTS spend_reservations;
+ALTER TABLE roles DROP COLUMN IF EXISTS budget_usd;
+DROP INDEX IF EXISTS spend_records_project_id_idx;
+ALTER TABLE spend_records DROP COLUMN IF EXISTS project_id;
+DROP INDEX IF EXISTS project_task_runs_run_id_idx;
+DROP TABLE IF EXISTS project_task_runs;
+DROP INDEX IF EXISTS project_roles_one_manager_idx;
+DROP TABLE IF EXISTS project_roles;
