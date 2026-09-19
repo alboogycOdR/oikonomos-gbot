@@ -9,7 +9,7 @@ import {
   RoleRetirementError,
   updateRoleName,
 } from "@oikonomos/db";
-import { sendToRole } from "@oikonomos/workspace";
+import { handoffKinds, sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { parkTaskRun } from "./runLifecycle.js";
 import { parseRequestSecretInput } from "@oikonomos/broker";
@@ -248,7 +248,7 @@ const sendToRoleInputSchema = {
   additionalProperties: false,
   properties: {
     toRoleId: { type: "string", description: "The recipient bot's name (e.g. \"jipolt\") or its role ID." }, body: { type: "string" }, workspaceRefs: { type: "array", items: { type: "string" } },
-    handoffKind: { type: "string", enum: ["research.complete", "draft.ready_for_review"] },
+    handoffKind: { type: "string", enum: handoffKinds },
     factRef: { type: "object" },
   },
 };

@@ -9,7 +9,7 @@ import {
 } from "@oikonomos/db";
 import { riskTiers, type RiskTier } from "@oikonomos/policy";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
-import { sendToRole } from "@oikonomos/workspace";
+import { handoffKinds, sendToRole } from "@oikonomos/workspace";
 import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { GEMINI_PROVIDER_ID } from "./geminiChatRun.js";
 import { resolveRoleIdentifier } from "./resolveRoleIdentifier.js";
@@ -647,7 +647,7 @@ const sendToRoleInputSchema = {
     toRoleId: { type: "string", description: "The recipient bot's name (e.g. \"jipolt\") or its role ID." },
     body: { type: "string" },
     workspaceRefs: { type: "array", items: { type: "string" } },
-    handoffKind: { type: "string", enum: ["research.complete", "draft.ready_for_review"] },
+    handoffKind: { type: "string", enum: handoffKinds },
     factRef: { type: "object" },
   },
 } as const;

@@ -25,7 +25,14 @@ function fakeDeps(): { deps: SendToRoleDeps; send: ReturnType<typeof vi.fn> } {
 
 describe("sendToRole typed handoffs (TASK-099)", () => {
   it("exports the closed handoff-kind set and persists a locator with no value", async () => {
-    expect(handoffKinds).toEqual(["research.complete", "draft.ready_for_review"]);
+    expect(handoffKinds).toEqual([
+      "research.complete",
+      "draft.ready_for_review",
+      "task.assigned",
+      "task.completed",
+      "task.blocked",
+      "status.requested",
+    ]);
     const { deps, send } = fakeDeps();
     await sendToRole(
       options,
