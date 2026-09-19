@@ -1,0 +1,3 @@
+# TASK-311 dossier
+## Work Log
+- 2026-09-19 S5: resolveRoleSandbox now recreates the office on 404 / Terminated / Failed (createOffice helper shared with the no-record path); non-404 getSandbox errors still throw. Added per-role in-process promise-chain serialisation (runs are deduped by runId, not role, so races were possible). 8 new real-Postgres tests in sandboxReaper.test.ts incl. reap->turn e2e and concurrent race. Worker suite: my 19 reaper tests pass; remaining 27 failures (chatRunDriver.test.ts 19 + chatRunDriver.ts 6 + 2 timeouts) match master baseline (27 failed). A stale packages/db/dist (project_id in spend.js) caused extra failures until rebuilt. Limitation: serialisation is per worker process.

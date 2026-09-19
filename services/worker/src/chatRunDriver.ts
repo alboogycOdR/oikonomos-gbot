@@ -37,11 +37,12 @@ import {
   updateRoleSandboxState,
   upsertRoleSandbox,
   type DatabaseOptions,
+  type RoleSandbox,
   type Task,
 } from "@oikonomos/db";
 import { mintBrokerToken, resolveBudgetGate } from "@oikonomos/broker";
 import { resolveEgressPolicy } from "@oikonomos/policy";
-import { createSandboxClient, toOpenSandboxNetworkPolicy, type SandboxClient, type SandboxEndpoint, type Sandbox } from "@oikonomos/sandbox-client";
+import { createSandboxClient, toOpenSandboxNetworkPolicy, SandboxClientError, type SandboxClient, type SandboxEndpoint, type Sandbox, type SandboxState } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
 import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
@@ -1030,7 +1031,32 @@ function productionSandboxClient(): SandboxClient {
   return createSandboxClient({ baseUrl });
 }
 
-async function resolveRoleSandbox(
+/**
+ * TASK-311: per-role, in-process serialisation of office resolution. Chat
+ * runs are deduplicated by runId (workerJobQueue singletonKey), NOT by role,
+ * so two turns for one role can resolve concurrently; without this both would
+ * see the same 404 and each create an office, orphaning one. Queued callers
+ * re-read the record after the first finishes and find the fresh office.
+ * Scope: one worker process (the deployment runs a single worker).
+ */
+const roleSandboxResolutionTails = new Map<string, Promise<unknown>>();
+
+export function resolveRoleSandbox(
+  options: DatabaseOptions,
+  database: Database,
+  client: SandboxClient,
+  roleId: string,
+  manifests: readonly ConnectorManifest[],
+): Promise<{ readonly sandboxId: string; readonly endpoint: SandboxEndpoint; readonly image: string }> {
+  const previous = roleSandboxResolutionTails.get(roleId) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(() => resolveRoleSandboxUnlocked(options, database, client, roleId, manifests));
+  const tail = run.catch(() => undefined);
+  roleSandboxResolutionTails.set(roleId, tail);
+  void tail.then(() => { if (roleSandboxResolutionTails.get(roleId) === tail) roleSandboxResolutionTails.delete(roleId); });
+  return run;
+}
+
+async function resolveRoleSandboxUnlocked(
   options: DatabaseOptions,
   database: Database,
   client: SandboxClient,
@@ -1044,8 +1070,7 @@ async function resolveRoleSandbox(
     || (isBrowserLaneGranted(manifests, new Set((await database.listRoleGrants(roleId)).map((grant) => grant.capabilityId)))
       ? OFFICE_BROWSER_SANDBOX_IMAGE
       : SANDBOX_IMAGE);
-  let record = await getRoleSandbox(options, roleId);
-  if (record === null) {
+  const createOffice = async (): Promise<RoleSandbox> => {
     const grants = await database.listRoleGrants(roleId);
     const egressPolicy = resolveEgressPolicy({ roleId, grants }, manifests);
     const networkPolicy = toOpenSandboxNetworkPolicy(egressPolicy);
@@ -1079,8 +1104,10 @@ async function resolveRoleSandbox(
       metadata: { roleId },
       ...(networkPolicy === undefined ? {} : { networkPolicy }),
     });
-    record = await upsertRoleSandbox(options, { roleId, sandboxId: created.id, state: created.status.state, execdTokenRef: SANDBOX_EXECD_TOKEN_REF });
-  }
+    return upsertRoleSandbox(options, { roleId, sandboxId: created.id, state: created.status.state, execdTokenRef: SANDBOX_EXECD_TOKEN_REF });
+  };
+  let record = await getRoleSandbox(options, roleId);
+  if (record === null) record = await createOffice();
   // The sandbox's OWN reported state is authoritative, not the DB's cached
   // copy (TASK-222). `record.state` is written back after every successful
   // transition, so this drifts only when something outside that path moves
@@ -1094,7 +1121,20 @@ async function resolveRoleSandbox(
   // A `getSandbox` failure here (unreachable/unknown sandbox) is NOT caught —
   // that is a genuinely dead sandbox and must still fail closed, not be
   // silently treated as drift.
-  const liveState = (await client.getSandbox(record.sandboxId)).status.state;
+  // TASK-311: ONLY a definitive "this office no longer exists" answer (a 404,
+  // or a Terminated/Failed live state) recreates it. Any other failure
+  // (network, 5xx, auth) still throws: creating an office because the server
+  // was briefly unreachable would duplicate a perfectly good one.
+  let liveState: SandboxState | undefined;
+  try {
+    liveState = (await client.getSandbox(record.sandboxId)).status.state;
+  } catch (error) {
+    if (!(error instanceof SandboxClientError && error.status === 404)) throw error;
+  }
+  if (liveState === undefined || liveState === "Terminated" || liveState === "Failed") {
+    record = await createOffice(); // upsertRoleSandbox overwrites the role's row with the new id
+    liveState = (await client.getSandbox(record.sandboxId)).status.state;
+  }
   if (liveState !== record.state) {
     await updateRoleSandboxState(options, roleId, liveState);
   }
