@@ -8756,7 +8756,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-295
 **Title:** Banned-modes scanner misses non-Claude permission-bypass vocabulary (`codex exec -s danger-full-access`)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B, "Second finding" + "Residual risk (d)": "CX's invocation is `codex exec -s danger-full-access`. That is functionally equivalent permission bypass, but it is not one of the three tokens CAN-03 greps for ... CAN-03's token list tracks the Claude Code vocabulary and does not generalise across CLIs" and "(d) The CAN-03 token-list gap for non-Claude CLIs is not closed by this amendment and remains open -- a future change should either generalise the grep or record why it need not be."
@@ -8777,12 +8777,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-17T22:35:00Z] [ORCH] Filed 2026-09-17 while confirming the flag on dispatch.ps1 was a false alarm (it is: ADR-002 §2(2) carves out scripts/**). This gap is the real finding underneath that false alarm.
 - [2026-09-18T18:55:00Z] [ORCH] QUEUED for S5 -- assigned to S5 already (TASK-296, high priority) is running first on the only available non-Codex builder; dispatch this one as soon as 296 lands or a second S5-class unit frees up. Do not assign to CX9: this task governs CX9's own invocation vocabulary.
 - [2026-09-19T03:25:00Z] [ORCH] UNBLOCKED with decisions (see Description). Queued for S5: it runs after TASK-298 because S5 has one worktree; resume from task/TASK-295-s5 (2c0ec0e), dossier at dossiers/TASK-295.md (currently untracked in the S5 worktree).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T10:53:01Z] [SV:S5] Added TOML key form, .codex/** enforcement surface, --always-approve token, and code-level count-pinned exemptions (fail on mismatch either direction). Extra pin for providers.grok.test.ts (3 hits) beyond spec's single grok pin; ORCH to confirm. Amendment C text in dossier. Needs CX9 adversarial review.
+**Artifacts:** infra/ci/banned-modes.mjs, infra/ci/lib/allowlist.mjs, infra/ci/test-banned-modes.mjs, dossiers/TASK-295.md
+**Test_Evidence:** node --test infra/ci/test-banned-modes.mjs: 17 pass, 0 fail; node infra/ci/banned-modes.mjs: clean on current repo (branch 25ec5e4, rebased on master)
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T10:47:37Z
+**Updated_At:** 2026-09-19T10:53:01Z
 
 ### TASK-296
 **Title:** Sandbox office lifecycle -- reap orphaned/idle offices, request a server-side TTL, pause the Gemini lane, alert on leak growth
