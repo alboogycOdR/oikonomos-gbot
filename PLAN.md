@@ -9340,7 +9340,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-315
 **Title:** Role budget axis reads zero for real spend -- derive a role's recorded spend from run -> task -> role, not from spend_records.routine_id
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.2 (per-role ceiling, `budget.role_exceeded`), §6.3 (a manager's own turns are charged to the manager, a specialist's to the specialist), §11 (role-axis concurrent admission); docs/decisions/ADR-019-project-entity-and-manager-role.md §5; docs/decisions/ADR-005-control-liveness.md (a control must fail when inert).
@@ -9353,13 +9353,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Another role's spend and a run with no task are never counted toward this role; a non-UUID run id in spend_records does not raise.
 - [ ] The concurrent-admission proof on the role axis (TASK-300's) still passes unmodified.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-315-s5
+**Started_At:** 2026-09-19T10:32:38Z
 **Progress_Notes:**
 - [2026-09-19T09:30:00Z] [ORCH] Filed from ORCH's own check of TASK-300 after autopilot approved it. TASK-301 now depends on this so the broker never wires an inert role axis.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T09:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T10:32:38Z
