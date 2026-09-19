@@ -208,8 +208,20 @@ if (Test-Path $Wt) {
     # in-flight files survive to its next session (that has already saved one
     # builder's work this project).
     $wtBranch = (git -C $Wt rev-parse --abbrev-ref HEAD 2>$null)
-    $wtDirty  = @(git -C $Wt status --porcelain 2>$null | Where-Object { $_ -and $_ -notmatch '\.serena' })
+    $wtStatus = @(git -C $Wt status --porcelain 2>$null | Where-Object { $_ -and $_ -notmatch '\.serena' })
+    # 2026-09-19: two kinds of dirt must NOT block a refresh, or a builder
+    # worktree never refreshes and runs on stale scripts and a stale PLAN.md
+    # (S5 hit exactly this: the territory hook rejected its edits against an
+    # old PLAN.md snapshot). (1) UNTRACKED files -- `git checkout --detach`
+    # never touches them, so they survive a refresh anyway. (2) A modified
+    # AUTOPILOT_LOG.md -- a machine-appended log that every session's hooks
+    # rewrite, so every worktree is "dirty" with it permanently; master's copy
+    # is authoritative. What the guard exists to protect is uncommitted CODE
+    # (a modified tracked file), which still blocks the refresh.
+    $wtNoise = @($wtStatus | Where-Object { $_ -match '^\?\?' -or $_ -match '^( M|M |MM) AUTOPILOT_LOG\.md$' })
+    $wtDirty = @($wtStatus | Where-Object { $wtNoise -notcontains $_ })
     if ($wtBranch -eq "HEAD" -and $wtDirty.Count -eq 0) {
+        if (@($wtNoise | Where-Object { $_ -match 'AUTOPILOT_LOG\.md' }).Count -gt 0) { git -C $Wt checkout -- AUTOPILOT_LOG.md 2>$null }
         $before = (git -C $Wt rev-parse --short HEAD 2>$null)
         git -C $Wt checkout --detach $BaseBranch --quiet 2>$null
         $after = (git -C $Wt rev-parse --short HEAD 2>$null)

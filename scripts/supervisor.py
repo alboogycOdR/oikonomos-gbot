@@ -33,7 +33,7 @@ from pathlib import Path
 
 # Reuse the protocol parser — single source of truth.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from validate_plan import parse_tasks, validate, Report, Task  # noqa: E402
+from validate_plan import parse_tasks, validate, Report, Task, _apply_registry  # noqa: E402
 import tg_commands as tgc  # noqa: E402 — Wave A-remainder: two-way Telegram
 from tg_listener import TelegramListener  # noqa: E402
 import scheduling  # noqa: E402 — Wave B: shared daily/weekly idempotency-marker helper
@@ -224,7 +224,8 @@ def _active_builders(cfg: dict) -> list:
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
            dossier_heartbeats: dict[str, datetime] | None = None,
-           usage: dict | None = None) -> list[Action]:
+           usage: dict | None = None,
+           registry_views: tuple | None = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -247,7 +248,10 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
         return [Action("HALT", "STOP file present in repo root — halting per safety rail #3")]
 
     # 1. Protocol legality gate
-    rep: Report = validate(plan_text, control_mode)
+    # 2026-09-19: without the roster, validate() falls back to the legacy unit set
+    # (CX, GB, S5) and calls every CX9 task "illegal", halting the loop with a P1 on
+    # its first tick. The caller pre-computes the views (decide() stays I/O-free).
+    rep: Report = validate(plan_text, control_mode, registry_views=registry_views)
     if not rep.ok:
         return [Action("ESCALATE_P1",
                        "PLAN.md is protocol-illegal — loop paused. Violations: " + " | ".join(rep.errors[:5]))]
@@ -1061,7 +1065,8 @@ def main(argv: list[str]) -> int:
             actions = tg_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
-                                          usage=usage)
+                                          usage=usage,
+                                          registry_views=_apply_registry(str(repo)))
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             state.save(state_path)
 
