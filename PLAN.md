@@ -9048,7 +9048,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.1 (the exact route list, tenant-scoped via thread ownership), §2.2 (create via the existing group-thread path, roster in one transaction, 404-never-403), §1.2 (charter stored as project-scope profile-tier facts), §3.3 (summary blockedTasks), §8.1 (approvals mirrored by reference), §11 (first bullet).
@@ -9071,12 +9071,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review (CX9, accept-with-changes): create_bot only; transactional approval-invalidating demotion. See ADR-019 Amendment 2026-09-19 (b).
 - [2026-09-19T14:48:00Z] [SV:S5] Branch task/TASK-304-s5 created; no code written. Atomic project create, atomic manager demotion (grants revoke + pending create_bot approval invalidation) and approval-to-project decision mirroring each need new packages/db functions (and possibly a packages/approvals primitive) that lie outside Owned_Paths; control-api may not hold SQL/Pool. Analysis in dossiers/TASK-304.md.
 - [2026-09-19T15:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to packages/db/src/projects.ts, projects.test.ts, index.ts (TASK-314 done; no active task owns them). Demotion approval invalidation: do NOT edit packages/approvals (protected). Do it inside the demotion transaction in packages/db with one status-guarded UPDATE of the role's pending workspace.create_bot approvals (pending -> invalidated, consumed_at untouched), matching invalidatePendingApproval semantics; prove with a consume attempt that fails. If that is impossible without editing packages/approvals, stop with OWNERSHIP_CONFLICT naming the function.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T16:03:01Z] [SV:S5] Project API implemented: atomic create/update/demotion in packages/db, all section 9.1 routes in control-api (404-never-403, state machine, audit), decision mirror wired into decideApproval, blockedTasks in workspace summary, openapi paths. Deviations documented in dossier.
+**Artifacts:** packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts, packages/db/src/workspaceSummary.ts, packages/db/src/workspaceSummary.test.ts, services/control-api/src/projects.ts, services/control-api/src/projects.test.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, dossiers/TASK-304.md
+**Test_Evidence:** scripts/test-isolated.ps1: @oikonomos/db 45 files, 284 passed / 2 skipped incl. new real-Postgres TASK-304 tests (atomic create + rollback, roster/manager rules, demotion revokes grants and invalidates create_bot approvals with failed grant/consume, keep-grants for other-project manager, patch, decision mirror by approval_id, blocked-create) and workspaceSummary blockedTasks; @oikonomos/control-api 25 files, 349/349 passed on fresh isolated DB incl. 17 new route tests. tsc build clean, pnpm lint 0 errors. Full recursive run also shows unrelated failures in services/worker (chatRunDriver/tierZeroProvider: live Gemini 429 spend cap from env key) and evals-harness OME handoff (budget.platform_exceeded); no file of mine involved.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T15:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T16:03:01Z
 
 ### TASK-305
 **Title:** Manager charter (Engineering Manager / Chief of Staff) and the changes-only status routine (P-6)
