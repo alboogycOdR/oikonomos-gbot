@@ -1771,3 +1771,17 @@ projects carry the real tenant -- TASK-273 tenant-model finding); TASK-304 must 
 Consequence recorded downstream: TASK-301 may attribute spend from a handoff only when the sender is the
 project's manager and the recipient is on the roster.
 first-pass: no.
+
+## TASK-296 | S5 | CORRECTION to the 2026-09-18T23:10Z approval | 2026-09-19T07:55:00Z
+
+The approval stands as merged, but the review process was wrong in two ways and one defect got through.
+Process: it was conducted by an ORCH session on claude-sonnet-5, the same model as the author (S5),
+which CLAUDE.md's model discipline forbids -- "a checker must not share the maker's blind spots".
+The independent test comparison against clean master was real, but a same-model read-through is what
+missed the defect.
+Defect: the reaper marks an idle active role's office Terminated assuming the next turn recreates it,
+but resolveRoleSandbox only creates an office when the role has no record; a record pointing at a
+missing sandbox throws, and Terminated makes waitForSandboxRunning throw. The reaper test never ran a
+turn after a reap. Found when deploying (the same gap had left the two real bots unable to chat after the
+2026-09-18 cleanup; ORCH repaired their stale records by hand). Fixed forward: TASK-311 (critical).
+Deployed and verified: first sweep reclaimed 8 orphaned sandboxes, 0 errors, real bots' offices untouched.
