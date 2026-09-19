@@ -19,6 +19,13 @@ describe("BUILTIN_TOOLS", () => {
       { toolName: "mcp__workspace__create_routine", capabilityId: "workspace.create_routine", defaultTier: "T1_draft", adapter: "mcp:workspace", mcpServerName: "workspace", enabled: true },
       { toolName: "mcp__workspace__create_bot", capabilityId: "workspace.create_bot", defaultTier: "T3_external", adapter: "mcp:workspace", mcpServerName: "workspace", enabled: true },
       { toolName: "mcp__workspace__retire_bot", capabilityId: "workspace.retire_bot", defaultTier: "T4_irreversible", adapter: "mcp:workspace", mcpServerName: "workspace", enabled: true, enforcementEnabled: true, enforcedActionClasses: ["E6_irreversible_role_mutation"] },
+      { toolName: "mcp__project__list_board", capabilityId: "project.read", defaultTier: "T0_observe", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__create_task", capabilityId: "project.task_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__update_task", capabilityId: "project.task_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__assign_task", capabilityId: "project.assign", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__register_artifact", capabilityId: "project.artifact_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__record_decision", capabilityId: "project.decision_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+      { toolName: "mcp__project__request_grant", capabilityId: "project.request_grant", defaultTier: "T3_external", adapter: "mcp:project", mcpServerName: "project", enabled: false },
     ]);
     expect(Object.isFrozen(BUILTIN_TOOLS)).toBe(true);
   });

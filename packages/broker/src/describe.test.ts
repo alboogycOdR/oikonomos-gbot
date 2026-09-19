@@ -285,6 +285,20 @@ describe("builtinDescribers — TASK-282 manager-bot tools", () => {
   });
 });
 
+describe("builtinDescribers — TASK-302 project tools", () => {
+  it.each([
+    ["mcp__project__list_board", { projectId: "project-1" }, "list project board", "project-1"],
+    ["mcp__project__create_task", { projectId: "project-1", title: "Ship" }, "create project task", "project-1"],
+    ["mcp__project__update_task", { taskId: "task-1", state: "doing" }, "update project task", "task-1"],
+    ["mcp__project__assign_task", { taskId: "task-1", ownerRoleId: "role-1" }, "assign project task", "task-1"],
+    ["mcp__project__register_artifact", { projectId: "project-1", ref: "/oikonomos/workspace/projects/project-1/report.md" }, "register project artifact", "/oikonomos/workspace/projects/project-1/report.md"],
+    ["mcp__project__record_decision", { projectId: "project-1", taskId: "task-1" }, "record project decision", "task-1"],
+    ["mcp__project__request_grant", { projectId: "project-1" }, "request project grant", "project-1"],
+  ] as const)("describes %s from whitelisted tool input", (toolName, input, action, target) => {
+    expect(describeToolCall({ toolName, input }, builtinDescribers)).toEqual({ action, target });
+  });
+});
+
 describe("describeOrDeny — allowlist.miss guidance is available to compose with TASK-066", () => {
   it("does not collide with the TASK-066 allowlist.miss reason token", () => {
     expect(ALLOWLIST_MISS_REASON).toBe("allowlist.miss");
