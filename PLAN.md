@@ -9449,7 +9449,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-318
 **Title:** Model-aware Gemini pricing and cost recording; make gemini-3.1-flash-lite the default model
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OWNER DECISION 2026-09-19: "switch the default to Gemini 3.1 Flash-Lite". Official pricing (https://ai.google.dev/gemini-api/docs/pricing, fetched 2026-09-19, paid tier, USD per 1M tokens): gemini-3.7-flash $0.75 in / $3.75 out through 2026-12-31 then $1.50 / $7.50; gemini-3.1-flash-lite $0.25 / $1.50; gemini-3.5-flash-lite $0.30 / $2.50. Verified live on the owner's key: gemini-3.1-flash-lite and gemini-3.5-flash-lite answer generateContent and return a functionCall; gemini-2.5-flash-lite and gemini-2.5-flash return 404 (do not offer them). docs/decisions/ADR-011 (Gemini provider, provider cap). CLAUDE.md non-negotiable 3 (fail closed) and the R350/month ceiling.
@@ -9470,12 +9470,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T13:35:00Z] [ORCH] Filed on the owner's instruction after a pricing review (Gemini 3.1 Flash-Lite is 67% cheaper on input and 60% cheaper on output than 3.7 Flash, and tool-calling was verified on the owner's key). Waits for TASK-316 (both edit chatRunDriver.ts); TASK-301 waits for this.
 - [2026-09-19T15:20:00Z] [ORCH opus-4-8] READY: Depends_On TASK-316 merged (5194346). chatRunDriver.ts is now free of in-flight edits, so this can dispatch to CX9. Rebase the worktree onto master before starting so the TASK-316 chatRunDriver.ts changes are present. Protected path packages/harness-factory/** with CX9 author → an Opus review satisfies the cross-model rule (per this task's own Description).
+- [2026-09-19T14:48:00Z] [SV:CX9] Committed model-aware pricing, resolved-model endpoints, actual-model spend recording, and 3.1 Flash-Lite defaults. The mandatory real-driver regression test requires an unowned file.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/worker/src/chatRunDriver.test.ts is required by acceptance criterion 4 but absent from TASK-318 Owned_Paths; territory pre-commit rejected the edit and it was reverted.
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T14:34:05Z
+**Updated_At:** 2026-09-19T14:48:00Z
 
 ### TASK-319
 **Title:** CX9 re-verification of TASK-295 after S5's fix for the single required change (extra Grok test-file pin)
