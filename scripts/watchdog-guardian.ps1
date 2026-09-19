@@ -37,7 +37,21 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $taskName = "OIKONOMOS-ServiceWatchdog"
-if (-not $MarkerPath) { $MarkerPath = Join-Path $repoRoot "infra\compose\logs\watchdog-disabled.marker" }
+# 2026-09-19: a builder runs test-isolated.ps1 from ITS OWN worktree's copy, and
+# older copies wrote the marker inside that worktree, where this guardian never
+# looked -- so a session that ended mid-run left the watchdog disabled and the
+# worker down (live outage). Watch the main repo's marker AND every worktree's.
+if ($MarkerPath) {
+  $markerCandidates = @($MarkerPath)
+} else {
+  $markerCandidates = @(Join-Path $repoRoot "infra\compose\logs\watchdog-disabled.marker")
+  try {
+    foreach ($l in (& git -C $repoRoot worktree list --porcelain 2>$null)) {
+      if ($l -like 'worktree *') { $markerCandidates += (Join-Path $l.Substring(9).Trim() "infra\compose\logs\watchdog-disabled.marker") }
+    }
+  } catch { }
+  $markerCandidates = @($markerCandidates | Select-Object -Unique)
+}
 if (-not $LogPath) { $LogPath = Join-Path $repoRoot "infra\compose\logs\watchdog-guardian.log" }
 
 function Write-GuardianLog([string]$msg) {
@@ -49,33 +63,37 @@ function Write-GuardianLog([string]$msg) {
   Add-Content -Path $LogPath -Value $line
 }
 
-if (-not (Test-Path $MarkerPath)) {
-  # Nothing to do — no disabling script currently claims to have the
-  # watchdog paused. This is the overwhelmingly common case; stay silent
-  # in the log to keep it readable (only log actual findings/actions).
-  exit 0
+function Invoke-GuardianCheck([string]$MarkerPath) {
+  if (-not (Test-Path $MarkerPath)) {
+    # Nothing to do — no disabling script currently claims to have the
+    # watchdog paused. This is the overwhelmingly common case; stay silent
+    # in the log to keep it readable (only log actual findings/actions).
+    return
+  }
+
+  $markerAgeMinutes = (New-TimeSpan -Start (Get-Item $MarkerPath).LastWriteTimeUtc -End (Get-Date).ToUniversalTime()).TotalMinutes
+
+  if ($markerAgeMinutes -lt $StaleThresholdMinutes) {
+    # A legitimate, still-running disable (e.g. test-isolated.ps1 mid-suite).
+    # Do nothing — this is exactly the case the guardian must NOT interfere
+    # with, or it would fight a real, in-progress test run.
+    return
+  }
+
+  # Marker is stale. Check whether the watchdog is actually still Disabled
+  # (it may already be Enabled if the disabling script's own `finally` DID
+  # run but simply failed to clean up its marker — a lesser, cosmetic bug
+  # worth logging but not worth re-touching an already-healthy task for).
+  $isDisabled = (schtasks /Query /TN $taskName /FO LIST 2>$null | Select-String "Status:\s+Disabled") -ne $null
+
+  if ($isDisabled) {
+    schtasks /Change /TN $taskName /ENABLE | Out-Null
+    Write-GuardianLog "RECOVERED: marker was $([math]::Round($markerAgeMinutes,1))min old and watchdog was Disabled -- force re-enabled. Marker: $MarkerPath"
+  } else {
+    Write-GuardianLog "STALE MARKER ONLY: marker was $([math]::Round($markerAgeMinutes,1))min old but watchdog was already Enabled -- the disabling script's own re-enable ran, it just didn't clean up its marker. No action needed on the task itself."
+  }
+
+  Remove-Item -Path $MarkerPath -Force -ErrorAction SilentlyContinue
 }
 
-$markerAgeMinutes = (New-TimeSpan -Start (Get-Item $MarkerPath).LastWriteTimeUtc -End (Get-Date).ToUniversalTime()).TotalMinutes
-
-if ($markerAgeMinutes -lt $StaleThresholdMinutes) {
-  # A legitimate, still-running disable (e.g. test-isolated.ps1 mid-suite).
-  # Do nothing — this is exactly the case the guardian must NOT interfere
-  # with, or it would fight a real, in-progress test run.
-  exit 0
-}
-
-# Marker is stale. Check whether the watchdog is actually still Disabled
-# (it may already be Enabled if the disabling script's own `finally` DID
-# run but simply failed to clean up its marker — a lesser, cosmetic bug
-# worth logging but not worth re-touching an already-healthy task for).
-$isDisabled = (schtasks /Query /TN $taskName /FO LIST 2>$null | Select-String "Status:\s+Disabled") -ne $null
-
-if ($isDisabled) {
-  schtasks /Change /TN $taskName /ENABLE | Out-Null
-  Write-GuardianLog "RECOVERED: marker was $([math]::Round($markerAgeMinutes,1))min old and watchdog was Disabled -- force re-enabled. Marker: $MarkerPath"
-} else {
-  Write-GuardianLog "STALE MARKER ONLY: marker was $([math]::Round($markerAgeMinutes,1))min old but watchdog was already Enabled -- the disabling script's own re-enable ran, it just didn't clean up its marker. No action needed on the task itself."
-}
-
-Remove-Item -Path $MarkerPath -Force -ErrorAction SilentlyContinue
+foreach ($candidate in $markerCandidates) { Invoke-GuardianCheck $candidate }

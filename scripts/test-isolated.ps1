@@ -138,7 +138,17 @@ Write-Host "[test-isolated] database: $testDb (container $container)"
 # review runs, before any test could execute). Resolve the marker path from
 # this script's own physical location (always the main repo, regardless of
 # -Root), not from $repoRoot (which -Root overrides).
+#
+# 2026-09-19 FIX: "this script's own physical location" is only the main repo
+# when THIS copy of the script is the main checkout's. A builder runs its own
+# worktree's copy, so `Split-Path -Parent $PSScriptRoot` resolved to the
+# WORKTREE, the marker landed there, the guardian never saw it, and a builder
+# session that ended mid-run left the watchdog disabled and the worker down
+# (live outage, 2026-09-19 ~09:10). Every worktree shares one git common dir,
+# whose parent is the main checkout -- resolve from that instead.
 $mainRepoRoot = Split-Path -Parent $PSScriptRoot
+$gitCommonDir = (& git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir 2>$null)
+if ($LASTEXITCODE -eq 0 -and $gitCommonDir) { $mainRepoRoot = Split-Path -Parent ($gitCommonDir | Select-Object -First 1).Trim() }
 $watchdogMarker = Join-Path $mainRepoRoot "infra\compose\logs\watchdog-disabled.marker"
 $watchdogMarkerDir = Split-Path -Parent $watchdogMarker
 if (-not (Test-Path $watchdogMarkerDir)) { New-Item -ItemType Directory -Path $watchdogMarkerDir -Force | Out-Null }
