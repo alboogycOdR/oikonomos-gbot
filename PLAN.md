@@ -9406,7 +9406,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-317
 **Title:** Cross-model adversarial review of TASK-295 (banned-modes scanner: Codex/Grok vocabulary, .codex enforcement, pinned exemptions)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** branch task/TASK-295-s5 (S5, Claude); TASK-295 Description and Acceptance_Criteria in PLAN.md; docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B residual risk (d); CLAUDE.md protected paths (infra/ci/**) and the rule that protected-path work is reviewed by a model other than its author.
@@ -9418,13 +9418,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] At least one attempted bypass of the pinned exemption (planted extra occurrence) demonstrated to fail CI, and one deleted occurrence demonstrated to fail CI.
 - [ ] An overall accept / accept-with-changes / reject with exact required changes if any.
 - [ ] No file other than dossiers/TASK-317.md modified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-317-cx9
+**Started_At:** 2026-09-19T12:27:22Z
 **Progress_Notes:**
 - [2026-09-19T11:25:00Z] [ORCH] Filed when S5 finished TASK-295 (needs_review, held by the reviewer's cross-model rule).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T11:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T12:27:22Z
