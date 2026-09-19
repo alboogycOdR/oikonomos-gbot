@@ -173,10 +173,12 @@ function validateTypedHandoff(input: NewRoleMessage): {
   return { handoffKind: input.handoffKind, factRef: validateMemoryFactRef(input.factRef as MemoryHandoffFactReference) };
 }
 
-async function validateCompletedArtifacts(
+async function validateProjectHandoff(
   pool: { query: <T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]) => Promise<{ rows: T[] }> },
   handoffKind: HandoffKind | null,
   factRef: HandoffFactReference | null,
+  fromRoleId: string,
+  toRoleId: string,
 ): Promise<void> {
   if (!projectHandoffKinds.has(handoffKind as HandoffKind) || factRef === null) return;
   const ref = factRef as ProjectHandoffReference;
@@ -187,14 +189,25 @@ async function validateCompletedArtifacts(
   if (task.rows.length !== 1) {
     throw new Error("project handoff task_id must reference a task in the same project.");
   }
-  if (handoffKind !== "task.completed") return;
+  const members = await pool.query<{ sender_is_member: boolean; recipient_is_member: boolean }>(
+    `SELECT bool_or(thread_members.role_id = $2) AS sender_is_member,
+            bool_or(thread_members.role_id = $3) AS recipient_is_member
+     FROM projects
+     JOIN thread_members ON thread_members.thread_id = projects.thread_id
+     WHERE projects.project_id = $1::uuid`,
+    [ref.project_id, fromRoleId, toRoleId],
+  );
+  if (members.rows[0]?.sender_is_member !== true || members.rows[0]?.recipient_is_member !== true) {
+    throw new Error("project handoff sender and recipient must both be project members.");
+  }
+  if (ref.artifact_ids.length === 0) return;
   const result = await pool.query<{ artifact_id: string }>(
     `SELECT artifact_id FROM project_artifacts
      WHERE project_id = $1::uuid AND artifact_id = ANY($2::uuid[])`,
     [ref.project_id, [...ref.artifact_ids]],
   );
   if (result.rows.length !== new Set(ref.artifact_ids).size) {
-    throw new Error("task.completed artifact_ids must reference registered artifacts in the same project.");
+    throw new Error("project handoff artifact_ids must reference registered artifacts in the same project.");
   }
 }
 
@@ -234,7 +247,7 @@ export async function sendRoleMessage(
   }
 
   return withPool(options, async (pool) => {
-    await validateCompletedArtifacts(pool, handoffKind, factRef);
+    await validateProjectHandoff(pool, handoffKind, factRef, fromRoleId, toRoleId);
     const result = await pool.query<RoleMessageRow>(
       `INSERT INTO role_messages (tenant_id, from_role_id, to_role_id, body, workspace_refs, handoff_kind, fact_ref)
        VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5::jsonb, $6, $7::jsonb)
@@ -421,6 +434,10 @@ if (import.meta.vitest) {
         fromRoleId: "a", toRoleId: "b", body: "hi", handoffKind: "task.completed",
         factRef: base,
       })).rejects.toThrow(/at least one artifact/);
+      await expect(sendRoleMessage(live, {
+        fromRoleId: "a", toRoleId: "b", body: "hi", handoffKind: "task.blocked",
+        factRef: { ...base, artifact_ids: ["not-a-uuid"] },
+      })).rejects.toThrow(/artifact_ids\[\].*UUID/);
     });
 
     it("rejects a non-UUID messageId", async () => {

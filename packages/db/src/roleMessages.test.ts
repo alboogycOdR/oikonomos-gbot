@@ -23,9 +23,11 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
   const tenantId = "task-084-messages-suite";
   const fromRoleId = "task-084-messages-suite-from";
   const toRoleId = "task-084-messages-suite-to";
+  const outsiderRoleId = "task-084-messages-suite-outsider";
   let projectId: string;
   let otherProjectId: string;
   let taskId: string;
+  let otherTaskId: string;
   let artifactId: string;
   let otherArtifactId: string;
 
@@ -36,7 +38,7 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
     await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE title LIKE $1)`, [`${tenantId}%`]);
     await pool.query(`DELETE FROM threads WHERE title LIKE $1`, [`${tenantId}%`]);
-    await pool.query(`DELETE FROM roles WHERE role_id IN ($1, $2)`, [fromRoleId, toRoleId]);
+    await pool.query(`DELETE FROM roles WHERE role_id IN ($1, $2, $3)`, [fromRoleId, toRoleId, outsiderRoleId]);
   }
 
   beforeAll(async () => {
@@ -50,6 +52,10 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
       { connectionString: connectionString! },
       { roleId: toRoleId, tenantId, name: "To", title: "To Role" },
     );
+    await createRole(
+      { connectionString: connectionString! },
+      { roleId: outsiderRoleId, tenantId, name: "Outsider", title: "Outsider Role" },
+    );
     const thread = await createGroupThread({ connectionString: connectionString! }, { roleIds: [fromRoleId, toRoleId], title: `${tenantId}-project` });
     const otherThread = await createGroupThread({ connectionString: connectionString! }, { roleIds: [fromRoleId, toRoleId], title: `${tenantId}-other-project` });
     const project = await createProject({ connectionString: connectionString! }, { tenantId, threadId: thread.id, name: "Project", goal: "Goal", doneCriterion: "Done", createdBy: "human:test" });
@@ -57,6 +63,7 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
     projectId = project.projectId;
     otherProjectId = otherProject.projectId;
     taskId = (await createProjectTask({ connectionString: connectionString! }, { projectId, title: "Work", createdBy: "human:test" })).taskId;
+    otherTaskId = (await createProjectTask({ connectionString: connectionString! }, { projectId: otherProjectId, title: "Other work", createdBy: "human:test" })).taskId;
     artifactId = (await createProjectArtifact({ connectionString: connectionString! }, { projectId, taskId, kind: "attachment", ref: "attachment-good", label: "Good" })).artifactId;
     otherArtifactId = (await createProjectArtifact({ connectionString: connectionString! }, { projectId: otherProjectId, kind: "attachment", ref: "attachment-other", label: "Other" })).artifactId;
   });
@@ -124,6 +131,14 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
       factRef: { project_id: projectId, task_id: taskId, artifact_ids: [otherArtifactId] },
     })).rejects.toThrow(/same project/);
     await expect(sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId, body: "wrong task", handoffKind: "task.assigned",
+      factRef: { project_id: projectId, task_id: otherTaskId, artifact_ids: [] },
+    })).rejects.toThrow(/task_id.*same project/);
+    await expect(sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId, body: "wrong artifact on block", handoffKind: "task.blocked",
+      factRef: { project_id: projectId, task_id: taskId, artifact_ids: [otherArtifactId] },
+    })).rejects.toThrow(/artifact_ids.*same project/);
+    await expect(sendRoleMessage({ connectionString: connectionString! }, {
       tenantId, fromRoleId, toRoleId, body: "missing artifact", handoffKind: "task.completed",
       factRef: { project_id: projectId, task_id: taskId, artifact_ids: ["00000000-0000-0000-0000-000000000000"] },
     })).rejects.toThrow(/same project/);
@@ -132,6 +147,16 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
       factRef: { project_id: projectId, task_id: taskId, artifact_ids: [artifactId] },
     });
     expect(completed.factRef).toEqual({ project_id: projectId, task_id: taskId, artifact_ids: [artifactId] });
+  });
+
+  it("rejects project handoffs when either sender or recipient is outside the project roster", async () => {
+    const factRef = { project_id: projectId, task_id: taskId, artifact_ids: [] };
+    await expect(sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId: outsiderRoleId, toRoleId, body: "forged sender", handoffKind: "task.assigned", factRef,
+    })).rejects.toThrow(/sender and recipient must both be project members/);
+    await expect(sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId: outsiderRoleId, body: "forged recipient", handoffKind: "task.assigned", factRef,
+    })).rejects.toThrow(/sender and recipient must both be project members/);
   });
 
   it("listRoleMessages filters to a role's inbox and unreadOnly excludes read messages", async () => {
