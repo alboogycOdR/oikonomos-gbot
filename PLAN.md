@@ -8972,12 +8972,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T13:35:00Z] [ORCH] Now also depends on TASK-318 (both edit chatRunDriver.ts).
 - [2026-09-19T15:33:00Z] [SV:CX9] Fast-forwarded the task branch, repeated preflight, and identified that the subprocess factory is test-only with no project/role attribution inputs or production composition caller.
 - [2026-09-19T16:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to services/worker/src/executeRun.ts and services/worker/test/executeRun.test.ts (no active task owns them). Production Codex/Grok config source: none exists and none is to be invented; live subprocess admission must fail closed (deny) when the provider config is absent, and the test must prove that deny.
+- [2026-09-19T16:38:01Z] [SV:CX9] Chat admission/attribution slice committed; remaining required concurrency, forged-handoff, failure-release tests and subprocess admission wiring are recorded in the dossier. NEXT: Add real-driver project/role concurrency, forged-handoff, and release tests; then implement and test subprocess fail-closed reservation admission.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T16:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T16:38:01Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
