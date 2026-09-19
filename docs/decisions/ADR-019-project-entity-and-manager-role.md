@@ -148,3 +148,12 @@ executes only once that approval is granted through the real pipeline.
 **Known open point, not decided here.** `retire_bot` today may retire any bot in the tenant (never itself, never cross-tenant). Approval is required each time, but scoping a manager's retirement to roster members or bots it created is a sensible later tightening.
 
 Adversarial review of this amendment by a model other than its author (Claude) is required before it is treated as accepted: TASK-310.
+
+## Amendment 2026-09-19 (b) — changes required by the TASK-310 review (verdict: accept-with-changes)
+
+CX9's adversarial review (`ADR-019-amendment-review-cx9-2026-09.md`) found no capability-escalation path and confirmed that a manager's `create_bot` call parks for human approval and yields only the default floor. It required two changes before managers may hold these tools, which supersede the corresponding points of the amendment above:
+
+1. **v1 grants managers `workspace.create_bot` only.** `workspace.retire_bot` is **not** granted until its target scope is enforced server-side: today `retireRole` checks only same-tenant and not-self, so a manager holding it could retire any bot in the tenant. The scope, at minimum the acting manager's own project roster, is TASK-313. This supersedes point 2 of the amendment above where it says managers are granted both tools.
+2. **Demotion is a transactional, approval-invalidating operation.** Approvals bind only the action digest and a nonce, not manager state, so revoking the grant blocks a normal resume but leaves a pending `create_bot` approval human-grantable after demotion. Un-marking a manager must, in one transaction, revoke the manager grants and invalidate that role's pending manager approvals (TASK-304).
+
+A related finding shapes the test: the workspace MCP handler performs `create_bot` with no grant or nonce check of its own; the protection is the worker's broker composition. The liveness test for the manager mount must therefore run through that composition (L1), not call the handler directly (TASK-303).

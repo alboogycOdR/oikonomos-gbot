@@ -206,7 +206,7 @@ decisions.
 | `mcp__project__record_decision` | `project.decision_write` | T2_internal | true |
 | `mcp__project__request_grant` | `project.request_grant` | T3_external | **false** |
 
-7.2a **(v1.2)** `project.create_role` is intentionally absent from this table: a manager creates and retires bots through `workspace.create_bot` (T3_external) and `workspace.retire_bot` (T4_irreversible, E6), which are granted to the manager role by the project route and park for human approval every time.
+7.2a **(v1.2)** `project.create_role` is intentionally absent from this table: a manager creates and retires bots through `workspace.create_bot` (T3_external) and `workspace.retire_bot` (T4_irreversible, E6), which park for human approval every time. **(v1.3, after the TASK-310 review)** In v1 only `workspace.create_bot` is granted to the manager role, by the project route; `workspace.retire_bot` waits until its target scope is enforced server-side (TASK-313).
 
 7.3 The disabled tool exists so that ADR-010's approval boundary has a home: when
 a later ADR enables them, they are already on the enforced side (T3/T4 park by default)
