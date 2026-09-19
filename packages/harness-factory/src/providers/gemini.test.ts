@@ -54,6 +54,20 @@ function tool(execute: GeminiTool["execute"], tier = 0): GeminiTool {
 }
 
 describe("Gemini adapter — governed Stage-1 function loop", () => {
+  it("uses each resolved priced model in its endpoint and rejects unknown models before fetch", async () => {
+    withNonSecretTestValue();
+    for (const model of ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]) {
+      const fetch = vi.fn(async () => text());
+      const adapter = createGeminiAdapter({ l1: { async handle() { return { decision: "allow" }; } }, fetch });
+      await expect(adapter.run("observe", model)).resolves.toMatchObject({ denied: false });
+      expect(fetch).toHaveBeenCalledWith(expect.stringContaining(`/models/${model}:generateContent?`), expect.anything());
+    }
+    const fetch = vi.fn();
+    const adapter = createGeminiAdapter({ l1: { async handle() { return { decision: "allow" }; } }, fetch });
+    await expect(adapter.run("observe", "gemini-unlisted")).resolves.toMatchObject({ denied: true });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("is loaded only for explicit provider selection; omitted provider retains the Claude runtime", () => {
     const base = {
       run: {

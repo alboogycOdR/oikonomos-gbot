@@ -224,7 +224,7 @@ export function loadConfig(source: Record<string, string | undefined>): AppConfi
   const GROK_SANDBOX = enumWithDefault(source, "GROK_SANDBOX", GROK_SANDBOXES, "workspace", issues);
   const GROK_ALWAYS_APPROVE = coerceBoolean(source, "GROK_ALWAYS_APPROVE", true);
   const XAI_API_KEY = optionalString(source, "XAI_API_KEY");
-  const GEMINI_MODEL = stringWithDefault(source, "GEMINI_MODEL", "gemini-3.7-flash");
+  const GEMINI_MODEL = stringWithDefault(source, "GEMINI_MODEL", "gemini-3.1-flash-lite");
   const GEMINI_API_KEY = optionalString(source, "GEMINI_API_KEY");
   const BOT_LOCALE = stringWithDefault(source, "BOT_LOCALE", "en");
   const MESSAGE_EDIT_INTERVAL_MS = coercePositiveInt(source, "MESSAGE_EDIT_INTERVAL_MS", 900, issues);

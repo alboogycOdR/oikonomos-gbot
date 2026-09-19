@@ -8,8 +8,11 @@ import { randomUUID } from "node:crypto";
 
 import type { PreToolUseHookPort } from "../ports.js";
 
-export const GEMINI_GENERATE_CONTENT_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent";
+export const GEMINI_MODELS = ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"] as const;
+export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
+export function geminiGenerateContentUrl(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+}
 export const GEMINI_REQUEST_TIMEOUT_MS = 10_000;
 /** Stage 1's ceiling. Stage 2 changes this one named policy constant. */
 export const STAGE_ONE_MAXIMUM_TOOL_TIER = 0;
@@ -147,7 +150,7 @@ export interface GeminiRunResult {
  * or telemetry dependency is accepted by this module.
  */
 export function createGeminiAdapter(options: GeminiAdapterOptions): {
-  run(prompt: string): Promise<GeminiRunResult>;
+  run(prompt: string, model?: string): Promise<GeminiRunResult>;
 } {
   assertOptions(options);
   const apiKey = process.env.GEMINI_API_KEY;
@@ -157,12 +160,15 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
   const maximumToolTier = options.maximumToolTier ?? STAGE_ONE_MAXIMUM_TOOL_TIER;
 
   return {
-    async run(prompt: string): Promise<GeminiRunResult> {
+    async run(prompt: string, model: string = DEFAULT_GEMINI_MODEL): Promise<GeminiRunResult> {
       if (typeof prompt !== "string" || prompt.length === 0) {
         return deniedResult("Gemini prompt is required");
       }
       if (typeof apiKey !== "string" || apiKey.length === 0) {
         return deniedResult("Gemini API key is unavailable");
+      }
+      if (!(GEMINI_MODELS as readonly string[]).includes(model)) {
+        return deniedResult(`Gemini model is unavailable: ${model}`);
       }
 
       const contents: Array<Record<string, unknown>> = [
@@ -172,7 +178,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions): {
       let usage = ZERO_USAGE;
 
       for (let turn = 0; turn < 12; turn += 1) {
-        const response = await requestGemini(fetchFn, apiKey, contents, options.tools ?? [], timeoutMs);
+        const response = await requestGemini(fetchFn, apiKey, contents, options.tools ?? [], timeoutMs, model);
         // A real call was made either way (a deny here means the response
         // was unusable, e.g. a non-2xx or a malformed body — never that no
         // request happened), so its usage — likely ZERO_USAGE, since a
@@ -289,11 +295,12 @@ async function requestGemini(
   contents: readonly Record<string, unknown>[],
   tools: readonly GeminiTool[],
   timeoutMs: number,
+  model: string,
 ): Promise<GeminiResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchFn(`${GEMINI_GENERATE_CONTENT_URL}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetchFn(`${geminiGenerateContentUrl(model)}?key=${encodeURIComponent(apiKey)}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

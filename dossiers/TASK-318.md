@@ -1,0 +1,7 @@
+# TASK-318 — Model-aware Gemini pricing and cost recording
+
+## Work Log
+
+- [2026-09-19T15:30:00Z] [CX9] Resumed from integration tip `15dde74` after TASK-316. Preflight inspected all 13 owned source/test paths and found each existing; traced current pricing, adapter endpoint, role-runtime, driver spend, and Tier-0 paths. No prior dossier existed.
+- [2026-09-19T16:46:00Z] [CX9] Implemented the three-model pricing table with fail-closed unknown pricing; model-resolved endpoint validation; role/default model propagation into Gemini spend records; and Tier-0/config defaults. Isolated suites passed: agent-providers 106/106 and harness-factory 146/146. Worker suite exposed 429/live-Gemini and timeout failures pending master-baseline comparison; no task-specific assertion failed before the suite's known live lane failures.
+- [2026-09-19T16:55:00Z] [CX9] BLOCKED by territory enforcement: acceptance criterion 4 requires updating `services/worker/src/chatRunDriver.test.ts` to drive the real driver with `gemini-3.1-flash-lite` and assert `spend_records.model` plus cost, but this file is absent from TASK-318 Owned_Paths. The pre-commit gate correctly rejected that attempted test edit; it was fully reverted. Source changes are committed only after retaining a 3.7 compatibility overload for the existing unowned test. Need ORCH to add exactly `services/worker/src/chatRunDriver.test.ts` to Owned_Paths before the final regression test/full-suite handoff.
