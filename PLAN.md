@@ -9449,7 +9449,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-318
 **Title:** Model-aware Gemini pricing and cost recording; make gemini-3.1-flash-lite the default model
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OWNER DECISION 2026-09-19: "switch the default to Gemini 3.1 Flash-Lite". Official pricing (https://ai.google.dev/gemini-api/docs/pricing, fetched 2026-09-19, paid tier, USD per 1M tokens): gemini-3.7-flash $0.75 in / $3.75 out through 2026-12-31 then $1.50 / $7.50; gemini-3.1-flash-lite $0.25 / $1.50; gemini-3.5-flash-lite $0.30 / $2.50. Verified live on the owner's key: gemini-3.1-flash-lite and gemini-3.5-flash-lite answer generateContent and return a functionCall; gemini-2.5-flash-lite and gemini-2.5-flash return 404 (do not offer them). docs/decisions/ADR-011 (Gemini provider, provider cap). CLAUDE.md non-negotiable 3 (fail closed) and the R350/month ceiling.
@@ -9472,12 +9472,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T15:20:00Z] [ORCH opus-4-8] READY: Depends_On TASK-316 merged (5194346). chatRunDriver.ts is now free of in-flight edits, so this can dispatch to CX9. Rebase the worktree onto master before starting so the TASK-316 chatRunDriver.ts changes are present. Protected path packages/harness-factory/** with CX9 author → an Opus review satisfies the cross-model rule (per this task's own Description).
 - [2026-09-19T14:48:00Z] [SV:CX9] Committed model-aware pricing, resolved-model endpoints, actual-model spend recording, and 3.1 Flash-Lite defaults. The mandatory real-driver regression test requires an unowned file.
 - [2026-09-19T16:40:00Z] [ORCH opus-4-8] UNBLOCKED (status scan §7 triage): OWNERSHIP_CONFLICT resolved — widened Owned_Paths +services/worker/src/chatRunDriver.test.ts, which AC4 genuinely requires (real-driver spend-recording assertion). Disjoint from every ACTIVE task; the only other holder is TASK-162 (blocked/parked, package-wide-refactor, not dispatchable), so no live territory overlap. Re-dispatch CX9. Author CX9 on protected packages/harness-factory/** → an Opus review satisfies the cross-model rule per this task's Description/AC8.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T15:08:00Z] [SV:CX9] Completed model-aware Gemini pricing, resolved-model endpoints, actual-model spend recording, 3.1 Flash-Lite defaults, and real-driver AC4 coverage; ready for required cross-model review.
+**Artifacts:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts, packages/agent-providers/src/config.ts, packages/agent-providers/src/index.ts, packages/agent-providers/src/providers/gemini.ts, packages/agent-providers/src/providers/gemini.test.ts, packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts, services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/tierZeroProvider.ts, services/worker/src/tierZeroProvider.test.ts, dossiers/TASK-318.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/agent-providers: 108/108 pass. scripts/test-isolated.ps1 -Root . -Filter @oikonomos/harness-factory: 146/146 pass. pnpm --filter @oikonomos/worker run build: pass. Full scripts/test-isolated.ps1 -Root . run completed with unrelated pre-existing worker timeout/Gemini-429/shared-fixture failures; integration-baseline worker run reproduced unrelated budget/capability failures. No TASK-318 pricing, endpoint, or AC4 assertion failure observed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T14:48:00Z
+**Updated_At:** 2026-09-19T15:08:00Z
 
 ### TASK-319
 **Title:** CX9 re-verification of TASK-295 after S5's fix for the single required change (extra Grok test-file pin)
