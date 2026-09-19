@@ -106,6 +106,10 @@ async function deleteFixtureThreads(pool: Pool, roleIds: readonly string[]): Pro
     "DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
     [roleIds],
   );
+  await pool.query(
+    "DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
+    [roleIds],
+  );
   await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [roleIds]);
 }
 
