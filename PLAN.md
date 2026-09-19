@@ -9330,12 +9330,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T09:23:08Z
 **Progress_Notes:**
 - [2026-09-19T08:44:00Z] [ORCH] Filed to unblock TASK-302 by re-sequencing (protocol §7). CX9's block was a correct find of an ORCH decomposition gap, not a builder fault; branch task/TASK-302-cx9 is retained.
+- [2026-09-19T09:38:01Z] [SV:CX9] Implementation committed; focused isolated DB suite passes. The required unfiltered isolated recursive suite is still active in the worker phase. NEXT: Wait for the active unfiltered scripts/test-isolated.ps1 run to finish, record its result in the dossier, then emit needs_review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T09:23:08Z
+**Updated_At:** 2026-09-19T09:38:01Z
 
 ### TASK-315
 **Title:** Role budget axis reads zero for real spend -- derive a role's recorded spend from run -> task -> role, not from spend_records.routine_id
