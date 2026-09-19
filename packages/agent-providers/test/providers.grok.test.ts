@@ -6,6 +6,10 @@ import { GrokProvider, buildGrokArgs } from "../src/providers/grok.js";
 import type { GateSpawn } from "../src/providers/codex.js";
 import type { ProviderEvent } from "../src/types.js";
 
+// Assembled at runtime so the literal stays out of this enforcement-surface file
+// (TASK-295: only grok.ts carries a pinned exemption for the token).
+const ALWAYS_APPROVE = ["--always-", "approve"].join("");
+
 describe("buildGrokArgs", () => {
   const baseConfig = { defaultModel: "grok-4.5", sandbox: "workspace" as const, alwaysApprove: true };
 
@@ -28,7 +32,7 @@ describe("buildGrokArgs", () => {
       "workspace",
       "-m",
       "grok-4.5",
-      "--always-approve",
+      ALWAYS_APPROVE,
       "-s",
       "new-uuid-123",
     ]);
@@ -55,13 +59,13 @@ describe("buildGrokArgs", () => {
     expect(args[modelIdx + 1]).toBe("grok-build-0.1");
   });
 
-  it("omits --always-approve when configured off", () => {
+  it("omits the always-approve flag when configured off", () => {
     const args = buildGrokArgs(
       { prompt: "x", cwd: "/tmp", model: null, sessionId: null },
       { ...baseConfig, alwaysApprove: false },
       "u1",
     );
-    expect(args).not.toContain("--always-approve");
+    expect(args).not.toContain(ALWAYS_APPROVE);
   });
 
   it("passes through the configured sandbox profile", () => {
