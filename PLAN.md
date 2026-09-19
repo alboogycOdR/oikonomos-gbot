@@ -8930,7 +8930,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.1 (every run started from a project thread or a task.assigned handoff is attributed to the project), §6.2 (deny before spawn; release on failure), §6.3 (manager budget covers only its own turns), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §5.
@@ -8946,8 +8946,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Platform, provider and routine gate behaviour unchanged; existing budget tests pass unmodified. (spec §6.2)
 - [ ] Adversarial review by a different model than the author recorded in REVIEW.md.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-301-cx9
+**Started_At:** 2026-09-19T09:18:16Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T07:20:00Z] [ORCH] Amended after the TASK-299 review: project attribution from a handoff now requires the sender to be the manager and the recipient on the roster.
@@ -8955,8 +8955,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T09:18:16Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
