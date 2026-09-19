@@ -23,6 +23,18 @@ Admission belongs next to assertChatBudgetAllows so ordering is obvious: pure ga
 
 ## Work Log
 
+- [2026-09-19T15:30:00Z] [CX9] Resumed on `task/TASK-301-cx9`, fast-forwarded it from the dependency-block checkpoint to integration head `73b145b`, and repeated the required territory preflight:
+  ```text
+  [preflight] TASK-301 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   packages/broker/src/budgetGate.ts  -> exists, 400 line(s), 17124 bytes
+    NEW    packages/broker/src/budgetGate.test.ts  -> does not exist; parent packages/broker/src/ exists
+    FILE   services/worker/src/chatRunDriver.ts  -> exists, 2134 line(s), 109854 bytes
+    FILE   services/worker/src/chatRunDriver.test.ts  -> exists, 2566 line(s), 159196 bytes
+    FILE   services/worker/src/subprocessProviders.ts  -> exists, 254 line(s), 11673 bytes
+    FILE   services/worker/src/roleMessageDelivery.ts  -> exists, 553 line(s), 27706 bytes
+  ```
+
 - [2026-09-19T09:52:00Z] [CX9] Preflight completed before implementation:
   ```text
   [preflight] TASK-301 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
@@ -35,3 +47,4 @@ Admission belongs next to assertChatBudgetAllows so ordering is obvious: pure ga
     FILE   services/worker/src/roleMessageDelivery.ts  -> exists, 553 line(s), 27706 bytes
   ```
 - [2026-09-19T09:52:00Z] [CX9] Blocked before code changes: live PLAN.md lists TASK-315 as `pending`, while TASK-301 depends on it. The current merged `packages/db/src/spendReservations.ts` still derives role spend from `spend_records.routine_id = roleId`; real chat spend uses the routine id (or null), so wiring the role reservation axis now would leave `budget.role_exceeded` inert. Resume after TASK-315 is reviewed and merged, then rebase/refresh this branch from the integration head and implement the reservation/admission wiring.
+- [2026-09-19T15:38:00Z] [CX9] Stopped before implementation with `OWNERSHIP_CONFLICT`: `services/worker/src/subprocessProviders.ts` is a factory only; repository-wide production-call search finds it is instantiated solely in `services/worker/test/executeRun.test.ts` (which explicitly states “No production call site for this factory exists yet”). Its budget input holds only `db`, `runId`, and optional `routineId`, so it cannot determine the required task role or project-thread attribution. The live chat driver calls `executeTaskRun` without `subprocessProviders`, and the harness composition is owned by `services/worker/src/executeRun.ts` / `packages/harness-factory/src/compose.ts`, both outside TASK-301. Completing the required live subprocess admission/attribution needs ownership of a real composition root (at minimum `services/worker/src/executeRun.ts` and its integration test `services/worker/test/executeRun.test.ts`, plus a specified production configuration source for Codex/Grok) or an explicit decision that the currently test-only factory is out of scope. No source implementation was made; only this dossier was updated.
