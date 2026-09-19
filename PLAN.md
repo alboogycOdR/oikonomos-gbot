@@ -9450,7 +9450,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-318
 **Title:** Model-aware Gemini pricing and cost recording; make gemini-3.1-flash-lite the default model
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OWNER DECISION 2026-09-19: "switch the default to Gemini 3.1 Flash-Lite". Official pricing (https://ai.google.dev/gemini-api/docs/pricing, fetched 2026-09-19, paid tier, USD per 1M tokens): gemini-3.7-flash $0.75 in / $3.75 out through 2026-12-31 then $1.50 / $7.50; gemini-3.1-flash-lite $0.25 / $1.50; gemini-3.5-flash-lite $0.30 / $2.50. Verified live on the owner's key: gemini-3.1-flash-lite and gemini-3.5-flash-lite answer generateContent and return a functionCall; gemini-2.5-flash-lite and gemini-2.5-flash return 404 (do not offer them). docs/decisions/ADR-011 (Gemini provider, provider cap). CLAUDE.md non-negotiable 3 (fail closed) and the R350/month ceiling.
@@ -9474,12 +9474,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T14:48:00Z] [SV:CX9] Committed model-aware pricing, resolved-model endpoints, actual-model spend recording, and 3.1 Flash-Lite defaults. The mandatory real-driver regression test requires an unowned file.
 - [2026-09-19T16:40:00Z] [ORCH opus-4-8] UNBLOCKED (status scan §7 triage): OWNERSHIP_CONFLICT resolved — widened Owned_Paths +services/worker/src/chatRunDriver.test.ts, which AC4 genuinely requires (real-driver spend-recording assertion). Disjoint from every ACTIVE task; the only other holder is TASK-162 (blocked/parked, package-wide-refactor, not dispatchable), so no live territory overlap. Re-dispatch CX9. Author CX9 on protected packages/harness-factory/** → an Opus review satisfies the cross-model rule per this task's Description/AC8.
 - [2026-09-19T15:08:00Z] [SV:CX9] Completed model-aware Gemini pricing, resolved-model endpoints, actual-model spend recording, 3.1 Flash-Lite defaults, and real-driver AC4 coverage; ready for required cross-model review.
+- [2026-09-19T17:20:00Z] [ORCH opus-4-8] APPROVED + MERGED (bb0dee7). CX9 author on protected packages/harness-factory/** → Opus review satisfies the cross-model rule (Description/AC8). Territory CLEAN (15 files all in Owned_Paths + own dossier). No PLAN.md edits on branch. All ACs verified against test source: AC1 rates to the cent (3.1FL 1.75 / 3.5FL 2.80 / 3.7F 4.50, cliff doubling intact); AC2 unknown model fails closed at most-expensive (4.5, asserted ≥ every known — a real can-fail control test); AC3 endpoint built from resolved model, unlisted rejected pre-fetch; AC4 real-driver test wired role.model→resolveRoleRuntime→runtime.model→recordSpend(model) — Standing Rule 5 satisfied (would fail if inert or reading wrong column); AC5/AC6 default flipped, back-compat overload preserves 3.7 callers. Independent test run (test-isolated.ps1, worktree, -Init): agent-providers 108/108, harness-factory 146/146 green; worker 271/301 — all 30 failures classified as live-Gemini HTTP 429 (monthly spend cap) + downstream timeouts, environmental/pre-existing, none touching TASK-318 logic. Unlocks TASK-301 (Depends_On TASK-318). Branch deleted.
 **Artifacts:** packages/agent-providers/src/pricing.ts, packages/agent-providers/src/pricing.test.ts, packages/agent-providers/src/config.ts, packages/agent-providers/src/index.ts, packages/agent-providers/src/providers/gemini.ts, packages/agent-providers/src/providers/gemini.test.ts, packages/harness-factory/src/providers/gemini.ts, packages/harness-factory/src/providers/gemini.test.ts, services/worker/src/geminiChatRun.ts, services/worker/src/geminiChatRun.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/tierZeroProvider.ts, services/worker/src/tierZeroProvider.test.ts, dossiers/TASK-318.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/agent-providers: 108/108 pass. scripts/test-isolated.ps1 -Root . -Filter @oikonomos/harness-factory: 146/146 pass. pnpm --filter @oikonomos/worker run build: pass. Full scripts/test-isolated.ps1 -Root . run completed with unrelated pre-existing worker timeout/Gemini-429/shared-fixture failures; integration-baseline worker run reproduced unrelated budget/capability failures. No TASK-318 pricing, endpoint, or AC4 assertion failure observed.
-**Review_Findings:** —
+**Review_Findings:** [2026-09-19T17:20:00Z ORCH opus-4-8] APPROVED. Full Opus cross-model review (CX9 author, protected packages/harness-factory/**). All 6 acceptance criteria met and independently verified against test source, not the builder summary. AC4 spend-recording control confirmed wired to the real production path (role.model column) and would fail if inert (Standing Rule 5). Worker 429/timeout failures classified environmental. Merged bb0dee7.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-19T15:08:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-19T17:20:00Z
 
 ### TASK-319
 **Title:** CX9 re-verification of TASK-295 after S5's fix for the single required change (extra Grok test-file pin)
