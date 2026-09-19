@@ -8753,7 +8753,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-295
 **Title:** Banned-modes scanner misses non-Claude permission-bypass vocabulary (`codex exec -s danger-full-access`)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-002-permission-bypass-ban-scope.md Amendment B, "Second finding" + "Residual risk (d)": "CX's invocation is `codex exec -s danger-full-access`. That is functionally equivalent permission bypass, but it is not one of the three tokens CAN-03 greps for ... CAN-03's token list tracks the Claude Code vocabulary and does not generalise across CLIs" and "(d) The CAN-03 token-list gap for non-Claude CLIs is not closed by this amendment and remains open -- a future change should either generalise the grep or record why it need not be."
@@ -8769,12 +8769,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Branch:** task/TASK-295-s5
 **Started_At:** 2026-09-18T21:00:51Z
 **Progress_Notes:**
+- [2026-09-19T02:50:00Z] [ORCH] S5 finished and correctly blocked (see Blocked_Reason). Status moved claimed->blocked so S5 is free for the manager-bot wave; resume here once the user decides.
 - [2026-09-17T22:35:00Z] [ORCH] Filed 2026-09-17 while confirming the flag on dispatch.ps1 was a false alarm (it is: ADR-002 §2(2) carves out scripts/**). This gap is the real finding underneath that false alarm.
 - [2026-09-18T18:55:00Z] [ORCH] QUEUED for S5 -- assigned to S5 already (TASK-296, high priority) is running first on the only available non-Codex builder; dispatch this one as soon as 296 lands or a second S5-class unit frees up. Do not assign to CX9: this task governs CX9's own invocation vocabulary.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT + SPEC_AMBIGUITY awaiting the user: (1) add a `.codex/**` dev-tooling carve-out to infra/ci/banned-modes-allowlist.txt (protected, outside Owned_Paths); (2) Grok `--always-approve` is byte-identical to real ADR-011 product code in packages/agent-providers/src/providers/grok.ts -- ban via a new exemption mechanism, scope out via ADR-002 amendment, or accept as residual. S5 work is committed on task/TASK-295-s5 (2c0ec0e).
 **Updated_By:** SV
 **Updated_At:** 2026-09-18T21:00:51Z
 
