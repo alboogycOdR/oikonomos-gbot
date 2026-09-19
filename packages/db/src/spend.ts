@@ -130,7 +130,10 @@ export async function recordSpend(
       : entry.projectId.trim();
 
   return withPool(options, async (pool) => {
-    const result = await pool.query<SpendRecordRow>(
+    const client = await pool.connect();
+    try {
+    await client.query("BEGIN");
+    const result = await client.query<SpendRecordRow>(
       `INSERT INTO spend_records (
          tenant_id, run_id, routine_id, provider, model, cost_usd, tokens, occurred_at, project_id
        )
@@ -156,7 +159,20 @@ export async function recordSpend(
     if (row === undefined) {
       throw new Error("recordSpend did not return a persisted row.");
     }
+    // ADR-019 §5 step 3: release the run's open reservations in the SAME
+    // transaction as the insert; a failed insert leaves them open.
+    await client.query(
+      "UPDATE spend_reservations SET released_at = now() WHERE run_id = $1 AND released_at IS NULL",
+      [runId],
+    );
+    await client.query("COMMIT");
     return toSpendRecord(row);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 }
 
