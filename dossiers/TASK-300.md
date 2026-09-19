@@ -21,3 +21,6 @@ Concurrency test pattern: two separate pool clients, BEGIN both, interleave so b
 - Full recursive suite via scripts/test-isolated.ps1 only.
 
 ## Work Log
+
+## Work Log
+- [2026-09-19] S5: implemented spendReservations.ts (admitRunReservation/releaseRunReservation), recordSpend now transactional w/ same-tx release; tests use a held ledger lock to prove two admissions block concurrently. Note: role-axis recorded spend read from spend_records.routine_id=roleId (no role column exists; TASK-301 must attribute). Test DB needed -Init for migration 030. Full suite green.

@@ -209,6 +209,16 @@ export {
   type RequireApprovalRuleListFilter,
 } from "./requireApprovalRules.js";
 export {
+  admitRunReservation,
+  monthStartKey,
+  releaseRunReservation,
+  type AdmitRunReservationInput,
+  type AdmitRunReservationResult,
+  type AxisReservation,
+  type BudgetAxis,
+  type BudgetDenialReason,
+} from "./spendReservations.js";
+export {
   getPlatformSpendUsd,
   getProviderSpendUsd,
   getRoutineSpendUsd,
