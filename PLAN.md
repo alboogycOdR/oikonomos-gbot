@@ -8930,7 +8930,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.1 (every run started from a project thread or a task.assigned handoff is attributed to the project), §6.2 (deny before spawn; release on failure), §6.3 (manager budget covers only its own turns), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §5.
@@ -8952,12 +8952,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T07:20:00Z] [ORCH] Amended after the TASK-299 review: project attribution from a handoff now requires the sender to be the manager and the recipient on the roster.
 - [2026-09-19T09:30:00Z] [ORCH] Now also depends on TASK-315: the role budget axis as merged in TASK-300 reads zero for real spend and cannot fire; do not wire it until fixed.
+- [2026-09-19T09:23:01Z] [SV:CX9] Preflight logged; TASK-315 remains pending and its role-spend query is known inert.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SYNC_MISMATCH: TASK-301 depends on pending TASK-315; implementing now would wire an inert role budget axis.
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T09:18:16Z
+**Updated_At:** 2026-09-19T09:23:01Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
