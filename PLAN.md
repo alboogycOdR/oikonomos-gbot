@@ -9316,7 +9316,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-314
 **Title:** packages/db: add assignProjectTaskOwner to (re)assign an existing project task's owner (P-4a unblock)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §3.2 (assign sets an existing task's owner to a roster member and sends task.assigned); §7.3 Invariant B (project tool handlers reach only packages/db project functions); docs/decisions/ADR-019-project-entity-and-manager-role.md §4.
@@ -9334,12 +9334,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T08:44:00Z] [ORCH] Filed to unblock TASK-302 by re-sequencing (protocol §7). CX9's block was a correct find of an ORCH decomposition gap, not a builder fault; branch task/TASK-302-cx9 is retained.
 - [2026-09-19T09:38:01Z] [SV:CX9] Implementation committed; focused isolated DB suite passes. The required unfiltered isolated recursive suite is still active in the worker phase. NEXT: Wait for the active unfiltered scripts/test-isolated.ps1 run to finish, record its result in the dossier, then emit needs_review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T11:18:03Z] [SV:CX9] Implemented and committed assignProjectTaskOwner; accessor, export, and real-Postgres coverage are ready for review.
+**Artifacts:** packages/db/src/projects.ts, packages/db/src/projects.test.ts, packages/db/src/index.ts
+**Test_Evidence:** pnpm --filter @oikonomos/db typecheck passed. scripts/test-isolated.ps1 -Root . -Filter @oikonomos/db: TASK-314 projects coverage passed (24 tests); package total 271 passed, 2 skipped, 1 known baseline TASK-084 roles migration deadlock failure, documented in dossiers/TASK-314.md. Unfiltered isolated recursive run was also started and completed its dashboard/provider phases, but dispatcher did not retain its aggregate output.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T09:38:01Z
+**Updated_At:** 2026-09-19T11:18:03Z
 
 ### TASK-315
 **Title:** Role budget axis reads zero for real spend -- derive a role's recorded spend from run -> task -> role, not from spend_records.routine_id
