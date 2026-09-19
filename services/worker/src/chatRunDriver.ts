@@ -1,4 +1,5 @@
 import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
+import { DEFAULT_GEMINI_MODEL } from "@oikonomos/agent-providers";
 import { handlePreToolUse } from "@oikonomos/broker";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
@@ -440,7 +441,8 @@ async function runChatTask(
         resolveEnabledSkill: createSkillResolver(options, request.task.roleId),
       });
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
-        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector);
+        const geminiModel = runtime.model?.trim() || DEFAULT_GEMINI_MODEL;
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector, geminiModel);
         botText = geminiResult.text;
         geminiSpendRecorded = true;
       } else if (!shouldUseSandbox(options)) {
@@ -747,6 +749,7 @@ export async function executeGeminiChatRun(
   policy: PolicyRegistry,
   browserConnector?: ConnectorContext,
   workspaceConnector?: ConnectorContext,
+  model: string = DEFAULT_GEMINI_MODEL,
 ): Promise<{ readonly text: string; readonly costUsd: number }> {
   // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
   // tool-executing Gemini run, and a denial must cost no tokens.
@@ -876,7 +879,7 @@ export async function executeGeminiChatRun(
         readonly thoughtsTokenCount: number;
         readonly totalTokenCount: number;
       };
-    }> => adapter.run(prompt),
+    }> => adapter.run(prompt, model),
   );
 
   // Record spend BEFORE the denied check below (Fable review U1). A run
@@ -898,14 +901,14 @@ export async function executeGeminiChatRun(
   // structural denial (missing API key, empty prompt) truly cost nothing
   // and recording a noisy zero row for it would misrepresent the run as
   // having reached the API at all.
-  const costUsd = geminiTurnCostUsd(result.usage);
+  const costUsd = geminiTurnCostUsd(model, result.usage);
   if (!result.denied || result.usage.totalTokenCount > 0) {
     await recordSpend(options, {
       runId: run.runId,
       tenantId: request.task.tenantId,
       routineId: request.task.routineId,
       provider: GEMINI_PROVIDER_ID,
-      model: "gemini-3.7-flash",
+      model,
       costUsd,
       tokens: result.usage.totalTokenCount,
     });

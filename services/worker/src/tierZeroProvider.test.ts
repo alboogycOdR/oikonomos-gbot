@@ -105,11 +105,11 @@ describe("createTierZeroProvider", () => {
     const config = resolveTierZeroEnvConfig({ GEMINI_API_KEY: "test-key" } as NodeJS.ProcessEnv);
 
     expect(config?.endpoint).toBe(GEMINI_OPENAI_COMPATIBLE_ENDPOINT);
-    expect(config?.model).toBe("gemini-3.7-flash");
+    expect(config?.model).toBe("gemini-3.1-flash-lite");
     expect(config?.providerId).toBe("gemini");
     // Without this the endpoint's missing cost field records every turn as $0.
     expect(config?.costFromUsage).toBeTypeOf("function");
-    expect(config?.costFromUsage?.({ inputTokens: 1_000_000, outputTokens: 0 })).toBeCloseTo(0.75, 6);
+    expect(config?.costFromUsage?.({ inputTokens: 1_000_000, outputTokens: 0 })).toBeCloseTo(0.25, 6);
   });
 
   it("falls back to the FreeLLMAPI router when no Gemini key is configured", async () => {

@@ -1,5 +1,5 @@
 import type { AgentProvider, ProviderCapabilities, ProviderEvent, SendPromptOptions } from "../types.js";
-import { costForUsage } from "../pricing.js";
+import { costForUsage, GEMINI_MODELS } from "../pricing.js";
 
 /**
  * Local stand-in for TASK-094's governed Gemini query surface
@@ -47,7 +47,7 @@ export interface GeminiProviderOptions {
   queryFn?: GeminiQueryFn;
 }
 
-const AVAILABLE_MODELS = ["gemini-3.7-flash"] as const;
+const AVAILABLE_MODELS = GEMINI_MODELS;
 
 /**
  * Gemini, translated over TASK-094's already-governed REST loop. Unlike
@@ -124,7 +124,8 @@ export class GeminiProvider implements AgentProvider {
       }
 
       const usage = result.usageMetadata ?? undefined;
-      const costUsd = costForUsage({
+      const model = opts.model ?? this.defaultModel;
+      const costUsd = costForUsage(model, {
         inputTokens: usage?.promptTokenCount,
         outputTokens: usage?.candidatesTokenCount,
       });
