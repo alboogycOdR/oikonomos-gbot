@@ -8944,11 +8944,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.1 (every run started from a project thread or a task.assigned handoff is attributed to the project), §6.2 (deny before spawn; release on failure), §6.3 (manager budget covers only its own turns), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §5.
-**Owned_Paths:** packages/broker/src/budgetGate.ts, packages/broker/src/budgetGate.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/roleMessageDelivery.ts
+**Owned_Paths:** packages/broker/src/budgetGate.ts, packages/broker/src/budgetGate.test.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts
 **Depends_On:** TASK-300, TASK-299, TASK-311, TASK-315, TASK-316, TASK-318
 **Description:** PROTECTED PATH (packages/broker/**): adversarial review by a model different from the author is mandatory. Add `budget.project_exceeded` and `budget.role_exceeded` to budgetGate's deny vocabulary (the pure gate keeps evaluating platform/provider/routine first, unchanged -- spec 6.2). Call TASK-300's admitRunReservation BEFORE any provider spawn in: the Claude sandbox lane, the Gemini lane (chatRunDriver.ts, where assertChatBudgetAllows runs today at :416), and services/worker/src/subprocessProviders.ts. On a denial, fail the run before spawn with the axis-specific reason. On a run that fails before any spend is recorded, release the reservation on the existing failure path (noteFailureUnrecordedSpend / noteUnrecordedSpend, chatRunDriver.ts ~:307/:409/:520/:1311). Attribution: a run is attributed to a project when its thread is a project's thread (getProjectByThreadId) OR it was created by roleMessageDelivery.ts from a task.assigned handoff (read project_id from the locator TASK-299 adds). AUTHORIZATION (found in ORCH's review of TASK-299): any bot can send the typed project kinds through send_to_role, and TASK-299 can only check thread membership, not the manager flag. So attribute a delivered handoff to a project ONLY when its sender is that project's manager (project_roles.is_manager, TASK-298) and its recipient is on the roster; otherwise deliver it as an ordinary handoff with no project attribution and no project reservation. Without this, a forged task.assigned could burn another project's budget. Reservation size: ADR-019 says 'the provider's documented per-turn maximum, the same ceiling TASK-220 uses', but NO such constant exists in the codebase (verified: only GEMINI_CAP_MISSING_REASON in geminiChatRun.ts). Define one explicit, named, env-overridable per-turn reservation per provider in this task, justify each number in a comment against the real provider cost calculators in packages/agent-providers, and never let an unset value mean 'no reservation'.
 **Acceptance_Criteria:**
@@ -8971,12 +8971,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T11:25:00Z] [ORCH] Now also depends on TASK-316 (both edit chatRunDriver.ts; the failed-run visibility fix goes first).
 - [2026-09-19T13:35:00Z] [ORCH] Now also depends on TASK-318 (both edit chatRunDriver.ts).
 - [2026-09-19T15:33:00Z] [SV:CX9] Fast-forwarded the task branch, repeated preflight, and identified that the subprocess factory is test-only with no project/role attribution inputs or production composition caller.
+- [2026-09-19T16:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to services/worker/src/executeRun.ts and services/worker/test/executeRun.test.ts (no active task owns them). Production Codex/Grok config source: none exists and none is to be invented; live subprocess admission must fail closed (deny) when the provider config is absent, and the test must prove that deny.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: completing live subprocess admission requires services/worker/src/executeRun.ts and services/worker/test/executeRun.test.ts, neither of which is in TASK-301 Owned_Paths; a production Codex/Grok configuration source is also absent.
-**Updated_By:** SV
-**Updated_At:** 2026-09-19T15:33:00Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-19T16:20:00Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
