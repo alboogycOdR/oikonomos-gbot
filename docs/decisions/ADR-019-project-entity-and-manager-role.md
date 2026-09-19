@@ -130,3 +130,21 @@ production. Adversarial, different-model review still required (protected
 path). A real integration test must prove a live `retire_bot` call parks
 pending approval (not autonomous-allow, not unconditional deny) and
 executes only once that approval is granted through the real pipeline.
+
+## Amendment 2026-09-19 (ORCH, owner decision) — managers create and retire bots through the existing `workspace.create_bot` / `workspace.retire_bot` tools
+
+**Owner decision (Alister Witbooi, 2026-09-19):** a Project manager creates and retires bots through the tools that already exist (TASK-282 / TASK-285), not through a new `project.create_role` capability.
+
+**Why.** Two paths to the same effect would mean two places to govern it. The existing path is already live in both chat lanes, already tiered (`workspace.create_bot` is T3_external and human-approvable; `workspace.retire_bot` is T4_irreversible and forced to human approval by the `E6_irreversible_role_mutation` class, per the 2026-09-17 amendment above), and `create_bot` gives the new bot only the default capability floor, with no grants.
+
+**What this changes in §4 and spec §7.**
+1. `project.create_role` is **not declared**. This supersedes the "declared, disabled" row for it. `project.request_grant` stays declared and disabled: capability grants remain human-only.
+2. A manager role is granted `workspace.create_bot` and `workspace.retire_bot` in addition to the six enabled `project.*` capabilities. The grants are written by the human-initiated project route, never by the manager, and are revoked when a role stops being a manager.
+3. **Invariant B is narrowed so that it stays true.** The *project* MCP server's tool set still contains no role or grant verb, and its handlers still reach only project functions. The manager's mount now additionally contains the workspace server's two tools, which are governed by the approval pipeline rather than by absence. The liveness test is extended accordingly: a manager's live `create_bot` call parks pending approval and leaves `roles` and `role_grants` row counts unchanged; after a human approves, exactly one role exists and it holds only floor grants; a manager's `retire_bot` call likewise parks and changes nothing until approved.
+4. A bot a manager creates is not placed on any roster automatically. Roster changes stay human-only in v1 (`PATCH /projects/:id`). A governed `project.add_member` is a possible later change.
+
+**Consequences.** Seven declared rows in spec §7.2 instead of eight. Invariant A and the tier map are unchanged. Every bot creation or retirement costs the human one approval, which is intended.
+
+**Known open point, not decided here.** `retire_bot` today may retire any bot in the tenant (never itself, never cross-tenant). Approval is required each time, but scoping a manager's retirement to roster members or bots it created is a sensible later tightening.
+
+Adversarial review of this amendment by a model other than its author (Claude) is required before it is treated as accepted: TASK-310.
