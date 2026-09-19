@@ -8779,12 +8779,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T03:25:00Z] [ORCH] UNBLOCKED with decisions (see Description). Queued for S5: it runs after TASK-298 because S5 has one worktree; resume from task/TASK-295-s5 (2c0ec0e), dossier at dossiers/TASK-295.md (currently untracked in the S5 worktree).
 - [2026-09-19T10:53:01Z] [SV:S5] Added TOML key form, .codex/** enforcement surface, --always-approve token, and code-level count-pinned exemptions (fail on mismatch either direction). Extra pin for providers.grok.test.ts (3 hits) beyond spec's single grok pin; ORCH to confirm. Amendment C text in dossier. Needs CX9 adversarial review.
 - [2026-09-19T12:05:00Z] [ORCH opus-4-8] CROSS-MODEL REVIEW REQUIRED. Diff touches PROTECTED PATHS infra/ci/banned-modes.mjs, infra/ci/lib/allowlist.mjs, infra/ci/test-banned-modes.mjs (all under infra/ci/**). Author is S5, a Claude model in the same family as ORCH; CLAUDE.md protected-path rule + this task's own Description require adversarial review by a DIFFERENT, non-Claude model. Per owner-approved Standing Rule 1 (2026-09-19), ORCH must NOT merge and must NOT mark rework: Status stays needs_review pending CX9 (Codex/GPT) adversarial review. NB — the task Description says "do not assign it to CX9, whose own invocation vocabulary it governs"; CX9 is nonetheless the only non-Claude unit currently active (GB inactive), so its use as reviewer here is itself a conflict-of-interest question for Alister to resolve before this can clear. Not reviewed on substance by ORCH beyond territory. (Also flag for the eventual reviewer: diff includes dossiers/TASK-295.md, which is outside Owned_Paths — dossier notes, expected, but confirm.)
+- [2026-09-19T13:00:00Z] [ORCH opus-4-8] Post-compaction resume review pass: re-confirmed the cross-model hold stands. TASK-295 is the sole needs_review task in the plan. Territory diff re-verified (dossiers/TASK-295.md + infra/ci/banned-modes.mjs + infra/ci/lib/allowlist.mjs + infra/ci/test-banned-modes.mjs); the three infra/ci/** files keep this under Standing Rule 1. No merge, no rework, no substance verdict by ORCH. Remains blocked on a non-Claude adversarial reviewer AND on Alister's conflict-of-interest ruling re: using CX9 (whose own vocabulary this governs). No other action possible from ORCH here.
 **Artifacts:** infra/ci/banned-modes.mjs, infra/ci/lib/allowlist.mjs, infra/ci/test-banned-modes.mjs, dossiers/TASK-295.md
 **Test_Evidence:** node --test infra/ci/test-banned-modes.mjs: 17 pass, 0 fail; node infra/ci/banned-modes.mjs: clean on current repo (branch 25ec5e4, rebased on master)
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-19T10:53:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-19T13:00:00Z
 
 ### TASK-296
 **Title:** Sandbox office lifecycle -- reap orphaned/idle offices, request a server-side TTL, pause the Gemini lane, alert on leak growth
