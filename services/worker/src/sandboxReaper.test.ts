@@ -29,6 +29,7 @@ import {
   type SandboxClient,
 } from "@oikonomos/sandbox-client";
 
+import { resolveRoleSandbox } from "./chatRunDriver.js";
 import {
   createSandboxReaperScheduler,
   runSandboxReaperSweep,
@@ -320,5 +321,104 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     } finally {
       scheduler.stop();
     }
+  });
+});
+
+integration("resolveRoleSandbox recreates a gone office (TASK-311)", () => {
+  const db: DatabaseOptions = { connectionString: connectionString! };
+  let pool: Pool;
+  const stubDatabase = { listRoleGrants: async () => [] } as unknown as Parameters<typeof resolveRoleSandbox>[1];
+
+  async function cleanup(): Promise<void> {
+    await pool.query(`DELETE FROM role_sandboxes WHERE role_id LIKE 'task-311-%'`);
+    await pool.query(`DELETE FROM roles WHERE role_id LIKE 'task-311-%'`);
+  }
+  beforeAll(async () => { pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig }); await cleanup(); });
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  /** In-memory sandbox server: id -> state. getSandbox 404s for unknown ids. */
+  let globalSeq = 0;
+  const runTag = `${Date.now()}`;
+  function fakeServer(failGet?: () => Error | undefined) {
+    const sandboxes = new Map<string, string>();
+    let counter = 0;
+    const created: string[] = [];
+    const client = {
+      createSandbox: async () => { counter += 1; const id = `t311-${runTag}-${globalSeq += 1}`; sandboxes.set(id, "Running"); created.push(id); return { id, createdAt: "x", status: { state: "Running" } }; },
+      getSandbox: async (id: string) => {
+        const failure = failGet?.();
+        if (failure !== undefined) throw failure;
+        const state = sandboxes.get(id);
+        if (state === undefined) throw new SandboxClientError("not found", "UNEXPECTED_STATUS", { status: 404 });
+        return { id, createdAt: "x", status: { state } };
+      },
+      destroySandbox: async (id: string) => { sandboxes.delete(id); },
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async (id: string) => ({ endpoint: `http://execd.test/${id}` }),
+      listSandboxes: async () => ({ items: [...sandboxes].map(([id, state]) => ({ id, createdAt: "x", status: { state } })), pagination: { page: 1, pageSize: 200, totalItems: 0, totalPages: 1, hasNextPage: false } }),
+    } as unknown as SandboxClient;
+    return { client, sandboxes, created };
+  }
+
+  async function seedRole(roleId: string, sandboxId: string, state: string): Promise<void> {
+    await createRole(db, { roleId, tenantId: "task-311-tenant", name: roleId, title: roleId });
+    await upsertRoleSandbox(db, { roleId, sandboxId, state: state as "Running", execdTokenRef: "secret://x" });
+  }
+
+  it("recreates when the recorded sandbox 404s, overwriting the record", async () => {
+    const server = fakeServer();
+    await seedRole("task-311-404", `destroyed-sb-${runTag}`, "Running");
+    const result = await resolveRoleSandbox(db, stubDatabase, server.client, "task-311-404", []);
+    expect(result.sandboxId).toBe(server.created[0]);
+    expect((await getRoleSandbox(db, "task-311-404"))?.sandboxId).toBe(server.created[0]);
+  });
+
+  for (const dead of ["Terminated", "Failed"] as const) {
+    it(`recreates when the live state is ${dead}`, async () => {
+      const server = fakeServer();
+      server.sandboxes.set(`dead-sb-${dead}-${runTag}`, dead);
+      await seedRole(`task-311-${dead}`, `dead-sb-${dead}-${runTag}`, dead);
+      const result = await resolveRoleSandbox(db, stubDatabase, server.client, `task-311-${dead}`, []);
+      expect(result.sandboxId).toBe(server.created[0]);
+      expect((await getRoleSandbox(db, `task-311-${dead}`))?.sandboxId).toBe(server.created[0]);
+    });
+  }
+
+  for (const [label, status] of [["network", undefined], ["500", 500], ["401", 401]] as const) {
+    it(`fails closed and creates nothing on a non-404 getSandbox failure (${label})`, async () => {
+      const server = fakeServer(() => status === undefined ? new Error("ECONNREFUSED") : new SandboxClientError("boom", "UNEXPECTED_STATUS", { status }));
+      server.sandboxes.set(`live-sb-${label}-${runTag}`, "Running");
+      await seedRole(`task-311-fail-${label}`, `live-sb-${label}-${runTag}`, "Running");
+      await expect(resolveRoleSandbox(db, stubDatabase, server.client, `task-311-fail-${label}`, [])).rejects.toThrow();
+      expect(server.created).toEqual([]);
+      expect((await getRoleSandbox(db, `task-311-fail-${label}`))?.sandboxId).toBe(`live-sb-${label}-${runTag}`);
+    });
+  }
+
+  it("end to end: an idle reap of an active role is followed by a successful turn with a new office", async () => {
+    const server = fakeServer();
+    server.sandboxes.set(`idle-sb-${runTag}`, "Paused");
+    await seedRole("task-311-reap", `idle-sb-${runTag}`, "Paused");
+    await pool.query(`UPDATE roles SET tenant_id = 'task-311-reap-tenant' WHERE role_id = 'task-311-reap'`);
+    await pool.query(`UPDATE role_sandboxes SET last_used_at = now() - interval '10 days' WHERE role_id = 'task-311-reap'`);
+    const summary = await runSandboxReaperSweep(db, server.client, { tenantId: "task-311-reap-tenant", idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    expect(summary.reapedIdle).toBe(1);
+    expect(server.sandboxes.has(`idle-sb-${runTag}`)).toBe(false);
+    const result = await resolveRoleSandbox(db, stubDatabase, server.client, "task-311-reap", []);
+    expect(result.sandboxId).toBe(server.created[0]);
+    expect(server.sandboxes.get(server.created[0]!)).toBe("Running");
+  });
+
+  it("two concurrent turns after a 404 create exactly one office", async () => {
+    const server = fakeServer();
+    await seedRole("task-311-race", `gone-sb-${runTag}`, "Running");
+    const [a, b] = await Promise.all([
+      resolveRoleSandbox(db, stubDatabase, server.client, "task-311-race", []),
+      resolveRoleSandbox(db, stubDatabase, server.client, "task-311-race", []),
+    ]);
+    expect(a.sandboxId).toBe(b.sandboxId);
+    expect(server.created).toHaveLength(1);
+    expect(server.sandboxes.size).toBe(1);
   });
 });
