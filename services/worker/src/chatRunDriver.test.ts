@@ -106,6 +106,10 @@ async function deleteFixtureThreads(pool: Pool, roleIds: readonly string[]): Pro
     "DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
     [roleIds],
   );
+  await pool.query(
+    "DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1::text[]))",
+    [roleIds],
+  );
   await pool.query("DELETE FROM threads WHERE role_id = ANY($1::text[])", [roleIds]);
 }
 
@@ -1365,6 +1369,94 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
     }
   });
+
+  it("surfaces the provider reason in failure_note and posts one plain system message (TASK-316)", async () => {
+    const previousCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const previousApiKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+
+    const exhaustRoleId = "task-316-gemini-denied";
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [exhaustRoleId]);
+    await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [exhaustRoleId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
+    await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
+    await deleteFixtureThreads(pool, [exhaustRoleId]);
+    await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
+    await createRole(options, { roleId: exhaustRoleId, name: exhaustRoleId, title: "TASK-220 exhaust fixture", description: "" });
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = $1", [exhaustRoleId]);
+    const database = new Database(options);
+    try {
+      await database.upsertRoleGrant({ roleId: exhaustRoleId, capabilityId: "fs.read", maxTier: "T0_observe", constraints: {} });
+    } finally {
+      await database.close();
+    }
+    const exhaustTask = await createTask(options, { roleId: exhaustRoleId, title: "TASK-220 exhaust", goal: "Keep reading.", requestedBy: "task-220-suite" });
+    const exhaustThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [exhaustRoleId])).rows[0]!.id;
+
+    const fakeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: "task-220-exhaust-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: "task-220-exhaust-office", createdAt: "2026-09-08T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-220-exhaust" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command === "/usr/bin/sha256sum /etc/claude-code/managed-settings.json") {
+          return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        }
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command === `mkdir -p -- '/workspace/${exhaustRoleId}'`) return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command.startsWith("cat --")) return { stdout: "still more to read", stderr: "", exitCode: 0 };
+        return { stdout: "", stderr: "unexpected command", exitCode: 1 };
+      },
+    };
+
+    // Never returns a final text answer — every call is another granted,
+    // billed Read function call, forcing the adapter's own 12-turn cap to
+    // exhaust. Each call bills real (if small) usage.
+    const leakyKey = "PLACEHOLDERTOKENPLACEHOLDER0000";
+    const fakeGeminiFetch: typeof globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { code: 429, message: `Your prepayment credits are depleted (key ${leakyKey})` } }), { status: 429 })) as typeof globalThis.fetch;
+
+    try {
+      await expect(
+        createChatRunDriver({ ...options, sandboxClient: fakeSandbox, geminiFetch: fakeGeminiFetch, platformCeilingZar: 1_000_000 }).run({ task: exhaustTask, threadId: exhaustThreadId }),
+      ).rejects.toThrow("Gemini run was denied before it could answer: Gemini API HTTP 429");
+
+      const runsPage = await listRuns(options, { taskId: exhaustTask.taskId });
+      const run = runsPage.runs[0]!;
+      expect(run.status).toBe("failed");
+      const note = (await pool.query<{ failure_note: string }>("SELECT failure_note FROM runs WHERE run_id = $1", [run.runId])).rows[0]!.failure_note;
+      expect(note).toContain("429");
+      expect(note).toContain("prepayment credits are depleted");
+      expect(note).not.toContain(leakyKey);
+      const messages = await pool.query<{ role: string; body: string }>("SELECT role, body FROM messages WHERE thread_id = $1 AND role = 'system'", [exhaustThreadId]);
+      expect(messages.rows).toHaveLength(1);
+      expect(messages.rows[0]!.body).toContain("prepayment credits are depleted");
+      expect(messages.rows[0]!.body).not.toContain(leakyKey);
+      expect(messages.rows[0]!.body).not.toContain(run.runId);
+      expect(messages.rows[0]!.body).not.toMatch(/\n\s+at /);
+    } finally {
+      if (previousCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+      else process.env.OIK_PROVIDER_CAP_USD_GEMINI = previousCap;
+      if (previousApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousApiKey;
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [exhaustRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [exhaustRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [exhaustRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [exhaustRoleId]);
+      await deleteFixtureThreads(pool, [exhaustRoleId]);
+      await pool.query("DELETE FROM role_grants WHERE role_id = $1", [exhaustRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [exhaustRoleId]);
+    }
+  });
+
 
   it("throws for an unrecognized provider rather than silently running the Claude lane (TASK-220 R3)", async () => {
     const unknownRoleId = "task-220-unknown-provider";

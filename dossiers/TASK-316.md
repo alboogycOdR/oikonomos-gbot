@@ -1,0 +1,5 @@
+# TASK-316 -- Work Log
+- [2026-09-19] S5: branch task/TASK-316-s5 from master. chatRunDriver.ts: fetch-seam capture of provider HTTP failure (harness-factory adapter drops the reason; protected path, out of territory), sanitizeFailureReason (bounded 240, redacts keys/UUIDs/Bearer, strips stacks), failure_note carries reason, terminal failure inserts one system message (no run_id, avoids FK residue). Park signals return before this. Both lanes share the outer catch. New test passes. Worker suite: 42 failed baseline-equivalent (41 on master + pg-boss shutdown flake); baseline failures are env (platform budget/real provider calls).
+
+## Work Log
+- [2026-09-19T13:50Z] [S5] REWORK R1 fixed: deleteFixtureThreads now deletes messages before threads. Re-ran scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/worker: 25 failed/272 passed of 297 (master baseline 41 failed); no messages_thread_id_fkey errors; the three previously-broken tests (TASK-222, TASK-220 R2/R3) pass; TASK-316 regression test passes. Remaining failures are baseline (budget/real-provider/timeouts).

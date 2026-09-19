@@ -559,10 +559,47 @@ async function runChatTask(
         await parkTaskRun(options, runId);
         return;
       }
-      await failTaskRun(options, runId, error instanceof Error ? error.message : "chat run failed");
+      const failureNote = sanitizeFailureReason(error instanceof Error ? error.message : "chat run failed") || "chat run failed";
+      await failTaskRun(options, runId, failureNote);
+      // TASK-316: a terminal failure must not leave the user in silence.
+      // Best-effort: a write failure here must not mask the original error.
+      await insertMessage(options, { threadId: request.threadId, role: "system", body: failureThreadMessage(failureNote) }).catch((insertError: unknown) => {
+        console.error("failed to post chat run failure message:", insertError);
+      });
     }
     throw error;
   } finally { await database.close(); }
+}
+
+async function describeHttpFailure(response: Response): Promise<string> {
+  let detail = "";
+  try {
+    const body = JSON.parse(await response.clone().text()) as { error?: { message?: unknown } };
+    if (typeof body.error?.message === "string") detail = body.error.message;
+  } catch {
+    // Non-JSON body: the status alone is still the useful part.
+  }
+  return `Gemini API HTTP ${response.status}${detail === "" ? "" : `: ${detail}`}`;
+}
+
+const FAILURE_REASON_MAX = 240;
+
+/** Bounded, single-line, credential- and id-free rendering of a failure reason. */
+export function sanitizeFailureReason(raw: string | undefined): string {
+  if (raw === undefined) return "";
+  const cleaned = raw
+    .split(/\r?\n\s*at\s/)[0]!
+    .replace(/\s+/g, " ")
+    .replace(/\b(?:Bearer|Basic)\s+\S+/gi, "[redacted]")
+    .replace(/\b(?:sk|pk|AIza|ghp|gho|xox[a-z])[-_A-Za-z0-9]{8,}/g, "[redacted]")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]")
+    .trim();
+  return cleaned.length > FAILURE_REASON_MAX ? `${cleaned.slice(0, FAILURE_REASON_MAX)}…` : cleaned;
+}
+
+function failureThreadMessage(reason: string): string {
+  return `I couldn't answer that message: the model provider rejected or could not complete the turn. Reason: ${reason}. The owner can check the provider account, and you can retry once it is resolved.`;
 }
 
 export const HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE = "run.human_takeover_required";
@@ -769,6 +806,7 @@ export async function executeGeminiChatRun(
         workspaceConnector.allowedTools,
       );
 
+  let providerFailure: string | undefined;
   const composed = composeHarness<BrokerDependencies>({
     run: {
       runId: run.runId,
@@ -781,7 +819,13 @@ export async function executeGeminiChatRun(
       // Tools execute inside the role's sandbox, never in this process.
       tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools, ...workspaceTools],
       maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
-      ...(options.geminiFetch === undefined ? {} : { fetch: options.geminiFetch }),
+      // TASK-316: the harness-factory adapter reduces any non-2xx to a bare
+      // `denied: true` with no reason, so observe failures at the fetch seam.
+      fetch: async (...args: Parameters<typeof globalThis.fetch>) => {
+        const response = await (options.geminiFetch ?? globalThis.fetch)(...args);
+        if (!response.ok) providerFailure = await describeHttpFailure(response);
+        return response;
+      },
     },
     allowedTools: [],
     auditSink: completionAuditSink(options, { runId: run.runId, tenantId: request.task.tenantId }),
@@ -825,6 +869,7 @@ export async function executeGeminiChatRun(
     (): Promise<{
       readonly text: string;
       readonly denied: boolean;
+      readonly functionResponses?: readonly { readonly response?: unknown }[];
       readonly usage: {
         readonly promptTokenCount: number;
         readonly candidatesTokenCount: number;
@@ -872,7 +917,11 @@ export async function executeGeminiChatRun(
   // an ordinary completed turn.
   if (takeoverSignal !== undefined) throw new GeminiHumanTakeoverSignal(takeoverSignal.kind, takeoverSignal.detail);
   if (secretRequested) throw new GeminiSecretRequestedSignal();
-  if (result.denied) throw new Error("Gemini run was denied before it could answer.");
+  if (result.denied) {
+    const adapterError = (result.functionResponses?.[0]?.response as { error?: unknown } | undefined)?.error;
+    const reason = sanitizeFailureReason(providerFailure ?? (typeof adapterError === "string" ? adapterError : undefined));
+    throw new Error(reason === "" ? "Gemini run was denied before it could answer." : `Gemini run was denied before it could answer: ${reason}`);
+  }
   return { text: result.text, costUsd };
 }
 
