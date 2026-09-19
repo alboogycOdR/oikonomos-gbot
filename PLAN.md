@@ -8834,7 +8834,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-298
 **Title:** Project manager schema: project_roles, project_task_runs, role and project budget columns, reservation tables (P-1 remainder)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §2 (project_roles, 2.1 one manager per project via partial unique index, 2.3), §3 (project_task_runs), §6.1 (spend_records.project_id), §6.2 (roles.budget_usd, spend_reservations, budget_ledgers); docs/decisions/ADR-019-project-entity-and-manager-role.md §2, §5.
@@ -8848,16 +8848,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A group roster may not exceed GROUP_MEMBER_CAP (6) through the new accessor, proven by test. (spec §1.1)
 - [ ] Spend records can carry a project_id and roles can carry a budget_usd; both read back correctly in real Postgres tests. (spec §6.1, §6.2)
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only, never a direct DATABASE_URL; any failures named as pre-existing with evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-298-s5
+**Started_At:** 2026-09-19T05:49:53Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T05:49:53Z
 
 ### TASK-299
 **Title:** Typed project handoff kinds: task.assigned / task.completed / task.blocked / status.requested (P-2)
