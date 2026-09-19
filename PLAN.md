@@ -9340,7 +9340,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-315
 **Title:** Role budget axis reads zero for real spend -- derive a role's recorded spend from run -> task -> role, not from spend_records.routine_id
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.2 (per-role ceiling, `budget.role_exceeded`), §6.3 (a manager's own turns are charged to the manager, a specialist's to the specialist), §11 (role-axis concurrent admission); docs/decisions/ADR-019-project-entity-and-manager-role.md §5; docs/decisions/ADR-005-control-liveness.md (a control must fail when inert).
@@ -9357,9 +9357,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T10:32:38Z
 **Progress_Notes:**
 - [2026-09-19T09:30:00Z] [ORCH] Filed from ORCH's own check of TASK-300 after autopilot approved it. TASK-301 now depends on this so the broker never wires an inert role axis.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T10:38:01Z] [SV:S5] Role axis recorded spend now derived run->task->role; regression tests added; existing c1 test rewritten to real run/task. Commit 6832849 on task/TASK-315-s5.
+**Artifacts:** packages/db/src/spendReservations.ts, packages/db/src/spendReservations.test.ts, dossiers/TASK-315.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Root . -Filter @oikonomos/db: 271 passed, 2 skipped, 1 failed. spendReservations.test.ts 8/8 pass including 3 new TASK-315 tests and the unmodified role-axis concurrent proof. The one failure is roles.test.ts 'backfill guard' (TASK-084), which I did not compare against the master baseline. Full-repo isolated run failed across many packages in the fresh worktree, likely unbuilt packages, and was not classified against baseline.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T10:32:38Z
+**Updated_At:** 2026-09-19T10:38:01Z
