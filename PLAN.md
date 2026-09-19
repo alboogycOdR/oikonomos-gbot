@@ -8943,7 +8943,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.1 (every run started from a project thread or a task.assigned handoff is attributed to the project), §6.2 (deny before spawn; release on failure), §6.3 (manager budget covers only its own turns), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §5.
@@ -8969,12 +8969,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T11:56:00Z] [ORCH] UNBLOCKED: TASK-315 merged (role axis now derives spend run->task->role and fires for real chat spend); all Depends_On (300,299,311,315) are done. Status blocked -> pending, ready to dispatch. Still a PROTECTED PATH (packages/broker/**) task; CX9 author is non-Claude so its mandatory cross-model adversarial review is satisfied by ORCH's normal review at return.
 - [2026-09-19T11:25:00Z] [ORCH] Now also depends on TASK-316 (both edit chatRunDriver.ts; the failed-run visibility fix goes first).
 - [2026-09-19T13:35:00Z] [ORCH] Now also depends on TASK-318 (both edit chatRunDriver.ts).
+- [2026-09-19T15:33:00Z] [SV:CX9] Fast-forwarded the task branch, repeated preflight, and identified that the subprocess factory is test-only with no project/role attribution inputs or production composition caller.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: completing live subprocess admission requires services/worker/src/executeRun.ts and services/worker/test/executeRun.test.ts, neither of which is in TASK-301 Owned_Paths; a production Codex/Grok configuration source is also absent.
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T15:25:25Z
+**Updated_At:** 2026-09-19T15:33:00Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
