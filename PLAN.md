@@ -9046,7 +9046,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.1 (the exact route list, tenant-scoped via thread ownership), §2.2 (create via the existing group-thread path, roster in one transaction, 404-never-403), §1.2 (charter stored as project-scope profile-tier facts), §3.3 (summary blockedTasks), §8.1 (approvals mirrored by reference), §11 (first bullet).
@@ -9061,8 +9061,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] An approval decided on a project-attributed run appears in GET /projects/:id/decisions by approval_id. (spec §8.1)
 - [ ] GET /workspace/summary reports blockedTasks for a project thread. (spec §3.3, §11)
 - [ ] openapi.ts documents the new routes; full recursive suite via scripts/test-isolated.ps1 -Init only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-304-s5
+**Started_At:** 2026-09-19T14:40:09Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended: manager grant set now includes workspace.create_bot / retire_bot (owner decision), with revocation on demotion.
@@ -9071,8 +9071,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T14:40:09Z
 
 ### TASK-305
 **Title:** Manager charter (Engineering Manager / Chief of Staff) and the changes-only status routine (P-6)
