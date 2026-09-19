@@ -81,4 +81,11 @@ export const BUILTIN_TOOLS = Object.freeze([
     // by adversarial review, TASK-285).
     enforcedActionClasses: Object.freeze(["E6_irreversible_role_mutation"]),
   },
+  { toolName: "mcp__project__list_board", capabilityId: "project.read", defaultTier: "T0_observe", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__create_task", capabilityId: "project.task_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__update_task", capabilityId: "project.task_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__assign_task", capabilityId: "project.assign", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__register_artifact", capabilityId: "project.artifact_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__record_decision", capabilityId: "project.decision_write", defaultTier: "T2_internal", adapter: "mcp:project", mcpServerName: "project", enabled: true },
+  { toolName: "mcp__project__request_grant", capabilityId: "project.request_grant", defaultTier: "T3_external", adapter: "mcp:project", mcpServerName: "project", enabled: false },
 ] as const satisfies readonly DeclaredTool[]);

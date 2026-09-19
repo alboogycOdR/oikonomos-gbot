@@ -24,6 +24,8 @@ Keep projectTools.ts pure-ish (deps injected) so TASK-303's real-composition tes
 
 ## Work Log
 
+- [2026-09-19T13:40:00Z] [CX9] Resumed on task/TASK-302-cx9 after TASK-314 merged; merged current integration base. Preflight: six owned entries inspected -- builtinTools.ts and builtinTools.test.ts exist; the four project tool/server implementation and test files are new territory. Implemented seven broker declarations (six enabled, request_grant disabled), dependency-injected project handlers, and the isolated stdio project MCP server. Worker isolated suite passed after database initialization; broker isolated suite is queued behind the shared test DB lock. IMPORTANT OPERATIONS: after merge, run register-capabilities against production and the test DB before starting control-api, or TASK-277's capability enabled-state drift guard will refuse startup.
+
 - [2026-09-19T10:58:00Z] [CX9] Preflight completed before implementation:
   ```text
   [preflight] TASK-302 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
