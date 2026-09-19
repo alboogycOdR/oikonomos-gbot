@@ -65,6 +65,7 @@ import {
   createTaskExecutionRun,
   getOrCreateThreadForRole,
   getRole,
+  listProjectRoleMembers,
   listRoleMessages,
   markRoleMessageRead,
   resolveRoleRuntime,
@@ -121,6 +122,7 @@ async function deliverRoleMessage(
 
   const thread = await getOrCreateThreadForRole(options, { roleId: message.toRoleId });
   const { provider } = resolveRoleRuntime(recipient);
+  const projectId = await attributedProjectIdForHandoff(options, message);
   const { runId } = await createTaskExecutionRun(options, {
     task: {
       tenantId: message.tenantId,
@@ -129,7 +131,7 @@ async function deliverRoleMessage(
       goal: roleMessageDeliveryGoal(senderName, message.body),
       requestedBy: `role-message:${message.messageId}`,
     },
-    execution: { version: 1, kind: "chat", threadId: thread.id },
+    execution: { version: 1, kind: "chat", threadId: thread.id, ...(projectId === null ? {} : { projectId }) } as never,
     provider,
   });
   await enqueueRunExecution(options.connectionString, runId);
@@ -137,6 +139,16 @@ async function deliverRoleMessage(
   await markRoleMessageRead(options, message.messageId);
 
   return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered", runId };
+}
+
+async function attributedProjectIdForHandoff(options: DatabaseOptions, message: RoleMessage): Promise<string | null> {
+  if (message.handoffKind !== "task.assigned" || message.factRef === null) return null;
+  const ref = message.factRef as { project_id?: unknown };
+  if (typeof ref.project_id !== "string" || ref.project_id.trim().length === 0) return null;
+  const members = await listProjectRoleMembers(options, ref.project_id);
+  const sender = members.find((member) => member.roleId === message.fromRoleId);
+  const recipient = members.find((member) => member.roleId === message.toRoleId);
+  return sender?.isManager === true && recipient !== undefined ? ref.project_id : null;
 }
 
 /**

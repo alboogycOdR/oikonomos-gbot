@@ -20,6 +20,7 @@ import {
   Database,
   getRun,
   getPlatformSpendUsd,
+  getProjectByThreadId,
   getRoleSandbox,
   getLatestThreadSummary,
   getOrInitThreadContext,
@@ -32,6 +33,8 @@ import {
   listMessages,
   recordRunPhaseTiming,
   recordSpend,
+  admitRunReservation,
+  releaseRunReservation,
   resolveRoleRuntime,
   resumeRun as dbResumeRun,
   updateThreadContext,
@@ -41,7 +44,7 @@ import {
   type RoleSandbox,
   type Task,
 } from "@oikonomos/db";
-import { mintBrokerToken, resolveBudgetGate } from "@oikonomos/broker";
+import { mintBrokerToken, resolveBudgetGate, type BudgetGateDenyReason } from "@oikonomos/broker";
 import { resolveEgressPolicy } from "@oikonomos/policy";
 import { createSandboxClient, toOpenSandboxNetworkPolicy, SandboxClientError, type SandboxClient, type SandboxEndpoint, type Sandbox, type SandboxState } from "@oikonomos/sandbox-client";
 import { recordAuditEvent, recordDecision } from "@oikonomos/audit";
@@ -306,6 +309,7 @@ async function runChatTask(
   // Stays "claude" if the run never gets far enough to resolve a role.
   let effectiveProvider: string = "claude";
   let geminiSpendRecorded = false;
+  let reservationAdmitted = false;
   let noteFailureUnrecordedSpend: (() => Promise<void>) | undefined;
   // TASK-230 — per-phase latency instrumentation. Best-effort only: a
   // timing-record failure must never fail the actual run (same principle
@@ -407,15 +411,19 @@ async function runChatTask(
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
     const execution = resolveChatRunExecution(options);
-    const budget = createChatRunBudget(options, request, run.runId, execution);
+    const projectId = await projectAttributionForChatRun(options, request);
+    const budget = createChatRunBudget(options, request, run.runId, execution, projectId);
     noteFailureUnrecordedSpend = async () => {
       if (!geminiSpendRecorded && !budget.reported()) {
         await noteUnrecordedSpend(options, request, run.runId, execution);
       }
+      if (reservationAdmitted) await releaseRunReservation(options, run.runId);
     };
     // Fail closed before any Claude tokens are spent: a ceiling already at
     // capacity must deny the turn, not allow one more unmetered query.
     await assertChatBudgetAllows(budget.check);
+    await assertRunReservationAllows(options, { tenantId: request.task.tenantId, runId: run.runId, roleId: request.task.roleId, projectId, reserveUsd: chatTurnReservationUsd(effectiveProvider) });
+    reservationAdmitted = true;
     void recordTimingSafe(runId, "setup", performance.now() - phaseStart);
     const modelStart = performance.now();
     let result;
@@ -442,7 +450,7 @@ async function runChatTask(
       });
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
         const geminiModel = runtime.model?.trim() || DEFAULT_GEMINI_MODEL;
-        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector, geminiModel);
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector, geminiModel, projectId);
         botText = geminiResult.text;
         geminiSpendRecorded = true;
       } else if (!shouldUseSandbox(options)) {
@@ -750,6 +758,7 @@ export async function executeGeminiChatRun(
   browserConnector?: ConnectorContext,
   workspaceConnector?: ConnectorContext,
   model: string = DEFAULT_GEMINI_MODEL,
+  projectId: string | null = null,
 ): Promise<{ readonly text: string; readonly costUsd: number }> {
   // Gate BEFORE composing anything: ADR-011 §7 forbids an uncapped
   // tool-executing Gemini run, and a denial must cost no tokens.
@@ -911,6 +920,7 @@ export async function executeGeminiChatRun(
       model,
       costUsd,
       tokens: result.usage.totalTokenCount,
+      projectId,
     });
   }
   // TASK-225: checked AFTER spend is recorded above (same reasoning as the
@@ -1365,6 +1375,7 @@ function createChatRunBudget(
   request: ChatRunRequest,
   runId: string,
   execution: ChatRunExecution,
+  projectId: string | null,
 ): { tap: BudgetTapSink; check: BudgetGateCheck; reported: () => boolean } {
   const routineId = request.task.routineId;
   let reportCount = 0;
@@ -1380,12 +1391,40 @@ function createChatRunBudget(
           model: execution.model,
           costUsd: entry.costUsd,
           tokens: entry.tokens ?? null,
+          projectId,
         });
       },
     },
     check: () => evaluateChatBudget(options, routineId),
     reported: () => reportCount > 0,
   };
+}
+
+const CHAT_TURN_RESERVATION_USD = { claude: 0.25, gemini: 0.10 } as const;
+
+function chatTurnReservationUsd(provider: string, env: NodeJS.ProcessEnv = process.env): number {
+  const defaultValue = provider === GEMINI_PROVIDER_ID ? CHAT_TURN_RESERVATION_USD.gemini : CHAT_TURN_RESERVATION_USD.claude;
+  const key = provider === GEMINI_PROVIDER_ID ? "OIK_GEMINI_TURN_RESERVATION_USD" : "OIK_CLAUDE_TURN_RESERVATION_USD";
+  const raw = env[key]?.trim();
+  if (raw === undefined || raw.length === 0) return defaultValue;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${key} must be a finite number >= 0`);
+  return value;
+}
+
+async function assertRunReservationAllows(options: DatabaseOptions, input: { tenantId: string; runId: string; roleId: string; projectId: string | null; reserveUsd: number }): Promise<void> {
+  const result = await admitRunReservation(options, input);
+  if (!result.admitted) {
+    const reason: BudgetGateDenyReason = result.reason;
+    throw new Error(reason);
+  }
+}
+
+async function projectAttributionForChatRun(options: DatabaseOptions, request: ChatRunRequest): Promise<string | null> {
+  const threadProject = await getProjectByThreadId(options, request.threadId);
+  if (threadProject !== null) return threadProject.projectId;
+  const execution = request.task.execution as (Record<string, unknown> | null | undefined);
+  return typeof execution?.projectId === "string" && execution.projectId.length > 0 ? execution.projectId : null;
 }
 
 /**
