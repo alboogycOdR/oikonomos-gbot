@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
+import type { RiskTier } from "./types.js";
 
 /**
  * TASK-276 / ADR-019 §§2,3,4,8 (specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md
@@ -246,6 +247,9 @@ export interface NewProjectTask {
   description?: string;
   ownerRoleId?: string | null;
   doneCriterion?: string;
+  /** Initial state (default `todo`); `blocked` requires `blockedReason` (spec §3). */
+  state?: ProjectTaskState;
+  blockedReason?: string;
   /** `'human:<uid>'` | `'role:<role_id>'` per spec §3. */
   createdBy: string;
 }
@@ -311,13 +315,16 @@ export async function createProjectTask(
   const ownerRoleId = requireOptionalNonEmpty(input.ownerRoleId ?? undefined, "ownerRoleId");
   const doneCriterion = input.doneCriterion ?? "";
   const createdBy = requireNonEmpty(input.createdBy, "createdBy");
+  const state = oneOf(projectTaskStates, input.state ?? "todo", "state");
+  const blockedReason =
+    state === "blocked" ? requireNonEmpty(input.blockedReason ?? "", "blockedReason") : null;
 
   return withPool(options, async (pool) => {
     const result = await pool.query<ProjectTaskRow>(
-      `INSERT INTO project_tasks (project_id, title, description, owner_role_id, done_criterion, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO project_tasks (project_id, title, description, owner_role_id, done_criterion, created_by, state, blocked_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING ${projectTaskColumns}`,
-      [projectId, title, description, ownerRoleId, doneCriterion, createdBy],
+      [projectId, title, description, ownerRoleId, doneCriterion, createdBy, state, blockedReason],
     );
 
     const row = result.rows[0];
@@ -924,6 +931,490 @@ export async function listProjectTaskRunIds(
       [id],
     );
     return result.rows.map((row) => row.run_id);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* TASK-304 (P-5): atomic project create / update, overview, mirror    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Capabilities a manager may hold via the project routes (spec §7.2, §7.2a
+ * v1.3, ADR-019 Amendment 2026-09-19): the enabled `project.*` set plus
+ * `workspace.create_bot`. Anything that writes grants or roles, and
+ * `workspace.retire_bot` until TASK-313, is refused here so a caller bug
+ * cannot widen a manager, regardless of what the route resolved.
+ */
+const MANAGER_GRANT_DENYLIST = new Set([
+  "project.request_grant",
+  "project.create_role",
+  "workspace.retire_bot",
+]);
+
+const CREATE_BOT_CAPABILITY = "workspace.create_bot";
+
+export interface ManagerGrantInput {
+  capabilityId: string;
+  maxTier: RiskTier;
+}
+
+function requireManagerGrants(grants: readonly ManagerGrantInput[]): ManagerGrantInput[] {
+  return grants.map((grant) => {
+    const capabilityId = requireNonEmpty(grant.capabilityId, "capabilityId");
+    const isProjectCapability = capabilityId.startsWith("project.");
+    if (
+      MANAGER_GRANT_DENYLIST.has(capabilityId) ||
+      (!isProjectCapability && capabilityId !== CREATE_BOT_CAPABILITY)
+    ) {
+      throw new Error(`capability ${capabilityId} may not be granted to a project manager.`);
+    }
+    return { capabilityId, maxTier: grant.maxTier };
+  });
+}
+
+export interface ProjectCharterInput {
+  boundaries?: string;
+  checkWithMeBefore?: string;
+}
+
+/** Fact keys of the charter (spec §1.2), scope='project' tier='profile'. */
+export const PROJECT_CHARTER_SOURCE = "project:charter";
+export const projectCharterKeys = {
+  goal: "charter.goal",
+  doneCriterion: "charter.done_criterion",
+  boundaries: "charter.boundaries",
+  checkWithMeBefore: "charter.check_with_me_before",
+} as const;
+
+export interface ProjectRosterInput {
+  roleId: string;
+  responsibility?: string;
+  isManager?: boolean;
+}
+
+export interface NewProjectWithRoster {
+  tenantId: string;
+  name: string;
+  goal: string;
+  doneCriterion: string;
+  charter?: ProjectCharterInput;
+  budgetUsd?: number | null;
+  createdBy: string;
+  title?: string;
+  roster: readonly ProjectRosterInput[];
+  managerGrants?: readonly ManagerGrantInput[];
+}
+
+export interface ProjectWithRoster {
+  project: Project;
+  roster: ProjectRoleMember[];
+}
+
+interface TxClient {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number | null }>;
+}
+
+async function assertRolesInTenant(
+  client: TxClient,
+  tenantId: string,
+  roleIds: readonly string[],
+): Promise<void> {
+  if (roleIds.length === 0) return;
+  const found = await client.query(
+    "SELECT role_id FROM roles WHERE tenant_id = $1 AND status = 'active' AND role_id = ANY($2::text[])",
+    [tenantId, [...roleIds]],
+  );
+  if (found.rows.length !== new Set(roleIds).size) {
+    throw new Error("every roster role must be an active role of this tenant.");
+  }
+}
+
+async function writeCharterFacts(
+  client: TxClient,
+  input: {
+    tenantId: string;
+    projectId: string;
+    goal: string;
+    doneCriterion: string;
+    charter: ProjectCharterInput;
+    visibleTo: readonly string[];
+  },
+): Promise<void> {
+  const entries: Array<[string, string]> = [
+    [projectCharterKeys.goal, input.goal],
+    [projectCharterKeys.doneCriterion, input.doneCriterion],
+  ];
+  const boundaries = input.charter.boundaries?.trim() ?? "";
+  if (boundaries.length > 0) entries.push([projectCharterKeys.boundaries, boundaries]);
+  const checkWithMe = input.charter.checkWithMeBefore?.trim() ?? "";
+  if (checkWithMe.length > 0) entries.push([projectCharterKeys.checkWithMeBefore, checkWithMe]);
+  for (const [key, value] of entries) {
+    // Same row shape @oikonomos/memory writeMemoryFact writes (packages/db
+    // cannot import it: dependency direction), inside the caller's tx so
+    // the charter rolls back with the project.
+    await client.query(
+      `INSERT INTO profile_facts (tenant_id, scope, role_id, project_id, key, value, source, confidence, tier, expires_at, visible_to)
+       VALUES ($1, 'project', NULL, $2, $3, $4, $5, 1.0, 'profile', NULL, $6)`,
+      [input.tenantId, input.projectId, key, value, PROJECT_CHARTER_SOURCE, [...input.visibleTo]],
+    );
+  }
+}
+
+async function grantManager(
+  client: TxClient,
+  roleId: string,
+  grants: readonly ManagerGrantInput[],
+): Promise<void> {
+  for (const grant of grants) {
+    await client.query(
+      `INSERT INTO role_grants (role_id, capability_id, max_tier, constraints) VALUES ($1, $2, $3, '{}')
+       ON CONFLICT (role_id, capability_id) DO UPDATE SET max_tier = EXCLUDED.max_tier`,
+      [roleId, grant.capabilityId, grant.maxTier],
+    );
+  }
+}
+
+/**
+ * Demotion (ADR-019 Amendment 2026-09-19 (b), TASK-310 finding 3): revoke
+ * the manager grants AND invalidate every still-live `workspace.create_bot`
+ * approval issued to the role, in the caller's transaction. Approvals bind
+ * only the action digest and a nonce, not manager state, so a stale approval
+ * would otherwise stay human-grantable. The UPDATE mirrors
+ * `INVALIDATE_PENDING_APPROVAL_SQL` (status guard, consumed_at untouched)
+ * and also covers `granted`-but-unconsumed rows, the same hole one step on.
+ * A role that still manages another project keeps its grants.
+ */
+async function demoteManagerInTx(
+  client: TxClient,
+  roleId: string,
+  exceptProjectId: string,
+): Promise<void> {
+  const other = await client.query(
+    "SELECT 1 FROM project_roles WHERE role_id = $1 AND is_manager AND project_id <> $2 LIMIT 1",
+    [roleId, exceptProjectId],
+  );
+  if ((other.rowCount ?? 0) > 0) return;
+  await client.query(
+    `DELETE FROM role_grants WHERE role_id = $1
+       AND (capability_id LIKE 'project.%' OR capability_id = $2)`,
+    [roleId, CREATE_BOT_CAPABILITY],
+  );
+  await client.query(
+    `UPDATE approvals SET status = 'invalidated'
+      WHERE capability_id = $2 AND consumed_at IS NULL AND status IN ('pending', 'granted')
+        AND run_id IN (SELECT r.run_id FROM runs r JOIN tasks t ON t.task_id = r.task_id WHERE t.role_id = $1)`,
+    [roleId, CREATE_BOT_CAPABILITY],
+  );
+}
+
+function normalizeRoster(roster: readonly ProjectRosterInput[]): Required<ProjectRosterInput>[] {
+  const normalized = roster.map((member) => ({
+    roleId: requireNonEmpty(member.roleId, "roleId"),
+    responsibility: member.responsibility ?? "",
+    isManager: member.isManager ?? false,
+  }));
+  if (new Set(normalized.map((member) => member.roleId)).size !== normalized.length) {
+    throw new Error("roster must not contain duplicates.");
+  }
+  if (normalized.filter((member) => member.isManager).length > 1) {
+    throw new Error("a project has at most one manager.");
+  }
+  return normalized;
+}
+
+/**
+ * POST /projects storage (spec §2.2, §11 bullet 1): the group thread (same
+ * INSERTs as `createGroupThread`), `thread_members`, the `projects` row,
+ * `project_roles`, the charter facts and, if a manager is chosen, its
+ * grants, all in ONE transaction: any failure leaves none of it behind.
+ */
+export async function createProjectWithRoster(
+  options: DatabaseOptions,
+  input: NewProjectWithRoster,
+): Promise<ProjectWithRoster> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const name = requireNonEmpty(input.name, "name");
+  const goal = requireNonEmpty(input.goal, "goal");
+  const doneCriterion = requireNonEmpty(input.doneCriterion, "doneCriterion");
+  const createdBy = requireNonEmpty(input.createdBy, "createdBy");
+  const roster = normalizeRoster(input.roster);
+  if (roster.length < 2) throw new Error("a project roster needs at least two roles.");
+  if (roster.length > PROJECT_ROSTER_CAP) {
+    throw new Error(`a project roster supports at most ${PROJECT_ROSTER_CAP} members.`);
+  }
+  const grants = requireManagerGrants(input.managerGrants ?? []);
+  const manager = roster.find((member) => member.isManager);
+  if (manager === undefined && grants.length > 0) throw new Error("manager grants require a manager.");
+  const budgetUsd = input.budgetUsd ?? null;
+  const title = input.title === undefined ? name : requireNonEmpty(input.title, "title");
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await assertRolesInTenant(client, tenantId, roster.map((member) => member.roleId));
+      const thread = await client.query(
+        "INSERT INTO threads (role_id, title) VALUES (NULL, $1) RETURNING id",
+        [title],
+      );
+      const threadId = thread.rows[0]?.id as string | undefined;
+      if (threadId === undefined) throw new Error("createProjectWithRoster did not create a thread.");
+      for (const member of roster) {
+        await client.query("INSERT INTO thread_members (thread_id, role_id) VALUES ($1, $2)", [
+          threadId,
+          member.roleId,
+        ]);
+      }
+      const projectResult = await client.query(
+        `INSERT INTO projects (tenant_id, thread_id, name, goal, done_criterion, budget_usd, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${projectColumns}`,
+        [tenantId, threadId, name, goal, doneCriterion, budgetUsd, createdBy],
+      );
+      const projectRow = projectResult.rows[0] as ProjectRow | undefined;
+      if (projectRow === undefined) throw new Error("createProjectWithRoster did not return a project.");
+      const members: ProjectRoleMember[] = [];
+      for (const member of roster) {
+        const inserted = await client.query(
+          `INSERT INTO project_roles (project_id, role_id, is_manager, responsibility)
+           VALUES ($1, $2, $3, $4) RETURNING ${projectRoleColumns}`,
+          [projectRow.project_id, member.roleId, member.isManager, member.responsibility],
+        );
+        const row = inserted.rows[0] as ProjectRoleRow | undefined;
+        if (row === undefined) throw new Error("createProjectWithRoster did not return a roster row.");
+        members.push(toProjectRoleMember(row));
+      }
+      await writeCharterFacts(client, {
+        tenantId,
+        projectId: projectRow.project_id,
+        goal,
+        doneCriterion,
+        charter: input.charter ?? {},
+        visibleTo: roster.map((member) => member.roleId),
+      });
+      if (manager !== undefined) await grantManager(client, manager.roleId, grants);
+      await client.query("COMMIT");
+      return { project: toProject(projectRow), roster: members };
+    } catch (error: unknown) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+export interface ProjectUpdate {
+  projectId: string;
+  status?: ProjectStatus;
+  budgetUsd?: number | null;
+  addMembers?: readonly ProjectRosterInput[];
+  removeRoleIds?: readonly string[];
+  /** undefined = unchanged; null = the human manages; a role id = that role. */
+  managerRoleId?: string | null;
+  managerGrants?: readonly ManagerGrantInput[];
+}
+
+/**
+ * PATCH /projects/:id storage: status, budget and roster/manager in one
+ * transaction. Returns null when the project does not exist. A role that
+ * stops being the manager (demoted, or removed from the roster) has its
+ * grants revoked and its live `workspace.create_bot` approvals invalidated
+ * in the same transaction.
+ */
+export async function updateProjectWithRoster(
+  options: DatabaseOptions,
+  input: ProjectUpdate,
+): Promise<ProjectWithRoster | null> {
+  const projectId = requireUuid(input.projectId, "projectId");
+  const status = input.status === undefined ? undefined : oneOf(projectStatuses, input.status, "status");
+  const additions = normalizeRoster(input.addMembers ?? []);
+  const removals = (input.removeRoleIds ?? []).map((roleId) => requireNonEmpty(roleId, "roleId"));
+  const grants = requireManagerGrants(input.managerGrants ?? []);
+  const managerRoleId =
+    input.managerRoleId === undefined || input.managerRoleId === null
+      ? input.managerRoleId
+      : requireNonEmpty(input.managerRoleId, "managerRoleId");
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const locked = await client.query(
+        `SELECT ${projectColumns} FROM projects WHERE project_id = $1 FOR UPDATE`,
+        [projectId],
+      );
+      const current = locked.rows[0] as ProjectRow | undefined;
+      if (current === undefined) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const threadId = current.thread_id;
+      const before = await client.query(
+        `SELECT ${projectRoleColumns} FROM project_roles WHERE project_id = $1`,
+        [projectId],
+      );
+      const beforeRows = before.rows as ProjectRoleRow[];
+      const oldManager = beforeRows.find((row) => row.is_manager)?.role_id ?? null;
+      const roster = new Set(beforeRows.map((row) => row.role_id));
+
+      await assertRolesInTenant(
+        client,
+        current.tenant_id,
+        additions.map((member) => member.roleId).filter((roleId) => !roster.has(roleId)),
+      );
+      for (const roleId of removals) {
+        await client.query("DELETE FROM project_roles WHERE project_id = $1 AND role_id = $2", [projectId, roleId]);
+        await client.query("DELETE FROM thread_members WHERE thread_id = $1 AND role_id = $2", [threadId, roleId]);
+        roster.delete(roleId);
+      }
+      for (const member of additions) {
+        roster.add(member.roleId);
+        if (roster.size > PROJECT_ROSTER_CAP) {
+          throw new Error(`a project roster supports at most ${PROJECT_ROSTER_CAP} members.`);
+        }
+        await client.query(
+          "INSERT INTO thread_members (thread_id, role_id) VALUES ($1, $2) ON CONFLICT (thread_id, role_id) DO NOTHING",
+          [threadId, member.roleId],
+        );
+        await client.query(
+          `INSERT INTO project_roles (project_id, role_id, is_manager, responsibility)
+           VALUES ($1, $2, false, $3)
+           ON CONFLICT (project_id, role_id) DO UPDATE SET responsibility = EXCLUDED.responsibility`,
+          [projectId, member.roleId, member.responsibility],
+        );
+      }
+
+      let newManager = oldManager;
+      if (oldManager !== null && removals.includes(oldManager)) newManager = null;
+      if (managerRoleId !== undefined) newManager = managerRoleId;
+      if (newManager !== null && !roster.has(newManager)) {
+        throw new Error(`role ${newManager} is not on the roster of project ${projectId}.`);
+      }
+      if (newManager !== oldManager) {
+        await client.query("UPDATE project_roles SET is_manager = false WHERE project_id = $1 AND is_manager", [projectId]);
+        if (oldManager !== null) await demoteManagerInTx(client, oldManager, projectId);
+        if (newManager !== null) {
+          await client.query("UPDATE project_roles SET is_manager = true WHERE project_id = $1 AND role_id = $2", [
+            projectId,
+            newManager,
+          ]);
+          await grantManager(client, newManager, grants);
+        }
+      }
+
+      // Keep the charter's ACL equal to the roster: members see it, no one else.
+      await client.query(
+        `UPDATE profile_facts SET visible_to = $3
+          WHERE tenant_id = $1 AND scope = 'project' AND project_id = $2 AND source = $4 AND superseded_by IS NULL`,
+        [current.tenant_id, projectId, [...roster], PROJECT_CHARTER_SOURCE],
+      );
+      const updated = await client.query(
+        `UPDATE projects SET status = COALESCE($2, status),
+                budget_usd = CASE WHEN $3::boolean THEN $4::numeric ELSE budget_usd END,
+                updated_at = now()
+          WHERE project_id = $1 RETURNING ${projectColumns}`,
+        [projectId, status ?? null, input.budgetUsd !== undefined, input.budgetUsd ?? null],
+      );
+      const members = await client.query(
+        `SELECT ${projectRoleColumns} FROM project_roles WHERE project_id = $1 ORDER BY role_id`,
+        [projectId],
+      );
+      await client.query("COMMIT");
+      const row = updated.rows[0] as ProjectRow | undefined;
+      if (row === undefined) throw new Error("updateProjectWithRoster lost the project row.");
+      return { project: toProject(row), roster: (members.rows as ProjectRoleRow[]).map(toProjectRoleMember) };
+    } catch (error: unknown) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+export interface ProjectOverview {
+  charter: Record<string, string>;
+  roster: ProjectRoleMember[];
+  taskCounts: Record<ProjectTaskState, number>;
+  spendUsd: number;
+}
+
+/** GET /projects/:id extras (spec §9.1): charter, roster, board counts, spend. */
+export async function getProjectOverview(
+  options: DatabaseOptions,
+  input: { tenantId: string; projectId: string },
+): Promise<ProjectOverview> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const projectId = requireUuid(input.projectId, "projectId");
+  return withPool(options, async (pool) => {
+    const [facts, roster, counts, spend] = await Promise.all([
+      pool.query<{ key: string; value: string }>(
+        `SELECT key, value FROM profile_facts
+          WHERE tenant_id = $1 AND scope = 'project' AND project_id = $2 AND source = $3 AND superseded_by IS NULL`,
+        [tenantId, projectId, PROJECT_CHARTER_SOURCE],
+      ),
+      pool.query<ProjectRoleRow>(
+        `SELECT ${projectRoleColumns} FROM project_roles WHERE project_id = $1 ORDER BY role_id`,
+        [projectId],
+      ),
+      pool.query<{ state: ProjectTaskState; n: string }>(
+        "SELECT state, count(*) AS n FROM project_tasks WHERE project_id = $1 GROUP BY state",
+        [projectId],
+      ),
+      pool.query<{ total: string | null }>(
+        "SELECT sum(cost_usd) AS total FROM spend_records WHERE tenant_id = $1 AND project_id = $2",
+        [tenantId, projectId],
+      ),
+    ]);
+    const taskCounts = Object.fromEntries(projectTaskStates.map((state) => [state, 0])) as Record<
+      ProjectTaskState,
+      number
+    >;
+    for (const row of counts.rows) taskCounts[row.state] = Number(row.n);
+    return {
+      charter: Object.fromEntries(facts.rows.map((row) => [row.key, row.value])),
+      roster: roster.rows.map(toProjectRoleMember),
+      taskCounts,
+      spendUsd: Number(spend.rows[0]?.total ?? 0),
+    };
+  });
+}
+
+/**
+ * Spec §8.1: an approval decided on a run attributed to a project is
+ * mirrored into `project_decisions` BY REFERENCE (`approval_id`), never by
+ * copying the action render. A run is attributed through `project_task_runs`
+ * (a work item linked to it) or `spend_records.project_id`. Idempotent per
+ * (project, approval). Returns the number of projects mirrored to.
+ */
+export async function mirrorApprovalDecisionToProjects(
+  options: DatabaseOptions,
+  input: { nonce: string; decision: string; decidedBy: string },
+): Promise<number> {
+  const nonce = requireUuid(input.nonce, "nonce");
+  const decision = requireNonEmpty(input.decision, "decision");
+  const decidedBy = requireNonEmpty(input.decidedBy, "decidedBy");
+  return withPool(options, async (pool) => {
+    const result = await pool.query(
+      `WITH a AS (SELECT approval_id, run_id, capability_id FROM approvals WHERE nonce = $1),
+       attributed AS (
+         SELECT pt.project_id, pt.task_id FROM a
+           JOIN project_task_runs ptr ON ptr.run_id = a.run_id
+           JOIN project_tasks pt ON pt.task_id = ptr.task_id
+         UNION
+         SELECT p.project_id, NULL::uuid FROM a
+           JOIN spend_records s ON s.run_id = a.run_id::text AND s.project_id IS NOT NULL
+           JOIN projects p ON p.project_id::text = s.project_id
+       ), one AS (SELECT DISTINCT ON (project_id) project_id, task_id FROM attributed ORDER BY project_id, task_id NULLS LAST)
+       INSERT INTO project_decisions (project_id, task_id, kind, approval_id, summary, actor)
+       SELECT one.project_id, one.task_id, 'approval', a.approval_id,
+              'approval ' || $2::text || ' for ' || a.capability_id, $3
+         FROM one, a
+        WHERE NOT EXISTS (
+          SELECT 1 FROM project_decisions d WHERE d.project_id = one.project_id AND d.approval_id = a.approval_id)`,
+      [nonce, decision, decidedBy],
+    );
+    return result.rowCount ?? 0;
   });
 }
 
