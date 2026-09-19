@@ -8861,7 +8861,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-299
 **Title:** Typed project handoff kinds: task.assigned / task.completed / task.blocked / status.requested (P-2)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §5 (5.1 the four kinds and the locator payload {project_id, task_id, artifact_ids[]}, 5.2 task.completed must reference a registered artifact or run receipt, 5.3 no privilege carried); docs/decisions/ADR-019-project-entity-and-manager-role.md §3; docs/decisions/ADR-012 (locator-only handoffs, the CHECK forbidding a value key).
@@ -8875,16 +8875,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A specialist can send each new kind from BOTH lanes: the Claude-lane MCP tool schema and the Gemini-lane executor schema both accept the new kinds, proven by tests on each. (spec §5.3)
 - [ ] Existing research.complete / draft.ready_for_review behaviour unchanged; existing tests pass unmodified.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-299-cx9
+**Started_At:** 2026-09-19T05:50:15Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T05:50:15Z
 
 ### TASK-300
 **Title:** Atomic budget reservation protocol for the project and role axes -- database layer (P-3a)
