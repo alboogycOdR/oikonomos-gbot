@@ -23,3 +23,17 @@ Keep projectTools.ts pure-ish (deps injected) so TASK-303's real-composition tes
 - Full recursive suite via scripts/test-isolated.ps1 -Init (capabilities re-registered) only.
 
 ## Work Log
+
+- [2026-09-19T10:58:00Z] [CX9] Preflight completed before implementation:
+  ```text
+  [preflight] TASK-302 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   packages/broker/src/builtinTools.ts  -> exists, 84 line(s), 3855 bytes
+    FILE   packages/broker/src/builtinTools.test.ts  -> exists, 149 line(s), 9450 bytes
+    NEW    services/worker/src/projectTools.ts  -> does not exist; parent services/worker/src/ exists
+    NEW    services/worker/src/projectTools.test.ts  -> does not exist; parent services/worker/src/ exists
+    NEW    services/worker/src/projectMcpServer.ts  -> does not exist; parent services/worker/src/ exists
+    NEW    services/worker/src/projectMcpServer.test.ts  -> does not exist; parent services/worker/src/ exists
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+- [2026-09-19T10:58:00Z] [CX9] BLOCKED — MISSING_DEPENDENCY: `packages/db/src/projects.ts` exports `createProjectTask` (which can set `ownerRoleId` only at creation) and `updateProjectTaskState`, but no project-layer operation exists to assign/reassign `project_tasks.owner_role_id` for an existing task. TASK-302 must implement `assign_task` while maintaining Invariant B (worker handlers call project DB functions only), but `packages/db/src/projects.ts` is outside TASK-302 Owned_Paths. Please add/assign a DB-owned API such as `assignProjectTaskOwner(options, { taskId, ownerRoleId })` (ideally also constrained to the task's project), export it from `packages/db/src/index.ts`, then re-dispatch TASK-302. Direct worker SQL would violate §7.3 Invariant B and expanding this builder's territory would violate the ownership firewall. No code changes were made.
