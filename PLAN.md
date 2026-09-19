@@ -9245,3 +9245,24 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-19T07:55:00Z
+
+### TASK-MAINT-2026-09-19
+**Title:** Nightly self-audit failure (2026-09-19)
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** self-generated — nightly audit failure
+**Owned_Paths:** scripts/**, hooks/**, PLAN.md, tests/**
+**Depends_On:** —
+**Description:** harness_audit: harness-audit FAILED (exit 1): === 1/3 AgentShield harness scan === AgentShield Security Report 2026-09-19T07:58:53.879Z Target: E:\DELL-PROJECTS\GROKBOT-CLONE\.claude Grade: B (79/100) Score Breakdown Secrets ████████████████████ 100 Permissions ███████████████████░ 93 Hooks ████████████████████ 100 MCP Servers ████████████████████ 100 Agents ░░░░░░░░░░░░░░░░░░░░ 0 Harness Adapters Matched: 2/9 Claude Code (strong) Evidence: settings.json Project-local Templates (strong) Evidence: commands Summary Files scanned: 7 Findings: 15 total — 2 critical, 4 high, 7 medium, 2 low, 0 info Findings ● CRITICAL (2) ● Missing prompt defe…[truncated] | validate_plan: PLAN.md illegal: TASK-131 (line 3876): illegal Assigned_To 'CX9' (allowed: ['CX', 'GB', 'S5', 'TBD']) | TASK-138 (line 4078)…[truncated]
+**Acceptance_Criteria:**
+- [ ] All nightly audit steps pass: harness_audit, validate_plan, pytest
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-19T07:58:39Z
