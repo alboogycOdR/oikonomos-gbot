@@ -22,3 +22,16 @@ Admission belongs next to assertChatBudgetAllows so ordering is obvious: pure ga
 - Full recursive suite via scripts/test-isolated.ps1 only.
 
 ## Work Log
+
+- [2026-09-19T09:52:00Z] [CX9] Preflight completed before implementation:
+  ```text
+  [preflight] TASK-301 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   packages/broker/src/budgetGate.ts  -> exists, 400 line(s), 17124 bytes
+    NEW    packages/broker/src/budgetGate.test.ts  -> does not exist; parent packages/broker/src/ exists
+    FILE   services/worker/src/chatRunDriver.ts  -> exists, 2085 line(s), 107125 bytes
+    FILE   services/worker/src/chatRunDriver.test.ts  -> exists, 2474 line(s), 152744 bytes
+    FILE   services/worker/src/subprocessProviders.ts  -> exists, 254 line(s), 11673 bytes
+    FILE   services/worker/src/roleMessageDelivery.ts  -> exists, 553 line(s), 27706 bytes
+  ```
+- [2026-09-19T09:52:00Z] [CX9] Blocked before code changes: live PLAN.md lists TASK-315 as `pending`, while TASK-301 depends on it. The current merged `packages/db/src/spendReservations.ts` still derives role spend from `spend_records.routine_id = roleId`; real chat spend uses the routine id (or null), so wiring the role reservation axis now would leave `budget.role_exceeded` inert. Resume after TASK-315 is reviewed and merged, then rebase/refresh this branch from the integration head and implement the reservation/admission wiring.

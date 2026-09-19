@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaultPoolConfig, type DatabaseOptions } from "./database.js";
 import {
   addProjectRoleMember,
+  assignProjectTaskOwner,
   createProject,
   createProjectTask,
   linkProjectTaskRun,
@@ -27,6 +28,7 @@ integration("packages/db projects — roster, manager, task-run link (TASK-298)"
   const tenantId = `task-298-${randomUUID()}`;
   const rolePrefix = `task-298-role-${randomUUID().slice(0, 8)}`;
   const roleIds = Array.from({ length: PROJECT_ROSTER_CAP + 1 }, (_, i) => `${rolePrefix}-${i}`);
+  const assignmentOwnerRoleId = randomUUID();
   const threadIds: string[] = [];
   const projectIds: string[] = [];
 
@@ -66,6 +68,7 @@ integration("packages/db projects — roster, manager, task-run link (TASK-298)"
     await pool.query("DELETE FROM runs WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM tasks WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM roles WHERE role_id LIKE $1", [`${rolePrefix}%`]);
+    await pool.query("DELETE FROM roles WHERE role_id = $1", [assignmentOwnerRoleId]);
   }
 
   beforeAll(async () => {
@@ -76,6 +79,10 @@ integration("packages/db projects — roster, manager, task-run link (TASK-298)"
         [roleId, tenantId],
       );
     }
+    await pool.query(
+      "INSERT INTO roles (role_id, tenant_id, name, title, description, status) VALUES ($1, $2, $1, $1, '', 'active')",
+      [assignmentOwnerRoleId, tenantId],
+    );
   });
 
   afterAll(async () => {
@@ -167,6 +174,22 @@ integration("packages/db projects — roster, manager, task-run link (TASK-298)"
     expect(await listProjectTaskRunIds(options, task.taskId)).toEqual([runId]);
     await expect(linkProjectTaskRun(options, { taskId: task.taskId, runId: randomUUID() })).rejects.toThrow();
   });
+
+  it("assigns an existing task owner without imposing roster membership, and advances updated_at", async () => {
+    const { projectId } = await newProject();
+    const task = await createProjectTask(options, { projectId, title: "unassigned", createdBy: "human:1" });
+    await pool.query("SELECT pg_sleep(0.01)");
+
+    const assigned = await assignProjectTaskOwner(options, task.taskId, assignmentOwnerRoleId);
+    expect(assigned).not.toBeNull();
+    expect(assigned?.ownerRoleId).toBe(assignmentOwnerRoleId);
+    expect(assigned?.updatedAt.getTime()).toBeGreaterThan(task.updatedAt.getTime());
+    expect((await listProjectRoleMembers(options, projectId)).map((member) => member.roleId)).not.toContain(assignmentOwnerRoleId);
+  });
+
+  it("returns null when assigning a non-existent task", async () => {
+    await expect(assignProjectTaskOwner(options, randomUUID(), assignmentOwnerRoleId)).resolves.toBeNull();
+  });
 });
 
 describe("packages/db projects — roster input validation (no DB, TASK-298)", () => {
@@ -174,5 +197,10 @@ describe("packages/db projects — roster input validation (no DB, TASK-298)", (
   it("rejects a malformed projectId before touching the pool", async () => {
     await expect(addProjectRoleMember(options, { projectId: "nope", roleId: "r" })).rejects.toThrow(/UUID/);
     await expect(removeProjectRoleMember(options, { projectId: "nope", roleId: "r" })).rejects.toThrow(/UUID/);
+  });
+
+  it("validates taskId and ownerRoleId as UUIDs before touching the pool", async () => {
+    await expect(assignProjectTaskOwner(options, "nope", randomUUID())).rejects.toThrow(/UUID/);
+    await expect(assignProjectTaskOwner(options, randomUUID(), "nope")).rejects.toThrow(/UUID/);
   });
 });

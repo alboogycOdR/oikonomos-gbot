@@ -177,7 +177,37 @@ try {
     if ($GitCfg.git -and $GitCfg.git.base_branch) { $BaseBranch = $GitCfg.git.base_branch }
 } catch { $BaseBranch = "main" }
 
+# 2026-09-19: `git worktree remove` (run by a review session after merging a
+# task) unregisters the worktree but can fail to delete the directory itself
+# when node_modules files are locked, leaving a shell with NO .git entry. The
+# guard below then refused to dispatch that builder on every autopilot tick
+# (S5 sat idle for an hour with TASK-315 ready). A directory with no .git that
+# git no longer lists is not anyone's work -- move it aside (never delete) and
+# let the normal create path proceed. A directory WITH a .git is still a
+# foreign checkout and still stops here.
+$wtEmptyLeftover = $false
 if (Test-Path $Wt) {
+    $stillRegistered = @(git -C $RepoRoot worktree list --porcelain | Where-Object { $_ -like "worktree *" } |
+        ForEach-Object { Normalize-WtPath ($_.Substring(9)) }) -contains (Normalize-WtPath $Wt)
+    if (-not $stillRegistered -and -not (Test-Path (Join-Path $Wt ".git"))) {
+        $aside = "$Wt.stale-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+        try {
+            Move-Item -LiteralPath $Wt -Destination $aside -ErrorAction Stop
+            Write-Host "[dispatch] $Wt was an unregistered leftover (no .git) -- moved aside to $aside." -ForegroundColor Yellow
+        } catch {
+            Write-Warning "[dispatch] could not move leftover $Wt aside: $($_.Exception.Message)"
+        }
+    }
+    # The directory ROOT can stay locked by some process even after every file in it
+    # is gone (it cannot be renamed). An empty directory is a perfectly good target
+    # for `git worktree add`, so treat it as absent instead of refusing to dispatch.
+    if ((Test-Path $Wt) -and -not $stillRegistered -and @(Get-ChildItem -LiteralPath $Wt -Force -ErrorAction SilentlyContinue).Count -eq 0) {
+        $wtEmptyLeftover = $true
+        Write-Host "[dispatch] $Wt is an empty unregistered directory -- reusing it for a fresh worktree." -ForegroundColor Yellow
+    }
+}
+
+if ((Test-Path $Wt) -and -not $wtEmptyLeftover) {
     # Reuse only if it's actually a registered worktree of THIS repo -- not
     # just "a directory happens to be sitting there."
     $registeredRaw = git -C $RepoRoot worktree list --porcelain | Where-Object { $_ -like "worktree *" } | ForEach-Object { $_.Substring(9) }

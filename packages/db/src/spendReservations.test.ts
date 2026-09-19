@@ -18,6 +18,8 @@ integration("packages/db spendReservations — atomic admission (TASK-300)", () 
   const roleIds: string[] = [];
   const projectIds: string[] = [];
   const threadIds: string[] = [];
+  const taskIds: string[] = [];
+  const spendRunIds: string[] = [];
   const month = monthStartKey().slice(0, 7);
 
   async function newRole(budget: number | null): Promise<string> {
@@ -51,10 +53,39 @@ integration("packages/db spendReservations — atomic admission (TASK-300)", () 
   async function cleanup(): Promise<void> {
     await pool.query("DELETE FROM spend_reservations WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM spend_records WHERE run_id LIKE $1", [`task-300-${tag}%`]);
+    await pool.query("DELETE FROM spend_records WHERE run_id = ANY($1)", [spendRunIds]);
+    await pool.query("DELETE FROM runs WHERE run_id = ANY($1)", [spendRunIds]);
+    await pool.query("DELETE FROM tasks WHERE task_id = ANY($1)", [taskIds]);
     await pool.query("DELETE FROM budget_ledgers WHERE axis_id = ANY($1) OR axis_id = ANY($2)", [projectIds, roleIds]);
     await pool.query("DELETE FROM projects WHERE project_id = ANY($1)", [projectIds]);
     await pool.query("DELETE FROM threads WHERE id = ANY($1)", [threadIds]);
     await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [roleIds]);
+  }
+
+  /** A task + run for a role; returns the run id (a uuid) for recordSpend. */
+  async function newRun(roleId: string | null): Promise<string> {
+    let taskId: string | null = null;
+    if (roleId !== null) {
+      const t = await pool.query<{ task_id: string }>(
+        "INSERT INTO tasks (tenant_id, role_id, title, goal, requested_by) VALUES ($1, $2, 't', 'g', 'human:1') RETURNING task_id",
+        [tenantId, roleId],
+      );
+      taskId = t.rows[0]!.task_id;
+      taskIds.push(taskId);
+    } else {
+      const t = await pool.query<{ task_id: string }>(
+        "INSERT INTO tasks (tenant_id, role_id, title, goal, requested_by) VALUES ($1, 'no-role', 't', 'g', 'human:1') RETURNING task_id",
+        [tenantId],
+      );
+      taskId = t.rows[0]!.task_id;
+      taskIds.push(taskId);
+    }
+    const r = await pool.query<{ run_id: string }>(
+      "INSERT INTO runs (task_id, tenant_id, provider) VALUES ($1, $2, 'codex') RETURNING run_id",
+      [taskId, tenantId],
+    );
+    spendRunIds.push(r.rows[0]!.run_id);
+    return r.rows[0]!.run_id;
   }
 
   const run = (n: string) => `task-300-${tag}-${n}`;
@@ -131,14 +162,15 @@ integration("packages/db spendReservations — atomic admission (TASK-300)", () 
   it("open reservations and recorded spend both count against the ceiling", async () => {
     const roleId = await newRole(10);
     const base = { tenantId, projectId: null, roleId, month };
-    expect((await admitRunReservation(options, { ...base, runId: run("c1"), reserveUsd: 4 })).admitted).toBe(true);
+    const c1 = await newRun(roleId);
+    expect((await admitRunReservation(options, { ...base, runId: c1, reserveUsd: 4 })).admitted).toBe(true);
     // 4 open + 7 > 10
     expect(await admitRunReservation(options, { ...base, runId: run("c2"), reserveUsd: 7 })).toMatchObject({
       admitted: false,
       reason: "budget.role_exceeded",
     });
-    // recording spend (routine_id carries the role) releases c1 and counts 8 as spent
-    await recordSpend(options, { runId: run("c1"), routineId: roleId, provider: "codex", model: "m", costUsd: 8 });
+    // recording spend on a real run of the role releases c1 and counts 8 as spent
+    await recordSpend(options, { runId: c1, routineId: null, provider: "codex", model: "m", costUsd: 8 });
     expect((await admitRunReservation(options, { ...base, runId: run("c3"), reserveUsd: 3 })).admitted).toBe(false);
     expect((await admitRunReservation(options, { ...base, runId: run("c4"), reserveUsd: 2 })).admitted).toBe(true);
   });
@@ -188,5 +220,32 @@ integration("packages/db spendReservations — atomic admission (TASK-300)", () 
     expect(result).toEqual({ admitted: true, reservations: [] });
     const ledgers = await pool.query("SELECT 1 FROM budget_ledgers WHERE axis_id = $1", [roleId]);
     expect(ledgers.rowCount).toBe(0);
+  });
+
+  it("TASK-315: role spend is derived run->task->role; plain-chat (routine_id null) spend counts", async () => {
+    const roleId = await newRole(5);
+    const runId = await newRun(roleId);
+    // Same call shape chat runs use: routineId null.
+    await recordSpend(options, { runId, routineId: null, provider: "codex", model: "m", costUsd: 4.5 });
+    expect(
+      await admitRunReservation(options, { tenantId, runId: run("t1"), projectId: null, roleId, reserveUsd: 1, month }),
+    ).toMatchObject({ admitted: false, reason: "budget.role_exceeded", axis: "role" });
+  });
+
+  it("TASK-315: a routine run's spend also counts, and routine_id is left alone", async () => {
+    const roleId = await newRole(5);
+    const runId = await newRun(roleId);
+    const rec = await recordSpend(options, { runId, routineId: "routine-x", provider: "codex", model: "m", costUsd: 4.5 });
+    expect(rec.routineId).toBe("routine-x");
+    expect((await admitRunReservation(options, { tenantId, runId: run("t2"), projectId: null, roleId, reserveUsd: 1, month })).admitted).toBe(false);
+  });
+
+  it("TASK-315: other roles' spend, task-less runs and non-UUID run ids are not counted and do not raise", async () => {
+    const roleId = await newRole(5);
+    const other = await newRole(50);
+    await recordSpend(options, { runId: await newRun(other), routineId: null, provider: "codex", model: "m", costUsd: 100 });
+    await recordSpend(options, { runId: run("not-a-uuid"), routineId: roleId, provider: "codex", model: "m", costUsd: 100 });
+    await recordSpend(options, { runId: randomUUID(), routineId: null, provider: "codex", model: "m", costUsd: 100 });
+    expect((await admitRunReservation(options, { tenantId, runId: run("t3"), projectId: null, roleId, reserveUsd: 5, month })).admitted).toBe(true);
   });
 });

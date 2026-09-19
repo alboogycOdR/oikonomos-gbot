@@ -7,8 +7,8 @@ import { withPool, type DatabaseOptions } from "./database.js";
  * the project and role budget axes. Amounts are USD exactly as ADR-019
  * specifies; no currency conversion happens in this layer.
  *
- * Role-axis recorded spend is read from spend_records.routine_id = roleId
- * (spend_records has no role column; attribution wiring is TASK-301).
+ * Role-axis recorded spend is derived run -> task -> role (TASK-315);
+ * spend_records has no role column and routine_id stays the routine's own id.
  */
 export type BudgetAxis = "project" | "role";
 export type BudgetDenialReason = "budget.project_exceeded" | "budget.role_exceeded";
@@ -74,12 +74,23 @@ async function loadCeiling(client: PoolClient, axis: BudgetAxis, axisId: string)
 }
 
 async function committedUsd(client: PoolClient, axis: BudgetAxis, axisId: string, monthStart: string): Promise<number> {
-  const spendColumn = axis === "project" ? "project_id" : "routine_id";
+  // Project spend is stamped on spend_records.project_id. A role's spend is
+  // derived run -> task -> role (TASK-315): spend_records has no role column and
+  // routine_id must stay the routine's own id. Join on text so a non-UUID run id
+  // in spend_records can never raise a cast error.
+  const recordedSql =
+    axis === "project"
+      ? `SELECT COALESCE(SUM(cost_usd), 0) FROM spend_records
+         WHERE project_id = $1
+           AND occurred_at >= $2::date AND occurred_at < ($2::date + interval '1 month')`
+      : `SELECT COALESCE(SUM(s.cost_usd), 0) FROM spend_records s
+         JOIN runs r ON r.run_id::text = s.run_id
+         JOIN tasks t ON t.task_id = r.task_id
+         WHERE t.role_id = $1
+           AND s.occurred_at >= $2::date AND s.occurred_at < ($2::date + interval '1 month')`;
   const result = await client.query<QueryResultRow & { total: string }>(
     `SELECT
-       (SELECT COALESCE(SUM(cost_usd), 0) FROM spend_records
-         WHERE ${spendColumn} = $1
-           AND occurred_at >= $2::date AND occurred_at < ($2::date + interval '1 month'))
+       (${recordedSql})
        +
        (SELECT COALESCE(SUM(reserved_usd), 0) FROM spend_reservations
          WHERE axis = $3 AND axis_id = $1 AND released_at IS NULL
