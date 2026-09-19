@@ -8958,7 +8958,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.2 (the exact eight-row tool table), §7.3 (Invariant A already shipped as TASK-277; Invariant B: handlers reach only packages/db project functions), §3.1 (state machine + audited transitions), §3.2 (owner must be on the roster; assign sends task.assigned), §4.1 (workspace_file under /oikonomos/workspace/projects/<project_id>/ via resolveWorkspacePath), §6.4 (fan-out cap = roster size, audited project.fanout_capped); docs/decisions/ADR-019-project-entity-and-manager-role.md §4.
@@ -8979,12 +8979,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended for the owner decision that managers create bots through workspace.create_bot: eight rows -> seven, and now waits for TASK-310 (non-Claude review of the ADR-019 amendment) before dispatch.
+- [2026-09-19T08:43:01Z] [SV:CX9] Preflight complete; implementation cannot satisfy assign_task plus Invariant B because the DB project API has no existing-task owner assignment operation.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: packages/db needs an exported project-layer assign/reassign task-owner API; direct worker SQL violates Â§7.3 Invariant B and packages/db is outside TASK-302 ownership.
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T08:33:57Z
+**Updated_At:** 2026-09-19T08:43:01Z
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
