@@ -8977,7 +8977,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.2 (the exact eight-row tool table), §7.3 (Invariant A already shipped as TASK-277; Invariant B: handlers reach only packages/db project functions), §3.1 (state machine + audited transitions), §3.2 (owner must be on the roster; assign sends task.assigned), §4.1 (workspace_file under /oikonomos/workspace/projects/<project_id>/ via resolveWorkspacePath), §6.4 (fan-out cap = roster size, audited project.fanout_capped); docs/decisions/ADR-019-project-entity-and-manager-role.md §4.
@@ -9004,12 +9004,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T11:50:00Z] [ORCH] UNBLOCKED: CX9 correctly found a gap in the decomposition -- the new project tools need human-readable approval descriptions in packages/broker/src/describe.ts. Owned_Paths widened by describe.ts and describe.test.ts (protected path, CX9-authored, so Claude review satisfies the cross-model rule). Resume on task/TASK-302-cx9.
 - [2026-09-19T12:23:01Z] [SV:CX9] Project declarations, handlers, MCP server, descriptions, and focused tests are implemented; broker 188/188 and TASK-302 worker tests 4/4 pass. The full recursive run was classified in the dossier.
 - [2026-09-19T13:28:02Z] [SV:CX9] Updated registerCapabilities test for the seventh project connector; worker typecheck passes. Isolated worker suite remains active and must be collected/classified before the required recursive isolated suite. NEXT: Collect and classify the active isolated worker suite, then run the full recursive isolated suite and submit for review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T14:13:01Z] [SV:CX9] Completed the widened project connector registration coverage and committed verification handoff (993b20f). Post-merge: rerun worker register-capabilities against production and test DB before control-api startup.
+**Artifacts:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, packages/broker/src/describe.ts, packages/broker/src/describe.test.ts, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/projectMcpServer.ts, services/worker/src/projectMcpServer.test.ts, services/worker/src/registerCapabilities.test.ts, dossiers/TASK-302.md
+**Test_Evidence:** Isolated worker suite: projectTools 3/3, projectMcpServer 1/1, registerCapabilities 3/3 passed (including PostgreSQL idempotency). Recursive isolated suite was initialized with re-registered capabilities and executed; dashboard 158/158 and agent-providers 104/104 passed, with no TASK-302 failure observed. Prior full-run classification records unrelated DB/control-api/eval/sandbox-provider failures. git diff --check clean.
 **Review_Findings:** —
 **Blocked_Reason:** — [RESOLVED 2026-09-19T14:45:00Z ORCH opus-4-8] Owned_Paths widened +services/worker/src/registerCapabilities.test.ts (7th instance of the recurring exact-shape-assertion gap class; verified owned by no other ACTIVE task — 295=infra/ci, 316=chatRunDriver, 317=dossier — so disjoint-safe). Update its connectorId expectation (master asserts 6: gmail/google-calendar/google-drive/steel-browser/builtins/workspace) to include the new project registration (7th). Status blocked→in_progress; re-dispatch CX9.
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T13:28:02Z
+**Updated_At:** 2026-09-19T14:13:01Z
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
