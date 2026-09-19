@@ -8901,7 +8901,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-300
 **Title:** Atomic budget reservation protocol for the project and role axes -- database layer (P-3a)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.2 (the full reservation protocol: SELECT ... FOR UPDATE ledger rows, recorded spend + open reservations per axis, deny before spawn, release exactly once), §11 (two simultaneous near-limit admissions -> at most one admitted); docs/decisions/ADR-019-project-entity-and-manager-role.md §5 'Atomic admission' steps 1-4.
@@ -8919,12 +8919,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T08:30:30Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T08:53:01Z] [SV:S5] admitRunReservation/releaseRunReservation implemented; recordSpend releases reservations in same tx; concurrency proven with real Postgres lock-held race on both axes. Role-axis recorded spend keyed on spend_records.routine_id=roleId (no role column) - TASK-301 must attribute accordingly.
+**Artifacts:** packages/db/src/spendReservations.ts, packages/db/src/spendReservations.test.ts, packages/db/src/spend.ts, packages/db/src/index.ts, dossiers/TASK-300.md
+**Test_Evidence:** scripts/test-isolated.ps1 full recursive suite green (db: 45 files, 269 passed 2 skipped incl. 5 new spendReservations tests; other packages all passed); tsc --noEmit on @oikonomos/db clean. Test DB needed -Init to apply migration 030.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T08:30:30Z
+**Updated_At:** 2026-09-19T08:53:01Z
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
