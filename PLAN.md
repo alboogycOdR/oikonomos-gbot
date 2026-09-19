@@ -9170,7 +9170,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-310
 **Title:** Adversarial review of ADR-019 Amendment 2026-09-19 (managers create and retire bots through workspace.create_bot / retire_bot) by a non-Anthropic model
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/decisions/ADR-019-project-entity-and-manager-role.md (Amendment 2026-09-19 and the 2026-09-17 amendment it builds on); specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md v1.2 (sections 0, 7.2, 7.2a, 7.3, 11); CLAUDE.md protected paths (docs/decisions/**); docs/decisions/ADR-019-review-cx9-2026-09.md (the earlier review this follows).
@@ -9185,12 +9185,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T07:45:17Z
 **Progress_Notes:**
 - [2026-09-19T03:25:00Z] [ORCH] Filed with the manager-route amendment. TASK-302 now depends on this so the broker tools are not built on an unreviewed design change.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T07:58:39Z] [SV:CX9] Completed adversarial ADR-019 amendment review; identified required manager-retirement scoping and demotion/approval lifecycle changes.
+**Artifacts:** dossiers/TASK-310.md
+**Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Filter worker â€” exit 0; relevant workspaceTools.test.ts 7/7 passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T07:45:17Z
+**Updated_At:** 2026-09-19T07:58:39Z
 
 ### TASK-311
 **Title:** Sandbox office lifecycle defect: a role whose recorded sandbox is gone (or Terminated/Failed) fails every turn forever -- recreate it
