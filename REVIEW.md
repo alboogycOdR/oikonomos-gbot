@@ -1750,3 +1750,24 @@ TASK-292's cleanup hours ago -- worth a follow-up look at whether the suite's ow
 load is enough to reproduce contention on its own.
 
 Merged --no-ff to master.
+
+## TASK-299 | CX9 | rework | 2026-09-19T07:20:00Z
+
+Typed project handoff kinds (task.assigned / completed / blocked, status.requested).
+Author CX9 (GPT); reviewer ORCH (Claude) -- different model families, as the protected-path rule requires.
+
+Territory clean. Migration 031 widens the CHECK and its down restores the original; the no-value CHECK
+from 007 is untouched. Locator validation is strict (exact key set, UUIDs, task.completed needs an
+artifact). Real-Postgres tests cover accepted kinds, wrong-project artifact, missing artifact.
+
+Rework, four items: (1) blocking -- services/workspace/src/mailbox.test.ts:28 still pins the old
+two-kind list, a deterministic red test inside the task's own territory, which the builder's report
+lumped in with "pre-existing" failures (master's workspace package is green); (2) blocking, ACL -- any
+bot can send the project kinds to any bot about any project; require both sender and recipient to be on
+the project's group-thread roster; (3) blocking -- artifact_ids verified only for task.completed, must
+be verified for every kind; (4) test gaps (cross-project task_id, non-UUID artifact id).
+Accepted residual: the existence check is not tenant-scoped (role_messages is stamped 'basileia' while
+projects carry the real tenant -- TASK-273 tenant-model finding); TASK-304 must tenant-scope reads.
+Consequence recorded downstream: TASK-301 may attribute spend from a handoff only when the sender is the
+project's manager and the recipient is on the roster.
+first-pass: no.
