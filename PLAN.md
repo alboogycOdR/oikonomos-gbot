@@ -9195,7 +9195,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-311
 **Title:** Sandbox office lifecycle defect: a role whose recorded sandbox is gone (or Terminated/Failed) fails every turn forever -- recreate it
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-010-persistent-office-computer-pivot.md (persistent per-role office; a removed office costs only a cold start); TASK-296 (merged; this fixes a defect found on its deployment); services/worker/src/chatRunDriver.ts resolveRoleSandbox and its own comment "a genuinely dead sandbox ... must still fail closed".
@@ -9214,12 +9214,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-19T07:44:07Z
 **Progress_Notes:**
 - [2026-09-19T07:55:00Z] [ORCH] Filed as critical from the TASK-296 deployment. Independent of TASK-298 (no db changes needed: upsertRoleSandbox already overwrites). Do not widen into cross-tenant reaper coverage -- that is TASK-312.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-19T07:58:39Z] [SV:S5] resolveRoleSandbox recreates the office on 404/Terminated/Failed, fails closed on other getSandbox errors, and serialises resolution per role in-process. 8 new real-Postgres tests (reap-then-turn e2e, race, fail-closed) pass; remaining worker failures match master baseline. Needs non-Sonnet-5 review.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/sandboxReaper.test.ts, dossiers/TASK-311.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Root . -Filter @oikonomos/worker: sandboxReaper.test.ts 19/19 pass (incl. 8 new TASK-311 tests). Full worker run 269 passed / 27 failed; master baseline also 27 failed (chatRunDriver.test.ts x19 + chatRunDriver.ts x6 identical, plus 2 timeouts that vary run to run). Stale packages/db/dist caused extra project_id failures until rebuilt.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T07:44:07Z
+**Updated_At:** 2026-09-19T07:58:39Z
 
 ### TASK-312
 **Title:** Sandbox reaper only sweeps the worker's own tenant -- cover every tenant's offices
