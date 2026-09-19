@@ -1,0 +1,23 @@
+# TASK-303 -- Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
+
+## Brief
+Mount TASK-302's project MCP server for a run whose role is a project manager: Claude lane via connectorResolution.ts (resolveGrantedWorkspaceConnector at :24 / combineConnectorContexts at :60 -- steel-mcp alongside workspace is the precedent for a second server) and the --mcp-config assembly in chatRunDriver.ts (~:1192); Gemini lane via inline executors in geminiToolExecutors.ts added to the tool list at chatRunDriver.ts ~:781. Assigned to CX9, priority high. Depends on: TASK-302, TASK-301.
+
+## Spec pointers
+specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.3 B (liveness through the REAL broker->MCP composition, before/after row counts on roles and role_grants, keyed on each tool's audit event), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §4 Invariant B.
+
+## Owned paths
+services/worker/src/connectorResolution.ts, services/worker/src/chatRunDriver.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/projectManagerInvariant.test.ts
+
+## Intended approach
+Follow the steel-mcp second-server precedent exactly rather than inventing a new composition seam.
+
+## Acceptance criteria
+- A manager role's run has the six enabled project tools available in both lanes; a non-manager member's run does not. (spec §7.2)
+- The declared-disabled create_role / request_grant tools are absent from every mount. (spec §7.3 A, §11)
+- Liveness test through the real broker->MCP composition invokes every mounted manager tool and proves roles and role_grants row counts unchanged, keyed on each tool's audit event. (spec §7.3 B, §11)
+- Existing workspace and steel mounts unchanged; existing tests pass unmodified.
+- Adversarial review by a different model than the author recorded in REVIEW.md.
+- Full recursive suite via scripts/test-isolated.ps1 only.
+
+## Work Log
