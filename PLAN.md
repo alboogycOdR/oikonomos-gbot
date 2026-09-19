@@ -8901,7 +8901,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-300
 **Title:** Atomic budget reservation protocol for the project and role axes -- database layer (P-3a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.2 (the full reservation protocol: SELECT ... FOR UPDATE ledger rows, recorded spend + open reservations per axis, deny before spawn, release exactly once), §11 (two simultaneous near-limit admissions -> at most one admitted); docs/decisions/ADR-019-project-entity-and-manager-role.md §5 'Atomic admission' steps 1-4.
@@ -8915,16 +8915,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A reservation is released exactly once: releasing twice is a no-op, and recording spend releases it in the same transaction as the spend_records insert (a test proves a failed insert leaves the reservation open). (spec §6.2)
 - [ ] A role with budget_usd NULL and a run with no project are admitted without touching those axes. (spec §6.2)
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-300-s5
+**Started_At:** 2026-09-19T08:30:30Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T08:30:30Z
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
