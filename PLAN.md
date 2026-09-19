@@ -8966,11 +8966,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.2 (the exact eight-row tool table), §7.3 (Invariant A already shipped as TASK-277; Invariant B: handlers reach only packages/db project functions), §3.1 (state machine + audited transitions), §3.2 (owner must be on the roster; assign sends task.assigned), §4.1 (workspace_file under /oikonomos/workspace/projects/<project_id>/ via resolveWorkspacePath), §6.4 (fan-out cap = roster size, audited project.fanout_capped); docs/decisions/ADR-019-project-entity-and-manager-role.md §4.
-**Owned_Paths:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/projectMcpServer.ts, services/worker/src/projectMcpServer.test.ts
+**Owned_Paths:** packages/broker/src/builtinTools.ts, packages/broker/src/builtinTools.test.ts, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/projectMcpServer.ts, services/worker/src/projectMcpServer.test.ts, packages/broker/src/describe.ts, packages/broker/src/describe.test.ts
 **Depends_On:** TASK-298, TASK-299, TASK-310, TASK-314
 **Description:** PROTECTED PATH (packages/broker/builtinTools.ts): adversarial review by a different model is mandatory. Declare exactly the seven rows of spec §7.2 (v1.2) in BUILTIN_TOOLS (adapter mcp:project or sdk:builtin matching the existing workspace pattern -- check how workspace.* rows are declared and mirror it); only project.request_grant (T3_external) is enabled:false. project.create_role is deliberately NOT declared: per ADR-019 Amendment 2026-09-19 (owner decision) managers create bots through the existing workspace.create_bot. TASK-277's CapabilityEnabledDriftError is live: after merge, register-capabilities MUST be re-run against production and the test DB or control-api will refuse to start (this exact failure took the dashboard down on 2026-09-18 for workspace.create_bot) -- say so loudly in the dossier. Implement the six enabled tools' handlers in projectTools.ts calling ONLY packages/db project functions plus sendToRole for assign (Invariant B: never createRole, upsertRoleGrant, or any control-api route). Each handler emits an audit event. The acting role must be the project's manager (project_roles.is_manager) for write tools. Implement projectMcpServer.ts as its own stdio JSON-RPC server mirroring workspaceMcpServer.ts's hand-rolled pattern, exposing ONLY the enabled tools. Mounting it into runs is TASK-303, not this task. Note: workspace.create_bot / workspace.retire_bot (TASK-282/285) already let a bot create/retire bots through the WORKSPACE server; that is now the manager's bot creation/retirement route (ADR-019 Amendment 2026-09-19, owner decision) and is unchanged by this task; TASK-304 grants it and TASK-303 mounts and tests it.
 **Acceptance_Criteria:**
@@ -8990,12 +8990,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T08:43:01Z] [SV:CX9] Preflight complete; implementation cannot satisfy assign_task plus Invariant B because the DB project API has no existing-task owner assignment operation.
 - [2026-09-19T08:44:00Z] [ORCH] UNBLOCKED BY RE-SEQUENCING, not by a grant — your block was correct and names a real ORCH decomposition gap (§7). Filed TASK-314 (CX9, packages/db assignProjectTaskOwner); this task now Depends_On it. Status blocked -> pending; branch task/TASK-302-cx9 RETAINED — resume on it per protocol §10a once TASK-314 merges, do not re-branch. Nothing else about your Owned_Paths or ACs changes: assign_task's handler consumes assignProjectTaskOwner from @oikonomos/db, keeping Invariant B intact.
 - [2026-09-19T11:43:01Z] [SV:CX9] Implemented and committed project declarations, handlers, MCP server, and tests; broker invariant exposed missing descriptions outside owned territory.
+- [2026-09-19T11:50:00Z] [ORCH] UNBLOCKED: CX9 correctly found a gap in the decomposition -- the new project tools need human-readable approval descriptions in packages/broker/src/describe.ts. Owned_Paths widened by describe.ts and describe.test.ts (protected path, CX9-authored, so Claude review satisfies the cross-model rule). Resume on task/TASK-302-cx9.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: packages/broker/src/describe.ts (and potentially its test) must be added to TASK-302 Owned_Paths so the required descriptions can be implemented.
+**Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-19T11:43:01Z
+**Updated_At:** 2026-09-19T11:50:00Z
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
