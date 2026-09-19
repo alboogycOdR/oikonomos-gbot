@@ -37,6 +37,7 @@ describe("registerCapabilities", () => {
       "steel-browser",
       "builtins",
       "workspace",
+      "project",
     ]);
     const builtins = store.registrations.find((rows) => rows.connectorId === "builtins");
     expect(builtins).toMatchObject({ adapter: "sdk:builtin", roleGrants: [] });
@@ -57,6 +58,18 @@ describe("registerCapabilities", () => {
         expect.objectContaining({ capabilityId: "workspace.create_bot", defaultTier: "T3_external" }),
         expect.objectContaining({ capabilityId: "workspace.retire_bot", defaultTier: "T4_irreversible" }),
       ],
+    });
+    expect(store.registrations.find((rows) => rows.connectorId === "project")).toMatchObject({
+      adapter: "mcp:project",
+      roleGrants: [],
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({ capabilityId: "project.read", defaultTier: "T0_observe", enabled: true }),
+        expect.objectContaining({ capabilityId: "project.task_write", defaultTier: "T2_internal", enabled: true }),
+        expect.objectContaining({ capabilityId: "project.assign", defaultTier: "T2_internal", enabled: true }),
+        expect.objectContaining({ capabilityId: "project.artifact_write", defaultTier: "T2_internal", enabled: true }),
+        expect.objectContaining({ capabilityId: "project.decision_write", defaultTier: "T2_internal", enabled: true }),
+        expect.objectContaining({ capabilityId: "project.request_grant", defaultTier: "T3_external", enabled: false }),
+      ]),
     });
   });
 
@@ -84,7 +97,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
     const result = await pool.query(
       `SELECT capability_id, description, default_tier, adapter, enabled
        FROM capabilities
-       WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace')
+       WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace', 'mcp:project')
        ORDER BY adapter, capability_id`,
     );
     const grants = await pool.query(
@@ -92,7 +105,7 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
        FROM role_grants
        WHERE capability_id IN (
          SELECT capability_id FROM capabilities
-         WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace')
+         WHERE adapter IN ('mcp:gmail', 'mcp:google-calendar', 'mcp:google-drive', 'sdk:builtin', 'mcp:workspace', 'mcp:project')
        )
        ORDER BY role_id, capability_id`,
     );
@@ -159,6 +172,8 @@ integration("registerCapabilities PostgreSQL idempotency", () => {
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.send_to_role", default_tier: "T1_draft" }),
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.rename_self", default_tier: "T1_draft" }),
         expect.objectContaining({ adapter: "mcp:workspace", capability_id: "workspace.request_secret", default_tier: "T3_external" }),
+        expect.objectContaining({ adapter: "mcp:project", capability_id: "project.read", default_tier: "T0_observe", enabled: true }),
+        expect.objectContaining({ adapter: "mcp:project", capability_id: "project.request_grant", default_tier: "T3_external", enabled: false }),
       ]),
     });
   });
