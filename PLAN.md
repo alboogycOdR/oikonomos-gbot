@@ -9374,7 +9374,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-316
 **Title:** A failed chat run leaves the user in silence and hides the provider's reason -- surface both
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** services/worker/src/chatRunDriver.ts executeGeminiChatRun (throws "Gemini run was denied before it could answer." and drops `result.deniedReason`); packages/agent-providers/src/providers/gemini.ts (`deniedReason`); ADR-005 (a control or path that fails silently is a defect).
@@ -9387,16 +9387,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] The message text is plain language and contains no stack trace, key, or internal id; a test asserts this against a reason string that contains a key-shaped token.
 - [ ] A regression test drives the real driver with a fake adapter returning denied + reason and asserts both the failure_note and the thread message.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-316-s5
+**Started_At:** 2026-09-19T11:34:23Z
 **Progress_Notes:**
 - [2026-09-19T11:25:00Z] [ORCH] Filed from the BossMan "no reply" incident. TASK-301 now depends on this (both edit chatRunDriver.ts).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T11:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T11:34:23Z
 
 ### TASK-317
 **Title:** Cross-model adversarial review of TASK-295 (banned-modes scanner: Codex/Grok vocabulary, .codex enforcement, pinned exemptions)
