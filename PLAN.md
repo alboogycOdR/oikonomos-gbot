@@ -9191,7 +9191,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-311
 **Title:** Sandbox office lifecycle defect: a role whose recorded sandbox is gone (or Terminated/Failed) fails every turn forever -- recreate it
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** docs/decisions/ADR-010-persistent-office-computer-pivot.md (persistent per-role office; a removed office costs only a cold start); TASK-296 (merged; this fixes a defect found on its deployment); services/worker/src/chatRunDriver.ts resolveRoleSandbox and its own comment "a genuinely dead sandbox ... must still fail closed".
@@ -9206,16 +9206,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Two concurrent turns for one role after a 404 never leave two live sandboxes, proven by test or by cited existing serialisation.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 - [ ] Reviewed by Opus 5 or another model that is NOT claude-sonnet-5 (the author), recorded in REVIEW.md.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-311-s5
+**Started_At:** 2026-09-19T07:44:07Z
 **Progress_Notes:**
 - [2026-09-19T07:55:00Z] [ORCH] Filed as critical from the TASK-296 deployment. Independent of TASK-298 (no db changes needed: upsertRoleSandbox already overwrites). Do not widen into cross-tenant reaper coverage -- that is TASK-312.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T07:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-19T07:44:07Z
 
 ### TASK-312
 **Title:** Sandbox reaper only sweeps the worker's own tenant -- cover every tenant's offices
