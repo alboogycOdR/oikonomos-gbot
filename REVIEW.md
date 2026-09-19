@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | GB | 26 | 16 | 5 | TASK-015: flaky sweep test (unscoped global sweep collides with a parallel test file's fixture, 1-in-4 suite failure) + an explicit AC miss (integration tests not switched off ../../db/src/approvals.js, which is what makes src/dist drift invisible to the SQL pin test). Substantive work passed all three mutation probes. TASK-080: missing continuity guard between an invalidated approval and its replacement (run_id/capability_id/tenant_id not compared) — an AC gap, not a stated-AC miss; core transaction/atomicity work was exemplary under independent mutation. |
 | CX | 38 | 14 | 13 | TASK-070: publication-tree control degrades to opaque exit-2 (no diagnostics) on an executable file swallowed by .gitignore, instead of the mandated omitted-file report; negative-controls' RFC 6761 allowlist is exact-match only so it false-positives on api.example.com, and the shipped test pins that as correct. §4 truncation-ladder test coverage (rungs 2–3 + episodic content untested) — cleared on re-review; TASK-007 coverage GATE dormant (100%-branch threshold never invoked by pnpm test/CI) + Test_Evidence coverage command non-reproducible (`test -- --coverage` forwards flag as positional) — both cleared on re-review (coverage.enabled:true; recorded command independently reproduced); TASK-021 liveness gate: coverage check keyed on ANSI-coloured output so its verdict depends on terminal TTY detection; hook check keyed on file presence (ADR-005 s2 forbids); control-queue check fails open on an absent directory. TASK-018 protected-path gate DORMANT (run-local.mjs runs only the self-test, real gate is PR-only and the repo has no remote) — same defect shape as TASK-007, i.e. a repeat of 'configured but nothing invokes it'. TASK-016 broker: all six stated ACs met and the ADR-003 handling exemplary (distinct RoleGrantCeiling type; negative test killed both mutations) — but TWO FAIL-OPEN paths outside the stated ACs: a NULL role grant skips the role check entirely (no grant passes where an insufficient grant is denied), and T4_irreversible falls into the approval branch and is allowed on nonce consume, against Synthesis:146 'Tier 4 is denied'. Plus DI ports non-assignable to the real approvals signatures, inviting a wiring that silently skips digest verification (N10) |
-| S5 | 16 | 8 | 6 | TASK-063: unvalidated caller-supplied expiresAt on the approval edit route could silently brick a live approval (accepted past timestamp → invalidated original + already-expired, ungrantable replacement) — an unstated-AC gap surfaced by adversarial review, not a stated-AC miss; every literal AC was independently mutation-proven true first. Corrupt-db escalation unreachable (marker-match on head-truncated atlas.py traceback) — spec §5 safety carve-out unmet; also a prior worktree/main-checkout protocol violation on the same task. Cleared on re-review (direct sqlite probe). Non-gating on TASK-003: malformed devteam-control block (bare unquoted JSON keys, fail-closed rejected) + dossier heartbeat never committed to branch — process hygiene, first occurrence on OIK lineage, harness was concurrently broken. TASK-012: dossier WRITTEN but never COMMITTED (evidence existed and was verified, so not the TASK-003 repeat-absence trigger) - next occurrence in any form is rework, for every unit. |
+| S5 | 18 | 10 | 6 | TASK-063: unvalidated caller-supplied expiresAt on the approval edit route could silently brick a live approval (accepted past timestamp → invalidated original + already-expired, ungrantable replacement) — an unstated-AC gap surfaced by adversarial review, not a stated-AC miss; every literal AC was independently mutation-proven true first. Corrupt-db escalation unreachable (marker-match on head-truncated atlas.py traceback) — spec §5 safety carve-out unmet; also a prior worktree/main-checkout protocol violation on the same task. Cleared on re-review (direct sqlite probe). Non-gating on TASK-003: malformed devteam-control block (bare unquoted JSON keys, fail-closed rejected) + dossier heartbeat never committed to branch — process hygiene, first occurrence on OIK lineage, harness was concurrently broken. TASK-012: dossier WRITTEN but never COMMITTED (evidence existed and was verified, so not the TASK-003 repeat-absence trigger) - next occurrence in any form is rework, for every unit. |
 
 Evidence here refines assignment heuristics (protocol §8) after ~10 reviews.
 
@@ -1796,3 +1796,47 @@ workspace 33/0 fail, migration 031 down/up clean. CX9's claim that runs.test.ts:
 reproducibly outside its territory did NOT reproduce (19/19 alone, after its fixtures, and on master) --
 leftover shared-test-DB state from concurrent sessions. first-pass: no. Merged --no-ff.
 Deploy note: apply migration 031 to production by hand before deploying this code.
+
+## TASK-298 | S5 | approved | 2026-09-19T10:45:00Z
+
+Project-manager schema (packages/db + migration 030). Reviewed on Opus 4.8 (cross-model edge vs the
+Sonnet-5 author). NOT a protected path — packages/db and infra/postgres/migrations are not on the
+protected list (infra/ci is), so no cross-model gate blocks merge. Territory clean: 9 changed files all
+in Owned_Paths + own dossier. Migration 030 creates project_roles (partial unique index = one manager/
+project), project_task_runs, spend_reservations, budget_ledgers, + spend_records.project_id and
+roles.budget_usd; down reverses exactly in reverse FK order. Accessors transactional (FOR UPDATE on
+projects, roster cap 6, thread_members kept in step in one tx, demote-then-promote manager swap in one tx).
+Independent isolated run (Opus session, -Init -Root the 298 worktree): @oikonomos/db 260 pass / 1 fail /
+2 skip. The single failure (runs.test.ts:570 stale-epoch, thread_members_thread_id_fkey on its own
+teardown) CLASSIFIED pre-existing TASK-162 flakiness: test exists on master and is unmodified by 298;
+master's db suite is itself red with a different flaky deadlock; 298's own tests pass and clean up
+thread_members before threads in FK order with random ids. Corroborated by TASK-299's review note that
+this same test did not reproduce reliably (shared-DB state). first-pass: yes. Merged --no-ff, branch deleted.
+
+## TASK-311 | S5 | approved | 2026-09-19T10:45:00Z
+
+Critical sandbox-office lifecycle fix (services/worker). Reviewed on Opus 4.8 (AC "non-sonnet-5 reviewer"
+satisfied). NOT a protected path. Territory clean (chatRunDriver.ts + sandboxReaper.test.ts + own dossier).
+Code: getSandbox 404 (SandboxClientError.status===404) or Terminated/Failed live state recreates the office
+via the factored createOffice() path and overwrites the role row; ANY other getSandbox error rethrows =>
+fails closed (no duplicate office on a transient outage). Per-role in-process promise-chain serialisation
+prevents two concurrent post-404 turns each creating an office; documented single-worker scope. Independent
+isolated run (-Init -Root the s5 worktree): the 8 new sandboxReaper.test.ts tests pass (19/19 in file). Full
+worker 268 pass / 28 fail vs master baseline 26 fail: the whole real-SDK/sandbox/pg-boss integration set
+(chatRunDriver.test.ts x19 + chatRunDriver.ts x6 + routineJob) fails IDENTICALLY on master (TASK-162 timeout
+flakiness). The only 2 failures beyond baseline (main.test.ts pg-boss re-drive, workerJobQueue shutdown)
+touch neither changed file and flipped between runs — flaky/environmental, not a regression. first-pass: yes.
+Merged --no-ff, branch deleted.
+
+## TASK-310 | CX9 | approved | 2026-09-19T10:45:00Z
+
+Adversarial review of the ADR-019 2026-09-19 amendment, authored by CX9 (Codex/GPT) — a genuinely different
+model family from the Claude-authored amendment, satisfying the docs/decisions/** cross-model requirement.
+Deliverable complete: file:line-evidenced verdict on all five Description questions + overall accept-with-
+changes. Two required changes before TASK-304 grants managers the tools: (1) scope retire_bot server-side to
+the manager's project authority (retireRole checks only same-tenant/not-self, roles.ts:405-429); (2) make
+demotion a transactional approval-invalidating transition (approvals bind only digest+nonce, not manager
+state, so a stale pending create_bot/retire_bot approval is human-grantable post-demotion). Territory clean:
+only dossiers/TASK-310.md changed (AC3). Docs-only task — no code changed, no suite re-run by ORCH. FOLLOW-UP
+(ORCH, out of a review session's safe scope): copy the verdict to docs/decisions/ADR-019-amendment-review-
+cx9-2026-09.md and fold the two changes into TASK-302/304. first-pass: yes. Merged --no-ff, branch deleted.
