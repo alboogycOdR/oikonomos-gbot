@@ -8775,7 +8775,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT + SPEC_AMBIGUITY awaiting the user: (1) add a `.codex/**` dev-tooling carve-out to infra/ci/banned-modes-allowlist.txt (protected, outside Owned_Paths); (2) Grok `--always-approve` is byte-identical to real ADR-011 product code in packages/agent-providers/src/providers/grok.ts -- ban via a new exemption mechanism, scope out via ADR-002 amendment, or accept as residual. S5 work is committed on task/TASK-295-s5 (2c0ec0e).
+**Blocked_Reason:** OWNERSHIP_CONFLICT: awaiting the user on two items -- (1) add a `.codex/**` dev-tooling carve-out to infra/ci/banned-modes-allowlist.txt (protected, outside Owned_Paths); (2, a SPEC_AMBIGUITY) Grok `--always-approve` is byte-identical to real ADR-011 product code in packages/agent-providers/src/providers/grok.ts -- ban via a new exemption mechanism, scope out via ADR-002 amendment, or accept as residual. S5 work is committed on task/TASK-295-s5 (2c0ec0e).
 **Updated_By:** SV
 **Updated_At:** 2026-09-18T21:00:51Z
 
