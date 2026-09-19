@@ -126,6 +126,21 @@ describe("executeTaskRun — production caller", () => {
     ).toThrow(/requires a `budget` option/);
   });
 
+  it("fails closed before composing a Codex/Grok run when no provider configuration exists (TASK-301)", async () => {
+    const codexRun = {
+      ...workerRun,
+      agentRef: { ...workerRun.agentRef, provider: "codex" },
+    };
+    await expect(executeTaskRun({
+      prompt: "must not spawn",
+      run: codexRun,
+      allowedTools: ["Read(src/**)"],
+      brokerDependencies: createWorkerBrokerDeps(createDecisionLog()),
+      auditSink: createCompletionSink(),
+      queryFn: workerQueryFn,
+    })).rejects.toMatchObject({ code: "SUBPROCESS_PROVIDER_CONFIG_MISSING" });
+  });
+
   it("rejects a park port that is not callable", async () => {
     await expect(
       executeTaskRun({
