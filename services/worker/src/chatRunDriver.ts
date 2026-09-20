@@ -498,7 +498,18 @@ async function runChatTask(
     await insertMessage(options, { threadId: request.threadId, role: "bot", body: botText ?? finalText(result?.events ?? []), runId: run.runId });
     // A run that reached here having accounted for nothing is unrecorded, not
     // free. Say so explicitly rather than leaving an absence to be misread.
-    if (!geminiSpendRecorded && !budget.reported()) await noteUnrecordedSpend(options, request, run.runId, execution);
+    if (!geminiSpendRecorded && !budget.reported()) {
+      await noteUnrecordedSpend(options, request, run.runId, execution);
+      // A completed Claude turn can legitimately have no SDK spend report
+      // (for example a test seam or an interrupted CLI stream). It has not
+      // recorded spend, so it must settle its admission exactly as the
+      // pre-spend failure path does; otherwise the open reservation would
+      // permanently consume the project/role ceiling.
+      if (reservationAdmitted) {
+        await releaseRunReservation(options, run.runId);
+        reservationAdmitted = false;
+      }
+    }
     // TASK-269: persist the REAL session id the Claude CLI/Agent SDK itself
     // reports for this turn, so the THREAD's next turn (ports.ts's
     // `submitTaskExecution` continuity seeding, or a killed-worker's
