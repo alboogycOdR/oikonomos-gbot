@@ -9155,7 +9155,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-306
 **Title:** Inject profile-tier memory (user, agent and project scopes) into every chat run's system prompt, both lanes
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §1.2 ('stored as project-scope profile-tier memory facts, so every member's prompt sees it through the existing memory injection'), §11 first bullet ('visible to every member's next run and to no non-member'); packages/memory/src/facts.ts readProfileTier (already supports user/agent/project scopes and visible_to).
@@ -9168,16 +9168,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Both lanes include the same memory block, proven by tests on each.
 - [ ] The block is bounded by an explicit, justified cap.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-306-s5
+**Started_At:** 2026-09-20T18:03:58Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T18:03:58Z
 
 ### TASK-307
 **Title:** Mobile: project API client, projects list, create-project flow (roster, manager, charter), entry from the roster screen (P-7a)
