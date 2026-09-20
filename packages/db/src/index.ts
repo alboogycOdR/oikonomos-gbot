@@ -11,11 +11,13 @@ export {
 export { riskTiers, type Capability, type RiskTier, type RoleGrant } from "./types.js";
 export {
   getRoleSandbox,
+  listRoleSandboxes,
   roleSandboxStates,
   updateRoleSandboxState,
   upsertRoleSandbox,
   type RoleSandbox,
   type RoleSandboxState,
+  type RoleSandboxWithRole,
   type UpsertRoleSandbox,
 } from "./roleSandboxes.js";
 export {

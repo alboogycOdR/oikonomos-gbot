@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
+import type { RoleStatus } from "./roles.js";
 
 export const roleSandboxStates = ["Pending", "Running", "Pausing", "Paused", "Resuming", "Stopping", "Terminated", "Failed"] as const;
 export type RoleSandboxState = (typeof roleSandboxStates)[number];
@@ -22,6 +23,12 @@ export interface UpsertRoleSandbox {
   readonly execdTokenRef: string;
 }
 
+/** A sandbox record together with the owning role data needed by maintenance sweeps. */
+export interface RoleSandboxWithRole extends RoleSandbox {
+  readonly tenantId: string;
+  readonly roleStatus: RoleStatus;
+}
+
 interface RoleSandboxRow extends QueryResultRow {
   role_id: string;
   sandbox_id: string;
@@ -29,6 +36,11 @@ interface RoleSandboxRow extends QueryResultRow {
   execd_token_ref: string;
   created_at: Date;
   last_used_at: Date;
+}
+
+interface RoleSandboxWithRoleRow extends RoleSandboxRow {
+  tenant_id: string;
+  role_status: RoleStatus;
 }
 
 const columns = "role_id, sandbox_id, state, execd_token_ref, created_at, last_used_at";
@@ -51,11 +63,33 @@ function toRoleSandbox(row: RoleSandboxRow): RoleSandbox {
   };
 }
 
+function toRoleSandboxWithRole(row: RoleSandboxWithRoleRow): RoleSandboxWithRole {
+  return { ...toRoleSandbox(row), tenantId: row.tenant_id, roleStatus: row.role_status };
+}
+
 export async function getRoleSandbox(options: DatabaseOptions, roleId: string): Promise<RoleSandbox | null> {
   const normalizedRoleId = requireText(roleId, "roleId");
   return withPool(options, async (pool) => {
     const result = await pool.query<RoleSandboxRow>(`SELECT ${columns} FROM role_sandboxes WHERE role_id = $1`, [normalizedRoleId]);
     return result.rows[0] === undefined ? null : toRoleSandbox(result.rows[0]);
+  });
+}
+
+/**
+ * Lists every persisted role office, including the owning role's tenant and
+ * lifecycle status. This deliberately has no tenant filter: maintenance
+ * reapers must cover offices for every tenant, not only the worker tenant.
+ */
+export async function listRoleSandboxes(options: DatabaseOptions): Promise<readonly RoleSandboxWithRole[]> {
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleSandboxWithRoleRow>(
+      `SELECT rs.role_id, rs.sandbox_id, rs.state, rs.execd_token_ref, rs.created_at, rs.last_used_at,
+              r.tenant_id, r.status AS role_status
+       FROM role_sandboxes rs
+       INNER JOIN roles r ON r.role_id = rs.role_id
+       ORDER BY r.tenant_id ASC, rs.role_id ASC`,
+    );
+    return result.rows.map(toRoleSandboxWithRole);
   });
 }
 

@@ -154,7 +154,6 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
       ? undefined
       : createSandboxReaperScheduler({
           ...database,
-          tenantId: options.tenantId,
           client: createSandboxClient({ baseUrl: sandboxIntegrationUrl }),
           onSweep: (summary) => log(`sandbox reaper sweep: ${JSON.stringify(summary)}`),
           onError: (error) => console.error("sandbox reaper sweep error:", error),
