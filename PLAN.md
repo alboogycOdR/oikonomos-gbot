@@ -9028,7 +9028,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.3 B (liveness through the REAL broker->MCP composition, before/after row counts on roles and role_grants, keyed on each tool's audit event), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §4 Invariant B.
@@ -9043,8 +9043,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Existing workspace and steel mounts unchanged; existing tests pass unmodified.
 - [ ] Adversarial review by a different model than the author recorded in REVIEW.md.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-303-cx9
+**Started_At:** 2026-09-20T15:33:19Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended: managers use the existing workspace.create_bot / retire_bot (owner decision); the invariant now also proves those calls park for approval and change nothing until a human approves.
@@ -9053,8 +9053,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T15:33:19Z
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
