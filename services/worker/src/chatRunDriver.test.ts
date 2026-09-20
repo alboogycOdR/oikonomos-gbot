@@ -2,6 +2,8 @@ import {
   Database,
   createRole,
   createTask,
+  createProject,
+  addProjectRoleMember,
   defaultPoolConfig,
   getAuditEventsForRun,
   getOrCreateThreadForRole,
@@ -2066,6 +2068,177 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     }
   }, 30_000);
 
+});
+
+// TASK-301 deliberately exercises admission through createChatRunDriver rather
+// than calling the reservation API directly.  The provider seams below never
+// leave the process: they make "provider invocation" observable while the
+// task/run/project/reservation reads and writes remain real PostgreSQL paths.
+integration("TASK-301 chat admission and project attribution", () => {
+  let pool: Pool;
+  const options: DatabaseOptions = { connectionString: connectionString! };
+  const tenantId = `task-301-${crypto.randomUUID()}`;
+  const roleIds: string[] = [];
+  const projectIds: string[] = [];
+  const threadIds: string[] = [];
+
+  async function role(name: string, budgetUsd: number | null): Promise<string> {
+    const roleId = `task-301-${name}-${crypto.randomUUID()}`;
+    await createRole(options, { roleId, tenantId, name, title: name, description: "TASK-301 fixture" });
+    await pool.query("UPDATE roles SET budget_usd = $2 WHERE role_id = $1", [roleId, budgetUsd]);
+    roleIds.push(roleId);
+    return roleId;
+  }
+
+  async function project(budgetUsd: number, members: readonly string[]): Promise<{ projectId: string; threadId: string }> {
+    const threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id, title) VALUES (NULL, 'TASK-301') RETURNING id")).rows[0]!.id;
+    threadIds.push(threadId);
+    const created = await createProject(options, {
+      tenantId, threadId, name: "TASK-301", goal: "prove atomic admission", doneCriterion: "tests pass", budgetUsd, createdBy: "human:task-301",
+    });
+    projectIds.push(created.projectId);
+    for (const roleId of members) await addProjectRoleMember(options, { projectId: created.projectId, roleId });
+    return { projectId: created.projectId, threadId };
+  }
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM spend_reservations WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM budget_ledgers WHERE axis_id = ANY($1) OR axis_id = ANY($2)", [projectIds, roleIds]);
+    await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
+    await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
+    await pool.query("DELETE FROM spend_records WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
+    await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)", [tenantId]);
+    await pool.query("DELETE FROM tasks WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM project_roles WHERE project_id = ANY($1)", [projectIds]);
+    await pool.query("DELETE FROM projects WHERE project_id = ANY($1)", [projectIds]);
+    await pool.query("DELETE FROM thread_members WHERE thread_id = ANY($1)", [threadIds]);
+    await pool.query("DELETE FROM threads WHERE id = ANY($1)", [threadIds]);
+    await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [roleIds]);
+  }
+
+  beforeAll(async () => { pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig }); });
+  afterAll(async () => { await cleanup(); await pool.end(); });
+
+  const inertSandbox: SandboxClient = {
+    health: async () => ({ status: "ok" }),
+    createSandbox: async () => ({ id: "task-301-sandbox", createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
+    getSandbox: async () => ({ id: "task-301-sandbox", createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
+    destroySandbox: async () => undefined,
+    pauseSandbox: async () => undefined,
+    resumeSandbox: async () => undefined,
+    getEndpoint: async () => ({ endpoint: "http://execd.test/task-301" }),
+    ping: async () => undefined,
+    runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+  };
+
+  it("admits at most one concurrent Gemini project turn before its counting provider is invoked", async () => {
+    const priorCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const priorKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+    const firstRole = await role("project-first", null);
+    const secondRole = await role("project-second", null);
+    await pool.query("UPDATE roles SET provider = 'gemini' WHERE role_id = ANY($1)", [[firstRole, secondRole]]);
+    const fixture = await project(0.15, [firstRole, secondRole]);
+    const first = await createTask(options, { roleId: firstRole, title: "first", goal: "first", requestedBy: "task-301" });
+    const second = await createTask(options, { roleId: secondRole, title: "second", goal: "second", requestedBy: "task-301" });
+    let invoked = 0;
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredProvider = new Promise<void>((resolve) => { entered = resolve; });
+    const releaseProvider = new Promise<void>((resolve) => { release = resolve; });
+    const geminiFetch: typeof globalThis.fetch = (async () => {
+      invoked += 1;
+      entered();
+      await releaseProvider;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { role: "model", parts: [{ text: "admitted" }] } }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+      }));
+    }) as typeof globalThis.fetch;
+    try {
+      const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, sandboxClient: inertSandbox, geminiFetch });
+      const firstRun = driver.run({ task: first, threadId: fixture.threadId });
+      await enteredProvider;
+      await expect(driver.run({ task: second, threadId: fixture.threadId })).rejects.toThrow("budget.project_exceeded");
+      expect(invoked).toBe(1);
+      release();
+      await firstRun;
+    } finally {
+      if (priorCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI; else process.env.OIK_PROVIDER_CAP_USD_GEMINI = priorCap;
+      if (priorKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = priorKey;
+    }
+  });
+
+  it("admits at most one concurrent Claude role turn before its counting provider is invoked", async () => {
+    const roleId = await role("role-axis", 0.30);
+    const threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
+    threadIds.push(threadId);
+    const first = await createTask(options, { roleId, title: "first", goal: "first", requestedBy: "task-301" });
+    const second = await createTask(options, { roleId, title: "second", goal: "second", requestedBy: "task-301" });
+    let invoked = 0;
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredProvider = new Promise<void>((resolve) => { entered = resolve; });
+    const releaseProvider = new Promise<void>((resolve) => { release = resolve; });
+    const queryFn: AgentSdkQueryFn = async function* () {
+      invoked += 1;
+      entered();
+      await releaseProvider;
+      yield { type: "result", result: "admitted" };
+    };
+    const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, queryFn });
+    const firstRun = driver.run({ task: first, threadId });
+    await enteredProvider;
+    await expect(driver.run({ task: second, threadId })).rejects.toThrow("budget.role_exceeded");
+    expect(invoked).toBe(1);
+    release();
+    await firstRun;
+  });
+
+  it("attributes manager and specialist spend to the project while preserving each executing role", async () => {
+    const managerId = await role("manager", 10);
+    const specialistId = await role("specialist", 10);
+    const fixture = await project(10, [managerId, specialistId]);
+    const managerTask = await createTask(options, { roleId: managerId, title: "manager", goal: "manager", requestedBy: "task-301" });
+    const specialistTask = await createTask(options, { roleId: specialistId, title: "specialist", goal: "specialist", requestedBy: "task-301" });
+    const queryFn: AgentSdkQueryFn = async function* () {
+      yield { type: "result", result: "accounted", total_cost_usd: 0.01 };
+    };
+    const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, queryFn });
+    await driver.run({ task: managerTask, threadId: fixture.threadId });
+    await driver.run({ task: specialistTask, threadId: fixture.threadId });
+    const rows = await pool.query<{ role_id: string; project_id: string | null }>(
+      `SELECT t.role_id, s.project_id FROM spend_records s JOIN runs r ON r.run_id = s.run_id JOIN tasks t ON t.task_id = r.task_id
+       WHERE t.task_id = ANY($1) ORDER BY t.role_id`,
+      [[managerTask.taskId, specialistTask.taskId]],
+    );
+    expect(rows.rows).toEqual(expect.arrayContaining([
+      { role_id: managerId, project_id: fixture.projectId },
+      { role_id: specialistId, project_id: fixture.projectId },
+    ]));
+  });
+
+  it("releases an unrecorded failed turn once, allowing the next role admission", async () => {
+    const roleId = await role("release", 0.25);
+    const threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
+    threadIds.push(threadId);
+    const failed = await createTask(options, { roleId, title: "fail", goal: "fail", requestedBy: "task-301" });
+    const retry = await createTask(options, { roleId, title: "retry", goal: "retry", requestedBy: "task-301" });
+    let calls = 0;
+    const queryFn: AgentSdkQueryFn = async function* () {
+      calls += 1;
+      if (calls === 1) throw new Error("provider failed before spend");
+      yield { type: "result", result: "retry admitted" };
+    };
+    const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, queryFn });
+    await expect(driver.run({ task: failed, threadId })).rejects.toThrow("provider failed before spend");
+    const failedRun = (await listRuns(options, { taskId: failed.taskId })).runs[0]!;
+    const reservations = await pool.query<{ axis: string; released_at: Date | null }>("SELECT axis, released_at FROM spend_reservations WHERE run_id = $1", [failedRun.runId]);
+    expect(reservations.rows).toEqual([{ axis: "role", released_at: expect.any(Date) }]);
+    await driver.run({ task: retry, threadId });
+    expect(calls).toBe(2);
+  });
 });
 
 function sdkOptionsAbsent(calls: readonly { tool: string }[], tool: string): boolean {
