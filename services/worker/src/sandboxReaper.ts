@@ -28,24 +28,17 @@
  *    soft-deleted role — independent of `role_sandboxes` entirely, which
  *    is what makes it able to see a row that was never there to begin with.
  *
- * **Deliberately composed from already-exported `@oikonomos/db` primitives
- * (`listRoles`, `getRole`, `getRoleSandbox`, `updateRoleSandboxState`)
- * rather than a new bulk "list every `role_sandboxes` row" query.** Adding
- * one would need a matching export from `packages/db/src/index.ts`, the
- * package barrel — outside this task's `Owned_Paths`, and a file no other
- * part of this task has a legitimate reason to touch. Iterating tenant
- * roles and looking up each one's office is one extra round trip per role
- * instead of a single join; acceptable for a periodic maintenance sweep
- * that is never on any request's hot path.
+ * TASK-312 makes pass 1 tenant-complete: it reads every `role_sandboxes` row
+ * joined to its role, rather than starting from the worker's configured
+ * tenant. A worker tenant remains relevant to worker polling, but is not an
+ * ownership boundary for persistent offices.
  */
 import {
   getRole,
-  getRoleSandbox,
-  listRoles,
+  listRoleSandboxes,
   updateRoleSandboxState,
   type DatabaseOptions,
-  type Role,
-  type RoleSandbox,
+  type RoleSandboxWithRole,
 } from "@oikonomos/db";
 import { SandboxClientError, type Sandbox, type SandboxClient, type SandboxState } from "@oikonomos/sandbox-client";
 
@@ -79,6 +72,8 @@ export interface SandboxSweepSummary {
   /** ISO-8601 timestamp the sweep completed — the liveness evidence a test/operator reads, never a bare mtime (ADR-005 §5). */
   readonly sweptAt: string;
   readonly rolesScanned: number;
+  /** Role-office rows scanned per tenant; retains explicit multi-tenant liveness evidence. */
+  readonly rolesScannedByTenant: Readonly<Record<string, number>>;
   readonly reapedIdle: number;
   readonly reapedDeletedRole: number;
   readonly reconciledOrphans: number;
@@ -87,12 +82,11 @@ export interface SandboxSweepSummary {
 }
 
 export interface SandboxReaperSweepConfig {
-  readonly tenantId: string;
   readonly idleThresholdMs?: number;
 }
 
-function reapReasonFor(role: Role, record: RoleSandbox, idleBeforeMs: number): "idle" | "deleted" | undefined {
-  if (role.status === "deleted") return "deleted";
+function reapReasonFor(record: RoleSandboxWithRole, idleBeforeMs: number): "idle" | "deleted" | undefined {
+  if (record.roleStatus === "deleted") return "deleted";
   if (record.lastUsedAt.getTime() < idleBeforeMs) return "idle";
   return undefined;
 }
@@ -143,38 +137,38 @@ export async function runSandboxReaperSweep(
   const idleThresholdMs = config.idleThresholdMs ?? DEFAULT_SANDBOX_IDLE_MS;
   const idleBeforeMs = Date.now() - idleThresholdMs;
   let rolesScanned = 0;
+  const rolesScannedByTenant: Record<string, number> = {};
   let reapedIdle = 0;
   let reapedDeletedRole = 0;
   let reconciledOrphans = 0;
   let errors = 0;
   const handledSandboxIds = new Set<string>();
 
-  // Pass 1 — roles this tenant still has a row for (active, hidden, OR
-  // soft-deleted; listRoles with no status filter returns all three).
-  const roles = await listRoles(options, { tenantId: config.tenantId });
-  rolesScanned = roles.length;
-  for (const role of roles) {
+  // Pass 1 — every role office with a surviving role row (active, hidden,
+  // or soft-deleted), regardless of the tenant this worker was started for.
+  const records = await listRoleSandboxes(options);
+  rolesScanned = records.length;
+  for (const record of records) {
+    rolesScannedByTenant[record.tenantId] = (rolesScannedByTenant[record.tenantId] ?? 0) + 1;
     try {
-      const record = await getRoleSandbox(options, role.roleId);
-      if (record === null) continue;
       // Already reaped by an earlier sweep (or otherwise terminal) — a
       // soft-deleted role's `status` never changes back, so without this
       // skip every future sweep would re-"reap" (and re-hit the real
       // OpenSandbox API for) the same already-gone office forever, forever
       // inflating the liveness evidence with no new work actually done.
       if (TERMINAL_ROLE_SANDBOX_STATES.has(record.state)) continue;
-      const reason = reapReasonFor(role, record, idleBeforeMs);
+      const reason = reapReasonFor(record, idleBeforeMs);
       if (reason === undefined) continue;
       await destroySandboxIfLive(client, record.sandboxId);
       handledSandboxIds.add(record.sandboxId);
       // Reflect reality immediately: the next resolveRoleSandbox call for
       // an idle-reaped (still-active) role sees a Terminated record and
       // must recreate rather than trust a live-looking stale row.
-      await updateRoleSandboxState(options, role.roleId, "Terminated");
+      await updateRoleSandboxState(options, record.roleId, "Terminated");
       if (reason === "idle") reapedIdle += 1; else reapedDeletedRole += 1;
     } catch (error) {
       errors += 1;
-      console.error(`sandbox reaper: failed reaping role ${role.roleId}:`, error);
+      console.error(`sandbox reaper: failed reaping role ${record.roleId} in tenant ${record.tenantId}:`, error);
     }
   }
 
@@ -202,6 +196,7 @@ export async function runSandboxReaperSweep(
   return {
     sweptAt: new Date().toISOString(),
     rolesScanned,
+    rolesScannedByTenant,
     reapedIdle,
     reapedDeletedRole,
     reconciledOrphans,
@@ -243,7 +238,6 @@ export async function withSandboxRelease<T>(
 
 export interface SandboxReaperSchedulerOptions extends DatabaseOptions {
   readonly client: SandboxClient;
-  readonly tenantId: string;
   readonly intervalMs?: number;
   readonly idleThresholdMs?: number;
   /** Fires after every completed sweep, success or not — the liveness hook a caller (main.ts, or a test) observes. */
@@ -273,7 +267,6 @@ export function createSandboxReaperScheduler(options: SandboxReaperSchedulerOpti
     sweeping = true;
     try {
       const summary = await runSandboxReaperSweep(options, options.client, {
-        tenantId: options.tenantId,
         idleThresholdMs: options.idleThresholdMs,
       });
       options.onSweep?.(summary);

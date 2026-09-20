@@ -1,0 +1,6 @@
+# TASK-312 — Sandbox reaper covers every tenant's offices
+
+## Work Log
+
+- [2026-09-20T15:35:00Z] [CX9] Started from master `0639059`; required preflight found all six Owned_Paths present: `packages/db/src/roleSandboxes.ts` (92 lines), `roleSandboxes.test.ts` (20), `index.ts` (341), `services/worker/src/sandboxReaper.ts` (335), `sandboxReaper.test.ts` (424), and `main.ts` (219). Implementing a cross-tenant role-sandbox accessor and reaper coverage.
+- [2026-09-20T17:36:00Z] [CX9] Added `listRoleSandboxes`, joined to role tenant/status, and changed reaper pass 1 to use every office row. Sweep summaries now include `rolesScannedByTenant`; scheduler/main no longer pass the worker tenant into this pass. Added real-Postgres accessor coverage, a two-tenant idle-vs-recent sweep, and fixture cleanup between reaper cases because a global sweep legitimately sees all prior tenants. `pnpm --filter @oikonomos/db run build` and `pnpm --filter @oikonomos/worker run build` pass. Isolated DB suite: 45 files, 285 passed, 2 skipped. Isolated worker run: all 19 sandbox-reaper tests pass; its broader output includes unrelated budget/capability fixture failures. Full recursive isolated run is waiting on the shared test DB lock held by another run.

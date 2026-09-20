@@ -12,7 +12,7 @@
  * touching the live clawsrv deployment.
  */
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createRole,
@@ -63,6 +63,10 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     await cleanup();
   });
 
+  // TASK-312's sweep intentionally spans every tenant, so fixtures from one
+  // case must not become sweep candidates in a later one.
+  beforeEach(async () => { await cleanup(); });
+
   afterAll(async () => {
     await cleanup();
     await pool.end();
@@ -96,20 +100,26 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     };
   }
 
-  it("reaps an active role's office once it has been idle past the threshold", async () => {
-    const tenantId = freshTenant("idle");
-    const roleId = "task-296-idle-role";
-    await createRole(db, { roleId, tenantId, name: "Idle", title: "Idle role" });
-    await upsertRoleSandbox(db, { roleId, sandboxId: "sandbox-idle", state: "Paused", execdTokenRef: "secret://x" });
-    await backdateLastUsed(roleId, 10 * 24 * 60 * 60_000); // 10 days ago
+  it("reaps an idle office in any tenant while preserving a recently used office in another", async () => {
+    const workerTenant = freshTenant("worker");
+    const otherTenant = freshTenant("other");
+    const recentRoleId = "task-296-recent-worker-role";
+    const idleRoleId = "task-296-idle-other-role";
+    await createRole(db, { roleId: recentRoleId, tenantId: workerTenant, name: "Recent", title: "Recent role" });
+    await createRole(db, { roleId: idleRoleId, tenantId: otherTenant, name: "Idle", title: "Idle role" });
+    await upsertRoleSandbox(db, { roleId: recentRoleId, sandboxId: "sandbox-recent", state: "Paused", execdTokenRef: "secret://recent" });
+    await upsertRoleSandbox(db, { roleId: idleRoleId, sandboxId: "sandbox-idle", state: "Paused", execdTokenRef: "secret://idle" });
+    await backdateLastUsed(idleRoleId, 10 * 24 * 60 * 60_000);
 
     const client = fakeClient();
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(client.destroyed).toEqual(["sandbox-idle"]);
     expect(summary.reapedIdle).toBe(1);
     expect(summary.reapedDeletedRole).toBe(0);
-    expect((await getRoleSandbox(db, roleId))?.state).toBe("Terminated");
+    expect(summary.rolesScannedByTenant).toMatchObject({ [workerTenant]: 1, [otherTenant]: 1 });
+    expect((await getRoleSandbox(db, idleRoleId))?.state).toBe("Terminated");
+    expect((await getRoleSandbox(db, recentRoleId))?.state).toBe("Paused");
   });
 
   it("does NOT reap an active role's office that was used recently, even if it was created long ago", async () => {
@@ -121,7 +131,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     // "old-but-actively-used office is NOT reaped" acceptance criterion.
 
     const client = fakeClient();
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(client.destroyed).toEqual([]);
     expect(summary.reapedIdle).toBe(0);
@@ -136,7 +146,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     await updateRoleStatus(db, roleId, "deleted");
 
     const client = fakeClient();
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(client.destroyed).toEqual(["sandbox-deleted"]);
     expect(summary.reapedDeletedRole).toBe(1);
@@ -160,7 +170,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
       listSandboxes: async () => ({ items: [orphan], pagination: { page: 1, pageSize: 200, totalItems: 1, totalPages: 1, hasNextPage: false } }),
     });
 
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(client.destroyed).toEqual(["sandbox-orphan"]);
     expect(summary.reconciledOrphans).toBe(1);
@@ -180,7 +190,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
       listSandboxes: async () => ({ items: [stillLive], pagination: { page: 1, pageSize: 200, totalItems: 1, totalPages: 1, hasNextPage: false } }),
     });
 
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(client.destroyed).toEqual([]);
     expect(summary.reconciledOrphans).toBe(0);
@@ -203,7 +213,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
       },
     });
 
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(summary.errors).toBe(1);
     expect(summary.reapedDeletedRole).toBe(1); // the good one still got reaped
@@ -223,7 +233,7 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
       destroySandbox: async () => { throw new SandboxClientError("gone", "UNEXPECTED_STATUS", { status: 404 }); },
     });
 
-    const summary = await runSandboxReaperSweep(db, client, { tenantId, idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
 
     expect(summary.errors).toBe(0);
     expect(summary.reapedDeletedRole).toBe(1);
@@ -300,7 +310,6 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     const summaries: Array<{ reapedIdle: number; reapedDeletedRole: number; reconciledOrphans: number }> = [];
     const scheduler = createSandboxReaperScheduler({
       ...db,
-      tenantId,
       client,
       intervalMs: 20_000, // never fires again during this test; only the immediate boot-tick matters
       idleThresholdMs: 3 * 24 * 60 * 60_000,
@@ -400,9 +409,9 @@ integration("resolveRoleSandbox recreates a gone office (TASK-311)", () => {
     const server = fakeServer();
     server.sandboxes.set(`idle-sb-${runTag}`, "Paused");
     await seedRole("task-311-reap", `idle-sb-${runTag}`, "Paused");
-    await pool.query(`UPDATE roles SET tenant_id = 'task-311-reap-tenant' WHERE role_id = 'task-311-reap'`);
+    await pool.query(`UPDATE roles SET tenant_id = 'task-311-reap-non-worker-tenant' WHERE role_id = 'task-311-reap'`);
     await pool.query(`UPDATE role_sandboxes SET last_used_at = now() - interval '10 days' WHERE role_id = 'task-311-reap'`);
-    const summary = await runSandboxReaperSweep(db, server.client, { tenantId: "task-311-reap-tenant", idleThresholdMs: 3 * 24 * 60 * 60_000 });
+    const summary = await runSandboxReaperSweep(db, server.client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
     expect(summary.reapedIdle).toBe(1);
     expect(server.sandboxes.has(`idle-sb-${runTag}`)).toBe(false);
     const result = await resolveRoleSandbox(db, stubDatabase, server.client, "task-311-reap", []);
