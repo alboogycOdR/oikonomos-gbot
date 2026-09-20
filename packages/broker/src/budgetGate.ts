@@ -69,7 +69,9 @@ export interface BudgetGateInput {
 export type BudgetGateDenyReason =
   | "budget.routine_exceeded"
   | "budget.platform_exceeded"
-  | "budget.provider_exceeded";
+  | "budget.provider_exceeded"
+  | "budget.project_exceeded"
+  | "budget.role_exceeded";
 
 export type BudgetGateDecision =
   | { readonly decision: "allow" }

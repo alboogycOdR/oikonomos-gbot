@@ -65,6 +65,7 @@ import {
   createTaskExecutionRun,
   getOrCreateThreadForRole,
   getRole,
+  listProjectRoleMembers,
   listRoleMessages,
   markRoleMessageRead,
   resolveRoleRuntime,
@@ -121,6 +122,7 @@ async function deliverRoleMessage(
 
   const thread = await getOrCreateThreadForRole(options, { roleId: message.toRoleId });
   const { provider } = resolveRoleRuntime(recipient);
+  const projectId = await attributedProjectIdForHandoff(options, message);
   const { runId } = await createTaskExecutionRun(options, {
     task: {
       tenantId: message.tenantId,
@@ -129,7 +131,7 @@ async function deliverRoleMessage(
       goal: roleMessageDeliveryGoal(senderName, message.body),
       requestedBy: `role-message:${message.messageId}`,
     },
-    execution: { version: 1, kind: "chat", threadId: thread.id },
+    execution: { version: 1, kind: "chat", threadId: thread.id, ...(projectId === null ? {} : { projectId }) } as never,
     provider,
   });
   await enqueueRunExecution(options.connectionString, runId);
@@ -137,6 +139,16 @@ async function deliverRoleMessage(
   await markRoleMessageRead(options, message.messageId);
 
   return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered", runId };
+}
+
+async function attributedProjectIdForHandoff(options: DatabaseOptions, message: RoleMessage): Promise<string | null> {
+  if (message.handoffKind !== "task.assigned" || message.factRef === null) return null;
+  const ref = message.factRef as { project_id?: unknown };
+  if (typeof ref.project_id !== "string" || ref.project_id.trim().length === 0) return null;
+  const members = await listProjectRoleMembers(options, ref.project_id);
+  const sender = members.find((member) => member.roleId === message.fromRoleId);
+  const recipient = members.find((member) => member.roleId === message.toRoleId);
+  return sender?.isManager === true && recipient !== undefined ? ref.project_id : null;
 }
 
 /**
@@ -270,7 +282,17 @@ export function createRoleMessageDeliveryPoller(
 
 if (import.meta.vitest) {
   const { describe, it, expect, beforeAll, afterAll } = import.meta.vitest;
-  const { createRole, sendRoleMessage, getRun, getTask, listMessages, defaultPoolConfig } = await import(
+  const {
+    addProjectRoleMember,
+    createProject,
+    createProjectTask,
+    createRole,
+    sendRoleMessage,
+    getRun,
+    getTask,
+    listMessages,
+    defaultPoolConfig,
+  } = await import(
     "@oikonomos/db"
   );
   const { Pool } = await import("pg");
@@ -309,6 +331,9 @@ if (import.meta.vitest) {
       await pool.query(`DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))`, [tenantId]);
       await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
+      await pool.query(`DELETE FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
+      await pool.query(`DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
+      await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
       await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM roles WHERE tenant_id = $1`, [tenantId]);
       await pool.end();
@@ -439,6 +464,43 @@ if (import.meta.vitest) {
         [sent.messageId],
       );
       expect(refetched.rows[0]!.read_at).toBeNull();
+    });
+
+    it("attributes only a manager's task.assigned handoff to its project, leaving a roster member's forged handoff ordinary (TASK-301)", async () => {
+      const managerId = `task-301-manager-${crypto.randomUUID()}`;
+      const specialistId = `task-301-specialist-${crypto.randomUUID()}`;
+      const forgedSenderId = `task-301-forged-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId: managerId, tenantId, name: "Manager", title: "Manager" });
+      await createRole({ connectionString: connectionString! }, { roleId: specialistId, tenantId, name: "Specialist", title: "Specialist" });
+      await createRole({ connectionString: connectionString! }, { roleId: forgedSenderId, tenantId, name: "Forged", title: "Specialist" });
+      const threadId = (await pool.query<{ id: string }>(
+        "INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [managerId],
+      )).rows[0]!.id;
+      const project = await createProject({ connectionString: connectionString! }, {
+        tenantId, threadId, name: "TASK-301 attribution", goal: "prove attribution", doneCriterion: "tests pass", createdBy: managerId,
+      });
+      await addProjectRoleMember({ connectionString: connectionString! }, { projectId: project.projectId, roleId: managerId, isManager: true });
+      await addProjectRoleMember({ connectionString: connectionString! }, { projectId: project.projectId, roleId: specialistId });
+      await addProjectRoleMember({ connectionString: connectionString! }, { projectId: project.projectId, roleId: forgedSenderId });
+      const task = await createProjectTask({ connectionString: connectionString! }, {
+        projectId: project.projectId, title: "handoff fixture", createdBy: managerId,
+      });
+      const ref = { project_id: project.projectId, task_id: task.taskId, artifact_ids: [] };
+
+      const managerMessage = await sendRoleMessage({ connectionString: connectionString! }, {
+        tenantId, fromRoleId: managerId, toRoleId: specialistId, body: "manager handoff", handoffKind: "task.assigned", factRef: ref,
+      });
+      const forgedMessage = await sendRoleMessage({ connectionString: connectionString! }, {
+        tenantId, fromRoleId: forgedSenderId, toRoleId: specialistId, body: "forged handoff", handoffKind: "task.assigned", factRef: ref,
+      });
+      const delivered = await deliverPendingRoleMessages(options);
+      const managerRun = await getRun({ connectionString: connectionString! }, delivered.find((r) => r.messageId === managerMessage.messageId)!.runId!);
+      const forgedRun = await getRun({ connectionString: connectionString! }, delivered.find((r) => r.messageId === forgedMessage.messageId)!.runId!);
+      const managerTask = await getTask({ connectionString: connectionString! }, managerRun!.taskId);
+      const forgedTask = await getTask({ connectionString: connectionString! }, forgedRun!.taskId);
+      expect(managerTask!.execution).toMatchObject({ kind: "chat", projectId: project.projectId });
+      expect(forgedTask!.execution).toMatchObject({ kind: "chat" });
+      expect((forgedTask!.execution as Record<string, unknown>).projectId).toBeUndefined();
     });
 
     it("RoleMessageDeliveryPoller delivers via a real durable pg-boss schedule, immediate-poll triggered", async () => {

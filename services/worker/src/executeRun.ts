@@ -98,6 +98,19 @@ export async function executeTaskRun<TCodex = unknown, TGrok = unknown>(
   input: ExecuteTaskRunInput<TCodex, TGrok>,
 ): Promise<ExecuteTaskRunResult<TCodex, TGrok>> {
   assertExecuteInput(input);
+  // TASK-301: Codex/Grok have no ambient worker configuration source.  Do
+  // not let a caller select either subprocess lane and accidentally compose
+  // a runtime without its budget/reservation factory: that would spawn an
+  // unadmitted provider.  Claude/Gemini are owned by their separate lanes.
+  if (
+    (input.run.agentRef.provider === "codex" || input.run.agentRef.provider === "grok")
+    && input.subprocessProviders === undefined
+  ) {
+    throw new WorkerExecutionError(
+      `subprocess.provider_config_missing: ${input.run.agentRef.provider}`,
+      "SUBPROCESS_PROVIDER_CONFIG_MISSING",
+    );
+  }
   const allowedTools = resolveAllowedTools(input);
 
   const runtime = composeHarness<BrokerDependencies, TCodex, TGrok>({

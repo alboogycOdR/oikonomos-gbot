@@ -4,6 +4,8 @@ import {
   getRoutine,
   getRoutineSpendUsd,
   recordSpend,
+  admitRunReservation,
+  releaseRunReservation,
   type DatabaseOptions,
 } from "@oikonomos/db";
 import { resolveBudgetGate } from "@oikonomos/broker";
@@ -36,10 +38,32 @@ export interface GatedSubprocessBudgetOptions {
   readonly runId: string;
   /** Owning routine, when known; omit/null for a run with no routine. */
   readonly routineId?: string | null;
+  /** Required for TASK-301's project/role atomic admission. */
+  readonly tenantId?: string;
+  /** Required for TASK-301's per-role atomic admission. */
+  readonly roleId?: string;
+  /** Project selected from the project thread or a verified task.assigned handoff. */
+  readonly projectId?: string | null;
   /** Overrides `DEFAULT_USD_TO_ZAR_RATE`; wire `process.env.USD_TO_ZAR_RATE` here. */
   readonly usdToZarRate?: number;
   /** Overrides `DEFAULT_PLATFORM_CEILING_ZAR`. */
   readonly platformCeilingZar?: number;
+}
+
+// The Codex/Grok CLIs report their final cost rather than exposing a token
+// calculator. Reserve $0.25 per turn (the same conservative chat ceiling as
+// Claude) until those providers publish a stable maximum-token calculator;
+// unset environment values deliberately retain this non-zero reservation.
+const SUBPROCESS_TURN_RESERVATION_USD = 0.25;
+
+function subprocessTurnReservationUsd(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.OIK_SUBPROCESS_TURN_RESERVATION_USD?.trim();
+  if (raw === undefined || raw.length === 0) return SUBPROCESS_TURN_RESERVATION_USD;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("OIK_SUBPROCESS_TURN_RESERVATION_USD must be a finite number >= 0");
+  }
+  return value;
 }
 
 /**
@@ -163,6 +187,25 @@ export function wrapGateWithBudget(gate: GateSubprocess, budget: GatedSubprocess
     if (decision.decision === "deny") {
       return { allow: false, message: decision.reason };
     }
+    // Legacy direct users of this exported helper have only the TASK-143
+    // platform/routine inputs. The production factory below requires all
+    // identity fields, so every real Codex/Grok composition takes this
+    // atomic admission path before its provider spawn.
+    if (budget.tenantId !== undefined && budget.roleId !== undefined) {
+      try {
+        const admission = await admitRunReservation(budget.db, {
+          tenantId: budget.tenantId,
+          runId: budget.runId,
+          roleId: budget.roleId,
+          projectId: budget.projectId ?? null,
+          reserveUsd: subprocessTurnReservationUsd(),
+        });
+        if (!admission.admitted) return { allow: false, message: admission.reason };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { allow: false, message: `budget.check_failed: ${message}` };
+      }
+    }
     return gate(request);
   };
 }
@@ -177,7 +220,7 @@ export function withRecordedSpend<TProvider extends { id: string }>(
   provider: TProvider & Parameters<typeof withBudgetSink>[0],
   budget: GatedSubprocessBudgetOptions,
 ): TProvider {
-  return withBudgetSink(provider, {
+  const accounted = withBudgetSink(provider, {
     async report(entry: BudgetReport): Promise<void> {
       await recordSpend(budget.db, {
         runId: budget.runId,
@@ -186,9 +229,25 @@ export function withRecordedSpend<TProvider extends { id: string }>(
         model: entry.model,
         costUsd: entry.costUsd,
         tokens: entry.tokens,
+        projectId: budget.projectId ?? null,
       });
     },
-  }) as unknown as TProvider;
+  });
+  // `recordSpend` releases in its insert transaction. If the provider (or
+  // the accounting sink) throws before that insert, release the admitted
+  // reservation here. The DB predicate makes repeated failure cleanup a
+  // harmless no-op, which is required when callers also unwind a run.
+  return {
+    ...accounted,
+    async *sendPrompt(options: never) {
+      try {
+        for await (const event of accounted.sendPrompt(options as never)) yield event;
+      } catch (error) {
+        await releaseRunReservation(budget.db, budget.runId);
+        throw error;
+      }
+    },
+  } as unknown as TProvider;
 }
 
 /**
@@ -233,6 +292,15 @@ export function createGatedSubprocessProviders(
     throw new Error(
       "createGatedSubprocessProviders requires a `budget` option (TASK-143 enforcement) " +
         "— pass `unsafeAllowUnbudgeted: true` to explicitly construct unbudgeted Codex/Grok providers.",
+    );
+  }
+  if (
+    budget !== undefined
+    && (budget.tenantId === undefined || budget.tenantId.trim().length === 0
+      || budget.roleId === undefined || budget.roleId.trim().length === 0)
+  ) {
+    throw new Error(
+      "createGatedSubprocessProviders requires tenantId and roleId for TASK-301 atomic admission",
     );
   }
   return {
