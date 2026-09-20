@@ -9028,7 +9028,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.3 B (liveness through the REAL broker->MCP composition, before/after row counts on roles and role_grants, keyed on each tool's audit event), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §4 Invariant B.
@@ -9052,12 +9052,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-20T15:43:01Z] [SV:CX9] Committed Claude/Gemini project MCP mounting and focused surface tests; persisted audit-event liveness fixture remains to be added. NEXT: Add the real broker-to-project-MCP audit-event liveness fixture proving roles and role_grants counts are unchanged for all six handlers, then rerun isolated tests.
 - [2026-09-20T15:58:01Z] [SV:CX9] Implemented project MCP mounting, broker destinations, manager create_bot mount, and real Gemini L1 liveness fixtures; five project tools and create_bot path pass, but assign_task liveness fails before its audit event.
 - [2026-09-20T16:14:00Z] [ORCH] UNBLOCKED by re-carving territory (§7). The OWNERSHIP_CONFLICT names a real gap: the assign_task audit-liveness fix needs a repair in services/worker/src/projectTools.ts (assign_task handler emits its audit event after the fan-out, so the liveness assertion sees no event). projectTools.ts + projectTools.test.ts were owned only by TASK-302 (done, merged) and by NO active task (305=control-api, 308=mobile ⇒ disjoint); services/worker is NOT a protected path, so no cross-model gate on that file. Owned_Paths widened +services/worker/src/projectTools.ts +services/worker/src/projectTools.test.ts. Status blocked→in_progress; resume on task/TASK-303-cx9 (§10a), do not re-branch. Scope unchanged otherwise: fix assign_task so its audit event fires within the liveness window, keep the six-handler liveness green, then the mandatory different-model adversarial review (this diff still touches no protected path, but §10 P-4 review stands).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-20T16:38:01Z] [SV:CX9] Fixed assign_task audit ordering and UUID-valid liveness fixture; all five TASK-303 invariants now pass through real broker composition.
+**Artifacts:** services/worker/src/connectorResolution.ts, services/worker/src/chatRunDriver.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/projectManagerInvariant.test.ts, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, dossiers/TASK-303.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Root . -Filter @oikonomos/worker: all 5 TASK-303 invariant tests pass; pnpm --filter @oikonomos/worker run typecheck: pass. Recursive isolated run started: dashboard 158/158 and agent-providers 108/108 passed; runner stream detached before final aggregate summary.
 **Review_Findings:** —
 **Blocked_Reason:** — [RESOLVED 2026-09-20T16:14:00Z ORCH: territory widened to include projectTools.ts/.test.ts]
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-20T16:14:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T16:38:01Z
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
