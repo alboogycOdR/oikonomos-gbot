@@ -77,3 +77,64 @@ integration("listWorkspaceSummary ownership against real Postgres (TASK-237)", (
     }
   });
 });
+
+integration("listWorkspaceSummary blockedTasks against real Postgres (TASK-304)", () => {
+  const tenantId = "task-304-summary-tenant";
+  const roleA = "task-304-summary-a";
+  const roleB = "task-304-summary-b";
+  let pool: Pool;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig, max: 1 });
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it("reports blocked work items for a project thread and an empty list otherwise", async () => {
+    const threadIds: string[] = [];
+    try {
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[roleA, roleB]]);
+      await pool.query(
+        `INSERT INTO roles (role_id, tenant_id, name, title, description, status)
+         VALUES ($1, $3, 'A', 'A', '', 'active'), ($2, $3, 'B', 'B', '', 'active')`,
+        [roleA, roleB, tenantId],
+      );
+      const projectThread = await pool.query<{ id: string }>("INSERT INTO threads (role_id, title) VALUES (NULL, 'p') RETURNING id");
+      const plainThread = await pool.query<{ id: string }>("INSERT INTO threads (role_id, title) VALUES (NULL, 'plain') RETURNING id");
+      threadIds.push(projectThread.rows[0]!.id, plainThread.rows[0]!.id);
+      await pool.query(
+        "INSERT INTO thread_members (thread_id, role_id) VALUES ($1, $2), ($1, $3), ($4, $2), ($4, $3)",
+        [projectThread.rows[0]!.id, roleA, roleB, plainThread.rows[0]!.id],
+      );
+      const project = await pool.query<{ project_id: string }>(
+        `INSERT INTO projects (tenant_id, thread_id, name, goal, done_criterion, created_by)
+         VALUES ($1, $2, 'P', 'g', 'd', 'human:1') RETURNING project_id`,
+        [tenantId, projectThread.rows[0]!.id],
+      );
+      const projectId = project.rows[0]!.project_id;
+      await pool.query(
+        `INSERT INTO project_tasks (project_id, title, owner_role_id, state, blocked_reason, created_by)
+         VALUES ($1, 'stuck', $2, 'blocked', 'waiting on API key', 'human:1'),
+                ($1, 'fine', $2, 'doing', NULL, 'human:1')`,
+        [projectId, roleA],
+      );
+
+      const summaries = await listWorkspaceSummary({ connectionString: connectionString! }, tenantId);
+      const byThread = new Map(summaries.map((summary) => [summary.threadId, summary]));
+      expect(byThread.get(projectThread.rows[0]!.id)?.blockedTasks).toEqual([
+        expect.objectContaining({ title: "stuck", blockedReason: "waiting on API key", ownerRoleId: roleA }),
+      ]);
+      expect(byThread.get(plainThread.rows[0]!.id)?.blockedTasks).toEqual([]);
+    } finally {
+      await pool.query("DELETE FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)", [tenantId]);
+      await pool.query("DELETE FROM projects WHERE tenant_id = $1", [tenantId]);
+      if (threadIds.length > 0) {
+        await pool.query("DELETE FROM thread_members WHERE thread_id = ANY($1::uuid[])", [threadIds]);
+        await pool.query("DELETE FROM threads WHERE id = ANY($1::uuid[])", [threadIds]);
+      }
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[roleA, roleB]]);
+    }
+  });
+});

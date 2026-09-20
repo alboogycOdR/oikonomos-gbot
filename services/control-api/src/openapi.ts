@@ -16,6 +16,99 @@ export function getOpenApiDocument(): Record<string, unknown> {
         "Tasks, runs, approvals and evidence — the only surface that talks to the DB (OIK-084). Telegram and other clients consume this API, never packages/db directly.",
     },
     paths: {
+      "/projects": {
+        post: {
+          summary: "Create a project: one group thread, a roster of at most 6, at most one manager, and the charter, in one transaction (TASK-304, spec §9.1)",
+          operationId: "createProject",
+          requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/NewProject" } } } },
+          responses: {
+            "201": { description: "Project created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWithRoster" } } } },
+            "400": { description: "Invalid project input, roster, or a role that is not this tenant's" },
+            "501": { description: "Projects are not configured" },
+          },
+        },
+        get: {
+          summary: "List this tenant's projects",
+          operationId: "listProjects",
+          parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["active", "paused", "done", "archived"] } }],
+          responses: { "200": { description: "Projects", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Project" } } } } } },
+        },
+      },
+      "/projects/{id}": {
+        get: {
+          summary: "Get a project: charter, roster, board summary, latest STATUS.md artifact, spend vs budget",
+          operationId: "getProject",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: {
+            "200": { description: "Project detail", content: { "application/json": { schema: { $ref: "#/components/schemas/Project" } } } },
+            "404": { description: "No such project, or owned by a different tenant (never 403)" },
+          },
+        },
+        patch: {
+          summary: "Update status, budget, roster or manager; demoting a manager revokes its grants and invalidates its pending create_bot approvals in one transaction",
+          operationId: "updateProject",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          responses: {
+            "200": { description: "Project updated", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWithRoster" } } } },
+            "400": { description: "Invalid update" },
+            "404": { description: "No such project, or owned by a different tenant" },
+          },
+        },
+      },
+      "/projects/{id}/tasks": {
+        get: {
+          summary: "List the project's work items",
+          operationId: "listProjectTasks",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+            { name: "state", in: "query", schema: { type: "string", enum: ["todo", "doing", "blocked", "review", "done", "cancelled"] } },
+          ],
+          responses: { "200": { description: "Work items" }, "404": { description: "No such project" } },
+        },
+        post: {
+          summary: "Create a work item; blocked needs a reason and an owner must be on the roster",
+          operationId: "createProjectTask",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          responses: { "201": { description: "Work item created" }, "400": { description: "Invalid work item" }, "404": { description: "No such project" } },
+        },
+      },
+      "/projects/{id}/tasks/{taskId}": {
+        patch: {
+          summary: "Transition a work item (audited) and/or reassign its owner",
+          operationId: "updateProjectTask",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+            { name: "taskId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          responses: { "200": { description: "Work item updated" }, "400": { description: "Illegal transition, missing blocked reason, or owner not on the roster" }, "404": { description: "No such project or work item" } },
+        },
+      },
+      "/projects/{id}/artifacts": {
+        get: {
+          summary: "List the project's artifact register (references, never bytes)",
+          operationId: "listProjectArtifacts",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "200": { description: "Artifacts, newest first" }, "404": { description: "No such project" } },
+        },
+        post: {
+          summary: "Register an artifact; a workspace_file ref must be a canonical path under the project directory",
+          operationId: "registerProjectArtifact",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          responses: { "201": { description: "Artifact registered" }, "400": { description: "Invalid artifact" }, "404": { description: "No such project" } },
+        },
+      },
+      "/projects/{id}/decisions": {
+        get: {
+          summary: "The decision log; approvals decided on a project-attributed run appear by approval_id",
+          operationId: "listProjectDecisions",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "200": { description: "Decisions" }, "404": { description: "No such project" } },
+        },
+      },
       "/routines/{id}": {
         patch: {
           summary: "Update a routine's skill binding",
@@ -573,6 +666,49 @@ export function getOpenApiDocument(): Record<string, unknown> {
             edited: { type: "boolean" },
             invalidated: { $ref: "#/components/schemas/Approval" },
             replacement: { type: "object" },
+          },
+        },
+        NewProject: {
+          type: "object",
+          required: ["name", "goal", "doneCriterion", "roster"],
+          properties: {
+            name: { type: "string" },
+            goal: { type: "string" },
+            doneCriterion: { type: "string" },
+            boundaries: { type: "string" },
+            checkWithMeBefore: { type: "string" },
+            budgetUsd: { type: "number", nullable: true },
+            roster: {
+              type: "array",
+              minItems: 2,
+              maxItems: 6,
+              items: {
+                type: "object",
+                required: ["roleId"],
+                properties: { roleId: { type: "string" }, responsibility: { type: "string" }, isManager: { type: "boolean" } },
+              },
+            },
+          },
+        },
+        Project: {
+          type: "object",
+          required: ["projectId", "threadId", "name", "goal", "doneCriterion", "status"],
+          properties: {
+            projectId: { type: "string", format: "uuid" },
+            threadId: { type: "string", format: "uuid" },
+            name: { type: "string" },
+            goal: { type: "string" },
+            doneCriterion: { type: "string" },
+            status: { type: "string", enum: ["active", "paused", "done", "archived"] },
+            budgetUsd: { type: "number", nullable: true },
+          },
+        },
+        ProjectWithRoster: {
+          type: "object",
+          required: ["project", "roster"],
+          properties: {
+            project: { $ref: "#/components/schemas/Project" },
+            roster: { type: "array", items: { type: "object" } },
           },
         },
         ErrorResponse: {

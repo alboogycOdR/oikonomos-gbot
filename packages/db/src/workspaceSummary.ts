@@ -8,6 +8,15 @@ export interface WorkspaceSummary {
   latestRun: { runId: string; status: RunStatus } | null;
   pendingApprovals: number;
   lastActivityAt: Date;
+  /** TASK-304 / spec §3.3: blocked work items when the thread is a project's; else empty. */
+  blockedTasks: BlockedTaskSummary[];
+}
+
+export interface BlockedTaskSummary {
+  taskId: string;
+  title: string;
+  blockedReason: string;
+  ownerRoleId: string | null;
 }
 
 interface WorkspaceSummaryRow extends QueryResultRow {
@@ -16,6 +25,7 @@ interface WorkspaceSummaryRow extends QueryResultRow {
   run_status: RunStatus | null;
   pending_approvals: string;
   last_activity_at: Date;
+  blocked_tasks: Array<{ taskId: string; title: string; blockedReason: string; ownerRoleId: string | null }>;
 }
 
 function requireTenantId(tenantId: string): string {
@@ -40,7 +50,15 @@ export async function listWorkspaceSummary(options: DatabaseOptions, tenantId: s
                  FROM approvals
                 WHERE approvals.run_id = latest.run_id
                   AND approvals.status = 'pending') AS pending_approvals,
-              threads.updated_at AS last_activity_at
+              threads.updated_at AS last_activity_at,
+              COALESCE((SELECT json_agg(json_build_object(
+                          'taskId', pt.task_id, 'title', pt.title,
+                          'blockedReason', pt.blocked_reason, 'ownerRoleId', pt.owner_role_id)
+                          ORDER BY pt.updated_at, pt.task_id)
+                          FROM projects pr
+                          JOIN project_tasks pt ON pt.project_id = pr.project_id
+                         WHERE pr.thread_id = threads.id AND pr.tenant_id = $1 AND pt.state = 'blocked'),
+                       '[]'::json) AS blocked_tasks
          FROM threads
          LEFT JOIN LATERAL (
            SELECT messages.run_id, runs.status
@@ -72,6 +90,7 @@ export async function listWorkspaceSummary(options: DatabaseOptions, tenantId: s
       latestRun: row.run_id === null || row.run_status === null ? null : { runId: row.run_id, status: row.run_status },
       pendingApprovals: Number(row.pending_approvals),
       lastActivityAt: row.last_activity_at,
+      blockedTasks: row.blocked_tasks,
     }));
   });
 }
