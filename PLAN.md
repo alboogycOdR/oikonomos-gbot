@@ -8976,12 +8976,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T16:58:01Z] [SV:CX9] Committed subprocess fail-closed atomic-admission wiring; targeted isolated worker suite passed. Full suite is blocked by the shared test DB lock, and remaining TASK-301 real-path scenario tests still need adding. NEXT: After the isolated-test DB lock clears, add the remaining real-path concurrency, attribution, forged-handoff, and exactly-once-release tests; run the full isolated recursive suite.
 - [2026-09-20T06:23:01Z] [SV:CX9] Builds pass; mandatory isolated test runner cannot start because Docker Desktop's Linux engine pipe is unavailable.
 - [2026-09-20T09:35:00Z] [ORCH] Unblocked: the TOOLING_FAILURE was a reboot outage (Docker Desktop was not running, Postgres down). Docker and the DB are back; isolated suite is runnable again. Resume and finish.
+- [2026-09-20T09:53:01Z] [SV:CX9] Fixed release of an admitted unrecorded Claude run and added manager-versus-forged task.assigned attribution coverage. Remaining: real-path project/role concurrency, spend attribution, failure-release assertions, then isolated full suite after the shared DB lock clears. NEXT: Acquire the isolated-test DB lock, add remaining TASK-301 real-path tests, then run targeted and full scripts/test-isolated.ps1 suites.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-20T09:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T09:53:01Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
