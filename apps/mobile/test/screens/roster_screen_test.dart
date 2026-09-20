@@ -5,6 +5,7 @@ import 'package:oikonomos_mobile/push/push_message.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
 import 'package:oikonomos_mobile/screens/login_screen.dart';
+import 'package:oikonomos_mobile/screens/projects_screen.dart';
 import 'package:oikonomos_mobile/screens/roster_screen.dart';
 import 'package:oikonomos_mobile/screens/settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -399,5 +400,23 @@ void main() {
             isFalse);
       },
     );
+  });
+
+  testWidgets('projects button opens the ProjectsScreen', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('GET', '/threads', 200, []);
+    fake.queueJsonFor('GET', '/projects', 200, []);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RosterScreen(apiClient: client, pushPort: FakePushPort()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('projects-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProjectsScreen), findsOneWidget);
+    expect(find.byKey(const Key('projects-empty')), findsOneWidget);
   });
 }
