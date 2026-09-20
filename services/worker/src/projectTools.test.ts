@@ -42,6 +42,15 @@ describe("project tools", () => {
     expect(audit).toHaveBeenCalledWith("project.fanout_capped", expect.objectContaining({ roster_size: 2 }));
   });
 
+  it("audits an assignment after its durable mutation and before handoff delivery", async () => {
+    const audit = vi.fn(async () => undefined);
+    const sendAssignment = vi.fn(async () => { throw new Error("mailbox unavailable"); });
+    await expect(tools({ audit, sendAssignment }).assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("mailbox unavailable");
+    expect(audit).toHaveBeenCalledWith("project.task_assigned", {
+      project_id: projectId, task_id: taskId, owner_role_id: member, actor: `role:${manager}`,
+    });
+  });
+
   it("stores only valid canonical project workspace-file references", async () => {
     const createArtifact = vi.fn(async (input) => input);
     await expect(tools({ createArtifact, resolvePath: () => "/oikonomos/workspace/projects/other/a" }).register_artifact({ projectId, kind: "workspace_file", ref: `/oikonomos/workspace/projects/${projectId}/../escape`, label: "x" })).rejects.toThrow("canonical");

@@ -86,8 +86,8 @@ function text(value: string): Response {
 
 integration("project manager liveness through the worker broker composition (TASK-303)", () => {
   const tenantId = `task-303-${randomUUID()}`;
-  const managerRoleId = `task-303-manager-${randomUUID().slice(0, 8)}`;
-  const memberRoleId = `task-303-member-${randomUUID().slice(0, 8)}`;
+  const managerRoleId = randomUUID();
+  const memberRoleId = randomUUID();
   let pool: Pool;
   let options: DatabaseOptions;
   let projectId: string;
@@ -184,12 +184,14 @@ integration("project manager liveness through the worker broker composition (TAS
       expect({ roles: await count("roles"), grants: await count("role_grants") }).toEqual(before);
       const events = await getAuditEventsForRun(options, runId);
       const projectEventTypes = events.filter((event) => event.eventType.startsWith("project.")).map((event) => event.eventType);
-      expect(projectEventTypes).toContain("project.board_listed");
-      expect(projectEventTypes).toContain("project.task_created");
-      expect(projectEventTypes).toContain("project.task_transition");
-      expect(projectEventTypes).toContain("project.task_assigned");
-      expect(projectEventTypes).toContain("project.artifact_registered");
-      expect(projectEventTypes).toContain("project.decision_recorded");
+      expect(projectEventTypes.sort()).toEqual([
+        "project.artifact_registered",
+        "project.board_listed",
+        "project.decision_recorded",
+        "project.task_assigned",
+        "project.task_created",
+        "project.task_transition",
+      ]);
     } finally { await database.close(); }
   }, 30_000);
 
