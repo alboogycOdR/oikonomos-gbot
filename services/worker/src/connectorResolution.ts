@@ -19,6 +19,8 @@ export const WORKSPACE_REQUEST_SECRET_CAPABILITY_ID = "workspace.request_secret"
 export const WORKSPACE_REQUEST_SECRET_TOOL = "mcp__workspace__request_secret";
 export const WORKSPACE_CREATE_ROUTINE_CAPABILITY_ID = "workspace.create_routine";
 export const WORKSPACE_CREATE_ROUTINE_TOOL = "mcp__workspace__create_routine";
+export const WORKSPACE_CREATE_BOT_CAPABILITY_ID = "workspace.create_bot";
+export const WORKSPACE_CREATE_BOT_TOOL = "mcp__workspace__create_bot";
 export const PROJECT_TOOL_CAPABILITIES = [
   ["project.read", "mcp__project__list_board"],
   ["project.task_write", "mcp__project__create_task"],
@@ -45,6 +47,7 @@ export async function resolveGrantedWorkspaceConnector(input: {
     ...(grantedCapabilities.has(WORKSPACE_RENAME_SELF_CAPABILITY_ID) ? [WORKSPACE_RENAME_SELF_TOOL] : []),
     ...(grantedCapabilities.has(WORKSPACE_REQUEST_SECRET_CAPABILITY_ID) ? [WORKSPACE_REQUEST_SECRET_TOOL] : []),
     ...(grantedCapabilities.has(WORKSPACE_CREATE_ROUTINE_CAPABILITY_ID) ? [WORKSPACE_CREATE_ROUTINE_TOOL] : []),
+    ...(grantedCapabilities.has(WORKSPACE_CREATE_BOT_CAPABILITY_ID) ? [WORKSPACE_CREATE_BOT_TOOL] : []),
   ];
   if (allowedTools.length === 0) return undefined;
   return {

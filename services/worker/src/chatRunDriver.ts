@@ -1729,6 +1729,17 @@ const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unk
   mcp__workspace__create_bot: (input) => input.name,
   mcp__workspace__retire_bot: (input) => input.roleId,
 
+  // Project MCP has no external destination, but each operation has a
+  // concrete project/task/artifact target for the broker audit and any
+  // future approval rendering.  Keep this closed table exhaustive: an
+  // undeclared project verb still fails before it can reach the server.
+  mcp__project__list_board: (input) => input.projectId,
+  mcp__project__create_task: (input) => input.projectId,
+  mcp__project__update_task: (input) => input.taskId,
+  mcp__project__assign_task: (input) => input.taskId,
+  mcp__project__register_artifact: (input) => input.ref,
+  mcp__project__record_decision: (input) => input.projectId,
+
   mcp__steel__steel_navigate: (input) => input.url,
   mcp__steel__steel_act: (input) => input.action,
   mcp__steel__steel_snapshot: () => STEEL_CURRENT_PAGE_DESTINATION,
