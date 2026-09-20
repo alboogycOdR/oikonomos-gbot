@@ -9195,7 +9195,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-308
 **Title:** Mobile: project detail -- board with states and blocked reasons, artifact register, decision log, STATUS.md (P-7b)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §3 (board, states, mandatory blocked reason), §3.3 (blocked visible), §4 (artifact register), §8 (decision log), §1.4 (STATUS.md), §9.2 (UI: board, register, attention on blocked).
@@ -9213,12 +9213,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-20T16:18:01Z] [SV:CX9] Implemented project detail and task screens: board state groups with prominent blocked reasons, task transitions with required reason, charter/roster, artifact register, decision log, and STATUS.md rendering.
+- [2026-09-20T16:40:00Z] [ORCH opus-4-8] APPROVED & MERGED (--no-ff into master). Author CX9 (Codex/GPT, non-Claude) and territory touches no protected path, so the S5 cross-model rule does not apply — normal full review. Territory clean: diff --stat is exactly the four owned screen/test files + own dossier. All ACs verified against spec §3/§3.1/§3.3/§4/§8/§1.4: board grouped by projectTaskStates with blocked group initiallyExpanded and reason in error color; ProjectTaskScreen drives the §3.1 transition table (from merged TASK-307 models), blocked requires a non-empty reason via dialog, server refusal surfaced verbatim; artifact register + decision log have loading/empty/error states; latestStatusArtifact shown when present. Tests drive the real ApiClient path (task test asserts the serialized PATCH body {state, blockedReason}). Independent re-run in the CX9 worktree: flutter analyze clean, flutter test 199/199 pass = TASK-307's 194 baseline + this task's 5 new tests, reconciling exactly with Test_Evidence. Preflight filesystem-check evidence present in dossier. Branch delete deferred: task/TASK-308-cx9 is still checked out in the CX9 worktree (rule 6 — never remove a builder worktree); merged, harmless, dispatch resets it. Unlocks nothing pending (TASK-309 is low/unassigned, mobile-first).
 **Artifacts:** apps/mobile/lib/screens/project_detail_screen.dart, apps/mobile/lib/screens/project_task_screen.dart, apps/mobile/test/screens/project_detail_screen_test.dart, apps/mobile/test/screens/project_task_screen_test.dart, dossiers/TASK-308.md
-**Test_Evidence:** flutter analyze: no issues; flutter test test/screens/project_detail_screen_test.dart test/screens/project_task_screen_test.dart -r compact: 5/5 passed; full flutter test -r compact: passed.
-**Review_Findings:** —
+**Test_Evidence:** flutter analyze: no issues; flutter test test/screens/project_detail_screen_test.dart test/screens/project_task_screen_test.dart -r compact: 5/5 passed; full flutter test -r compact: passed. ORCH re-run: analyze clean, full package 199/199 pass.
+**Review_Findings:** APPROVED (ORCH opus-4-8, first-pass). No findings.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-20T16:18:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-20T16:40:00Z
 
 ### TASK-309
 **Title:** Dashboard: project board on the Work view, artifact register on the Results view, blocked items in the attention inbox (P-7c)
