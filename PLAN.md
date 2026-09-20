@@ -9156,7 +9156,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-307
 **Title:** Mobile: project API client, projects list, create-project flow (roster, manager, charter), entry from the roster screen (P-7a)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §1.1 (create a project with goal and done criterion, up to six bots, optionally one manager), §1.2 (charter captured at creation), §9.1 (routes), §9.2 (UI).
@@ -9174,6 +9174,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-20T15:08:01Z] [SV:S5] Implemented all section 9.1 ApiClient methods and models, ProjectsScreen with loading/empty/error states and a detailBuilder hook for TASK-308, CreateProjectScreen with 6-bot cap, one manager, charter fields and server error surfacing, and a roster entry button. Commit e533d96 on task/TASK-307-s5. Server requires roster of at least 2; client requires at least 1 and surfaces the server rejection.
+- [2026-09-20T15:35:00Z] [ORCH] APPROVED & MERGED (--no-ff into master). Territory clean (all within Owned_Paths + own dossier); touches no protected path so the S5 cross-model rule does not apply. All 10 spec §9.1 routes have typed ApiClient methods; roster cap 6, at-most-one-manager, and charter fields verified against §1.1/§1.2; server rejection surfaced. Independent re-run in the S5 worktree: flutter analyze clean, flutter test 194/194 pass (matches Test_Evidence). Unlocks TASK-308 (Depends_On: TASK-307).
 **Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/projects_screen.dart, apps/mobile/lib/screens/create_project_screen.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/api/api_client_test.dart, apps/mobile/test/screens/projects_screen_test.dart, apps/mobile/test/screens/create_project_screen_test.dart, apps/mobile/test/screens/roster_screen_test.dart, dossiers/TASK-307.md
 **Test_Evidence:** flutter analyze: No issues found. flutter test (whole apps/mobile package): 194 tests, All tests passed.
 **Review_Findings:** —
