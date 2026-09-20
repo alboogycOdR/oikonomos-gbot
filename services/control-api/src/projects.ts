@@ -16,6 +16,14 @@ import {
   type Thread,
 } from "@oikonomos/db";
 
+import { CronExpressionParser } from "cron-parser";
+
+import {
+  buildManagerCharter,
+  STATUS_ROUTINE_NAME,
+  STATUS_ROUTINE_SCHEDULE,
+  statusRoutineDefinition,
+} from "./charters/managerCharter.js";
 import type { ControlApiDeps, ProjectPorts } from "./ports.js";
 
 /**
@@ -180,6 +188,52 @@ async function resolveManagerGrants(deps: ControlApiDeps): Promise<ManagerGrantI
     .map((capability) => ({ capabilityId: capability.capabilityId, maxTier: capability.defaultTier }));
 }
 
+/**
+ * TASK-305 (P-6, spec §7.1/§1.3): seed the manager's instructions from the
+ * charter and give it one changes_only status routine. Idempotent on the
+ * routine (one per project). Failure is audited, not swallowed silently; the
+ * project/roster write has already committed, so it must not turn into a 400.
+ */
+async function seedManager(
+  deps: ControlApiDeps,
+  tenantId: string,
+  project: Project,
+  managerRoleId: string,
+  log: { warn: (obj: unknown, msg: string) => void },
+): Promise<void> {
+  try {
+    await deps.updateRoleInstructions(
+      managerRoleId,
+      buildManagerCharter({ projectName: project.name, goal: project.goal, doneCriterion: project.doneCriterion }),
+    );
+    const existing = await deps.listRoutines({ tenantId, roleId: managerRoleId });
+    const has = existing.some((routine) => routine.definition?.["projectId"] === project.projectId);
+    if (!has) {
+      await deps.createRoutine({
+        roleId: managerRoleId,
+        tenantId,
+        name: STATUS_ROUTINE_NAME,
+        schedule: STATUS_ROUTINE_SCHEDULE,
+        definition: statusRoutineDefinition(project.projectId),
+        notifyThreshold: "changes_only",
+        nextFireAt: CronExpressionParser.parse(STATUS_ROUTINE_SCHEDULE, { tz: "UTC" }).next().toDate(),
+      });
+    }
+    await audit(deps, tenantId, "project.manager_seeded", {
+      project_id: project.projectId,
+      manager_role_id: managerRoleId,
+      status_routine_created: !has,
+    });
+  } catch (error) {
+    log.warn({ err: error }, "Manager seeding failed");
+    await audit(deps, tenantId, "project.manager_seed_failed", {
+      project_id: project.projectId,
+      manager_role_id: managerRoleId,
+      error: (error as Error).message,
+    });
+  }
+}
+
 async function audit(
   deps: ControlApiDeps,
   tenantId: string,
@@ -298,6 +352,9 @@ export function registerProjectRoutes(
         roster: created.roster.map((member) => member.roleId),
         manager_role_id: manager?.roleId ?? null,
       });
+      if (manager !== undefined) {
+        await seedManager(deps, request.tenantId, created.project, manager.roleId, request.log);
+      }
       await reply.code(201).send({ project: serializeProject(created.project), roster: created.roster });
     } catch (error) {
       request.log.warn({ err: error }, "Project create failed");
@@ -394,6 +451,9 @@ export function registerProjectRoutes(
         changed: Object.keys(body),
         manager_role_id: updated.roster.find((member) => member.isManager)?.roleId ?? null,
       });
+      if (typeof body.managerRoleId === "string") {
+        await seedManager(deps, request.tenantId, updated.project, body.managerRoleId, request.log);
+      }
       await reply.code(200).send({ project: serializeProject(updated.project), roster: updated.roster });
     } catch (error) {
       request.log.warn({ err: error }, "Project update failed");
