@@ -862,4 +862,185 @@ void main() {
       },
     );
   });
+
+  group('project routes (TASK-307)', () {
+    const proj = {
+      'projectId': 'p1',
+      'threadId': 't1',
+      'name': 'Launch',
+      'goal': 'g',
+      'doneCriterion': 'd',
+      'status': 'active',
+      'budgetUsd': null,
+      'createdBy': 'human:x',
+      'createdAt': '2026-09-20T00:00:00.000Z',
+      'updatedAt': '2026-09-20T00:00:00.000Z',
+    };
+    const task = {
+      'taskId': 'k1',
+      'projectId': 'p1',
+      'title': 'T',
+      'description': '',
+      'ownerRoleId': null,
+      'state': 'todo',
+      'blockedReason': null,
+      'doneCriterion': null,
+      'createdBy': 'human:x',
+      'createdAt': '',
+      'updatedAt': '',
+    };
+    const artifact = {
+      'artifactId': 'a1',
+      'projectId': 'p1',
+      'taskId': null,
+      'kind': 'attachment',
+      'ref': 'r',
+      'sha256': null,
+      'byteSize': null,
+      'producedByRoleId': null,
+      'producedByRunId': null,
+      'label': 'STATUS.md',
+      'createdAt': '2026-09-20T00:00:00.000Z',
+    };
+
+    Future<(ApiClient, FakeHttpClient)> setup() async {
+      final fake = FakeHttpClient();
+      final client = await _loggedInForTemplates(fake);
+      return (client, fake);
+    }
+
+    http.Request last(FakeHttpClient f) => f.requests.last as http.Request;
+    Map<String, dynamic> lastBody(FakeHttpClient f) =>
+        jsonDecode(last(f).body) as Map<String, dynamic>;
+
+    test('createProject sends charter fields and roster', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(201, {
+        'project': proj,
+        'roster': [
+          {'roleId': 'r1', 'isManager': true, 'responsibility': ''},
+        ],
+      });
+      final out = await client.createProject(
+        name: 'Launch',
+        goal: 'g',
+        doneCriterion: 'd',
+        boundaries: 'b',
+        checkWithMeBefore: 'c',
+        roster: [
+          {'roleId': 'r1', 'isManager': true},
+          {'roleId': 'r2'},
+        ],
+      );
+      expect(out.project.name, 'Launch');
+      expect(out.roster.single.isManager, isTrue);
+      expect(last(fake).method, 'POST');
+      expect(last(fake).url.path, '/projects');
+      final body = lastBody(fake);
+      expect(body['boundaries'], 'b');
+      expect(body['checkWithMeBefore'], 'c');
+      expect((body['roster'] as List).length, 2);
+    });
+
+    test('createProject surfaces the server rejection', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(400, {'error': 'a project has at most one manager.'});
+      expect(
+        () => client.createProject(
+          name: 'n',
+          goal: 'g',
+          doneCriterion: 'd',
+          roster: [],
+        ),
+        throwsA(isA<ApiException>().having(
+            (e) => e.message, 'message', 'a project has at most one manager.')),
+      );
+    });
+
+    test('listProjects / getProject', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(200, [proj]);
+      expect((await client.listProjects(status: 'active')).single.projectId,
+          'p1');
+      expect(last(fake).url.toString(), endsWith('/projects?status=active'));
+
+      fake.queueJson(200, {
+        ...proj,
+        'charter': {'goal': 'g'},
+        'roster': [],
+        'board': {'todo': 2},
+        'latestStatusArtifact': artifact,
+        'spend': {'usd': 1.5, 'budgetUsd': null},
+      });
+      final detail = await client.getProject('p1');
+      expect(detail.board['todo'], 2);
+      expect(detail.charter['goal'], 'g');
+      expect(detail.latestStatusArtifact?.label, 'STATUS.md');
+      expect(detail.spendUsd, 1.5);
+      expect(last(fake).url.path, '/projects/p1');
+    });
+
+    test('updateProject PATCHes and can clear the manager', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(200, {'project': proj, 'roster': []});
+      await client.updateProject('p1', status: 'paused', clearManager: true);
+      expect(last(fake).method, 'PATCH');
+      expect(last(fake).url.path, '/projects/p1');
+      final body = lastBody(fake);
+      expect(body['status'], 'paused');
+      expect(body.containsKey('managerRoleId'), isTrue);
+      expect(body['managerRoleId'], isNull);
+    });
+
+    test('task routes', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(200, [task]);
+      expect((await client.listProjectTasks('p1', state: 'todo')).single.title,
+          'T');
+      expect(last(fake).url.toString(),
+          endsWith('/projects/p1/tasks?state=todo'));
+
+      fake.queueJson(201, task);
+      await client.createProjectTask('p1', title: 'T', ownerRoleId: 'r1');
+      expect(last(fake).method, 'POST');
+      expect(lastBody(fake)['ownerRoleId'], 'r1');
+
+      fake.queueJson(
+          200, {...task, 'state': 'blocked', 'blockedReason': 'why'});
+      final t = await client.updateProjectTask('p1', 'k1',
+          state: 'blocked', blockedReason: 'why');
+      expect(t.blockedReason, 'why');
+      expect(last(fake).method, 'PATCH');
+      expect(last(fake).url.path, '/projects/p1/tasks/k1');
+    });
+
+    test('artifact and decision routes', () async {
+      final (client, fake) = await setup();
+      fake.queueJson(200, [artifact]);
+      expect(
+          (await client.listProjectArtifacts('p1')).single.label, 'STATUS.md');
+      expect(last(fake).url.path, '/projects/p1/artifacts');
+
+      fake.queueJson(201, artifact);
+      await client.createProjectArtifact('p1',
+          kind: 'attachment', ref: 'r', label: 'STATUS.md');
+      expect(last(fake).method, 'POST');
+      expect(lastBody(fake)['kind'], 'attachment');
+
+      fake.queueJson(200, [
+        {
+          'decisionId': 'd1',
+          'projectId': 'p1',
+          'taskId': null,
+          'kind': 'human_decision',
+          'approvalId': null,
+          'summary': 'go',
+          'actor': 'human:x',
+          'createdAt': '',
+        },
+      ]);
+      expect((await client.listProjectDecisions('p1')).single.summary, 'go');
+      expect(last(fake).url.path, '/projects/p1/decisions');
+    });
+  });
 }

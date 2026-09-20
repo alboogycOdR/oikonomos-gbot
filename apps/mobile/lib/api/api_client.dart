@@ -200,6 +200,175 @@ class ApiClient {
     return Role.fromJson(json as Map<String, dynamic>);
   }
 
+  // ---- TASK-307: Project Workspace routes (spec §9.1) ----
+
+  static String _id(String value) => Uri.encodeComponent(value);
+
+  static List<T> _parseList<T>(
+    dynamic json,
+    T Function(Map<String, dynamic>) parse,
+  ) =>
+      (json as List<dynamic>)
+          .map((e) => parse(e as Map<String, dynamic>))
+          .toList();
+
+  /// `POST /projects`. Charter fields ([boundaries], [checkWithMeBefore])
+  /// are sent at creation (spec §1.2). Roster entries are
+  /// `{roleId, responsibility?, isManager?}`. The server's own rejection
+  /// (e.g. roster cap) surfaces as [ApiException].
+  Future<ProjectWithRoster> createProject({
+    required String name,
+    required String goal,
+    required String doneCriterion,
+    String? boundaries,
+    String? checkWithMeBefore,
+    double? budgetUsd,
+    required List<Map<String, Object?>> roster,
+  }) async {
+    final json = await _request('POST', '/projects', body: {
+      'name': name,
+      'goal': goal,
+      'doneCriterion': doneCriterion,
+      if (boundaries != null) 'boundaries': boundaries,
+      if (checkWithMeBefore != null) 'checkWithMeBefore': checkWithMeBefore,
+      if (budgetUsd != null) 'budgetUsd': budgetUsd,
+      'roster': roster,
+    });
+    return ProjectWithRoster.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `GET /projects` (optionally filtered by status).
+  Future<List<Project>> listProjects({String? status}) async {
+    final query = status == null ? '' : '?status=${_id(status)}';
+    final json = await _request('GET', '/projects$query');
+    return _parseList(json, Project.fromJson);
+  }
+
+  /// `GET /projects/:id`.
+  Future<ProjectDetail> getProject(String projectId) async {
+    final json = await _request('GET', '/projects/${_id(projectId)}');
+    return ProjectDetail.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `PATCH /projects/:id` — status, budget, roster changes.
+  Future<ProjectWithRoster> updateProject(
+    String projectId, {
+    String? status,
+    double? budgetUsd,
+    List<Map<String, Object?>>? addMembers,
+    List<String>? removeRoleIds,
+    String? managerRoleId,
+    bool clearManager = false,
+  }) async {
+    final json = await _request('PATCH', '/projects/${_id(projectId)}', body: {
+      if (status != null) 'status': status,
+      if (budgetUsd != null) 'budgetUsd': budgetUsd,
+      if (addMembers != null) 'addMembers': addMembers,
+      if (removeRoleIds != null) 'removeRoleIds': removeRoleIds,
+      if (managerRoleId != null) 'managerRoleId': managerRoleId,
+      if (clearManager) 'managerRoleId': null,
+    });
+    return ProjectWithRoster.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `GET /projects/:id/tasks` (optionally filtered by state).
+  Future<List<ProjectTask>> listProjectTasks(
+    String projectId, {
+    String? state,
+  }) async {
+    final query = state == null ? '' : '?state=${_id(state)}';
+    final json =
+        await _request('GET', '/projects/${_id(projectId)}/tasks$query');
+    return _parseList(json, ProjectTask.fromJson);
+  }
+
+  /// `POST /projects/:id/tasks`.
+  Future<ProjectTask> createProjectTask(
+    String projectId, {
+    required String title,
+    String? description,
+    String? ownerRoleId,
+    String? doneCriterion,
+    String? state,
+    String? blockedReason,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/projects/${_id(projectId)}/tasks',
+      body: {
+        'title': title,
+        if (description != null) 'description': description,
+        if (ownerRoleId != null) 'ownerRoleId': ownerRoleId,
+        if (doneCriterion != null) 'doneCriterion': doneCriterion,
+        if (state != null) 'state': state,
+        if (blockedReason != null) 'blockedReason': blockedReason,
+      },
+    );
+    return ProjectTask.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `PATCH /projects/:id/tasks/:taskId` — a state transition (blocked needs
+  /// [blockedReason]) and/or an owner change.
+  Future<ProjectTask> updateProjectTask(
+    String projectId,
+    String taskId, {
+    String? state,
+    String? blockedReason,
+    String? ownerRoleId,
+  }) async {
+    final json = await _request(
+      'PATCH',
+      '/projects/${_id(projectId)}/tasks/${_id(taskId)}',
+      body: {
+        if (state != null) 'state': state,
+        if (blockedReason != null) 'blockedReason': blockedReason,
+        if (ownerRoleId != null) 'ownerRoleId': ownerRoleId,
+      },
+    );
+    return ProjectTask.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `GET /projects/:id/artifacts`.
+  Future<List<ProjectArtifact>> listProjectArtifacts(String projectId) async {
+    final json = await _request('GET', '/projects/${_id(projectId)}/artifacts');
+    return _parseList(json, ProjectArtifact.fromJson);
+  }
+
+  /// `POST /projects/:id/artifacts` — registers an artifact by reference.
+  Future<ProjectArtifact> createProjectArtifact(
+    String projectId, {
+    required String kind,
+    required String ref,
+    required String label,
+    String? taskId,
+    String? sha256,
+    int? byteSize,
+    String? producedByRoleId,
+    String? producedByRunId,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/projects/${_id(projectId)}/artifacts',
+      body: {
+        'kind': kind,
+        'ref': ref,
+        'label': label,
+        if (taskId != null) 'taskId': taskId,
+        if (sha256 != null) 'sha256': sha256,
+        if (byteSize != null) 'byteSize': byteSize,
+        if (producedByRoleId != null) 'producedByRoleId': producedByRoleId,
+        if (producedByRunId != null) 'producedByRunId': producedByRunId,
+      },
+    );
+    return ProjectArtifact.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// `GET /projects/:id/decisions`.
+  Future<List<ProjectDecision>> listProjectDecisions(String projectId) async {
+    final json = await _request('GET', '/projects/${_id(projectId)}/decisions');
+    return _parseList(json, ProjectDecision.fromJson);
+  }
+
   /// `GET /templates` — lists templates private to the authenticated tenant.
   Future<List<TemplateSummary>> listTemplates() async {
     final json = await _request('GET', '/templates') as List<dynamic>;

@@ -574,3 +574,255 @@ class TemplateInstallSource {
     );
   }
 }
+
+/// TASK-307 — Project Workspace wire shapes (spec §9.1), mirroring
+/// `services/control-api/src/projects.ts` serializers.
+const projectTaskStates = [
+  'todo',
+  'doing',
+  'blocked',
+  'review',
+  'done',
+  'cancelled',
+];
+
+/// Human-permitted transitions (spec §3.1), same table as the server's.
+const projectTaskTransitions = <String, List<String>>{
+  'todo': ['doing', 'cancelled'],
+  'doing': ['review', 'blocked', 'cancelled'],
+  'blocked': ['doing', 'cancelled'],
+  'review': ['done', 'doing', 'cancelled'],
+  'done': [],
+  'cancelled': [],
+};
+
+class ProjectMember {
+  const ProjectMember({
+    required this.roleId,
+    required this.isManager,
+    required this.responsibility,
+  });
+
+  final String roleId;
+  final bool isManager;
+  final String responsibility;
+
+  factory ProjectMember.fromJson(Map<String, dynamic> json) => ProjectMember(
+        roleId: json['roleId'] as String,
+        isManager: json['isManager'] as bool? ?? false,
+        responsibility: json['responsibility'] as String? ?? '',
+      );
+}
+
+class Project {
+  const Project({
+    required this.projectId,
+    required this.threadId,
+    required this.name,
+    required this.goal,
+    required this.doneCriterion,
+    required this.status,
+    required this.budgetUsd,
+    required this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String projectId;
+  final String threadId;
+  final String name;
+  final String goal;
+  final String doneCriterion;
+  final String status;
+  final double? budgetUsd;
+  final String createdBy;
+  final String createdAt;
+  final String updatedAt;
+
+  factory Project.fromJson(Map<String, dynamic> json) => Project(
+        projectId: json['projectId'] as String,
+        threadId: json['threadId'] as String,
+        name: json['name'] as String,
+        goal: json['goal'] as String,
+        doneCriterion: json['doneCriterion'] as String,
+        status: json['status'] as String,
+        budgetUsd: (json['budgetUsd'] as num?)?.toDouble(),
+        createdBy: json['createdBy'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+        updatedAt: json['updatedAt'] as String? ?? '',
+      );
+}
+
+/// Response of `POST /projects` and `PATCH /projects/:id`.
+class ProjectWithRoster {
+  const ProjectWithRoster({required this.project, required this.roster});
+
+  final Project project;
+  final List<ProjectMember> roster;
+
+  factory ProjectWithRoster.fromJson(Map<String, dynamic> json) =>
+      ProjectWithRoster(
+        project: Project.fromJson(json['project'] as Map<String, dynamic>),
+        roster: (json['roster'] as List<dynamic>)
+            .map((e) => ProjectMember.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class ProjectArtifact {
+  const ProjectArtifact({
+    required this.artifactId,
+    required this.projectId,
+    required this.taskId,
+    required this.kind,
+    required this.ref,
+    required this.sha256,
+    required this.byteSize,
+    required this.producedByRoleId,
+    required this.producedByRunId,
+    required this.label,
+    required this.createdAt,
+  });
+
+  final String artifactId;
+  final String projectId;
+  final String? taskId;
+  final String kind;
+  final String ref;
+  final String? sha256;
+  final int? byteSize;
+  final String? producedByRoleId;
+  final String? producedByRunId;
+  final String label;
+  final String createdAt;
+
+  factory ProjectArtifact.fromJson(Map<String, dynamic> json) =>
+      ProjectArtifact(
+        artifactId: json['artifactId'] as String,
+        projectId: json['projectId'] as String,
+        taskId: json['taskId'] as String?,
+        kind: json['kind'] as String,
+        ref: json['ref'] as String,
+        sha256: json['sha256'] as String?,
+        byteSize: (json['byteSize'] as num?)?.toInt(),
+        producedByRoleId: json['producedByRoleId'] as String?,
+        producedByRunId: json['producedByRunId'] as String?,
+        label: json['label'] as String,
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+}
+
+/// `GET /projects/:id` — project plus charter, roster, board counts,
+/// latest STATUS.md artifact and spend.
+class ProjectDetail {
+  const ProjectDetail({
+    required this.project,
+    required this.charter,
+    required this.roster,
+    required this.board,
+    required this.latestStatusArtifact,
+    required this.spendUsd,
+  });
+
+  final Project project;
+  final Map<String, String> charter;
+  final List<ProjectMember> roster;
+  final Map<String, int> board;
+  final ProjectArtifact? latestStatusArtifact;
+  final double spendUsd;
+
+  factory ProjectDetail.fromJson(Map<String, dynamic> json) {
+    final status = json['latestStatusArtifact'];
+    final spend = json['spend'] as Map<String, dynamic>?;
+    return ProjectDetail(
+      project: Project.fromJson(json),
+      charter: ((json['charter'] as Map<String, dynamic>?) ?? const {})
+          .map((k, v) => MapEntry(k, v.toString())),
+      roster: ((json['roster'] as List<dynamic>?) ?? const [])
+          .map((e) => ProjectMember.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      board: ((json['board'] as Map<String, dynamic>?) ?? const {})
+          .map((k, v) => MapEntry(k, (v as num).toInt())),
+      latestStatusArtifact: status == null
+          ? null
+          : ProjectArtifact.fromJson(status as Map<String, dynamic>),
+      spendUsd: (spend?['usd'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class ProjectTask {
+  const ProjectTask({
+    required this.taskId,
+    required this.projectId,
+    required this.title,
+    required this.description,
+    required this.ownerRoleId,
+    required this.state,
+    required this.blockedReason,
+    required this.doneCriterion,
+    required this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String taskId;
+  final String projectId;
+  final String title;
+  final String description;
+  final String? ownerRoleId;
+  final String state;
+  final String? blockedReason;
+  final String? doneCriterion;
+  final String createdBy;
+  final String createdAt;
+  final String updatedAt;
+
+  factory ProjectTask.fromJson(Map<String, dynamic> json) => ProjectTask(
+        taskId: json['taskId'] as String,
+        projectId: json['projectId'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String? ?? '',
+        ownerRoleId: json['ownerRoleId'] as String?,
+        state: json['state'] as String,
+        blockedReason: json['blockedReason'] as String?,
+        doneCriterion: json['doneCriterion'] as String?,
+        createdBy: json['createdBy'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+        updatedAt: json['updatedAt'] as String? ?? '',
+      );
+}
+
+class ProjectDecision {
+  const ProjectDecision({
+    required this.decisionId,
+    required this.projectId,
+    required this.taskId,
+    required this.kind,
+    required this.approvalId,
+    required this.summary,
+    required this.actor,
+    required this.createdAt,
+  });
+
+  final String decisionId;
+  final String projectId;
+  final String? taskId;
+  final String kind;
+  final String? approvalId;
+  final String summary;
+  final String actor;
+  final String createdAt;
+
+  factory ProjectDecision.fromJson(Map<String, dynamic> json) =>
+      ProjectDecision(
+        decisionId: json['decisionId'] as String,
+        projectId: json['projectId'] as String,
+        taskId: json['taskId'] as String?,
+        kind: json['kind'] as String,
+        approvalId: json['approvalId'] as String?,
+        summary: json['summary'] as String,
+        actor: json['actor'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+}

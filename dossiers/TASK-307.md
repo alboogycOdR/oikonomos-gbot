@@ -20,3 +20,4 @@ Use Flutter at C:/src/flutter/bin/flutter; mirror templates_screen.dart for list
 - flutter analyze clean and flutter test green for the whole package.
 
 ## Work Log
+- [2026-09-20] S5: Implemented all §9.1 ApiClient methods + models, ProjectsScreen (detailBuilder hook for TASK-308 wiring), CreateProjectScreen (cap 6, one manager, charter, server error surfaced), roster entry button. flutter analyze clean; flutter test 194 passed. Note: server requires roster >=2 (schema minItems 2); client only requires >=1 and surfaces the server's rejection.

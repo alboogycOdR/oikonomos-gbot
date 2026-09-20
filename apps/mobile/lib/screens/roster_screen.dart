@@ -13,6 +13,7 @@ import '../widgets/avatar.dart';
 import 'chat_screen.dart';
 import 'create_bot_screen.dart';
 import 'login_screen.dart';
+import 'projects_screen.dart';
 import 'settings_screen.dart';
 
 /// TASK-147 (Mobile Wave 1b) — bot roster, the landing screen after login.
@@ -187,6 +188,14 @@ class _RosterScreenState extends State<RosterScreen> {
     }
   }
 
+  void _openProjects() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProjectsScreen(apiClient: widget.apiClient),
+      ),
+    );
+  }
+
   void _openChat(SingleThread bot) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -223,6 +232,12 @@ class _RosterScreenState extends State<RosterScreen> {
             icon: const Icon(Icons.add),
             tooltip: 'New bot',
             onPressed: _openCreateBot,
+          ),
+          IconButton(
+            key: const Key('projects-button'),
+            icon: const Icon(Icons.folder_outlined),
+            tooltip: 'Projects',
+            onPressed: _openProjects,
           ),
           IconButton(
             key: const Key('settings-button'),
