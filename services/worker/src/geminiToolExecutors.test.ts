@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { defaultPoolConfig, listMessages, type DatabaseOptions } from "@oikonomos/db";
+import { createProjectWithRoster, createRole, defaultPoolConfig, getRole, listMessages, type DatabaseOptions } from "@oikonomos/db";
 import { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { SandboxClient, SandboxEndpoint } from "@oikonomos/sandbox-client";
@@ -427,6 +427,51 @@ describe("createWorkspaceGeminiTools — deliberately NOT sandboxed, unlike ever
         await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
         await pool.query("DELETE FROM role_routines WHERE role_id = $1", [roleId]);
         await pool.query("DELETE FROM roles WHERE role_id = $1", [roleId]);
+        await pool.end();
+      }
+    },
+  );
+
+  (connectionString === undefined ? it.skip : it)(
+    "denies an out-of-roster target and accepts a managed-project roster member through the Gemini lane (TASK-313)",
+    async () => {
+      const tenantId = "task-313-gemini-lane";
+      const managerRoleId = "task-313-gemini-manager";
+      const allowedRoleId = "task-313-gemini-allowed";
+      const outsideRoleId = "task-313-gemini-outside";
+      const pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+      const options = { connectionString: connectionString! };
+      try {
+        await pool.query("DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)", [tenantId]);
+        await pool.query("DELETE FROM projects WHERE tenant_id = $1", [tenantId]);
+        await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[managerRoleId, allowedRoleId, outsideRoleId]]);
+        await pool.query("DELETE FROM threads WHERE title = 'TASK-313 Gemini lane thread'");
+        await pool.query("DELETE FROM roles WHERE tenant_id = $1", [tenantId]);
+        for (const roleId of [managerRoleId, allowedRoleId, outsideRoleId]) {
+          await createRole(options, { roleId, tenantId, name: roleId, title: "TASK-313 Gemini fixture" });
+        }
+        await createProjectWithRoster(options, {
+          tenantId, name: "TASK-313 Gemini project", title: "TASK-313 Gemini lane thread", goal: "scope", doneCriterion: "done", createdBy: "human:task-313",
+          roster: [{ roleId: managerRoleId, isManager: true }, { roleId: allowedRoleId }],
+        });
+
+        const [tool] = createWorkspaceGeminiTools(
+          { connectionString: connectionString!, tenantId, roleId: managerRoleId },
+          ["mcp__workspace__retire_bot"],
+        );
+        const denied = await tool!.execute({ roleId: outsideRoleId });
+        expect(denied).toMatchObject({ ok: false, code: "outside_managed_project", error: expect.stringContaining("project it manages") });
+        expect((await getRole(options, outsideRoleId))?.status).toBe("active");
+
+        const accepted = await tool!.execute({ roleId: allowedRoleId });
+        expect(accepted).toMatchObject({ roleId: allowedRoleId, status: "hidden" });
+        expect((await getRole(options, allowedRoleId))?.status).toBe("hidden");
+      } finally {
+        await pool.query("DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)", [tenantId]);
+        await pool.query("DELETE FROM projects WHERE tenant_id = $1", [tenantId]);
+        await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[managerRoleId, allowedRoleId, outsideRoleId]]);
+        await pool.query("DELETE FROM threads WHERE title = 'TASK-313 Gemini lane thread'");
+        await pool.query("DELETE FROM roles WHERE tenant_id = $1", [tenantId]);
         await pool.end();
       }
     },
