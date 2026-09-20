@@ -9154,7 +9154,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-307
 **Title:** Mobile: project API client, projects list, create-project flow (roster, manager, charter), entry from the roster screen (P-7a)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §1.1 (create a project with goal and done criterion, up to six bots, optionally one manager), §1.2 (charter captured at creation), §9.1 (routes), §9.2 (UI).
@@ -9167,16 +9167,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] CreateProjectScreen enforces at most six members and at most one manager client-side and surfaces the server's own rejection if violated. (spec §1.1)
 - [ ] Charter fields are captured and sent at creation. (spec §1.2)
 - [ ] flutter analyze clean and flutter test green for the whole package.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-307-s5
+**Started_At:** 2026-09-20T14:58:15Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T02:35:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T14:58:15Z
 
 ### TASK-308
 **Title:** Mobile: project detail -- board with states and blocked reasons, artifact register, decision log, STATUS.md (P-7b)
