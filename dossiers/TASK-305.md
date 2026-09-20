@@ -20,3 +20,4 @@ The mobile charter template (apps/mobile/lib/charter/charter_template.dart) is t
 
 ## Work Log
 - 2026-09-20 (S5): created task/TASK-305-s5 from master. Added charters/managerCharter.ts (charter, digest, runStatusRoutine) + tests; projects.ts seedManager (updateRoleInstructions + changes_only routine, idempotent, audited) on POST/PATCH; route tests. control-api targeted 22/22 green; tsc clean. Full isolated suite: 4 pkg fails (db, evals, worker, control-api chat.routes three-bot 400) = the pre-existing spendReservations cascade ORCH documented in the TASK-304 review; none touch this task's files.
+- 2026-09-20T17:57:17Z (S5): resumed; verified territory clean, no REWORK; re-emitting needs_review.
