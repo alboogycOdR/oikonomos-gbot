@@ -9121,6 +9121,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended: charter now covers requesting and retiring bots through the approval-gated workspace tools.
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review: no retire_bot in v1.
+- [2026-09-20T15:33:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-305-2026-09-20T15-31-43Z.log
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
