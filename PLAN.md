@@ -8978,12 +8978,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-20T09:35:00Z] [ORCH] Unblocked: the TOOLING_FAILURE was a reboot outage (Docker Desktop was not running, Postgres down). Docker and the DB are back; isolated suite is runnable again. Resume and finish.
 - [2026-09-20T09:53:01Z] [SV:CX9] Fixed release of an admitted unrecorded Claude run and added manager-versus-forged task.assigned attribution coverage. Remaining: real-path project/role concurrency, spend attribution, failure-release assertions, then isolated full suite after the shared DB lock clears. NEXT: Acquire the isolated-test DB lock, add remaining TASK-301 real-path tests, then run targeted and full scripts/test-isolated.ps1 suites.
 - [2026-09-20T10:18:01Z] [SV:CX9] Added and committed real-path atomic-admission, attribution, and release coverage; required recursive isolated suite is waiting on the shared DB lock. NEXT: After Global\OIKONOMOS-test-isolated clears, run scripts/test-isolated.ps1 -Root . and capture/classify the recursive result before submitting for review.
+- [2026-09-20T11:48:02Z] [SV:CX9] Committed test-fixture stabilization b0ac8ff. Final project spend-attribution SQL cast needs a fresh isolated worker verification, then the required recursive isolated suite. NEXT: Run scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/worker, confirm all TASK-301 tests, then run scripts/test-isolated.ps1 -Root . recursive suite and classify failures.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T10:18:01Z
+**Updated_At:** 2026-09-20T11:48:02Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
