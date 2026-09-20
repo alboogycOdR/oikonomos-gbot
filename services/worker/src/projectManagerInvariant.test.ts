@@ -125,6 +125,9 @@ integration("project manager liveness through the worker broker composition (TAS
       await pool.query("DELETE FROM threads WHERE id = $1", [threadId]);
     }
     const roleIds = [managerRoleId, memberRoleId, ...createdRoleIds];
+    // assign_task delivers a task.assigned handoff. Its role_messages rows
+    // reference both participants, so remove them before fixture roles.
+    await pool.query("DELETE FROM role_messages WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM role_grants WHERE role_id = ANY($1::text[])", [roleIds]);
     await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [roleIds]);
   }
