@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
+import { createProjectWithRoster, createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
 import {
   createRoleWithDefaultCapabilities,
   getRoleBudgetUsd,
@@ -476,5 +476,76 @@ integration("packages/db roles — budget_usd (TASK-298, spec 6.2)", () => {
     expect(await setRoleBudgetUsd(options, "task-298-no-such-role", 1)).toBe(false);
     await expect(setRoleBudgetUsd(options, budgetRoleId, -1)).rejects.toThrow(/budgetUsd/);
     await expect(setRoleBudgetUsd(options, budgetRoleId, Number.NaN)).rejects.toThrow(/budgetUsd/);
+  });
+});
+
+integration("packages/db roles — manager retirement scope (TASK-313)", () => {
+  const tenantId = "task-313-manager-scope";
+  const managerRoleId = "task-313-manager";
+  const allowedRoleId = "task-313-allowed-roster-member";
+  const otherManagerRoleId = "task-313-other-manager";
+  const otherProjectRoleId = "task-313-other-project-member";
+  const nonManagerRoleId = "task-313-non-manager";
+  let pool: Pool;
+  let managedProjectId: string;
+  let otherProjectId: string;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)", [tenantId]);
+    await pool.query("DELETE FROM projects WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[managerRoleId, allowedRoleId, otherManagerRoleId, otherProjectRoleId, nonManagerRoleId]]);
+    await pool.query("DELETE FROM threads WHERE title LIKE 'TASK-313 %'");
+    await pool.query("DELETE FROM roles WHERE tenant_id = $1", [tenantId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    const options = { connectionString: connectionString! };
+    for (const roleId of [managerRoleId, allowedRoleId, otherManagerRoleId, otherProjectRoleId, nonManagerRoleId]) {
+      await createRole(options, { roleId, tenantId, name: roleId, title: "TASK-313 fixture" });
+    }
+    const managed = await createProjectWithRoster(options, {
+      tenantId, name: "TASK-313 managed", title: "TASK-313 managed thread", goal: "scope retirement", doneCriterion: "done", createdBy: "human:task-313",
+      roster: [{ roleId: managerRoleId, isManager: true }, { roleId: allowedRoleId }],
+    });
+    managedProjectId = managed.project.projectId;
+    const other = await createProjectWithRoster(options, {
+      tenantId, name: "TASK-313 other", title: "TASK-313 other thread", goal: "separate authority", doneCriterion: "done", createdBy: "human:task-313",
+      roster: [{ roleId: otherManagerRoleId, isManager: true }, { roleId: otherProjectRoleId }],
+    });
+    otherProjectId = other.project.projectId;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  beforeEach(async () => {
+    await pool.query("UPDATE roles SET status = 'active' WHERE tenant_id = $1", [tenantId]);
+  });
+
+  it("allows a manager to retire a current member of a project it manages", async () => {
+    const retired = await retireRole({ connectionString: connectionString! }, {
+      tenantId, callerRoleId: managerRoleId, targetRoleId: allowedRoleId,
+    });
+    expect(retired.status).toBe("hidden");
+    expect(managedProjectId).toEqual(expect.any(String));
+  });
+
+  it("denies a manager a roster member of a different manager's project with a distinct reason", async () => {
+    await expect(retireRole({ connectionString: connectionString! }, {
+      tenantId, callerRoleId: managerRoleId, targetRoleId: otherProjectRoleId,
+    })).rejects.toMatchObject({ code: "outside_managed_project" });
+    expect((await getRole({ connectionString: connectionString! }, otherProjectRoleId))?.status).toBe("active");
+    expect(otherProjectId).toEqual(expect.any(String));
+  });
+
+  it("keeps tenant-wide retirement behaviour for callers that are not project managers", async () => {
+    const retired = await retireRole({ connectionString: connectionString! }, {
+      tenantId, callerRoleId: nonManagerRoleId, targetRoleId: otherProjectRoleId,
+    });
+    expect(retired.status).toBe("hidden");
   });
 });

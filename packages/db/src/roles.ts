@@ -402,7 +402,7 @@ export async function updateRoleStatus(
   });
 }
 
-export type RoleRetirementErrorCode = "self_retirement" | "not_found" | "cross_tenant";
+export type RoleRetirementErrorCode = "self_retirement" | "not_found" | "cross_tenant" | "outside_managed_project";
 
 /**
  * Thrown by `retireRole` so callers (the Claude and Gemini tool executors)
@@ -423,7 +423,9 @@ export class RoleRetirementError extends Error {
 /**
  * TASK-282 — `workspace.retire_bot`'s one enforcement point, shared
  * verbatim by both adapters. A bot may never retire itself or a role
- * outside its own tenant; retirement never deletes the row (no destructive
+ * outside its own tenant. A project manager may retire only a role on the
+ * current roster of a project that manager currently manages; non-managers
+ * retain the original tenant-wide behaviour. Retirement never deletes the row (no destructive
  * delete exists in this codebase's role model, per this task's own
  * acceptance criteria, and none is introduced here) — it moves `status` to
  * `hidden`.
@@ -463,11 +465,46 @@ export async function retireRole(
     throw new RoleRetirementError("cross_tenant", "A bot may not retire a role outside its own tenant.");
   }
 
-  const updated = await updateRoleStatus(options, targetRoleId, "hidden");
-  if (updated === null) {
-    throw new RoleRetirementError("not_found", `Role '${targetRoleId}' was not found.`);
-  }
-  return updated;
+  const updated = await withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `UPDATE roles AS target
+       SET status = 'hidden',
+           updated_at = now()
+       WHERE target.role_id = $1
+         AND target.tenant_id = $2
+         AND (
+           NOT EXISTS (
+             SELECT 1
+             FROM project_roles AS manager_membership
+             JOIN projects AS managed_project ON managed_project.project_id = manager_membership.project_id
+             WHERE manager_membership.role_id = $3
+               AND manager_membership.is_manager
+               AND managed_project.tenant_id = $2
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM project_roles AS manager_membership
+             JOIN projects AS managed_project ON managed_project.project_id = manager_membership.project_id
+             JOIN project_roles AS target_membership ON target_membership.project_id = managed_project.project_id
+             WHERE manager_membership.role_id = $3
+               AND manager_membership.is_manager
+               AND target_membership.role_id = $1
+               AND managed_project.tenant_id = $2
+           )
+         )
+       RETURNING ${roleColumns}`,
+      [targetRoleId, tenantId, callerRoleId],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
+  });
+  if (updated !== null) return updated;
+
+  // The target was just verified above, so a conditional-update miss means a
+  // manager's current roster no longer authorizes this retirement.
+  throw new RoleRetirementError(
+    "outside_managed_project",
+    "A project manager may retire only a role on a project it manages.",
+  );
 }
 
 if (import.meta.vitest) {
