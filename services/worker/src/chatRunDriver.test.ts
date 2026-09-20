@@ -2105,8 +2105,8 @@ integration("TASK-301 chat admission and project attribution", () => {
     await pool.query("DELETE FROM spend_reservations WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM budget_ledgers WHERE axis_id = ANY($1) OR axis_id = ANY($2)", [projectIds, roleIds]);
     await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
-    await pool.query("DELETE FROM messages WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
-    await pool.query("DELETE FROM spend_records WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
+    await pool.query("DELETE FROM messages WHERE thread_id = ANY($1)", [threadIds]);
+    await pool.query("DELETE FROM spend_records WHERE run_id IN (SELECT run_id::text FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
     await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)", [tenantId]);
     await pool.query("DELETE FROM tasks WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM project_roles WHERE project_id = ANY($1)", [projectIds]);
@@ -2119,17 +2119,26 @@ integration("TASK-301 chat admission and project attribution", () => {
   beforeAll(async () => { pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig }); });
   afterAll(async () => { await cleanup(); await pool.end(); });
 
-  const inertSandbox: SandboxClient = {
-    health: async () => ({ status: "ok" }),
-    createSandbox: async () => ({ id: "task-301-sandbox", createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
-    getSandbox: async () => ({ id: "task-301-sandbox", createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
-    destroySandbox: async () => undefined,
-    pauseSandbox: async () => undefined,
-    resumeSandbox: async () => undefined,
-    getEndpoint: async () => ({ endpoint: "http://execd.test/task-301" }),
-    ping: async () => undefined,
-    runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-  };
+  // Each driver gets a distinct sandbox id. Vitest runs integration files in
+  // parallel, and role_sandboxes.sandbox_id is globally unique in the test DB.
+  // A shared fake id would make an unrelated concurrent fixture look like an
+  // admission failure before either provider seam was reached.
+  function inertSandbox(): SandboxClient {
+    const sandboxId = `task-301-sandbox-${crypto.randomUUID()}`;
+    return {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: sandboxId, createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: sandboxId, createdAt: "2026-09-20T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: `http://execd.test/${sandboxId}` }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => command.command.startsWith("/usr/bin/sha256sum")
+        ? { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 }
+        : { stdout: "", stderr: "", exitCode: 0 },
+    };
+  }
 
   it("admits at most one concurrent Gemini project turn before its counting provider is invoked", async () => {
     const priorCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
@@ -2157,7 +2166,7 @@ integration("TASK-301 chat admission and project attribution", () => {
       }));
     }) as typeof globalThis.fetch;
     try {
-      const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, sandboxClient: inertSandbox, geminiFetch });
+      const driver = createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, sandboxClient: inertSandbox(), geminiFetch });
       const firstRun = driver.run({ task: first, threadId: fixture.threadId });
       await enteredProvider;
       await expect(driver.run({ task: second, threadId: fixture.threadId })).rejects.toThrow("budget.project_exceeded");
@@ -2172,6 +2181,7 @@ integration("TASK-301 chat admission and project attribution", () => {
 
   it("admits at most one concurrent Claude role turn before its counting provider is invoked", async () => {
     const roleId = await role("role-axis", 0.30);
+    await pool.query("UPDATE roles SET provider = 'claude' WHERE role_id = $1", [roleId]);
     const threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
     threadIds.push(threadId);
     const first = await createTask(options, { roleId, title: "first", goal: "first", requestedBy: "task-301" });
@@ -2199,6 +2209,7 @@ integration("TASK-301 chat admission and project attribution", () => {
   it("attributes manager and specialist spend to the project while preserving each executing role", async () => {
     const managerId = await role("manager", 10);
     const specialistId = await role("specialist", 10);
+    await pool.query("UPDATE roles SET provider = 'claude' WHERE role_id = ANY($1)", [[managerId, specialistId]]);
     const fixture = await project(10, [managerId, specialistId]);
     const managerTask = await createTask(options, { roleId: managerId, title: "manager", goal: "manager", requestedBy: "task-301" });
     const specialistTask = await createTask(options, { roleId: specialistId, title: "specialist", goal: "specialist", requestedBy: "task-301" });
@@ -2209,7 +2220,7 @@ integration("TASK-301 chat admission and project attribution", () => {
     await driver.run({ task: managerTask, threadId: fixture.threadId });
     await driver.run({ task: specialistTask, threadId: fixture.threadId });
     const rows = await pool.query<{ role_id: string; project_id: string | null }>(
-      `SELECT t.role_id, s.project_id FROM spend_records s JOIN runs r ON r.run_id = s.run_id JOIN tasks t ON t.task_id = r.task_id
+      `SELECT t.role_id, s.project_id FROM spend_records s JOIN runs r ON r.run_id::text = s.run_id JOIN tasks t ON t.task_id = r.task_id
        WHERE t.task_id = ANY($1) ORDER BY t.role_id`,
       [[managerTask.taskId, specialistTask.taskId]],
     );
@@ -2221,6 +2232,7 @@ integration("TASK-301 chat admission and project attribution", () => {
 
   it("releases an unrecorded failed turn once, allowing the next role admission", async () => {
     const roleId = await role("release", 0.25);
+    await pool.query("UPDATE roles SET provider = 'claude' WHERE role_id = $1", [roleId]);
     const threadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [roleId])).rows[0]!.id;
     threadIds.push(threadId);
     const failed = await createTask(options, { roleId, title: "fail", goal: "fail", requestedBy: "task-301" });
