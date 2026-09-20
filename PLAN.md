@@ -9028,7 +9028,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-303
 **Title:** Mount the project MCP server for manager roles in both lanes, with the no-role/no-grant liveness test (P-4b, Invariant B)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §7.3 B (liveness through the REAL broker->MCP composition, before/after row counts on roles and role_grants, keyed on each tool's audit event), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §4 Invariant B.
@@ -9050,12 +9050,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T03:25:00Z] [ORCH] Amended: managers use the existing workspace.create_bot / retire_bot (owner decision); the invariant now also proves those calls park for approval and change nothing until a human approves.
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review: create_bot only; the liveness test must go through the broker composition, not the handler.
 - [2026-09-20T15:43:01Z] [SV:CX9] Committed Claude/Gemini project MCP mounting and focused surface tests; persisted audit-event liveness fixture remains to be added. NEXT: Add the real broker-to-project-MCP audit-event liveness fixture proving roles and role_grants counts are unchanged for all six handlers, then rerun isolated tests.
+- [2026-09-20T15:58:01Z] [SV:CX9] Implemented project MCP mounting, broker destinations, manager create_bot mount, and real Gemini L1 liveness fixtures; five project tools and create_bot path pass, but assign_task liveness fails before its audit event.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: completing the required assign_task audit liveness needs a repair in unowned services/worker/src/projectTools.ts (or a TASK-302 repair).
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T15:43:01Z
+**Updated_At:** 2026-09-20T15:58:01Z
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
