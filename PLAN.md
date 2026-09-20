@@ -8944,7 +8944,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-301
 **Title:** Wire atomic admission into both chat lanes and the subprocess path; attribute spend to project and role (P-3b)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §6.1 (every run started from a project thread or a task.assigned handoff is attributed to the project), §6.2 (deny before spawn; release on failure), §6.3 (manager budget covers only its own turns), §11; docs/decisions/ADR-019-project-entity-and-manager-role.md §5.
@@ -8980,12 +8980,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-20T10:18:01Z] [SV:CX9] Added and committed real-path atomic-admission, attribution, and release coverage; required recursive isolated suite is waiting on the shared DB lock. NEXT: After Global\OIKONOMOS-test-isolated clears, run scripts/test-isolated.ps1 -Root . and capture/classify the recursive result before submitting for review.
 - [2026-09-20T11:48:02Z] [SV:CX9] Committed test-fixture stabilization b0ac8ff. Final project spend-attribution SQL cast needs a fresh isolated worker verification, then the required recursive isolated suite. NEXT: Run scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/worker, confirm all TASK-301 tests, then run scripts/test-isolated.ps1 -Root . recursive suite and classify failures.
 - [2026-09-20T15:03:01Z] [SV:CX9] Fresh isolated worker suite passed; required recursive isolated suite is waiting on another runner's shared mutex. NEXT: After Global\\OIKONOMOS-test-isolated is released, run scripts/test-isolated.ps1 -Root ., classify its result, and submit for review if TASK-301 remains green.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-20T15:08:01Z] [SV:CX9] Atomic project/role admission, safe attribution, failure release, and fail-closed subprocess wiring are implemented and verified; recursive-suite unrelated failures are classified in the dossier.
+**Artifacts:** packages/broker/src/budgetGate.ts, services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/worker/src/subprocessProviders.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/executeRun.ts, services/worker/test/executeRun.test.ts, dossiers/TASK-301.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Root . completed: TASK-301's four real chat admission/attribution/release tests, executeRun 10/10, forged-handoff delivery case, broker 188/188, DB 275 pass/2 skipped, dashboard 158/158, agent-providers 108/108, and harness-factory 146/146 passed. Recursive exit 1 only for documented unrelated platform-budget exhaustion, email.send capability drift, pg-boss timing/cleanup, and a control-api TASK-121 route failure.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T15:03:01Z
+**Updated_At:** 2026-09-20T15:08:01Z
 
 ### TASK-302
 **Title:** Project broker tools and the separate project MCP server, with request_grant declared disabled (P-4a)
