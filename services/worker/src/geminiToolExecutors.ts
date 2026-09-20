@@ -14,6 +14,7 @@ import type { HandoffFactReference, HandoffKind } from "@oikonomos/workspace";
 import { GEMINI_PROVIDER_ID } from "./geminiChatRun.js";
 import { resolveRoleIdentifier } from "./resolveRoleIdentifier.js";
 import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
+import { createProjectTools, type ProjectToolName } from "./projectTools.js";
 
 /**
  * Sandbox-backed `GeminiTool` implementations (TASK-211).
@@ -48,6 +49,37 @@ export interface SandboxGeminiTool {
   readonly parameters?: Record<string, unknown>;
   readonly tier: number;
   execute(arguments_: Record<string, unknown>): Promise<unknown>;
+}
+
+export interface ProjectGeminiContext {
+  readonly connectionString: string;
+  readonly tenantId: string;
+  readonly roleId: string;
+  readonly runId: string;
+}
+
+const projectToolDefinitions: Readonly<Record<ProjectToolName, { readonly capability: string; readonly tier: RiskTier; readonly parameters: Record<string, unknown> }>> = {
+  list_board: { capability: "mcp__project__list_board", tier: "T0_observe", parameters: { type: "object", required: ["projectId"], properties: { projectId: { type: "string" } } } },
+  create_task: { capability: "mcp__project__create_task", tier: "T2_internal", parameters: { type: "object", required: ["projectId", "title"], properties: { projectId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, ownerRoleId: { type: "string" }, doneCriterion: { type: "string" } } } },
+  update_task: { capability: "mcp__project__update_task", tier: "T2_internal", parameters: { type: "object", required: ["taskId", "state"], properties: { taskId: { type: "string" }, state: { type: "string", enum: ["todo", "doing", "blocked", "review", "done", "cancelled"] }, blockedReason: { type: "string" } } } },
+  assign_task: { capability: "mcp__project__assign_task", tier: "T2_internal", parameters: { type: "object", required: ["taskId", "ownerRoleId"], properties: { taskId: { type: "string" }, ownerRoleId: { type: "string" } } } },
+  register_artifact: { capability: "mcp__project__register_artifact", tier: "T2_internal", parameters: { type: "object", required: ["projectId", "kind", "ref", "label"], properties: { projectId: { type: "string" }, taskId: { type: "string" }, kind: { type: "string", enum: ["workspace_file", "attachment", "run_receipt"] }, ref: { type: "string" }, sha256: { type: "string" }, byteSize: { type: "integer" }, label: { type: "string" } } } },
+  record_decision: { capability: "mcp__project__record_decision", tier: "T2_internal", parameters: { type: "object", required: ["projectId", "kind", "summary"], properties: { projectId: { type: "string" }, taskId: { type: "string" }, kind: { type: "string", enum: ["approval", "human_decision", "manager_decision", "review_finding"] }, approvalId: { type: "string" }, summary: { type: "string" } } } },
+};
+
+/** Gemini parity for the project stdio bridge: invoke the same six handlers. */
+export function createProjectGeminiTools(context: ProjectGeminiContext, grantedToolNames: readonly string[]): readonly SandboxGeminiTool[] {
+  const granted = new Set(grantedToolNames);
+  const handlers = createProjectTools({ connectionString: context.connectionString, tenantId: context.tenantId, fromRoleId: context.roleId, runId: context.runId });
+  return (Object.entries(projectToolDefinitions) as [ProjectToolName, (typeof projectToolDefinitions)[ProjectToolName]][])
+    .filter(([, definition]) => granted.has(definition.capability))
+    .map(([name, definition]) => ({
+      name: definition.capability,
+      description: `Project ${name.replaceAll("_", " ")}.`,
+      parameters: definition.parameters,
+      tier: tierNumber(definition.tier),
+      execute: (arguments_) => handlers[name](arguments_),
+    }));
 }
 
 export interface SandboxToolContext {

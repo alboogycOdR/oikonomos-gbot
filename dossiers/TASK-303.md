@@ -21,3 +21,5 @@ Follow the steel-mcp second-server precedent exactly rather than inventing a new
 - Full recursive suite via scripts/test-isolated.ps1 only.
 
 ## Work Log
+
+- [2026-09-20T15:55:00Z] [CX9] Preflight inspected the four assigned paths (three existing worker modules; new projectManagerInvariant.test.ts). Added grant-derived project MCP mounting in both lanes and focused mounting tests; next: execute the isolated worker suite and add the real broker→MCP liveness fixture if the current test seam does not cover audit persistence.

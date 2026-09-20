@@ -19,6 +19,14 @@ export const WORKSPACE_REQUEST_SECRET_CAPABILITY_ID = "workspace.request_secret"
 export const WORKSPACE_REQUEST_SECRET_TOOL = "mcp__workspace__request_secret";
 export const WORKSPACE_CREATE_ROUTINE_CAPABILITY_ID = "workspace.create_routine";
 export const WORKSPACE_CREATE_ROUTINE_TOOL = "mcp__workspace__create_routine";
+export const PROJECT_TOOL_CAPABILITIES = [
+  ["project.read", "mcp__project__list_board"],
+  ["project.task_write", "mcp__project__create_task"],
+  ["project.task_write", "mcp__project__update_task"],
+  ["project.assign", "mcp__project__assign_task"],
+  ["project.artifact_write", "mcp__project__register_artifact"],
+  ["project.decision_write", "mcp__project__record_decision"],
+] as const;
 
 /** Mount the internal stdio bridge only when its persisted role grant exists. */
 export async function resolveGrantedWorkspaceConnector(input: {
@@ -50,6 +58,32 @@ export async function resolveGrantedWorkspaceConnector(input: {
           input.connectionString, input.tenantId, input.roleId, input.runId,
           ...(input.threadId === undefined ? [] : [input.threadId]),
         ],
+      },
+    },
+    allowedTools,
+  };
+}
+
+/** Mount the project-manager bridge only for the role's enabled project grants. */
+export async function resolveGrantedProjectConnector(input: {
+  readonly database: Database;
+  readonly connectionString: string;
+  readonly roleId: string;
+  readonly tenantId: string;
+  readonly runId: string;
+}): Promise<ConnectorContext | undefined> {
+  const grantedCapabilities = new Set((await input.database.listRoleGrants(input.roleId)).map((grant) => grant.capabilityId));
+  const allowedTools = PROJECT_TOOL_CAPABILITIES
+    .filter(([capabilityId]) => grantedCapabilities.has(capabilityId))
+    .map(([, toolName]) => toolName);
+  if (allowedTools.length === 0) return undefined;
+  return {
+    manifest: { connector_id: "project", mcp_server: { name: "project" }, tools: [] },
+    mcpServers: {
+      project: {
+        transport: "stdio",
+        command: process.execPath,
+        args: [fileURLToPath(new URL("./projectMcpServer.js", import.meta.url)), input.connectionString, input.tenantId, input.roleId, input.runId],
       },
     },
     allowedTools,
