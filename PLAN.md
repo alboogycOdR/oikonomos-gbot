@@ -9376,7 +9376,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-313
 **Title:** Scope workspace.retire_bot server-side to the acting manager's project roster (required before any manager may hold it)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-019-amendment-review-cx9-2026-09.md finding 4 ("Tenant-wide retirement -- not acceptable for manager grants"); docs/decisions/ADR-019-project-entity-and-manager-role.md Amendment 2026-09-19 (b) point 1; docs/decisions/ADR-019 Amendment 2026-09-17 (retire_bot is T4 with the E6 approval class).
@@ -9393,12 +9393,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-20T18:48:30Z
 **Progress_Notes:**
 - [2026-09-19T08:40:00Z] [ORCH] Filed from the TASK-310 review (finding 4). Waits for TASK-303 because both touch geminiToolExecutors.ts, and for TASK-298 (project_roles).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-20T19:03:01Z] [SV:CX9] Scoped manager retire_bot authority in the shared DB retirement path; added real-Postgres DB and both-lane coverage.
+**Artifacts:** packages/db/src/roles.ts, packages/db/src/roles.test.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/src/geminiToolExecutors.test.ts, dossiers/TASK-313.md
+**Test_Evidence:** pnpm --filter @oikonomos/db run build: exit 0; pnpm --filter @oikonomos/worker run build: exit 0; scripts/test-isolated.ps1 -Init -Root . -Filter @oikonomos/worker: exit 0; scripts/test-isolated.ps1 -Init -Root .: exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T18:48:30Z
+**Updated_At:** 2026-09-20T19:03:01Z
 
 ### TASK-314
 **Title:** packages/db: add assignProjectTaskOwner to (re)assign an existing project task's owner (P-4a unblock)
