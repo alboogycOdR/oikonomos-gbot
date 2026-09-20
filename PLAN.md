@@ -9311,7 +9311,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-312
 **Title:** Sandbox reaper only sweeps the worker's own tenant -- cover every tenant's offices
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/sandboxReaper.ts pass 1 (`listRoles(options, { tenantId })`); TASK-273's tenant-model finding (role_messages and worker polling use the "basileia" literal while real roles carry a per-user tenant).
@@ -9324,16 +9324,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] After the sweep, the next turn for a reaped active role in a non-worker tenant succeeds (relies on TASK-311).
 - [ ] Sweep summary counts remain the liveness evidence (ADR-005) and now include per-tenant coverage.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-312-cx9
+**Started_At:** 2026-09-20T17:23:08Z
 **Progress_Notes:**
 - [2026-09-19T07:55:00Z] [ORCH] Filed from the TASK-296 deployment. Waits for TASK-298 (both touch packages/db/src/index.ts) and TASK-311.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T07:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T17:23:08Z
 
 ### TASK-MAINT-2026-09-19
 **Title:** Nightly self-audit failure (2026-09-19)
