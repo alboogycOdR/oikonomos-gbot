@@ -52,7 +52,7 @@ import { executeTaskRun, type ConnectorContext } from "./executeRun.js";
 import { completeTaskRun, failTaskRun, parkTaskRun, resumeInterruptedRun, startTaskRun } from "./runLifecycle.js";
 import { sandboxHookEnvironment, withBudgetTap, type AgentSdkQueryFn, type BudgetTapSink } from "@oikonomos/harness-factory";
 import { composeHarness, runWithChatBudget, STAGE_TWO_MAXIMUM_TOOL_TIER, type BudgetGateCheck, type McpServers, type RunParkPort } from "@oikonomos/harness-factory/compose";
-import { createSandboxGeminiTools, createSteelGeminiTools, createWorkspaceGeminiTools } from "./geminiToolExecutors.js";
+import { createProjectGeminiTools, createSandboxGeminiTools, createSteelGeminiTools, createWorkspaceGeminiTools } from "./geminiToolExecutors.js";
 import { withSandboxRelease } from "./sandboxReaper.js";
 import { GEMINI_PROVIDER_ID, geminiTurnCostUsd, resolveGeminiBudget } from "./geminiChatRun.js";
 import {
@@ -72,6 +72,7 @@ import {
   resolveGrantedGmailConnector,
   resolveGrantedGoogleCalendarConnector,
   resolveGrantedGoogleDriveConnector,
+  resolveGrantedProjectConnector,
   resolveGrantedWorkspaceConnector,
   WORKSPACE_CREATE_ROUTINE_TOOL,
   WORKSPACE_RENAME_SELF_TOOL,
@@ -405,8 +406,12 @@ async function runChatTask(
       database, roleId: request.task.roleId, tenantId: request.task.tenantId,
       connectionString: options.connectionString, runId: run.runId, threadId: request.threadId,
     });
+    const projectConnector = await resolveGrantedProjectConnector({
+      database, roleId: request.task.roleId, tenantId: request.task.tenantId,
+      connectionString: options.connectionString, runId: run.runId,
+    });
     const connector = combineConnectorContexts(
-      acquiredGmailConnector?.connector, workspaceConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector, browserConnector,
+      acquiredGmailConnector?.connector, workspaceConnector, projectConnector, acquiredCalendarConnector?.connector, acquiredDriveConnector?.connector, browserConnector,
     );
     const mountedToolNames = ["Bash", "Read", ...(connector?.allowedTools ?? [])];
     const policy = new PolicyRegistry({ mountedToolNames, policies: mountedToolNames.map((toolName) => ({ toolName })), manifestToolNames: [...registry.enabledToolNames] });
@@ -450,7 +455,7 @@ async function runChatTask(
       });
       if (effectiveProvider === GEMINI_PROVIDER_ID) {
         const geminiModel = runtime.model?.trim() || DEFAULT_GEMINI_MODEL;
-        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector, geminiModel, projectId);
+        const geminiResult = await executeGeminiChatRun(options, database, manifests, request, run, systemPrompt, registry, policy, browserConnector, workspaceConnector, projectConnector, geminiModel, projectId);
         botText = geminiResult.text;
         geminiSpendRecorded = true;
       } else if (!shouldUseSandbox(options)) {
@@ -768,6 +773,7 @@ export async function executeGeminiChatRun(
   policy: PolicyRegistry,
   browserConnector?: ConnectorContext,
   workspaceConnector?: ConnectorContext,
+  projectConnector?: ConnectorContext,
   model: string = DEFAULT_GEMINI_MODEL,
   projectId: string | null = null,
 ): Promise<{ readonly text: string; readonly costUsd: number }> {
@@ -826,8 +832,16 @@ export async function executeGeminiChatRun(
           runId: run.runId,
           onSecretRequested: () => { secretRequested = true; },
         },
-        workspaceConnector.allowedTools,
-      );
+      workspaceConnector.allowedTools,
+    );
+  const projectTools = projectConnector === undefined
+    ? []
+    : createProjectGeminiTools({
+        connectionString: options.connectionString,
+        tenantId: request.task.tenantId,
+        roleId: request.task.roleId,
+        runId: run.runId,
+      }, projectConnector.allowedTools);
 
   let providerFailure: string | undefined;
   const composed = composeHarness<BrokerDependencies>({
@@ -840,7 +854,7 @@ export async function executeGeminiChatRun(
     provider: "gemini",
     gemini: {
       // Tools execute inside the role's sandbox, never in this process.
-      tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools, ...workspaceTools],
+      tools: [...createSandboxGeminiTools({ client, endpoint: resolvedSandbox.endpoint, workspace }), ...steelTools, ...workspaceTools, ...projectTools],
       maximumToolTier: STAGE_TWO_MAXIMUM_TOOL_TIER,
       // TASK-316: the harness-factory adapter reduces any non-2xx to a bare
       // `denied: true` with no reason, so observe failures at the fetch seam.
@@ -1714,6 +1728,17 @@ const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unk
   // production since TASK-282 merged -- found while investigating TASK-285.
   mcp__workspace__create_bot: (input) => input.name,
   mcp__workspace__retire_bot: (input) => input.roleId,
+
+  // Project MCP has no external destination, but each operation has a
+  // concrete project/task/artifact target for the broker audit and any
+  // future approval rendering.  Keep this closed table exhaustive: an
+  // undeclared project verb still fails before it can reach the server.
+  mcp__project__list_board: (input) => input.projectId,
+  mcp__project__create_task: (input) => input.projectId,
+  mcp__project__update_task: (input) => input.taskId,
+  mcp__project__assign_task: (input) => input.taskId,
+  mcp__project__register_artifact: (input) => input.ref,
+  mcp__project__record_decision: (input) => input.projectId,
 
   mcp__steel__steel_navigate: (input) => input.url,
   mcp__steel__steel_act: (input) => input.action,

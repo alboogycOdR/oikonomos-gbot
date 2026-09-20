@@ -73,8 +73,9 @@ export function createProjectTools(identity: ProjectToolIdentity, overrides: Par
       const work = assignmentQueue.then(async () => {
         if (assignments >= roster.length) { await deps.audit("project.fanout_capped", { project_id: task.projectId, task_id: task.taskId, actor, roster_size: roster.length }); throw new Error("Project fan-out cap reached for this manager turn."); }
         const assigned = await deps.assignOwner(task.taskId, ownerRoleId); if (assigned === null) throw new Error("Project task was not found.");
+        await deps.audit("project.task_assigned", { project_id: task.projectId, task_id: task.taskId, owner_role_id: ownerRoleId, actor });
         await deps.sendAssignment({ toRoleId: ownerRoleId, body: `You have been assigned: ${assigned.title}`, projectId: task.projectId, taskId: task.taskId });
-        assignments += 1; await deps.audit("project.task_assigned", { project_id: task.projectId, task_id: task.taskId, owner_role_id: ownerRoleId, actor }); return assigned;
+        assignments += 1; return assigned;
       });
       assignmentQueue = work.then(() => undefined, () => undefined); return work;
     },
