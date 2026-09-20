@@ -9328,12 +9328,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-20T17:23:08Z
 **Progress_Notes:**
 - [2026-09-19T07:55:00Z] [ORCH] Filed from the TASK-296 deployment. Waits for TASK-298 (both touch packages/db/src/index.ts) and TASK-311.
+- [2026-09-20T17:38:01Z] [SV:CX9] Implemented and committed cross-tenant sandbox reaping (d64580e); full isolated suite is pending the shared test DB lock. NEXT: Retry the full isolated recursive suite after the shared test DB lock holder completes, then classify any baseline failures before handoff.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T17:23:08Z
+**Updated_At:** 2026-09-20T17:38:01Z
 
 ### TASK-MAINT-2026-09-19
 **Title:** Nightly self-audit failure (2026-09-19)
