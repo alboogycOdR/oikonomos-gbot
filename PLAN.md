@@ -9049,12 +9049,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-19T03:25:00Z] [ORCH] Amended: managers use the existing workspace.create_bot / retire_bot (owner decision); the invariant now also proves those calls park for approval and change nothing until a human approves.
 - [2026-09-19T08:40:00Z] [ORCH] Amended by the TASK-310 review: create_bot only; the liveness test must go through the broker composition, not the handler.
+- [2026-09-20T15:43:01Z] [SV:CX9] Committed Claude/Gemini project MCP mounting and focused surface tests; persisted audit-event liveness fixture remains to be added. NEXT: Add the real broker-to-project-MCP audit-event liveness fixture proving roles and role_grants counts are unchanged for all six handlers, then rerun isolated tests.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T15:33:19Z
+**Updated_At:** 2026-09-20T15:43:01Z
 
 ### TASK-304
 **Title:** Project API: create/list/get/patch projects, board, artifacts, decisions, approvals mirror, blockedTasks in the workspace summary (P-5)
