@@ -107,10 +107,14 @@ integration("project manager liveness through the worker broker composition (TAS
   async function cleanup(): Promise<void> {
     await pool.query("DELETE FROM audit_events WHERE run_id = $1", [runId]);
     await pool.query("DELETE FROM approvals WHERE run_id = $1", [runId]);
+    if (projectId !== undefined) {
+      // register_artifact links this row to the run under test; remove it
+      // before that run to preserve the produced_by_run foreign key.
+      await pool.query("DELETE FROM project_artifacts WHERE project_id = $1", [projectId]);
+    }
     await pool.query("DELETE FROM runs WHERE run_id = $1", [runId]);
     await pool.query("DELETE FROM tasks WHERE tenant_id = $1", [tenantId]);
     if (projectId !== undefined) {
-      await pool.query("DELETE FROM project_artifacts WHERE project_id = $1", [projectId]);
       await pool.query("DELETE FROM project_decisions WHERE project_id = $1", [projectId]);
       await pool.query("DELETE FROM project_tasks WHERE project_id = $1", [projectId]);
       await pool.query("DELETE FROM project_roles WHERE project_id = $1", [projectId]);
