@@ -9376,7 +9376,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-313
 **Title:** Scope workspace.retire_bot server-side to the acting manager's project roster (required before any manager may hold it)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-019-amendment-review-cx9-2026-09.md finding 4 ("Tenant-wide retirement -- not acceptable for manager grants"); docs/decisions/ADR-019-project-entity-and-manager-role.md Amendment 2026-09-19 (b) point 1; docs/decisions/ADR-019 Amendment 2026-09-17 (retire_bot is T4 with the E6 approval class).
@@ -9389,16 +9389,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A manager cannot retire itself; a manager cannot retire a roster member of a project managed by a DIFFERENT manager.
 - [ ] A non-manager caller behaves exactly as before; existing retire_bot tests pass unmodified.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-313-cx9
+**Started_At:** 2026-09-20T18:48:30Z
 **Progress_Notes:**
 - [2026-09-19T08:40:00Z] [ORCH] Filed from the TASK-310 review (finding 4). Waits for TASK-303 because both touch geminiToolExecutors.ts, and for TASK-298 (project_roles).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-19T08:40:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-20T18:48:30Z
 
 ### TASK-314
 **Title:** packages/db: add assignProjectTaskOwner to (re)assign an existing project task's owner (P-4a unblock)
