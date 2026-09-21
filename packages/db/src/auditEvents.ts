@@ -28,6 +28,27 @@ export interface AuditEvent {
   evidenceUri: string | null;
 }
 
+export interface ProjectFanoutAdmissionInput {
+  tenantId: string;
+  runId: string;
+  actor: string;
+  projectId: string;
+  taskId: string;
+  ownerRoleId: string;
+  rosterSize: number;
+  /**
+   * Runs while the per-run advisory lock is held, before an admitted
+   * assignment event is persisted. This keeps the audit trail's assignment
+   * event after the durable owner mutation without reopening the cap race.
+   */
+  onAdmitted?: () => Promise<void>;
+}
+
+export interface ProjectFanoutAdmission {
+  admitted: boolean;
+  assignmentCount: number;
+}
+
 interface AuditEventRow extends QueryResultRow {
   event_id: string | number | bigint;
   tenant_id: string;
@@ -153,6 +174,66 @@ export async function getAuditEventsForRun(
       [normalizedRunId],
     );
     return result.rows.map(toAuditEvent);
+  });
+}
+
+/**
+ * Atomically reserves one project assignment handoff for a manager run.
+ * The transaction advisory-locks the run before counting its persisted
+ * assignment events, so independent MCP processes cannot over-admit.
+ */
+export async function admitProjectFanout(
+  options: DatabaseOptions,
+  input: ProjectFanoutAdmissionInput,
+): Promise<ProjectFanoutAdmission> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const runId = requireUuid(input.runId, "runId");
+  const actor = requireNonEmpty(input.actor, "actor");
+  const projectId = requireUuid(input.projectId, "projectId");
+  const taskId = requireUuid(input.taskId, "taskId");
+  const ownerRoleId = requireNonEmpty(input.ownerRoleId, "ownerRoleId");
+  if (!Number.isInteger(input.rosterSize) || input.rosterSize < 0) {
+    throw new Error("rosterSize must be a non-negative integer.");
+  }
+
+  return withPool(options, async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [runId]);
+      const counted = await client.query<{ count: string }>(
+        "SELECT count(*) AS count FROM audit_events WHERE run_id = $1 AND event_type = 'project.task_assigned'",
+        [runId],
+      );
+      const assignmentCount = Number(counted.rows[0]?.count ?? 0);
+      const admitted = assignmentCount < input.rosterSize;
+      if (admitted) {
+        await input.onAdmitted?.();
+      }
+      await client.query(
+        `INSERT INTO audit_events (tenant_id, run_id, actor, event_type, payload)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          tenantId,
+          runId,
+          actor,
+          admitted ? "project.task_assigned" : "project.fanout_capped",
+          JSON.stringify({
+            project_id: projectId,
+            task_id: taskId,
+            ...(admitted ? { owner_role_id: ownerRoleId } : {}),
+            roster_size: input.rosterSize,
+          }),
+        ],
+      );
+      await client.query("COMMIT");
+      return { admitted, assignmentCount };
+    } catch (error) {
+      try { await client.query("ROLLBACK"); } catch { /* preserve the original failure */ }
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 }
 
