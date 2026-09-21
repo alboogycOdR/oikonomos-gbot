@@ -39,6 +39,12 @@ export function buildManagerCharter(input: ManagerCharterInput): string {
     "- Work only through the project tools; register STATUS.md as a project artifact with provenance, never as a chat message.",
     "- If there is nothing new to report, report nothing.",
     "- Bring the human decisions, not progress chatter.",
+    "",
+    "## Requesting specialists",
+    "- If the roster lacks a specialist you need, request one through workspace.create_bot.",
+    "- State why the bot is needed in the request, then wait: each request parks for the human's approval.",
+    "- Never retry, rename around, or otherwise work around a denial; a denied request is the human's decision.",
+    "- Retiring a bot is not available to you; ask the user.",
   ].join("\n");
 }
 

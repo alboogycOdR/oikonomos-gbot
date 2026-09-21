@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildManagerCharter, MANAGER_CHARTER_DUTIES, runStatusRoutine, statusChanged, statusDigest } from "./managerCharter.js";
 
+describe("create-bot-via-approval guidance", () => {
+  it("tells the manager to request via workspace.create_bot, wait for approval, and not work around denial", () => {
+    const text = buildManagerCharter({ projectName: "L", goal: "g", doneCriterion: "d" });
+    expect(text).toContain("workspace.create_bot");
+    expect(text).toContain("parks for the human's approval");
+    expect(text).toContain("State why the bot is needed");
+    expect(text).toContain("Never retry, rename around, or otherwise work around a denial");
+    expect(text).toContain("Retiring a bot is not available to you");
+  });
+});
+
 describe("manager charter", () => {
   it("contains every §7.1 duty and the project goal", () => {
     const text = buildManagerCharter({ projectName: "Launch", goal: "ship it", doneCriterion: "shipped" });
