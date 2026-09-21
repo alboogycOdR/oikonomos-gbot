@@ -9762,12 +9762,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T14:43:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap; the Opus review did not catch that the expiry status needs a schema change and the sweep needs a caller): territory widened to migration 033 (033_secret_request_expiry up/down, next free number after 032), services/worker/src/main.ts and main.test.ts. Use main.ts only to register the expiry sweep on the existing unattended path; do NOT touch workerJobQueue.ts (it was TASK-322 territory and is merged, but keep the change minimal) and do not add a second scheduler. Migration: add the expired status to whatever constrains secret_requests.status, idempotent up and clean down, and grep the repo for other code that enumerates the statuses (SecretRequestStatus type, mobile and dashboard clients) so nothing breaks on the new value.
 - [2026-09-21T21:23:01Z] [SV:CX9] Fetched current integration base and re-ran preflight after the migration/main.ts territory expansion. Expiry implementation is blocked because the required DB API must be re-exported through packages/db/src/index.ts, outside Owned_Paths.
 - [2026-09-21T21:25:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (§7 re-sequence, genuine decomposition gap): `packages/db/src/index.ts` is the db barrel and already re-exports from `secretRequests.js` (lines 260-266) — adding the new `expirePendingSecretRequests` re-export is a one-line change so `services/worker/src/main.ts` can import it via `@oikonomos/db`. Verified directly: index.ts is owned by no other task, and no task is currently active (all others blocked/parked), so widening is territorially safe — validate_plan re-run clean. Widened Owned_Paths to include `packages/db/src/index.ts`. Keep the change minimal: re-export only, do not restructure the barrel. Unblocked → pending, ready for re-dispatch to CX9 on the existing branch. Branch is territory-clean (only dossiers/TASK-323.md touched so far).
+- [2026-09-21T22:23:01Z] [SV:CX9] Implemented and committed expiry sweep (ca4238b). DB isolated suite passes 290/290 (+2 skipped); worker isolated suite remains serialized behind its active shared-DB lock. NEXT: Wait for the active isolated worker suite lock to clear, run the worker and full recursive isolated suites, classify baseline failures, then hand off for review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T22:09:35Z
+**Updated_At:** 2026-09-21T22:23:01Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
