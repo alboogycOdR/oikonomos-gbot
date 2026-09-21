@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createSecretRequest, createTaskExecutionRun, getAuditEventsForRun, getRun, listMessages, listRuns, type DatabaseOptions } from "@oikonomos/db";
+import { createSecretRequest, createTaskExecutionRun, getAuditEventsForRun, getOrCreateThreadForRole, getRun, listMessages, listRuns, type DatabaseOptions } from "@oikonomos/db";
 
 import { purgePgBossQueue, withPgBossQueueLock } from "./jobs/pgBossTestCleanup.js";
 import { WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, WORKER_RUN_EXECUTION_JOB } from "./jobs/workerJobQueue.js";
@@ -161,9 +161,10 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
   }, 20_000);
 
   it("expires an unanswered secret request through the real worker sweep, fails its run, and emits its liveness audit", async () => {
+    const thread = await getOrCreateThreadForRole(options, { roleId: "inbox-triage" });
     const persisted = await createTaskExecutionRun(options, {
       task: { roleId: "inbox-triage", title: "TASK-323 expiry", goal: "must stop", requestedBy: "test:task-323-expiry" },
-      execution: { version: 1, kind: "chat", threadId: "00000000-0000-0000-0000-000000000323" }, provider: "claude",
+      execution: { version: 1, kind: "chat", threadId: thread.id }, provider: "claude",
     });
     await parkTaskRun(options, persisted.runId);
     const request = await createSecretRequest(options, {
@@ -183,7 +184,7 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
         expect(await getRun(options, persisted.runId)).toMatchObject({ status: "failed", failureNote: "Human input request expired without an answer." });
         const audit = await getAuditEventsForRun(options, persisted.runId);
         expect(audit.some((event) => event.eventType === "run.human_request_expired" && event.payload.kind === "secret_request")).toBe(true);
-        expect((await listMessages(options, "00000000-0000-0000-0000-000000000323")).some((message) => message.body.includes("not answered in time"))).toBe(true);
+        expect((await listMessages(options, thread.id)).some((message) => message.body.includes("not answered in time"))).toBe(true);
       } finally { await worker.stop(); }
     });
   }, 20_000);
