@@ -23,7 +23,7 @@ export interface ProjectToolsDeps {
   createDecision(input: NewProjectDecision): Promise<unknown>;
   sendAssignment(input: { toRoleId: string; body: string; projectId: string; taskId: string }): Promise<unknown>;
   audit(eventType: string, payload: Record<string, unknown>): Promise<void>;
-  admitFanout(input: { projectId: string; taskId: string; ownerRoleId: string; rosterSize: number }): Promise<ProjectFanoutAdmission>;
+  admitFanout(input: { projectId: string; taskId: string; ownerRoleId: string; rosterSize: number }, onAdmitted: () => Promise<void>): Promise<ProjectFanoutAdmission>;
   resolvePath(ref: string): string;
 }
 
@@ -71,11 +71,15 @@ export function createProjectTools(identity: ProjectToolIdentity, overrides: Par
       const task = await requiredTask(deps, taskId); await requireManager(task.projectId);
       const roster = await deps.members(task.projectId);
       if (!roster.some((member) => member.roleId === ownerRoleId)) throw new Error("Task owner must be on the project roster.");
-      const admission = await deps.admitFanout({ projectId: task.projectId, taskId: task.taskId, ownerRoleId, rosterSize: roster.length });
+      const assignment = { value: null as ProjectTask | null };
+      const admission = await deps.admitFanout({ projectId: task.projectId, taskId: task.taskId, ownerRoleId, rosterSize: roster.length }, async () => {
+        assignment.value = await deps.assignOwner(task.taskId, ownerRoleId);
+        if (assignment.value === null) throw new Error("Project task was not found.");
+      });
       if (!admission.admitted) throw new Error(PROJECT_FANOUT_CAP_MESSAGE);
-      const assigned = await deps.assignOwner(task.taskId, ownerRoleId); if (assigned === null) throw new Error("Project task was not found.");
-      await deps.sendAssignment({ toRoleId: ownerRoleId, body: `You have been assigned: ${assigned.title}`, projectId: task.projectId, taskId: task.taskId });
-      return assigned;
+      if (assignment.value === null) throw new Error("Project fan-out admission did not assign the task.");
+      await deps.sendAssignment({ toRoleId: ownerRoleId, body: `You have been assigned: ${assignment.value.title}`, projectId: task.projectId, taskId: task.taskId });
+      return assignment.value;
     },
     async register_artifact(args: Record<string, unknown>) {
       const projectId = stringArg(args, "projectId"); await requireManager(projectId);

@@ -36,6 +36,12 @@ export interface ProjectFanoutAdmissionInput {
   taskId: string;
   ownerRoleId: string;
   rosterSize: number;
+  /**
+   * Runs while the per-run advisory lock is held, before an admitted
+   * assignment event is persisted. This keeps the audit trail's assignment
+   * event after the durable owner mutation without reopening the cap race.
+   */
+  onAdmitted?: () => Promise<void>;
 }
 
 export interface ProjectFanoutAdmission {
@@ -201,6 +207,9 @@ export async function admitProjectFanout(
       );
       const assignmentCount = Number(counted.rows[0]?.count ?? 0);
       const admitted = assignmentCount < input.rosterSize;
+      if (admitted) {
+        await input.onAdmitted?.();
+      }
       await client.query(
         `INSERT INTO audit_events (tenant_id, run_id, actor, event_type, payload)
          VALUES ($1, $2, $3, $4, $5::jsonb)`,
