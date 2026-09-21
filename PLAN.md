@@ -9765,7 +9765,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** apps/mobile/lib/api/browser_takeover_client.dart:147-151; OpenBot comparison (rawKeyDown without a key code does nothing for editing keys, Enter needs keyDown with text carriage return to submit)
@@ -9778,8 +9778,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] No change to the relay protocol, authorisation or session handling.
 - [ ] Manual owner verification steps are written in the dossier and the live check is explicitly recorded as pending.
 - [ ] flutter test for the touched file passes; Dart is outside pnpm -r, so state that in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-324-s5
+**Started_At:** 2026-09-21T11:31:23Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: test path corrected to apps/mobile/test/api/browser_takeover_client_test.dart.
@@ -9787,8 +9787,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T06:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T11:31:23Z
 
 ### TASK-325
 **Title:** Guard Steel navigation targets: block metadata addresses and private ranges (Gemini lane)
