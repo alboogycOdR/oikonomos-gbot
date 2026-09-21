@@ -9623,7 +9623,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-320
 **Title:** Audit trail: refuse TRUNCATE at the database level, with a liveness test
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** infra/postgres/migrations/001_schema_v1.up.sql:47-56 (audit_events protected only by DO INSTEAD NOTHING rules); CLAUDE.md non-negotiable 4; docs/decisions/ADR-005-control-liveness.md; OpenBot comparison 2026-09-21 (its migration 0012 refuses TRUNCATE)
@@ -9636,16 +9636,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Existing UPDATE and DELETE no-op behaviour and every existing test that deletes audit rows are unchanged; the full recursive suite passes.
 - [ ] The down migration removes the trigger and function cleanly; up then down then up is idempotent.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-320-cx9
+**Started_At:** 2026-09-21T05:03:19Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T09:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T05:03:19Z
 
 ### TASK-321
 **Title:** Enforce the manager project fan-out cap across MCP calls (it currently resets on every call)
