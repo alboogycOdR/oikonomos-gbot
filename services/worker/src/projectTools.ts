@@ -1,11 +1,12 @@
 import {
   assignProjectTaskOwner, createProjectArtifact, createProjectDecision, createProjectTask,
-  getProjectTask, listProjectRoleMembers, listProjectTasks, updateProjectTaskState,
+  getProjectTask, listProjectRoleMembers, listProjectTasks, updateProjectTaskState, type ProjectFanoutAdmission,
   type NewProjectArtifact, type NewProjectDecision, type NewProjectTask, type ProjectRoleMember,
   type ProjectTask, type ProjectTaskState,
 } from "@oikonomos/db";
 import { recordAuditEvent } from "@oikonomos/audit";
 import { resolveWorkspacePath, sendToRole } from "@oikonomos/workspace";
+import { createProjectFanoutAdmission, PROJECT_FANOUT_CAP_MESSAGE } from "./projectFanout.js";
 
 export const PROJECT_TOOL_NAMES = ["list_board", "create_task", "update_task", "assign_task", "register_artifact", "record_decision"] as const;
 export type ProjectToolName = (typeof PROJECT_TOOL_NAMES)[number];
@@ -22,6 +23,7 @@ export interface ProjectToolsDeps {
   createDecision(input: NewProjectDecision): Promise<unknown>;
   sendAssignment(input: { toRoleId: string; body: string; projectId: string; taskId: string }): Promise<unknown>;
   audit(eventType: string, payload: Record<string, unknown>): Promise<void>;
+  admitFanout(input: { projectId: string; taskId: string; ownerRoleId: string; rosterSize: number }): Promise<ProjectFanoutAdmission>;
   resolvePath(ref: string): string;
 }
 
@@ -38,11 +40,10 @@ export function createProjectTools(identity: ProjectToolIdentity, overrides: Par
     createDecision: (input) => createProjectDecision(db, input),
     sendAssignment: ({ toRoleId, body, projectId, taskId }) => sendToRole(db, { tenantId: identity.tenantId, fromRoleId: identity.fromRoleId, toRoleId, body, handoffKind: "task.assigned", factRef: { project_id: projectId, task_id: taskId, artifact_ids: [] } }),
     audit: async (eventType, payload) => { await recordAuditEvent(db, { tenantId: identity.tenantId, runId: identity.runId, actor: `agent:${identity.fromRoleId}`, eventType, payload }); },
+    admitFanout: createProjectFanoutAdmission(identity),
     resolvePath: projectWorkspacePath,
     ...overrides,
   };
-  let assignments = 0;
-  let assignmentQueue = Promise.resolve();
   const requireManager = async (projectId: string) => {
     const member = (await deps.members(projectId)).find((candidate) => candidate.roleId === identity.fromRoleId);
     if (member?.isManager !== true) throw new Error("Only the project's manager may use write tools.");
@@ -70,14 +71,11 @@ export function createProjectTools(identity: ProjectToolIdentity, overrides: Par
       const task = await requiredTask(deps, taskId); await requireManager(task.projectId);
       const roster = await deps.members(task.projectId);
       if (!roster.some((member) => member.roleId === ownerRoleId)) throw new Error("Task owner must be on the project roster.");
-      const work = assignmentQueue.then(async () => {
-        if (assignments >= roster.length) { await deps.audit("project.fanout_capped", { project_id: task.projectId, task_id: task.taskId, actor, roster_size: roster.length }); throw new Error("Project fan-out cap reached for this manager turn."); }
-        const assigned = await deps.assignOwner(task.taskId, ownerRoleId); if (assigned === null) throw new Error("Project task was not found.");
-        await deps.audit("project.task_assigned", { project_id: task.projectId, task_id: task.taskId, owner_role_id: ownerRoleId, actor });
-        await deps.sendAssignment({ toRoleId: ownerRoleId, body: `You have been assigned: ${assigned.title}`, projectId: task.projectId, taskId: task.taskId });
-        assignments += 1; return assigned;
-      });
-      assignmentQueue = work.then(() => undefined, () => undefined); return work;
+      const admission = await deps.admitFanout({ projectId: task.projectId, taskId: task.taskId, ownerRoleId, rosterSize: roster.length });
+      if (!admission.admitted) throw new Error(PROJECT_FANOUT_CAP_MESSAGE);
+      const assigned = await deps.assignOwner(task.taskId, ownerRoleId); if (assigned === null) throw new Error("Project task was not found.");
+      await deps.sendAssignment({ toRoleId: ownerRoleId, body: `You have been assigned: ${assigned.title}`, projectId: task.projectId, taskId: task.taskId });
+      return assigned;
     },
     async register_artifact(args: Record<string, unknown>) {
       const projectId = stringArg(args, "projectId"); await requireManager(projectId);

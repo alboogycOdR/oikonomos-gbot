@@ -8,8 +8,8 @@ const member = "44444444-4444-4444-4444-444444444444";
 const task = { taskId, projectId, title: "Ship it", description: "", ownerRoleId: null, state: "todo" as const, blockedReason: null, doneCriterion: "", createdBy: `role:${manager}`, createdAt: new Date(), updatedAt: new Date() };
 
 function tools(extra: Record<string, unknown> = {}) {
-  return createProjectTools({ connectionString: "postgres://unused", tenantId: "tenant", fromRoleId: manager, runId: "run" }, {
-    listTasks: vi.fn(async () => [task]), getTask: vi.fn(async () => task), createTask: vi.fn(async (input) => ({ ...task, ...input })), updateTask: vi.fn(async (_id, state, blockedReason) => ({ ...task, state, blockedReason: blockedReason ?? null })), assignOwner: vi.fn(async (_id, ownerRoleId) => ({ ...task, ownerRoleId })), members: vi.fn(async () => [{ projectId, roleId: manager, isManager: true, responsibility: "manager" }, { projectId, roleId: member, isManager: false, responsibility: "builder" }]), createArtifact: vi.fn(async (input) => input), createDecision: vi.fn(async (input) => input), sendAssignment: vi.fn(async () => undefined), audit: vi.fn(async () => undefined), resolvePath: (ref) => ref,
+  return createProjectTools({ connectionString: "postgres://unused", tenantId: "tenant", fromRoleId: manager, runId: "55555555-5555-5555-5555-555555555555" }, {
+    listTasks: vi.fn(async () => [task]), getTask: vi.fn(async () => task), createTask: vi.fn(async (input) => ({ ...task, ...input })), updateTask: vi.fn(async (_id, state, blockedReason) => ({ ...task, state, blockedReason: blockedReason ?? null })), assignOwner: vi.fn(async (_id, ownerRoleId) => ({ ...task, ownerRoleId })), members: vi.fn(async () => [{ projectId, roleId: manager, isManager: true, responsibility: "manager" }, { projectId, roleId: member, isManager: false, responsibility: "builder" }]), createArtifact: vi.fn(async (input) => input), createDecision: vi.fn(async (input) => input), sendAssignment: vi.fn(async () => undefined), audit: vi.fn(async () => undefined), admitFanout: vi.fn(async () => ({ admitted: true, assignmentCount: 0 })), resolvePath: (ref) => ref,
     ...extra,
   });
 }
@@ -36,10 +36,14 @@ describe("project tools", () => {
     await expect(denied.register_artifact({ projectId, kind: "attachment", ref: "attachment-1", label: "no" })).rejects.toThrow("manager");
     await expect(denied.record_decision({ projectId, kind: "human_decision", summary: "no" })).rejects.toThrow("manager");
     await expect(tools().assign_task({ taskId, ownerRoleId: "55555555-5555-5555-5555-555555555555" })).rejects.toThrow("roster");
-    const audit = vi.fn(async () => undefined); const assign = tools({ audit });
+    const admitFanout = vi.fn()
+      .mockResolvedValueOnce({ admitted: true, assignmentCount: 0 })
+      .mockResolvedValueOnce({ admitted: true, assignmentCount: 1 })
+      .mockResolvedValueOnce({ admitted: false, assignmentCount: 2 });
+    const assign = tools({ admitFanout });
     await assign.assign_task({ taskId, ownerRoleId: member }); await assign.assign_task({ taskId, ownerRoleId: member });
     await expect(assign.assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("fan-out");
-    expect(audit).toHaveBeenCalledWith("project.fanout_capped", expect.objectContaining({ roster_size: 2 }));
+    expect(admitFanout).toHaveBeenLastCalledWith(expect.objectContaining({ rosterSize: 2 }));
   });
 
   it("audits an assignment after its durable mutation and before handoff delivery", async () => {
