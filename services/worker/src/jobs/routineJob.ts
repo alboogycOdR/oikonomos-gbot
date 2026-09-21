@@ -3,6 +3,7 @@ import {
   getOrCreateThreadForRole,
   getRole,
   getSkill,
+  listProjectArtifacts,
   listRoutines,
   recordRoutineFire,
   resolveRoleRuntime,
@@ -22,7 +23,7 @@ export interface RoutinePollingOptions extends DatabaseOptions {
 
 export interface RoutinePollResult {
   routineId: string;
-  outcome: "queued" | "missed" | "stopped" | "skipped_paused";
+  outcome: "queued" | "missed" | "stopped" | "skipped_paused" | "skipped_unchanged";
 }
 
 function requireNonEmpty(value: string, field: string): string {
@@ -54,6 +55,28 @@ async function routineGoal(options: DatabaseOptions, routine: Routine): Promise<
 function computeNextFireAt(routine: Routine, now: Date): Date | null {
   if (routine.schedule === null) return null;
   return nextFireAtFromCron(routine.schedule, routine.timezone, routine.nextFireAt ?? now);
+}
+
+/**
+ * TASK-305 / spec §1.3, §11: a `changes_only` project status routine fires
+ * (and so notifies) only when the project's latest STATUS.md artifact digest
+ * differs from the one last reported, persisted in
+ * `definition.lastReportedStatusSha`. Returns `{ gated: false }` for any
+ * routine that is not a changes_only project routine.
+ */
+async function statusGate(
+  options: DatabaseOptions,
+  routine: Routine,
+): Promise<{ gated: false } | { gated: true; sha: string | null; unchanged: boolean }> {
+  const projectId = routine.definition["projectId"];
+  if (routine.notifyThreshold !== "changes_only" || typeof projectId !== "string") return { gated: false };
+  const artifacts = await listProjectArtifacts(options, { projectId });
+  const status = artifacts
+    .filter((artifact) => artifact.label === "STATUS.md")
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  const sha = status?.sha256 ?? null;
+  const last = routine.definition["lastReportedStatusSha"];
+  return { gated: true, sha, unchanged: sha === null || sha === last };
 }
 
 async function toRoutineFire(options: DatabaseOptions, routine: Routine, now: Date): Promise<RoutineFire> {
@@ -155,13 +178,25 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
         await recordRoutineFire(options, routine.routineId, "stopped", routine.nextFireAt, unavailableReason);
         return { routineId: routine.routineId, outcome: "stopped" as const };
       }
+      const gate = await statusGate(options, routine);
+      if (gate.gated && gate.unchanged) {
+        // No column for a "silent" outcome (CHECK in 016); `stopped` = no run, reason says why.
+        await recordRoutineFire(
+          options, routine.routineId, "stopped", computeNextFireAt(routine, now), 
+          gate.sha === null ? "changes_only: no STATUS.md to report" : "changes_only: STATUS.md unchanged since last report",
+        );
+        return { routineId: routine.routineId, outcome: "skipped_unchanged" as const };
+      }
       const outcome = await scheduler.fireRoutine(await toRoutineFire(options, routine, now), {
         environmentIsUp: async (roleId) => (await getRole(options, roleId))?.status === "active",
         createTask: async (input) => {
           await createAndEnqueueRoutineRun(options, input);
         },
         recordFire: async (routineId, fireOutcome, nextFireAt) => {
-          await recordRoutineFire(options, routineId, fireOutcome, nextFireAt);
+          await recordRoutineFire(
+            options, routineId, fireOutcome, nextFireAt, null,
+            fireOutcome === "queued" && gate.gated ? gate.sha : null,
+          );
         },
       });
       return { routineId: routine.routineId, outcome };

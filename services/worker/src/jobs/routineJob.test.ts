@@ -1,5 +1,8 @@
 import {
+  createProject,
+  createProjectArtifact,
   createRole,
+  getOrCreateThreadForRole,
   createRoutine,
   createSkill,
   defaultPoolConfig,
@@ -40,6 +43,8 @@ integration("routine parity poller (TASK-182)", () => {
     // thread (`getOrCreateThreadForRole`), so that must be cleared before
     // the role itself — deleting `roles` directly would violate
     // `threads_role_id_fkey`.
+    await pool.query(`DELETE FROM project_artifacts WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
+    await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM roles WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM skills WHERE tenant_id = $1`, [tenantId]);
@@ -205,4 +210,50 @@ integration("routine parity poller (TASK-182)", () => {
       await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
     });
   });
+
+  it("TASK-305 / spec §11: a changes_only status routine sends nothing when STATUS.md is unchanged and fires when it changes", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const db = { connectionString: connectionString! };
+      const roleId = `task-305-status-${crypto.randomUUID()}`;
+      await createRole(db, { roleId, tenantId, name: "Manager", title: "Manager" });
+      const thread = await getOrCreateThreadForRole(db, { roleId });
+      const project = await createProject(db, {
+        tenantId, threadId: thread.id, name: "P", goal: "g", doneCriterion: "d", createdBy: "human:1",
+      });
+      const addStatus = (sha: string) =>
+        createProjectArtifact(db, {
+          projectId: project.projectId, kind: "workspace_file",
+          ref: `/oikonomos/workspace/projects/${project.projectId}/STATUS.md`, sha256: sha, label: "STATUS.md",
+        });
+      const routine = await createRoutine(db, {
+        roleId, tenantId, name: "Status", notifyThreshold: "changes_only",
+        definition: { goal: "Report status", projectId: project.projectId },
+        nextFireAt: new Date(Date.now() - 1_000),
+      });
+      const rearm = () => pool.query(`UPDATE role_routines SET next_fire_at = now() - interval '1 second' WHERE routine_id = $1`, [routine.routineId]);
+      const tasksFor = async () =>
+        (await listTasks(db, { tenantId })).tasks.filter((t) => t.routineId === routine.routineId).length;
+
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "skipped_unchanged" });
+      expect(await tasksFor()).toBe(0);
+
+      await addStatus("a".repeat(64));
+      await rearm();
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+      expect(await tasksFor()).toBe(1);
+
+      await rearm();
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "skipped_unchanged" });
+      expect(await tasksFor()).toBe(1);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await addStatus("b".repeat(64));
+      await rearm();
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+      expect(await tasksFor()).toBe(2);
+
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+    });
+  }, 60_000);
 });

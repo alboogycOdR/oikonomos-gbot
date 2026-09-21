@@ -261,6 +261,8 @@ export async function recordRoutineFire(
   routineId: string,
   outcome: RoutineFireOutcome,
   nextFireAt?: Date | null, reason?: string | null,
+  /** TASK-305: for a changes_only routine, the STATUS.md digest just reported; persisted in `definition.lastReportedStatusSha` so the next fire can compare. */
+  reportedStatusSha?: string | null,
 ): Promise<Routine> {
   const normalizedRoutineId = requireUuid(routineId, "routineId");
   const normalizedOutcome = requireFireOutcome(outcome, "outcome");
@@ -277,17 +279,19 @@ export async function recordRoutineFire(
     await pool.query(`DELETE FROM routine_runs WHERE routine_id = $1 AND routine_run_id IN (
       SELECT routine_run_id FROM routine_runs WHERE routine_id = $1 ORDER BY created_at DESC, routine_run_id DESC OFFSET 20
     )`, [normalizedRoutineId]);
+    const definitionSet = `, definition = CASE WHEN $4::text IS NULL THEN definition
+             ELSE definition || jsonb_build_object('lastReportedStatusSha', $4::text) END`;
     const result = await pool.query<RoutineRow>(
       normalizedOutcome === "queued"
         ? `UPDATE role_routines
-           SET last_fire_at = now(), last_fire_status = $2, next_fire_at = COALESCE($3, next_fire_at)
+           SET last_fire_at = now(), last_fire_status = $2, next_fire_at = COALESCE($3, next_fire_at)${definitionSet}
            WHERE routine_id = $1
            RETURNING ${routineColumns}`
         : `UPDATE role_routines
-           SET last_fire_status = $2, next_fire_at = COALESCE($3, next_fire_at)
+           SET last_fire_status = $2, next_fire_at = COALESCE($3, next_fire_at)${definitionSet}
            WHERE routine_id = $1
            RETURNING ${routineColumns}`,
-      [normalizedRoutineId, normalizedOutcome, nextFireAt ?? null],
+      [normalizedRoutineId, normalizedOutcome, nextFireAt ?? null, reportedStatusSha ?? null],
     );
 
     const row = result.rows[0];

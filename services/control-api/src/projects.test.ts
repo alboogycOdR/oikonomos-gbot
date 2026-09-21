@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Project, ProjectArtifact, ProjectRoleMember, ProjectTask } from "@oikonomos/db";
 
 import { buildApp } from "./app.js";
+import { MANAGER_CHARTER_DUTIES } from "./charters/managerCharter.js";
 import type { ControlApiDeps, ProjectPorts } from "./ports.js";
 
 const AUTH = { authorization: "Bearer secret" };
@@ -62,6 +63,8 @@ interface Fixture {
   app: ReturnType<typeof buildApp>;
   port: { [K in keyof ProjectPorts]: ReturnType<typeof vi.fn> };
   audit: ReturnType<typeof vi.fn>;
+  updateRoleInstructions: ReturnType<typeof vi.fn>;
+  createRoutine: ReturnType<typeof vi.fn>;
   projects: Map<string, Project>;
   tasks: Map<string, ProjectTask>;
   artifacts: ProjectArtifact[];
@@ -172,7 +175,12 @@ function fixture(): Fixture {
       },
     ]),
   };
+  const updateRoleInstructions = vi.fn(async () => null);
+  const createRoutine = vi.fn(async (input: Record<string, unknown>) => input);
   const deps = {
+    updateRoleInstructions,
+    createRoutine,
+    listRoutines: vi.fn(async () => []),
     projects: port,
     insertAuditEvent: audit,
     listCapabilities: vi.fn(async () => capabilities),
@@ -180,7 +188,7 @@ function fixture(): Fixture {
     listAllThreadsWithMembers: vi.fn(async () => [...ownedThreadIds].map((id) => ({ id, roleId: null, memberRoleIds: roleIds }))),
   } as unknown as ControlApiDeps;
   const app = buildApp(deps, { authToken: "secret", logger: false });
-  return { app, port: port as unknown as Fixture["port"], audit, projects, tasks, artifacts, ownedThreadIds, roster };
+  return { app, updateRoleInstructions, createRoutine, port: port as unknown as Fixture["port"], audit, projects, tasks, artifacts, ownedThreadIds, roster };
 }
 
 async function seedProject(f: Fixture, overrides: Partial<Project> = {}): Promise<Project> {
@@ -248,6 +256,40 @@ describe("project routes (TASK-304)", () => {
         expect(call.managerGrants.find((g) => g.capabilityId === "workspace.create_bot")?.maxTier).toBe("T3_external");
         expect(response.json()).toMatchObject({ project: { name: "Launch" }, roster: [{ roleId: "r1", isManager: true }, { roleId: "r2" }] });
         expect(f.audit).toHaveBeenCalledWith(expect.objectContaining({ eventType: "project.created" }));
+      } finally {
+        await f.app.close();
+      }
+    });
+
+    it("seeds the manager's instructions from the charter and creates a changes_only status routine (TASK-305)", async () => {
+      const f = fixture();
+      try {
+        const response = await f.app.inject({ method: "POST", url: "/projects", headers: AUTH, payload: newProjectBody });
+        expect(response.statusCode).toBe(201);
+        expect(f.updateRoleInstructions).toHaveBeenCalledTimes(1);
+        const [roleId, text] = f.updateRoleInstructions.mock.calls[0] as unknown as [string, string];
+        expect(roleId).toBe("r1");
+        for (const duty of MANAGER_CHARTER_DUTIES) expect(text).toContain(duty);
+        expect(f.createRoutine).toHaveBeenCalledTimes(1);
+        const routine = f.createRoutine.mock.calls[0]![0] as { roleId: string; notifyThreshold: string };
+        expect(routine.roleId).toBe("r1");
+        expect(routine.notifyThreshold).toBe("changes_only");
+      } finally {
+        await f.app.close();
+      }
+    });
+
+    it("seeds nothing when no manager is chosen (TASK-305)", async () => {
+      const f = fixture();
+      try {
+        await f.app.inject({
+          method: "POST",
+          url: "/projects",
+          headers: AUTH,
+          payload: { ...newProjectBody, roster: [{ roleId: "r1" }, { roleId: "r2" }] },
+        });
+        expect(f.updateRoleInstructions).not.toHaveBeenCalled();
+        expect(f.createRoutine).not.toHaveBeenCalled();
       } finally {
         await f.app.close();
       }
