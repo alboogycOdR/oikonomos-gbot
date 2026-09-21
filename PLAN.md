@@ -9155,6 +9155,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T08:43:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-305-2026-09-21T08-40-21Z.log
 - [2026-09-21T08:48:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-305-2026-09-21T08-45-11Z.log
 - [2026-09-21T08:53:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-305-2026-09-21T08-50-12Z.log
+- [2026-09-21T08:58:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-305-2026-09-21T08-55-21Z.log
 **Artifacts:** services/control-api/src/charters/managerCharter.ts, services/control-api/src/charters/managerCharter.test.ts, services/control-api/src/projects.ts, services/control-api/src/projects.test.ts, dossiers/TASK-305.md
 **Test_Evidence:** vitest projects.test.ts + charters: 2 files, 22/22 pass (re-run this session); tsc clean. Earlier full isolated suite: 4 pkg fails (db, evals, worker, control-api chat.routes three-bot 400) = pre-existing failures noted by ORCH on TASK-304/master, not branch-introduced.
 **Review_Findings:**
