@@ -9689,7 +9689,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** services/worker/src/jobs/workerJobQueue.ts:61-68 (runExecutionQueueOptions expireInSeconds 300, retryLimit 3); services/worker/src/chatRunDriver.ts:192 (SANDBOX_COMMAND_TIMEOUT_MS 10 minutes); OpenBot comparison (attempts>1 means a prior owner may already have acted)
@@ -9707,12 +9707,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: chatRunDriver.ts is TASK-306 territory; conflict AC added.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T08:08:01Z] [SV:S5] Double run confirmed real: pg-boss retries at expiry while the handler is live, and main.ts only skips terminal runs. Fixed in workerJobQueue.ts with a 1800 s expiry (re-applied via updateQueue) plus an in-process in-flight guard. Guard is per-process; atomic DB claim would need main.ts territory.
+**Artifacts:** services/worker/src/jobs/workerJobQueue.ts, services/worker/src/jobs/workerJobQueue.test.ts, dossiers/TASK-322.md
+**Test_Evidence:** test-isolated.ps1 -Filter @oikonomos/worker. New test 'a run outliving the queue expiry is never started a second time' fails with the guard disabled (expected 2 to be 1) and passes with it. Worker suite with fix: 54 failed / 262 passed; master baseline: 53 failed / 262 passed. Failures are the same pre-existing classes (chatRunDriver budget, sandboxReaper) plus a pg-boss lock-timeout flake in workerJobQueue.test.ts that varied by run and also hit master. Only the worker package was run, not the full recursive suite.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T07:57:11Z
+**Updated_At:** 2026-09-21T08:08:01Z
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
