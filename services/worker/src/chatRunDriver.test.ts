@@ -15,6 +15,7 @@ import {
   upsertRoleSandbox,
   type DatabaseOptions,
 } from "@oikonomos/db";
+import { writeMemoryFact } from "@oikonomos/memory";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
@@ -2102,6 +2103,7 @@ integration("TASK-301 chat admission and project attribution", () => {
   }
 
   async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM profile_facts WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM spend_reservations WHERE tenant_id = $1", [tenantId]);
     await pool.query("DELETE FROM budget_ledgers WHERE axis_id = ANY($1) OR axis_id = ANY($2)", [projectIds, roleIds]);
     await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))", [tenantId]);
@@ -2173,6 +2175,66 @@ integration("TASK-301 chat admission and project attribution", () => {
       expect(invoked).toBe(1);
       release();
       await firstRun;
+    } finally {
+      if (priorCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI; else process.env.OIK_PROVIDER_CAP_USD_GEMINI = priorCap;
+      if (priorKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = priorKey;
+    }
+  });
+
+  it("injects profile memory into both lanes: roster member sees project facts, non-member never does (TASK-306)", async () => {
+    const memberId = await role("mem-member", null);
+    const outsiderId = await role("mem-outsider", null);
+    const otherAgentId = await role("mem-other", null);
+    await pool.query("UPDATE roles SET provider = 'claude' WHERE role_id = ANY($1)", [[memberId, outsiderId, otherAgentId]]);
+    const fixture = await project(10, [memberId]);
+    const fact = (over: Record<string, unknown>) => writeMemoryFact(options, { tenantId, source: "task-306", ...over } as never);
+    await fact({ scope: "project", projectId: fixture.projectId, key: "charter.goal", value: "CHARTER-SENTINEL-306" });
+    await fact({ scope: "user", key: "user.pref", value: "USER-SENTINEL-306" });
+    await fact({ scope: "agent", roleId: memberId, key: "agent.own", value: "OWN-AGENT-SENTINEL-306" });
+    await fact({ scope: "agent", roleId: otherAgentId, key: "agent.other", value: "OTHER-AGENT-SENTINEL-306" });
+    await fact({ scope: "user", key: "user.old", value: "SUPERSEDED-SENTINEL-306" });
+    await fact({ scope: "user", key: "user.old", value: "REPLACEMENT-SENTINEL-306" });
+    await pool.query(
+      `INSERT INTO profile_facts (tenant_id, scope, key, value, source, confidence, tier, expires_at)
+       VALUES ($1, 'user', 'user.expired', 'EXPIRED-SENTINEL-306', 'task-306', 0.8, 'profile', now() - interval '1 day')`,
+      [tenantId],
+    );
+    const observe = async (roleId: string, threadId: string, lane: "claude" | "gemini"): Promise<string> => {
+      const task = await createTask(options, { tenantId, roleId, title: "memory", goal: "hello", requestedBy: "task-306" });
+      let prompt = "";
+      if (lane === "claude") {
+        const queryFn: AgentSdkQueryFn = async function* (input) {
+          prompt = String((input.options as { systemPrompt?: unknown }).systemPrompt);
+          yield { type: "result", result: "ok" };
+        };
+        await createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, queryFn }).run({ task, threadId });
+      } else {
+        const geminiFetch: typeof globalThis.fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+          prompt = String(init?.body);
+          return new Response(JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 } }));
+        }) as typeof globalThis.fetch;
+        await createChatRunDriver({ ...options, manifests: [], platformCeilingZar: 1_000_000, sandboxClient: inertSandbox(), geminiFetch }).run({ task, threadId });
+      }
+      return prompt;
+    };
+    const priorCap = process.env.OIK_PROVIDER_CAP_USD_GEMINI;
+    const priorKey = process.env.GEMINI_API_KEY;
+    process.env.OIK_PROVIDER_CAP_USD_GEMINI = "10";
+    process.env.GEMINI_API_KEY = "x".repeat(16);
+    try {
+      for (const lane of ["claude", "gemini"] as const) {
+        await pool.query("UPDATE roles SET provider = $2 WHERE role_id = ANY($1)", [[memberId, outsiderId], lane]);
+        const member = await observe(memberId, fixture.threadId, lane);
+        expect(member, lane).toContain("CHARTER-SENTINEL-306");
+        expect(member, lane).toContain("USER-SENTINEL-306");
+        expect(member, lane).toContain("OWN-AGENT-SENTINEL-306");
+        expect(member, lane).toContain("REPLACEMENT-SENTINEL-306");
+        for (const banned of ["OTHER-AGENT-SENTINEL-306", "SUPERSEDED-SENTINEL-306", "EXPIRED-SENTINEL-306"]) expect(member, lane).not.toContain(banned);
+        // Non-member running in the SAME project thread must not see the charter.
+        const outsider = await observe(outsiderId, fixture.threadId, lane);
+        expect(outsider, lane).not.toContain("CHARTER-SENTINEL-306");
+        expect(outsider, lane).toContain("USER-SENTINEL-306");
+      }
     } finally {
       if (priorCap === undefined) delete process.env.OIK_PROVIDER_CAP_USD_GEMINI; else process.env.OIK_PROVIDER_CAP_USD_GEMINI = priorCap;
       if (priorKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = priorKey;

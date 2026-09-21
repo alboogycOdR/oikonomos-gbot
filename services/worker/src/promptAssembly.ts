@@ -1,4 +1,5 @@
 import type { Role, Skill } from "@oikonomos/db";
+import type { MemoryFact } from "@oikonomos/memory";
 import type { ContextMessage } from "./contextCompaction.js";
 
 /** Build a useful identity even when an older role has no custom instructions. */
@@ -67,6 +68,42 @@ export function formatSkillBlock(skill: Skill): string {
 }
 
 /**
+ * Hard cap on the profile-memory block, in characters (~1,500 tokens at
+ * ~4 chars/token). Profile facts are prepended on EVERY turn of BOTH lanes, so
+ * an unbounded block would tax every turn's cost and crowd out the thread. The
+ * cap is generous for curated charter/preference facts (a few dozen short
+ * key/value lines) yet bounded; facts beyond it are dropped whole (never cut
+ * mid-fact) and a truncation note names how many were omitted.
+ */
+export const PROFILE_MEMORY_MAX_CHARS = 6000;
+
+const SCOPE_ORDER: Record<string, number> = { user: 0, agent: 1, project: 2 };
+
+/** Format visible profile-tier facts as one bounded prompt block ("" when none). */
+export function formatProfileMemoryBlock(facts: readonly MemoryFact[]): string {
+  if (facts.length === 0) return "";
+  const sorted = [...facts].sort(
+    (a, b) => (SCOPE_ORDER[a.scope] ?? 9) - (SCOPE_ORDER[b.scope] ?? 9) || a.key.localeCompare(b.key),
+  );
+  const header = "## Profile memory\n\nDurable facts you should rely on (scope: key: value).";
+  const lines: string[] = [];
+  let used = header.length;
+  let omitted = 0;
+  for (const fact of sorted) {
+    const value = typeof fact.value === "string" ? fact.value : JSON.stringify(fact.value);
+    const line = `- [${fact.scope}] ${fact.key}: ${value}`;
+    if (used + line.length + 1 > PROFILE_MEMORY_MAX_CHARS) {
+      omitted += 1;
+      continue;
+    }
+    lines.push(line);
+    used += line.length + 1;
+  }
+  const tail = omitted > 0 ? [`(${omitted} further profile fact(s) omitted: memory block cap reached)`] : [];
+  return [header, ...lines, ...tail].join("\n");
+}
+
+/**
  * Full system-prompt assembly for a chat turn: the role persona block
  * (unchanged, `buildRoleSystemPrompt`) followed by exactly one `## Skill:
  * name` block per distinct enabled `/name` token referenced in the
@@ -80,8 +117,12 @@ export async function assembleSystemPrompt(params: {
   fallbackRoleId: string;
   message: string;
   resolveEnabledSkill: SkillResolver;
+  /** Profile-tier facts already filtered by readProfileTier (ACL, expiry, supersession). */
+  memoryFacts?: readonly MemoryFact[];
 }): Promise<string> {
-  const base = buildRoleSystemPrompt(params.role, params.fallbackRoleId);
+  const persona = buildRoleSystemPrompt(params.role, params.fallbackRoleId);
+  const memory = formatProfileMemoryBlock(params.memoryFacts ?? []);
+  const base = memory.length === 0 ? persona : `${persona}\n\n${memory}`;
   const tokens = extractSkillTokens(params.message);
   const blocks: string[] = [];
   const notes: string[] = [];
@@ -115,6 +156,7 @@ export async function assembleChatPrompt(params: {
   summary: string | null;
   /** Verbatim history for the current epoch, strictly after `compacted_through_message_id`, oldest first. */
   history: readonly ContextMessage[];
+  memoryFacts?: readonly MemoryFact[];
 }): Promise<string> {
   const systemPrompt = await assembleSystemPrompt(params);
   const sections = [systemPrompt];
