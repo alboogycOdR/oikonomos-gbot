@@ -9159,7 +9159,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-306
 **Title:** Inject profile-tier memory (user, agent and project scopes) into every chat run's system prompt, both lanes
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §1.2 ('stored as project-scope profile-tier memory facts, so every member's prompt sees it through the existing memory injection'), §11 first bullet ('visible to every member's next run and to no non-member'); packages/memory/src/facts.ts readProfileTier (already supports user/agent/project scopes and visible_to).
@@ -9183,12 +9183,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-20T18:33:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-306-2026-09-20T18-30-27Z.log
 - [2026-09-20T18:38:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-306-2026-09-20T18-35-11Z.log
 - [2026-09-20T18:43:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-306-2026-09-20T18-38-41Z.log
+- [2026-09-21T07:53:00Z] [SV:S5] Branch task/TASK-306-s5 created from master. Worker has no @oikonomos/memory dependency; adding it needs edits to services/worker/package.json, pnpm-lock.yaml and possibly services/worker/tsconfig.json, all outside Owned_Paths. Design is ready and documented in the dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: need services/worker/package.json, pnpm-lock.yaml, and services/worker/tsconfig.json (if project references are used) to add the @oikonomos/memory workspace dependency to services/worker
 **Updated_By:** SV
-**Updated_At:** 2026-09-20T18:03:58Z
+**Updated_At:** 2026-09-21T07:53:00Z
 
 ### TASK-307
 **Title:** Mobile: project API client, projects list, create-project flow (roster, manager, charter), entry from the roster screen (P-7a)
