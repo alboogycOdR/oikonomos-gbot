@@ -9737,11 +9737,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/takeover.ts:62-84 (takeover derived from the audit trail, no expiry); packages/db/src/secretRequests.ts; CLAUDE.md non-negotiable 6 (challenges trigger human takeover); OpenBot comparison (unanswered requests expire after 10 minutes, a human at the wheel never times out)
-**Owned_Paths:** services/worker/src/takeover.ts, services/worker/src/takeover.test.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts
+**Owned_Paths:** services/worker/src/takeover.ts, services/worker/src/takeover.test.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts, infra/postgres/migrations/033_secret_request_expiry.up.sql, infra/postgres/migrations/033_secret_request_expiry.down.sql, services/worker/src/main.ts, services/worker/src/main.test.ts
 **Depends_On:** TASK-322
 **Description:** A pending takeover or secret request stays pending forever: an ignored request parks the run with no way out. Add an expiry (default 10 minutes, configurable) after which an UNANSWERED request is closed as expired, the parked run is released to failed with a visible reason (reuse the TASK-316 message path), and an audit event is written. A request that a human has taken (holds control) must never expire. Do not weaken any challenge handling: expiry must not auto-continue a run past a CAPTCHA or MFA challenge; it fails the run. Read takeover.ts and secretRequests.ts fully first and state in the dossier whether an expiry sweep already exists anywhere.
 **Acceptance_Criteria:**
@@ -9758,12 +9758,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-322 (shared scheduler); OWNERSHIP_CONFLICT AC added.
 - [2026-09-21T10:15:00Z] [ORCH] READY: Depends_On TASK-322 is now done (merged c0bd3a6). This task is dispatchable.
 - [2026-09-21T11:58:02Z] [SV:CX9] Verified no expiry sweep exists; implementing a durable unattended expiry requires a schema migration and worker boot/scheduler territory outside Owned_Paths.
+- [2026-09-21T14:43:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap; the Opus review did not catch that the expiry status needs a schema change and the sweep needs a caller): territory widened to migration 033 (033_secret_request_expiry up/down, next free number after 032), services/worker/src/main.ts and main.test.ts. Use main.ts only to register the expiry sweep on the existing unattended path; do NOT touch workerJobQueue.ts (it was TASK-322 territory and is merged, but keep the change minimal) and do not add a second scheduler. Migration: add the expired status to whatever constrains secret_requests.status, idempotent up and clean down, and grep the repo for other code that enumerates the statuses (SecretRequestStatus type, mobile and dashboard clients) so nothing breaks on the new value.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: requires an expiry-status migration under infra/postgres/migrations and an unattended worker caller in services/worker/src/main.ts (or explicitly forbidden workerJobQueue.ts).
-**Updated_By:** SV
-**Updated_At:** 2026-09-21T11:58:02Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-21T14:43:00Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
