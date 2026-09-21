@@ -21,6 +21,7 @@ import {
   getRun,
   getPlatformSpendUsd,
   getProjectByThreadId,
+  listProjectRoleMembers,
   getRoleSandbox,
   getLatestThreadSummary,
   getOrInitThreadContext,
@@ -60,6 +61,7 @@ import {
   DEFAULT_PLATFORM_CEILING_ZAR,
   DEFAULT_USD_TO_ZAR_RATE,
 } from "./subprocessProviders.js";
+import { readProfileTier } from "@oikonomos/memory";
 import { assembleSystemPrompt, buildRoleSystemPrompt, type SkillResolver } from "./promptAssembly.js";
 import { maybeCompact } from "./contextCompaction.js";
 import { createTierZeroProvider, resolveTierZeroEnvConfig, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
@@ -447,7 +449,17 @@ async function runChatTask(
       // Claude and Gemini lanes read this ONE systemPrompt value below, so
       // wiring it here reaches both without touching either lane
       // separately.
+      // TASK-306 — profile-tier memory (user + this role's agent scope +
+      // the project scope ONLY when the role is on that project's roster).
+      // One read feeds the ONE systemPrompt both lanes consume.
+      const memoryProjectId = await rosterProjectIdFor(options, projectId, request.task.roleId);
+      const memoryFacts = await readProfileTier(options, {
+        tenantId: request.task.tenantId,
+        roleId: request.task.roleId,
+        ...(memoryProjectId === null ? {} : { projectId: memoryProjectId }),
+      });
       const systemPrompt = await assembleSystemPrompt({
+        memoryFacts,
         role,
         fallbackRoleId: request.task.roleId,
         message: request.task.goal,
@@ -1443,6 +1455,13 @@ async function assertRunReservationAllows(options: DatabaseOptions, input: { ten
     const reason: BudgetGateDenyReason = result.reason;
     throw new Error(reason);
   }
+}
+
+/** Project scope memory is member-only: a role off the roster gets no project facts. */
+async function rosterProjectIdFor(options: DatabaseOptions, projectId: string | null, roleId: string): Promise<string | null> {
+  if (projectId === null) return null;
+  const members = await listProjectRoleMembers(options, projectId);
+  return members.some((member) => member.roleId === roleId) ? projectId : null;
 }
 
 async function projectAttributionForChatRun(options: DatabaseOptions, request: ChatRunRequest): Promise<string | null> {

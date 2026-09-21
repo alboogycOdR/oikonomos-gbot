@@ -8,8 +8,8 @@ const member = "44444444-4444-4444-4444-444444444444";
 const task = { taskId, projectId, title: "Ship it", description: "", ownerRoleId: null, state: "todo" as const, blockedReason: null, doneCriterion: "", createdBy: `role:${manager}`, createdAt: new Date(), updatedAt: new Date() };
 
 function tools(extra: Record<string, unknown> = {}) {
-  return createProjectTools({ connectionString: "postgres://unused", tenantId: "tenant", fromRoleId: manager, runId: "run" }, {
-    listTasks: vi.fn(async () => [task]), getTask: vi.fn(async () => task), createTask: vi.fn(async (input) => ({ ...task, ...input })), updateTask: vi.fn(async (_id, state, blockedReason) => ({ ...task, state, blockedReason: blockedReason ?? null })), assignOwner: vi.fn(async (_id, ownerRoleId) => ({ ...task, ownerRoleId })), members: vi.fn(async () => [{ projectId, roleId: manager, isManager: true, responsibility: "manager" }, { projectId, roleId: member, isManager: false, responsibility: "builder" }]), createArtifact: vi.fn(async (input) => input), createDecision: vi.fn(async (input) => input), sendAssignment: vi.fn(async () => undefined), audit: vi.fn(async () => undefined), resolvePath: (ref) => ref,
+  return createProjectTools({ connectionString: "postgres://unused", tenantId: "tenant", fromRoleId: manager, runId: "55555555-5555-5555-5555-555555555555" }, {
+    listTasks: vi.fn(async () => [task]), getTask: vi.fn(async () => task), createTask: vi.fn(async (input) => ({ ...task, ...input })), updateTask: vi.fn(async (_id, state, blockedReason) => ({ ...task, state, blockedReason: blockedReason ?? null })), assignOwner: vi.fn(async (_id, ownerRoleId) => ({ ...task, ownerRoleId })), members: vi.fn(async () => [{ projectId, roleId: manager, isManager: true, responsibility: "manager" }, { projectId, roleId: member, isManager: false, responsibility: "builder" }]), createArtifact: vi.fn(async (input) => input), createDecision: vi.fn(async (input) => input), sendAssignment: vi.fn(async () => undefined), audit: vi.fn(async () => undefined), admitFanout: vi.fn(async (_input, onAdmitted) => { await onAdmitted(); return { admitted: true, assignmentCount: 0 }; }), resolvePath: (ref) => ref,
     ...extra,
   });
 }
@@ -36,19 +36,29 @@ describe("project tools", () => {
     await expect(denied.register_artifact({ projectId, kind: "attachment", ref: "attachment-1", label: "no" })).rejects.toThrow("manager");
     await expect(denied.record_decision({ projectId, kind: "human_decision", summary: "no" })).rejects.toThrow("manager");
     await expect(tools().assign_task({ taskId, ownerRoleId: "55555555-5555-5555-5555-555555555555" })).rejects.toThrow("roster");
-    const audit = vi.fn(async () => undefined); const assign = tools({ audit });
+    const outcomes = [
+      { admitted: true, assignmentCount: 0 },
+      { admitted: true, assignmentCount: 1 },
+      { admitted: false, assignmentCount: 2 },
+    ];
+    const admitFanout = vi.fn(async (_input, onAdmitted) => {
+      const outcome = outcomes.shift()!;
+      if (outcome.admitted) await onAdmitted();
+      return outcome;
+    });
+    const assign = tools({ admitFanout });
     await assign.assign_task({ taskId, ownerRoleId: member }); await assign.assign_task({ taskId, ownerRoleId: member });
     await expect(assign.assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("fan-out");
-    expect(audit).toHaveBeenCalledWith("project.fanout_capped", expect.objectContaining({ roster_size: 2 }));
+    expect(admitFanout.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ rosterSize: 2 }));
   });
 
-  it("audits an assignment after its durable mutation and before handoff delivery", async () => {
-    const audit = vi.fn(async () => undefined);
-    const sendAssignment = vi.fn(async () => { throw new Error("mailbox unavailable"); });
-    await expect(tools({ audit, sendAssignment }).assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("mailbox unavailable");
-    expect(audit).toHaveBeenCalledWith("project.task_assigned", {
-      project_id: projectId, task_id: taskId, owner_role_id: member, actor: `role:${manager}`,
+  it("makes the durable owner mutation before handoff delivery", async () => {
+    const assignOwner = vi.fn(async (_id, ownerRoleId) => ({ ...task, ownerRoleId }));
+    const sendAssignment = vi.fn(async () => {
+      expect(assignOwner).toHaveBeenCalledWith(taskId, member);
+      throw new Error("mailbox unavailable");
     });
+    await expect(tools({ assignOwner, sendAssignment }).assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("mailbox unavailable");
   });
 
   it("stores only valid canonical project workspace-file references", async () => {

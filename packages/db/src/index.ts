@@ -30,10 +30,13 @@ export {
   type SkippedRoleGrant,
 } from "./capabilities.js";
 export {
+  admitProjectFanout,
   getAuditEventsForRun,
   insertAuditEvent,
   type AuditEvent,
   type NewAuditEvent,
+  type ProjectFanoutAdmission,
+  type ProjectFanoutAdmissionInput,
 } from "./auditEvents.js";
 export {
   approvalStatuses,
