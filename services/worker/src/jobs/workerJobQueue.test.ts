@@ -159,6 +159,36 @@ integration("WorkerJobQueue — pg-boss lifecycle against PostgreSQL", () => {
     });
   }, 20_000);
 
+  it("TASK-322: a run outliving the queue expiry is never started a second time", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const runId = crypto.randomUUID();
+      let executions = 0;
+      let started!: () => void;
+      const firstStarted = new Promise<void>((resolve) => { started = resolve; });
+      queue = createWorkerJobQueue({
+        connectionString: connectionString!,
+        applicationName: `oikonomos-worker-run-expiry-${crypto.randomUUID()}`,
+        runExecutionExpireInSeconds: 1,
+        onRunExecution: async () => {
+          executions += 1;
+          started();
+          await delay(6_000); // handler far outlives the 1 s expiry
+        },
+      });
+      await queue.start();
+      await queue.enqueueRunExecution(runId);
+      await firstStarted;
+      // Expiry fires at ~1 s and pg-boss retries after ~2 s; the guard must swallow that retry.
+      await delay(5_000);
+      expect(executions).toBe(1);
+      await delay(2_000);
+      expect(executions).toBe(1);
+      await queue.stop();
+      queue = undefined;
+    });
+  }, 90_000);
+
   // Explicit timeout: must comfortably clear waitFor's own budget (see its comment) —
   // Vitest's 5000ms default would otherwise kill the test before waitFor gets to try.
   it("uses a real pg-boss poll job to queue each due routine and persist its fire outcome", async () => {

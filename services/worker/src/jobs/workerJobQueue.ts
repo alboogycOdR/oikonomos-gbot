@@ -26,6 +26,8 @@ export interface CreateWorkerJobQueueOptions {
   routinePolling?: RoutinePollingOptions;
   /** The worker-owned executor. API processes only enqueue these jobs. */
   onRunExecution?(job: Job<RunExecutionJob>): Promise<void> | void;
+  /** Test seam: shortens the run-execution expiry. Production uses RUN_EXECUTION_EXPIRE_SECONDS. */
+  runExecutionExpireInSeconds?: number;
   /**
    * TASK-221: pg-boss's own 'error' event, and any error thrown inside a
    * `work()` handler, is otherwise completely silent — a job just fails (or
@@ -58,12 +60,22 @@ const routinePollQueueOptions = {
   deleteAfterSeconds: 604_800,
 } as const;
 
+/**
+ * TASK-322: a Claude-lane sandbox command may run 10 minutes
+ * (chatRunDriver SANDBOX_COMMAND_TIMEOUT_MS) and a run holds several. pg-boss has no
+ * handler heartbeat: at expiry it fails the job and retries it while the first
+ * handler is still running, and main.ts only skips TERMINAL runs, so the old 300 s
+ * expiry started a live run a second time. 30 min clears the command timeout with
+ * margin; the in-flight guard below closes the remaining same-process window.
+ */
+export const RUN_EXECUTION_EXPIRE_SECONDS = 1_800;
+
 const runExecutionQueueOptions = {
   policy: "singleton",
   retryLimit: 3,
   retryDelay: 1,
   retryBackoff: true,
-  expireInSeconds: 300,
+  expireInSeconds: RUN_EXECUTION_EXPIRE_SECONDS,
   retentionSeconds: 86_400,
   deleteAfterSeconds: 604_800,
 } as const;
@@ -82,6 +94,8 @@ function assertConnectionString(connectionString: string): void {
  */
 export class WorkerJobQueue {
   private boss: PgBoss | undefined;
+  /** Run ids whose handler is executing in this process; a retry of one is a no-op. */
+  private readonly inFlightRuns = new Set<string>();
 
   public constructor(private readonly options: CreateWorkerJobQueueOptions) {
     assertConnectionString(options.connectionString);
@@ -105,13 +119,25 @@ export class WorkerJobQueue {
         for (const job of jobs) await this.options.onHeartbeat?.(job);
       });
       if (this.options.onRunExecution !== undefined) {
-        await boss.createQueue(WORKER_RUN_EXECUTION_JOB, runExecutionQueueOptions);
+        const expireInSeconds = this.options.runExecutionExpireInSeconds ?? RUN_EXECUTION_EXPIRE_SECONDS;
+        await boss.createQueue(WORKER_RUN_EXECUTION_JOB, { ...runExecutionQueueOptions, expireInSeconds });
+        // createQueue is a no-op for an existing queue; re-apply so a stale 300 s expiry is replaced.
+        await boss.updateQueue(WORKER_RUN_EXECUTION_JOB, { expireInSeconds });
         await boss.work<RunExecutionJob>(WORKER_RUN_EXECUTION_JOB, async (jobs) => {
           for (const job of jobs) {
             if (job.data.version !== 1 || typeof job.data.runId !== "string" || job.data.runId.trim().length === 0) {
               throw new Error("worker.run-execution received an invalid payload.");
             }
-            await this.options.onRunExecution!(job);
+            const runId = job.data.runId.trim();
+            // A retry (expiry/backoff) of a run this process is still executing must not
+            // start it, or spend its budget, a second time.
+            if (this.inFlightRuns.has(runId)) continue;
+            this.inFlightRuns.add(runId);
+            try {
+              await this.options.onRunExecution!(job);
+            } finally {
+              this.inFlightRuns.delete(runId);
+            }
           }
         });
       }
@@ -195,6 +221,7 @@ export async function enqueueRunExecution(connectionString: string, runId: strin
   try {
     await boss.start();
     await boss.createQueue(WORKER_RUN_EXECUTION_JOB, runExecutionQueueOptions);
+    await boss.updateQueue(WORKER_RUN_EXECUTION_JOB, { expireInSeconds: RUN_EXECUTION_EXPIRE_SECONDS });
     const id = await boss.send(WORKER_RUN_EXECUTION_JOB, { version: 1, runId: normalizedRunId }, {
       singletonKey: normalizedRunId,
     });
