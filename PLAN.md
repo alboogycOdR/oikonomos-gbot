@@ -9737,7 +9737,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/takeover.ts:62-84 (takeover derived from the audit trail, no expiry); packages/db/src/secretRequests.ts; CLAUDE.md non-negotiable 6 (challenges trigger human takeover); OpenBot comparison (unanswered requests expire after 10 minutes, a human at the wheel never times out)
@@ -9757,12 +9757,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-322 (shared scheduler); OWNERSHIP_CONFLICT AC added.
 - [2026-09-21T10:15:00Z] [ORCH] READY: Depends_On TASK-322 is now done (merged c0bd3a6). This task is dispatchable.
+- [2026-09-21T11:58:02Z] [SV:CX9] Verified no expiry sweep exists; implementing a durable unattended expiry requires a schema migration and worker boot/scheduler territory outside Owned_Paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: requires an expiry-status migration under infra/postgres/migrations and an unattended worker caller in services/worker/src/main.ts (or explicitly forbidden workerJobQueue.ts).
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T11:51:29Z
+**Updated_At:** 2026-09-21T11:58:02Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
