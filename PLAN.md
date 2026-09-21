@@ -9738,7 +9738,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/takeover.ts:62-84 (takeover derived from the audit trail, no expiry); packages/db/src/secretRequests.ts; CLAUDE.md non-negotiable 6 (challenges trigger human takeover); OpenBot comparison (unanswered requests expire after 10 minutes, a human at the wheel never times out)
@@ -9763,12 +9763,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T21:23:01Z] [SV:CX9] Fetched current integration base and re-ran preflight after the migration/main.ts territory expansion. Expiry implementation is blocked because the required DB API must be re-exported through packages/db/src/index.ts, outside Owned_Paths.
 - [2026-09-21T21:25:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (§7 re-sequence, genuine decomposition gap): `packages/db/src/index.ts` is the db barrel and already re-exports from `secretRequests.js` (lines 260-266) — adding the new `expirePendingSecretRequests` re-export is a one-line change so `services/worker/src/main.ts` can import it via `@oikonomos/db`. Verified directly: index.ts is owned by no other task, and no task is currently active (all others blocked/parked), so widening is territorially safe — validate_plan re-run clean. Widened Owned_Paths to include `packages/db/src/index.ts`. Keep the change minimal: re-export only, do not restructure the barrel. Unblocked → pending, ready for re-dispatch to CX9 on the existing branch. Branch is territory-clean (only dossiers/TASK-323.md touched so far).
 - [2026-09-21T22:23:01Z] [SV:CX9] Implemented and committed expiry sweep (ca4238b). DB isolated suite passes 290/290 (+2 skipped); worker isolated suite remains serialized behind its active shared-DB lock. NEXT: Wait for the active isolated worker suite lock to clear, run the worker and full recursive isolated suites, classify baseline failures, then hand off for review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T22:48:03Z] [SV:CX9] Implemented and verified unattended expiry for unanswered secret requests and takeovers; corrected the real-worker liveness fixture so it proves the visible message persistence path.
+**Artifacts:** infra/postgres/migrations/033_secret_request_expiry.up.sql, infra/postgres/migrations/033_secret_request_expiry.down.sql, packages/db/src/index.ts, packages/db/src/secretRequests.ts, packages/db/src/secretRequests.test.ts, services/worker/src/takeover.ts, services/worker/src/takeover.test.ts, services/worker/src/main.ts, services/worker/src/main.test.ts, dossiers/TASK-323.md
+**Test_Evidence:** pnpm --filter @oikonomos/db build; pnpm --filter @oikonomos/worker typecheck; ESLint and git diff --check passed. scripts/test-isolated.ps1 -Init followed by scripts/test-isolated.ps1 completed: TASK-323 real-worker expiry test passed (2.473s) and DB secretRequests tests passed. Recursive suite has documented unrelated baseline failures in DB cleanup, stale capability registry rows, worker re-drive, and FreeLLMAPI control-api route.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T22:23:01Z
+**Updated_At:** 2026-09-21T22:48:03Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
