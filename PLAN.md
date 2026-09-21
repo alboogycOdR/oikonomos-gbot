@@ -9689,7 +9689,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** services/worker/src/jobs/workerJobQueue.ts:61-68 (runExecutionQueueOptions expireInSeconds 300, retryLimit 3); services/worker/src/chatRunDriver.ts:192 (SANDBOX_COMMAND_TIMEOUT_MS 10 minutes); OpenBot comparison (attempts>1 means a prior owner may already have acted)
@@ -9702,8 +9702,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A second attempt of an already-running run never spends budget twice (the spend reservation is not re-admitted); assert it or record why it cannot.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 - [ ] If the fix needs any change to SANDBOX_COMMAND_TIMEOUT_MS or another chatRunDriver.ts constant, stop with OWNERSHIP_CONFLICT: that file is TASK-306 territory. Do not edit it.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-322-s5
+**Started_At:** 2026-09-21T07:57:11Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: chatRunDriver.ts is TASK-306 territory; conflict AC added.
@@ -9711,8 +9711,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T06:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T07:57:11Z
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
