@@ -9623,7 +9623,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-320
 **Title:** Audit trail: refuse TRUNCATE at the database level, with a liveness test
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** infra/postgres/migrations/001_schema_v1.up.sql:47-56 (audit_events protected only by DO INSTEAD NOTHING rules); CLAUDE.md non-negotiable 4; docs/decisions/ADR-005-control-liveness.md; OpenBot comparison 2026-09-21 (its migration 0012 refuses TRUNCATE)
@@ -9640,12 +9640,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-21T05:03:19Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T05:28:02Z] [SV:CX9] Added reversible database TRUNCATE guards for audit_events and its runs CASCADE path, with direct, cascade, liveness, and migration-cycle integration coverage.
+**Artifacts:** infra/postgres/migrations/032_audit_truncate_guard.up.sql, infra/postgres/migrations/032_audit_truncate_guard.down.sql, packages/audit/test/append-only.integration.test.ts, dossiers/TASK-320.md
+**Test_Evidence:** pnpm --filter @oikonomos/audit typecheck passed; scripts/test-isolated.ps1 -Init applied migrations 001â€“032; scripts/test-isolated.ps1 -Filter @oikonomos/audit: 8 files / 54 tests passed; full recursive scripts/test-isolated.ps1 completed with no observed failures; git diff --check passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T05:03:19Z
+**Updated_At:** 2026-09-21T05:28:02Z
 
 ### TASK-321
 **Title:** Enforce the manager project fan-out cap across MCP calls (it currently resets on every call)
