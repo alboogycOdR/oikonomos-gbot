@@ -285,3 +285,22 @@ class TestDispatchCmdCwdIndependence:
         )
         assert len(launched) == 1
         assert "CX" in launched[0]
+
+
+def test_session_limit_reset_time_is_next_occurrence_after_the_log():
+    msg = "You've hit your session limit - resets 11:40am (Africa/Johannesburg)"
+    assert sup._limit_reset_time(msg, datetime(2026, 9, 21, 8, 55)) == datetime(2026, 9, 21, 11, 40)
+    assert sup._limit_reset_time("hit your session limit resets 6:10pm", datetime(2026, 9, 20, 21, 35)) == datetime(2026, 9, 21, 18, 10)
+    assert sup._limit_reset_time("all good", datetime(2026, 9, 21, 8, 55)) is None
+
+
+def test_session_limited_task_is_held_until_reset_then_released(tmp_path):
+    import os
+    runs = tmp_path / ".devteam" / "runs"
+    runs.mkdir(parents=True)
+    log = runs / "TASK-305-2026-09-21T08-55-21Z.log"
+    log.write_text("You've hit your session limit - resets 11:40am (Africa/Johannesburg)", encoding="utf-8")
+    stamp = datetime(2026, 9, 21, 8, 55).timestamp()
+    os.utime(log, (stamp, stamp))
+    assert sup._session_limited_tasks(tmp_path, datetime(2026, 9, 21, 9, 30)) == {"TASK-305"}
+    assert sup._session_limited_tasks(tmp_path, datetime(2026, 9, 21, 11, 45)) == set()
