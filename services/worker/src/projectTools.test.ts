@@ -49,7 +49,7 @@ describe("project tools", () => {
     const assign = tools({ admitFanout });
     await assign.assign_task({ taskId, ownerRoleId: member }); await assign.assign_task({ taskId, ownerRoleId: member });
     await expect(assign.assign_task({ taskId, ownerRoleId: member })).rejects.toThrow("fan-out");
-    expect(admitFanout).toHaveBeenLastCalledWith(expect.objectContaining({ rosterSize: 2 }));
+    expect(admitFanout.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ rosterSize: 2 }));
   });
 
   it("makes the durable owner mutation before handoff delivery", async () => {
