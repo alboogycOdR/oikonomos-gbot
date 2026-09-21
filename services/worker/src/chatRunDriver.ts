@@ -830,6 +830,15 @@ export async function executeGeminiChatRun(
               payload: { kind, detail },
             });
           },
+          onNavigationDenied: async (category) => {
+            await recordAuditEvent(options, {
+              tenantId: request.task.tenantId,
+              runId: run.runId,
+              actor: `agent:${GEMINI_PROVIDER_ID}`,
+              eventType: "steel_navigation_denied",
+              payload: { category },
+            });
+          },
         },
         browserConnector.allowedTools,
       );
