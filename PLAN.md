@@ -9624,7 +9624,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-320
 **Title:** Audit trail: refuse TRUNCATE at the database level, with a liveness test
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** infra/postgres/migrations/001_schema_v1.up.sql:47-56 (audit_events protected only by DO INSTEAD NOTHING rules); CLAUDE.md non-negotiable 4; docs/decisions/ADR-005-control-liveness.md; OpenBot comparison 2026-09-21 (its migration 0012 refuses TRUNCATE)
@@ -9632,23 +9632,24 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Depends_On:** —
 **Description:** audit_events is guarded only by two DO INSTEAD NOTHING rules. Postgres rules do not fire on TRUNCATE, so `TRUNCATE audit_events` empties the trail. Add a statement-level BEFORE TRUNCATE trigger that raises, in a new migration 032 with a down migration. Do NOT change the UPDATE/DELETE rules: about a dozen existing tests issue DELETE FROM audit_events for fixture cleanup and rely on it being a silent no-op (packages/db/src/runs.test.ts, secretRequests.test.ts, services/control-api chat.routes.test.ts and ports.test.ts, and others); converting those to raising triggers is a separate later task. Also confirm nothing in the repo or in scripts/test-isolated.ps1 runs TRUNCATE against audit_events or a CASCADE that reaches it (it would now raise). Write the migration rationale into your dossier; ORCH will turn it into a docs/decisions ADR (builders never own docs/**).
 **Acceptance_Criteria:**
-- [ ] A real-Postgres test issues TRUNCATE audit_events (and TRUNCATE ... CASCADE through a referenced table if one exists) and asserts it raises and the rows survive.
-- [ ] ADR-005 liveness: the same test proves the guard is live, i.e. it FAILS when the trigger is dropped (drop it inside a transaction that is rolled back), so an inert guard is detected.
-- [ ] Existing UPDATE and DELETE no-op behaviour and every existing test that deletes audit rows are unchanged; the full recursive suite passes.
-- [ ] The down migration removes the trigger and function cleanly; up then down then up is idempotent.
-- [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
+- [x] A real-Postgres test issues TRUNCATE audit_events (and TRUNCATE ... CASCADE through a referenced table if one exists) and asserts it raises and the rows survive.
+- [x] ADR-005 liveness: the same test proves the guard is live, i.e. it FAILS when the trigger is dropped (drop it inside a transaction that is rolled back), so an inert guard is detected.
+- [x] Existing UPDATE and DELETE no-op behaviour and every existing test that deletes audit rows are unchanged; the full recursive suite passes.
+- [x] The down migration removes the trigger and function cleanly; up then down then up is idempotent.
+- [x] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 **Branch:** task/TASK-320-cx9
 **Started_At:** 2026-09-21T05:03:19Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T05:28:02Z] [SV:CX9] Added reversible database TRUNCATE guards for audit_events and its runs CASCADE path, with direct, cascade, liveness, and migration-cycle integration coverage.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: decomposition OK, built diff territory-clean. ADR notes: the built migration also guards TRUNCATE on runs (a behaviour change beyond the task title, record it); its comment that Postgres does not fire the child trigger on TRUNCATE ... CASCADE is WRONG (Postgres does fire truncate triggers on cascaded tables) and must not be copied into the ADR.
+- [2026-09-21T10:50:00Z] [ORCH opus-4-8] APPROVED & MERGED (--no-ff into master, 2cb98d0). Author CX9 (Codex/GPT, non-Claude); Owned_Paths touch no protected path (infra/postgres/migrations/** and packages/audit/test/** are outside the CLAUDE.md protected list, whose infra entry is infra/ci/** only), so the Standing Rule 1 cross-model gate does not apply — normal full ORCH review. Territory clean: diff --stat = the two 032 migrations + the audit integration test + own dossier; no PLAN.md edit on the branch. Spec claim verified against infra/postgres/migrations/001_schema_v1.up.sql:47-56 (audit_events carried only audit_no_update/audit_no_delete DO INSTEAD NOTHING rules, which do not fire on TRUNCATE). Standing Rule 5 (prove the control can fail) SATISFIED: the liveness test drops the real trigger inside a rolled-back transaction and asserts TRUNCATE audit_events then succeeds — it drives the real production table (the one every recordAuditEvent writer targets), not a fixture the task wrote, and would go red if the guard were inert. Independent test run (delegated, scripts/test-isolated.ps1 -Init from the cx9 worktree then full recursive; master baseline run for classification): @oikonomos/audit 8 files / 54 tests all pass; full-suite failures (worker budget/sandbox cluster, control-api TASK-121 three-bot 400, evals TASK-141) are ALL pre-existing baseline — every branch failure also fails on master, master is strictly worse (adds packages/db 3-file failures + 10 more worker fails the branch does not have), zero branch-introduced regressions. NON-BLOCKING finding recorded in the dossier: the "audit_events.run_id references runs" claim (dossier + test comment) is inaccurate — no such FK exists, so TRUNCATE runs CASCADE never reaches audit_events; the runs trigger is harmless defensive over-delivery and the direct audit_events guard is the real, correct protection. Depends_On: none; nothing in the plan depends on TASK-320. Branch delete DEFERRED: task/TASK-320-cx9 is still checked out in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE (Rule 6 — never remove a builder worktree; merged, harmless, dispatch resets it).
 **Artifacts:** infra/postgres/migrations/032_audit_truncate_guard.up.sql, infra/postgres/migrations/032_audit_truncate_guard.down.sql, packages/audit/test/append-only.integration.test.ts, dossiers/TASK-320.md
-**Test_Evidence:** pnpm --filter @oikonomos/audit typecheck passed; scripts/test-isolated.ps1 -Init applied migrations 001â€“032; scripts/test-isolated.ps1 -Filter @oikonomos/audit: 8 files / 54 tests passed; full recursive scripts/test-isolated.ps1 completed with no observed failures; git diff --check passed.
-**Review_Findings:** —
+**Test_Evidence:** pnpm --filter @oikonomos/audit typecheck passed; scripts/test-isolated.ps1 -Init applied migrations 001â€“032; scripts/test-isolated.ps1 -Filter @oikonomos/audit: 8 files / 54 tests passed; full recursive scripts/test-isolated.ps1 completed with no observed failures; git diff --check passed. ORCH independent re-run (cx9 worktree, -Init then full recursive; master baseline for classification): @oikonomos/audit 8/8 files, 54/54 tests pass; all full-suite failures pre-existing baseline (worker budget/sandbox, control-api TASK-121, evals TASK-141), zero branch-introduced regressions.
+**Review_Findings:** APPROVED (ORCH opus-4-8, first-pass). No blocking findings. One non-blocking accuracy note (inaccurate audit_events→runs FK claim in dossier/test comment) recorded in dossiers/TASK-320.md; the direct audit_events TRUNCATE guard is correct and the liveness proof is genuine.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-21T06:00:00Z
+**Updated_At:** 2026-09-21T10:50:00Z
 
 ### TASK-321
 **Title:** Enforce the manager project fan-out cap across MCP calls (it currently resets on every call)
