@@ -9672,12 +9672,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: Owned_Paths extended to packages/db auditEvents and index so the durable count has a home; liveness AC added.
+- [2026-09-21T06:08:02Z] [SV:CX9] Implemented durable advisory-lock fanout admission and committed it (2b68060); targeted DB and live MCP tests pass. NEXT: Run isolated recursive suite and master baseline classification before requesting review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T05:45:22Z
+**Updated_At:** 2026-09-21T06:08:02Z
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
