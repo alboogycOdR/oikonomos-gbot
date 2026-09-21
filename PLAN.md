@@ -9738,7 +9738,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/takeover.ts:62-84 (takeover derived from the audit trail, no expiry); packages/db/src/secretRequests.ts; CLAUDE.md non-negotiable 6 (challenges trigger human takeover); OpenBot comparison (unanswered requests expire after 10 minutes, a human at the wheel never times out)
@@ -9753,7 +9753,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 - [ ] The expiry sweep is invoked from an existing caller inside Owned_Paths. If a new queue registration in services/worker/src/jobs/workerJobQueue.ts is required, stop with OWNERSHIP_CONFLICT (that file is TASK-322 territory).
 **Branch:** task/TASK-323-cx9
-**Started_At:** 2026-09-21T11:51:29Z
+**Started_At:** 2026-09-21T22:09:35Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-322 (shared scheduler); OWNERSHIP_CONFLICT AC added.
@@ -9766,8 +9766,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T21:25:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T22:09:35Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
