@@ -9738,7 +9738,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** services/worker/src/takeover.ts:62-84 (takeover derived from the audit trail, no expiry); packages/db/src/secretRequests.ts; CLAUDE.md non-negotiable 6 (challenges trigger human takeover); OpenBot comparison (unanswered requests expire after 10 minutes, a human at the wheel never times out)
@@ -9760,12 +9760,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T10:15:00Z] [ORCH] READY: Depends_On TASK-322 is now done (merged c0bd3a6). This task is dispatchable.
 - [2026-09-21T11:58:02Z] [SV:CX9] Verified no expiry sweep exists; implementing a durable unattended expiry requires a schema migration and worker boot/scheduler territory outside Owned_Paths.
 - [2026-09-21T14:43:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap; the Opus review did not catch that the expiry status needs a schema change and the sweep needs a caller): territory widened to migration 033 (033_secret_request_expiry up/down, next free number after 032), services/worker/src/main.ts and main.test.ts. Use main.ts only to register the expiry sweep on the existing unattended path; do NOT touch workerJobQueue.ts (it was TASK-322 territory and is merged, but keep the change minimal) and do not add a second scheduler. Migration: add the expired status to whatever constrains secret_requests.status, idempotent up and clean down, and grep the repo for other code that enumerates the statuses (SecretRequestStatus type, mobile and dashboard clients) so nothing breaks on the new value.
+- [2026-09-21T21:23:01Z] [SV:CX9] Fetched current integration base and re-ran preflight after the migration/main.ts territory expansion. Expiry implementation is blocked because the required DB API must be re-exported through packages/db/src/index.ts, outside Owned_Paths.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T14:43:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: add packages/db/src/index.ts to TASK-323 Owned_Paths so main.ts can import the required expirePendingSecretRequests API through @oikonomos/db.
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T21:23:01Z
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
