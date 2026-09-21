@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field, fields as _dc_fields
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Reuse the protocol parser — single source of truth.
@@ -226,7 +226,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
            dossier_heartbeats: dict[str, datetime] | None = None,
            usage: dict | None = None,
            registry_views: tuple | None = None,
-           live_tasks: "set[str] | None" = None) -> list[Action]:
+           live_tasks: "set[str] | None" = None,
+           limited_tasks: "set[str] | None" = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -359,6 +360,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                 continue
             if unit not in _active_builders(cfg):
                 continue
+            if limited_tasks and t.task_id in limited_tasks:
+                continue  # provider session limit: a restart cannot succeed and must not burn the counter
             ts = _parse_ts(t.get("Updated_At"))
             hb = dossier_heartbeats.get(t.task_id)
             if hb is not None and (ts is None or hb > ts):
@@ -703,6 +706,43 @@ def maybe_drain_control(repo: Path, cfg: dict, state: RuntimeState, now: datetim
                 state.unreported_counts[task_id] = 0  # escalated — restart the streak
     except Exception as exc:  # never let a bad control queue break a tick
         print(f"[control] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+
+_LIMIT_RESET_RE = re.compile(r"hit your session limit.*?resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.I | re.S)
+
+
+def _limit_reset_time(text: str, written: datetime) -> "datetime | None":
+    """Next local occurrence, after `written`, of the reset time in a Claude 'session limit' message."""
+    m = _LIMIT_RESET_RE.search(text)
+    if m is None:
+        return None
+    hour, minute, meridiem = int(m.group(1)) % 12, int(m.group(2) or 0), m.group(3).lower()
+    if meridiem == "pm":
+        hour += 12
+    reset = written.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return reset if reset > written else reset + timedelta(days=1)
+
+
+def _session_limited_tasks(repo: Path, now: "datetime | None" = None) -> "set[str]":
+    """Tasks whose newest builder log is a provider session-limit message that has not reset yet."""
+    now = now or datetime.now()
+    limited: set[str] = set()
+    newest: dict[str, Path] = {}
+    for log in (repo / ".devteam" / "runs").glob("TASK-*.log"):
+        task_id = "-".join(log.stem.split("-")[:2])
+        if task_id not in newest or log.stat().st_mtime > newest[task_id].stat().st_mtime:
+            newest[task_id] = log
+    for task_id, log in newest.items():
+        try:
+            if log.stat().st_size > 4000:
+                continue
+            reset = _limit_reset_time(log.read_text(encoding="utf-8", errors="replace"),
+                                      datetime.fromtimestamp(log.stat().st_mtime))
+        except OSError:
+            continue
+        if reset is not None and now < reset:
+            limited.add(task_id)
+    return limited
 
 
 def _live_builder_tasks(repo: Path) -> "set[str] | None":
@@ -1160,7 +1200,8 @@ def main(argv: list[str]) -> int:
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage,
                                           registry_views=_apply_registry(str(repo)),
-                                          live_tasks=_live_builder_tasks(repo))
+                                          live_tasks=_live_builder_tasks(repo),
+                                          limited_tasks=_session_limited_tasks(repo))
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             state.save(state_path)
 

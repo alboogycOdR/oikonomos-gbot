@@ -1,4 +1,4 @@
-import { createRole, defaultPoolConfig, getRole, listMessages, type DatabaseOptions } from "@oikonomos/db";
+import { createProjectWithRoster, createRole, defaultPoolConfig, getRole, listMessages, type DatabaseOptions } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -184,5 +184,54 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
     expect(response).toMatchObject({ result: { content: [{ type: "text" }] } });
     const routine = await pool.query("SELECT 1 FROM role_routines WHERE role_id = $1 AND name = $2", [senderRoleId, "No thread routine"]);
     expect(routine.rowCount).toBe(1);
+  });
+});
+
+integration("workspace MCP server — manager retirement scope (TASK-313)", () => {
+  const tenantId = "task-313-claude-lane";
+  const managerRoleId = "task-313-claude-manager";
+  const allowedRoleId = "task-313-claude-allowed";
+  const outsideRoleId = "task-313-claude-outside";
+  let pool: Pool;
+
+  async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)", [tenantId]);
+    await pool.query("DELETE FROM projects WHERE tenant_id = $1", [tenantId]);
+    await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1::text[])", [[managerRoleId, allowedRoleId, outsideRoleId]]);
+    await pool.query("DELETE FROM threads WHERE title = 'TASK-313 Claude lane thread'");
+    await pool.query("DELETE FROM roles WHERE tenant_id = $1", [tenantId]);
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    await cleanup();
+    const options = { connectionString: connectionString! };
+    for (const roleId of [managerRoleId, allowedRoleId, outsideRoleId]) {
+      await createRole(options, { roleId, tenantId, name: roleId, title: "TASK-313 Claude fixture" });
+    }
+    await createProjectWithRoster(options, {
+      tenantId, name: "TASK-313 Claude project", title: "TASK-313 Claude lane thread", goal: "scope", doneCriterion: "done", createdBy: "human:task-313",
+      roster: [{ roleId: managerRoleId, isManager: true }, { roleId: allowedRoleId }],
+    });
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await pool.end();
+  });
+
+  it("denies an out-of-roster target and accepts a managed-project roster member through the Claude lane", async () => {
+    const identity = { connectionString: connectionString!, tenantId, fromRoleId: managerRoleId };
+    const denied = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "task-313-denied", method: "tools/call", params: { name: "retire_bot", arguments: { roleId: outsideRoleId } },
+    }), identity);
+    expect(denied).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining("project it manages") }] } });
+    expect((await getRole({ connectionString: connectionString! }, outsideRoleId))?.status).toBe("active");
+
+    const accepted = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "task-313-accepted", method: "tools/call", params: { name: "retire_bot", arguments: { roleId: allowedRoleId } },
+    }), identity);
+    expect(accepted).toMatchObject({ result: { content: [{ text: expect.stringContaining('"status":"hidden"') }] } });
+    expect((await getRole({ connectionString: connectionString! }, allowedRoleId))?.status).toBe("hidden");
   });
 });
