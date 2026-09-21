@@ -9766,7 +9766,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-324
 **Title:** Mobile takeover: make Enter, Backspace and Tab work from the phone keyboard (verify first)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** apps/mobile/lib/api/browser_takeover_client.dart:147-151; OpenBot comparison (rawKeyDown without a key code does nothing for editing keys, Enter needs keyDown with text carriage return to submit)
@@ -9785,12 +9785,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: test path corrected to apps/mobile/test/api/browser_takeover_client_test.dart.
 - [2026-09-21T11:38:01Z] [SV:S5] Bug verified real (rawKeyDown with key only, no vk code/text). Fixed with key descriptor table (Enter keyDown+\r vk13, Backspace vk8, Tab vk9); exact payloads pinned in tests; dossier has findings and owner manual steps. Live phone check PENDING.
+- [2026-09-21T12:05:00Z] [ORCH opus-4-8] APPROVED, merged (merge b84002c). Territory CLEAN (both code files within Owned_Paths + dossier; zero PLAN.md edits on branch). Not a protected path (apps/mobile), so no cross-model gate. ACs met: dossier gives file:line evidence the bug was real (dispatchKey sent key-only rawKeyDown, no vk/text); unit tests pin exact CDP payloads for Enter (keyDown+\r vk13), Backspace (vk8), Tab (vk9), unknown keys (bare pair unchanged) and chars — the Enter assertion now requires the new payload and would fail on master's bare rawKeyDown; no relay/auth/session change (diff is confined to dispatchKey + a descriptor table); manual owner verification steps written in dossier and live phone check explicitly recorded PENDING. Independent test run (flutter test test/api/browser_takeover_client_test.dart in wt-s5): 7/7 pass, matching Test_Evidence; Dart is outside pnpm -r as noted. NON-BLOCKING: Depends_On TASK-321 is a decomposition sequencing note only — no code dependency (different package), so merging ahead of TASK-321 is safe.
 **Artifacts:** apps/mobile/lib/api/browser_takeover_client.dart, apps/mobile/test/api/browser_takeover_client_test.dart, dossiers/TASK-324.md
 **Test_Evidence:** flutter test test/api/browser_takeover_client_test.dart: 7 passed (Dart is outside pnpm -r, so pnpm -r test not applicable). Live check on a real phone against Steel is PENDING (not possible headless); manual steps in dossier.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-21T11:38:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-21T12:05:00Z
 
 ### TASK-325
 **Title:** Guard Steel navigation targets: block metadata addresses and private ranges (Gemini lane)
