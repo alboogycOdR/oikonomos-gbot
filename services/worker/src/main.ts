@@ -5,11 +5,15 @@ import { createSandboxClient } from "@oikonomos/sandbox-client";
 import { createWorkerJobQueue } from "./jobs/workerJobQueue.js";
 import { createChatRunDriver, type CreateChatRunDriverOptions } from "./chatRunDriver.js";
 import { createRunGate } from "./runConcurrency.js";
-import { getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, listMessages } from "@oikonomos/db";
+import { expirePendingSecretRequests, getOrCreateThreadForRole, getRun, getTask, insertAuditEvent, insertMessage, listMessages } from "@oikonomos/db";
 import { failTaskRun, parkTaskRun, reconcileInterruptedRuns, startTaskRun } from "./runLifecycle.js";
 import { deliverBotToBotMessage } from "./groupFanout.js";
 import { createRoleMessageDeliveryPoller } from "./roleMessageDelivery.js";
 import { createSandboxReaperScheduler, type SandboxReaperScheduler } from "./sandboxReaper.js";
+import { DEFAULT_HUMAN_REQUEST_EXPIRY_MS, HUMAN_REQUEST_EXPIRED_EVENT_TYPE, getTakeoverState, listExpiredTakeovers } from "./takeover.js";
+
+const HUMAN_REQUEST_EXPIRY_FAILURE_NOTE = "Human input request expired without an answer.";
+const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 60_000;
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -71,6 +75,52 @@ export interface RunWorkerOptions {
   reconcileFilter?: { tenantId?: string; taskId?: string };
   /** Test seam; production uses the normal worker chat-driver composition. */
   chatRunDriverOptions?: Omit<CreateChatRunDriverOptions, "connectionString">;
+  /** Test/operations seams; production defaults to ten minutes and sweeps once a minute. */
+  humanRequestExpiryMs?: number;
+  humanRequestSweepIntervalMs?: number;
+}
+
+function positiveMs(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+async function failExpiredHumanRequest(
+  database: { connectionString: string },
+  runId: string,
+  kind: "secret_request" | "takeover",
+): Promise<void> {
+  const run = await failTaskRun(database, runId, HUMAN_REQUEST_EXPIRY_FAILURE_NOTE);
+  await insertAuditEvent(database, {
+    tenantId: run.tenantId, runId, actor: "system:human-request-expiry",
+    eventType: HUMAN_REQUEST_EXPIRED_EVENT_TYPE, payload: { kind, reason: "unanswered" },
+  });
+  const task = await getTask(database, run.taskId);
+  if (task?.execution !== null && task?.execution !== undefined) {
+    await insertMessage(database, {
+      threadId: task.execution.threadId, role: "system",
+      body: `I couldn't continue because a required human ${kind === "takeover" ? "takeover" : "secret request"} was not answered in time. The run has been stopped.`,
+    }).catch((error: unknown) => console.error("failed to post human-request expiry message:", error));
+  }
+}
+
+/** The production sweep: expiry always fails parked work; it never resumes into a challenge. */
+export async function runHumanRequestExpirySweep(
+  database: { connectionString: string },
+  expiryMs = DEFAULT_HUMAN_REQUEST_EXPIRY_MS,
+): Promise<number> {
+  const olderThan = new Date(Date.now() - positiveMs(expiryMs, DEFAULT_HUMAN_REQUEST_EXPIRY_MS));
+  let expired = 0;
+  for (const request of await expirePendingSecretRequests(database, olderThan)) {
+    await failExpiredHumanRequest(database, request.runId, "secret_request");
+    expired += 1;
+  }
+  for (const candidate of await listExpiredTakeovers(database, olderThan)) {
+    // A hand-back can race this scan; the final state check protects a human who took control.
+    if (!(await getTakeoverState(database, candidate.runId)).pending) continue;
+    await failExpiredHumanRequest(database, candidate.runId, "takeover");
+    expired += 1;
+  }
+  return expired;
 }
 
 export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Promise<void> }> {
@@ -159,6 +209,22 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
           onError: (error) => console.error("sandbox reaper sweep error:", error),
         });
   sandboxReaperScheduler?.start();
+  const expiryMs = positiveMs(options.humanRequestExpiryMs ?? Number(process.env.OIK_HUMAN_REQUEST_EXPIRY_MS), DEFAULT_HUMAN_REQUEST_EXPIRY_MS);
+  const expiryIntervalMs = positiveMs(options.humanRequestSweepIntervalMs ?? Number(process.env.OIK_HUMAN_REQUEST_SWEEP_INTERVAL_MS), DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS);
+  let expirySweeping = false;
+  const expire = async (): Promise<void> => {
+    if (expirySweeping) return;
+    expirySweeping = true;
+    try {
+      const expired = await runHumanRequestExpirySweep(database, expiryMs);
+      if (expired > 0) log(`expired ${expired} unanswered human request(s).`);
+    } catch (error) {
+      console.error("human-request expiry sweep error:", error);
+    } finally { expirySweeping = false; }
+  };
+  const humanRequestExpiryTimer = setInterval(() => { void expire(); }, expiryIntervalMs);
+  humanRequestExpiryTimer.unref?.();
+  void expire();
   const reconciled = await reconcileInterruptedRuns(database, options.reconcileFilter ?? {}, async (run) => {
     if (run.provider === "claude" && run.sessionRef !== null) {
       await queue.enqueueRunExecution(run.runId);
@@ -180,6 +246,7 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
 
   return {
     stop: async () => {
+      clearInterval(humanRequestExpiryTimer);
       sandboxReaperScheduler?.stop();
       await roleMessageDeliveryPoller.stop();
       await queue.stop();

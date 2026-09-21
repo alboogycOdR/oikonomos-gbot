@@ -252,6 +252,7 @@ export {
 export {
   createSecretRequest,
   declineSecretRequest,
+  expirePendingSecretRequests,
   fulfillPendingSecretRequest,
   fulfillSecretRequest,
   getPendingSecretRequest,

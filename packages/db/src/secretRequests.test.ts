@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createRole, createSecretRequest, defaultPoolConfig, fulfillSecretRequest, getSecretRequest, type DatabaseOptions } from "./index.js";
+import { createRole, createSecretRequest, defaultPoolConfig, expirePendingSecretRequests, fulfillSecretRequest, getSecretRequest, type DatabaseOptions } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
 const secretRequestsMigrated = connectionString === undefined ? false : await (async () => {
@@ -49,5 +49,13 @@ integration("packages/db secret requests — metadata only (TASK-184)", () => {
 
   it("rejects values where a ref is expected", async () => {
     await expect(createSecretRequest(options, { tenantId, roleId, runId, label: " ", purpose: "p" })).rejects.toThrow(/label/);
+  });
+
+  it("atomically expires only an old pending request whose run remains parked", async () => {
+    const created = await createSecretRequest(options, { tenantId, roleId, runId, label: "old token", purpose: "expiry test" });
+    await pool.query("UPDATE runs SET status = 'waiting_approval' WHERE run_id = $1", [runId]);
+    await pool.query("UPDATE secret_requests SET created_at = now() - interval '2 hours' WHERE request_id = $1", [created.requestId]);
+    const expired = await expirePendingSecretRequests(options, new Date());
+    expect(expired.find((request) => request.requestId === created.requestId)).toMatchObject({ status: "expired", secretRef: null });
   });
 });
