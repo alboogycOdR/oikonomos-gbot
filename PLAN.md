@@ -9800,7 +9800,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-325
 **Title:** Guard Steel navigation targets: block metadata addresses and private ranges (Gemini lane)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** services/worker/src/geminiToolExecutors.ts:518 (steel_navigate passes url straight to Page.navigate); packages/broker/src/steelSessionGuard.ts (covers session_create only); CLAUDE.md non-negotiable 5; OpenBot comparison (computer/target.ts never-allowed set, canonical IPv6 and IPv4-embedded handling)
@@ -9814,8 +9814,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] No credentials or full URLs with secrets appear in audit payloads or logs.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 - [ ] ADR-005 liveness: a test fails when the guard is bypassed in the executor path, keyed on the refusal audit event, not on the guard module existing.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-325-cx9
+**Started_At:** 2026-09-21T21:26:07Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-321 (same package); liveness AC added.
@@ -9823,5 +9823,5 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T06:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T21:26:07Z
