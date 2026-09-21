@@ -9800,7 +9800,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-325
 **Title:** Guard Steel navigation targets: block metadata addresses and private ranges (Gemini lane)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** services/worker/src/geminiToolExecutors.ts:518 (steel_navigate passes url straight to Page.navigate); packages/broker/src/steelSessionGuard.ts (covers session_create only); CLAUDE.md non-negotiable 5; OpenBot comparison (computer/target.ts never-allowed set, canonical IPv6 and IPv4-embedded handling)
@@ -9821,9 +9821,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-321 (same package); liveness AC added.
 - [2026-09-21T21:33:01Z] [SV:CX9] Preflight and source verification found the real Steel executor lacks audit context; production audit wiring requires the unowned chatRunDriver.ts call site.
 - [2026-09-21T21:40:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (§7 re-sequence, genuine decomposition gap): `createSteelGeminiTools` receives only `SandboxToolContext` + `onHumanTakeover`, and the sole production construction site is `services/worker/src/chatRunDriver.ts:818` — the only place holding connectionString/tenant/runId/audit for AC2 + ADR-005 refusal audit. Verified chatRunDriver.ts is owned by no currently-active task (all others blocked/pending; none in_progress) so widening is territorially safe — validate_plan re-run clean. Widened Owned_Paths to include `services/worker/src/chatRunDriver.ts` and its test. Keep the change MINIMAL: thread the existing audit/context (connectionString, tenant, runId, audit callback) into createSteelGeminiTools so navigationGuard can emit the category-only refusal audit; do NOT restructure the driver or alter takeover/run-lifecycle behaviour. Unblocked → pending, ready for re-dispatch to CX9 on the existing branch (currently territory-clean, dossier-only).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T21:48:02Z] [SV:CX9] Implemented Gemini Steel navigation guard with category-only refusal audit wiring; Claude/broker lane remains out of scope.
+**Artifacts:** services/worker/src/navigationGuard.ts, services/worker/src/navigationGuard.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, services/worker/src/chatRunDriver.ts, dossiers/TASK-325.md
+**Test_Evidence:** test-isolated.ps1 -Filter @oikonomos/worker: TASK-325 guard 22/22 and Gemini executor 27/27 pass. Remaining worker failures are baseline missing @oikonomos/memory and budget exhaustion; eslint and git diff --check pass. Full isolated recursive suite was invoked, but detached final output was unavailable.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T21:35:33Z
+**Updated_At:** 2026-09-21T21:48:02Z
