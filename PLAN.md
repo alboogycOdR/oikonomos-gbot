@@ -9168,7 +9168,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-306
 **Title:** Inject profile-tier memory (user, agent and project scopes) into every chat run's system prompt, both lanes
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §1.2 ('stored as project-scope profile-tier memory facts, so every member's prompt sees it through the existing memory injection'), §11 first bullet ('visible to every member's next run and to no non-member'); packages/memory/src/facts.ts readProfileTier (already supports user/agent/project scopes and visible_to).
@@ -9194,12 +9194,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-20T18:43:01Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-306-2026-09-20T18-38-41Z.log
 - [2026-09-21T07:53:00Z] [SV:S5] Branch task/TASK-306-s5 created from master. Worker has no @oikonomos/memory dependency; adding it needs edits to services/worker/package.json, pnpm-lock.yaml and possibly services/worker/tsconfig.json, all outside Owned_Paths. Design is ready and documented in the dossier.
 - [2026-09-21T08:20:00Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap): territory widened to services/worker/package.json, services/worker/tsconfig.json and pnpm-lock.yaml for the @oikonomos/memory workspace dependency. Update the lockfile with `pnpm install --lockfile-only` under Node 22, add only that one dependency, and change no other package versions. No active task edits these files.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T10:48:02Z] [SV:S5] Profile-tier memory (user, agent, roster-gated project) injected into the single systemPrompt both lanes use; capped at 6000 chars with omission note. Gap: chatRunDriver.test.ts is outside Owned_Paths, so no DB-backed member/non-member driver test.
+**Artifacts:** services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts, services/worker/src/chatRunDriver.ts, services/worker/package.json, pnpm-lock.yaml, dossiers/TASK-306.md
+**Test_Evidence:** worker typecheck clean; promptAssembly.test.ts 21/21 pass (5 new). scripts/test-isolated.ps1 full suite: 4 fails/15 passes (db projects.ts, evals-harness, worker chatRunDriver budget.platform_exceeded, control-api); identical 4-fail pattern present in runS5-full3/final/iso logs from before these changes; clean-master baseline run was inconclusive (unbuilt worktree).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T08:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T10:48:02Z
 
 ### TASK-307
 **Title:** Mobile: project API client, projects list, create-project flow (roster, manager, charter), entry from the roster screen (P-7a)
