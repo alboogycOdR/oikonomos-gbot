@@ -9653,7 +9653,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-321
 **Title:** Enforce the manager project fan-out cap across MCP calls (it currently resets on every call)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md section 6.4 (one manager turn emits at most roster-size handoffs); services/worker/src/projectMcpServer.ts:35 and projectTools.ts:44 (verified by ORCH 2026-09-21); OpenBot comparison (fan-out cap counted under an advisory lock in the same transaction as the insert)
@@ -9673,12 +9673,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: Owned_Paths extended to packages/db auditEvents and index so the durable count has a home; liveness AC added.
 - [2026-09-21T06:08:02Z] [SV:CX9] Implemented durable advisory-lock fanout admission and committed it (2b68060); targeted DB and live MCP tests pass. NEXT: Run isolated recursive suite and master baseline classification before requesting review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-21T06:28:01Z] [SV:CX9] Durable per-run project fanout admission is implemented with an advisory transaction lock and audited cap refusal; full isolated-suite baseline comparison is recorded in the dossier.
+**Artifacts:** services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/projectMcpServer.test.ts, services/worker/src/projectFanout.ts, services/worker/src/projectFanout.test.ts, packages/db/src/auditEvents.ts, packages/db/src/auditEvents.test.ts, packages/db/src/index.ts, dossiers/TASK-321.md
+**Test_Evidence:** scripts/test-isolated.ps1: new DB audit event test 1/1, worker projectMcpServer 2/2, and projectFanout 2/2 pass. Full recursive suite and identical master baseline suite both exit 1 only for documented unrelated DB cleanup, budget/capability/queue, eval, and control-api failures; git diff --check passes.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-21T06:08:02Z
+**Updated_At:** 2026-09-21T06:28:01Z
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
