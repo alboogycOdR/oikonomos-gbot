@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -26,6 +27,14 @@ import { recordAuditEvent, type DatabaseOptions } from "../src/index.js";
 // green on a machine with no database.
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
+const truncateGuardUpMigration = new URL(
+  "../../../infra/postgres/migrations/032_audit_truncate_guard.up.sql",
+  import.meta.url,
+);
+const truncateGuardDownMigration = new URL(
+  "../../../infra/postgres/migrations/032_audit_truncate_guard.down.sql",
+  import.meta.url,
+);
 
 integration("packages/audit append-only property (integration, raw SQL)", () => {
   const options: DatabaseOptions = { connectionString: connectionString! };
@@ -88,6 +97,64 @@ integration("packages/audit append-only property (integration, raw SQL)", () => 
     ]);
     expect(reread.rowCount).toBe(1);
     expect(reread.rows[0].event_id).toBe(written.eventId);
+  });
+
+  it("refuses direct and cascading TRUNCATE statements without losing audit rows", async () => {
+    const probe = randomUUID();
+    const written = await recordAuditEvent(options, {
+      actor: "test:append-only-truncate",
+      eventType: "tool.request",
+      payload: { probe },
+    });
+
+    await expect(client.query("TRUNCATE audit_events")).rejects.toMatchObject({ code: "55000" });
+    // audit_events has a foreign key to runs.  PostgreSQL includes it in this
+    // cascade, so this verifies the guard is invoked for cascaded truncation
+    // too, before any table in the statement can be emptied.
+    await expect(client.query("TRUNCATE runs CASCADE")).rejects.toMatchObject({ code: "55000" });
+
+    const reread = await client.query("SELECT payload FROM audit_events WHERE event_id = $1::bigint", [
+      written.eventId,
+    ]);
+    expect(reread.rowCount).toBe(1);
+    expect(reread.rows[0].payload).toEqual({ probe });
+  });
+
+  it("proves the TRUNCATE guard is live and its migrations reverse cleanly", async () => {
+    const probe = randomUUID();
+    const written = await recordAuditEvent(options, {
+      actor: "test:append-only-truncate-liveness",
+      eventType: "tool.request",
+      payload: { probe },
+    });
+    const [downMigration, upMigration] = await Promise.all([
+      readFile(truncateGuardDownMigration, "utf8"),
+      readFile(truncateGuardUpMigration, "utf8"),
+    ]);
+
+    await client.query("BEGIN");
+    try {
+      // The down/up/down/up cycle uses the migrations themselves, proving
+      // their IF EXISTS / OR REPLACE structure is reversible and repeatable.
+      await client.query(downMigration);
+      await client.query(upMigration);
+      await client.query(downMigration);
+      await client.query(upMigration);
+
+      // A liveness test must show that an inert guard changes the outcome.
+      // Drop only the trigger (not its function), then prove TRUNCATE works.
+      await client.query("DROP TRIGGER audit_events_reject_truncate ON audit_events");
+      await expect(client.query("TRUNCATE audit_events")).resolves.toBeDefined();
+    } finally {
+      // Restore both the written event and the guard for every other test.
+      await client.query("ROLLBACK");
+    }
+
+    const reread = await client.query("SELECT payload FROM audit_events WHERE event_id = $1::bigint", [
+      written.eventId,
+    ]);
+    expect(reread.rowCount).toBe(1);
+    expect(reread.rows[0].payload).toEqual({ probe });
   });
 });
 
