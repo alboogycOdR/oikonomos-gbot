@@ -9698,7 +9698,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** services/worker/src/jobs/workerJobQueue.ts:61-68 (runExecutionQueueOptions expireInSeconds 300, retryLimit 3); services/worker/src/chatRunDriver.ts:192 (SANDBOX_COMMAND_TIMEOUT_MS 10 minutes); OpenBot comparison (attempts>1 means a prior owner may already have acted)
@@ -9717,12 +9717,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: chatRunDriver.ts is TASK-306 territory; conflict AC added.
 - [2026-09-21T08:08:01Z] [SV:S5] Double run confirmed real: pg-boss retries at expiry while the handler is live, and main.ts only skips terminal runs. Fixed in workerJobQueue.ts with a 1800 s expiry (re-applied via updateQueue) plus an in-process in-flight guard. Guard is per-process; atomic DB claim would need main.ts territory.
+- [2026-09-21T10:15:00Z] [ORCH opus-4-8] APPROVED, merged (merge c0bd3a6). Territory clean (all files within Owned_Paths; dossier is builder's own). No PLAN.md edits on branch. ACs met: dossier gives file:line evidence of the real double-run (workerJobQueue.ts:61-68, main.ts:87-90, runs.ts:351); 1800 s expiry (a Description-sanctioned fix) clears the 10-min command timeout; in-flight guard short-circuits before onRunExecution so a retry never re-spends budget. Control-can-fail (rule 5) satisfied: the acceptance test drives the REAL createWorkerJobQueue/boss.work() path with only expiry duration as a test seam, and fails (executions 2!=1) if the guard is inert. Ran the FULL recursive suite myself via test-isolated.ps1 -Init from the worktree: acceptance test PASSES; branch worker 40 fail vs master 38 fail = documented pg-boss lock-timeout flakiness; full-suite extras all budget.platform_exceeded cumulative-spend exhaustion on the shared DB, none attributable to this change. Non-blocking note: no explicit ls/find filesystem-check in commit history, but the dossier's file:line reads are stronger investigation evidence (first-occurrence, not a rework trigger). Builder-run Test_Evidence had only the worker package; I closed that with the full recursive run.
 **Artifacts:** services/worker/src/jobs/workerJobQueue.ts, services/worker/src/jobs/workerJobQueue.test.ts, dossiers/TASK-322.md
-**Test_Evidence:** test-isolated.ps1 -Filter @oikonomos/worker. New test 'a run outliving the queue expiry is never started a second time' fails with the guard disabled (expected 2 to be 1) and passes with it. Worker suite with fix: 54 failed / 262 passed; master baseline: 53 failed / 262 passed. Failures are the same pre-existing classes (chatRunDriver budget, sandboxReaper) plus a pg-boss lock-timeout flake in workerJobQueue.test.ts that varied by run and also hit master. Only the worker package was run, not the full recursive suite.
+**Test_Evidence:** test-isolated.ps1 -Filter @oikonomos/worker. New test 'a run outliving the queue expiry is never started a second time' fails with the guard disabled (expected 2 to be 1) and passes with it. Worker suite with fix: 54 failed / 262 passed; master baseline: 53 failed / 262 passed. Failures are the same pre-existing classes (chatRunDriver budget, sandboxReaper) plus a pg-boss lock-timeout flake in workerJobQueue.test.ts that varied by run and also hit master. Only the worker package was run, not the full recursive suite. [ORCH 2026-09-21: full recursive suite re-run at review — acceptance test passes; all failures classified as pre-existing/environmental, no branch regression.]
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-21T08:08:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-21T10:15:00Z
 
 ### TASK-323
 **Title:** Expire unanswered human-takeover and secret requests (never while a human holds control)
@@ -9745,6 +9746,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: sequenced after TASK-322 (shared scheduler); OWNERSHIP_CONFLICT AC added.
+- [2026-09-21T10:15:00Z] [ORCH] READY: Depends_On TASK-322 is now done (merged c0bd3a6). This task is dispatchable.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
