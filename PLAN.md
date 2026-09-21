@@ -9653,7 +9653,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-321
 **Title:** Enforce the manager project fan-out cap across MCP calls (it currently resets on every call)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md section 6.4 (one manager turn emits at most roster-size handoffs); services/worker/src/projectMcpServer.ts:35 and projectTools.ts:44 (verified by ORCH 2026-09-21); OpenBot comparison (fan-out cap counted under an advisory lock in the same transaction as the insert)
@@ -9667,8 +9667,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] The Gemini lane still passes its existing project-tool tests unchanged.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; failures classified against the master baseline.
 - [ ] ADR-005 liveness: a test keyed on the project.fanout_capped audit event fails when the durable check is bypassed (it must not pass merely because the module exists). The per-run count query lives next to getAuditEventsForRun in packages/db/src/auditEvents.ts and is exported from index.ts.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-321-cx9
+**Started_At:** 2026-09-21T05:45:22Z
 **Progress_Notes:**
 - [2026-09-21T09:00:00Z] [ORCH] Filed from the OpenBot comparison (2026-09-21). Every claim in Description marked UNVERIFIED or REPORTED must be verified against our own code before you act on it.
 - [2026-09-21T06:00:00Z] [ORCH opus-reviewed] Opus decomposition review: Owned_Paths extended to packages/db auditEvents and index so the durable count has a home; liveness AC added.
@@ -9676,8 +9676,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-21T06:00:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-21T05:45:22Z
 
 ### TASK-322
 **Title:** Verify and fix run-queue expiry (300 s) against the 10-minute sandbox command timeout
