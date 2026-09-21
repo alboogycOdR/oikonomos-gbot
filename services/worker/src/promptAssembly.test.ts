@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Role, Skill } from "@oikonomos/db";
 
+import type { MemoryFact } from "@oikonomos/memory";
 import type { ContextMessage } from "./contextCompaction.js";
-import { assembleChatPrompt, assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
+import { PROFILE_MEMORY_MAX_CHARS, formatProfileMemoryBlock, assembleChatPrompt, assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
 
 // TASK-175 carve: pure-function coverage for the extracted module. The
 // end-to-end proof that a real persisted role's identity/instructions reach
@@ -234,5 +235,49 @@ describe("assembleChatPrompt", () => {
     });
     expect(prompt).not.toContain("[user]");
     expect(prompt).not.toContain("[bot]");
+  });
+});
+
+// TASK-306: profile-tier memory block. The ACL/expiry/supersession filtering is
+// readProfileTier's job (packages/memory); this covers formatting, the cap, and
+// that assembleSystemPrompt/assembleChatPrompt (the ONE prompt both the Claude
+// and Gemini lanes consume) carry the identical block.
+describe("profile memory block (TASK-306)", () => {
+  const fact = (scope: MemoryFact["scope"], key: string, value: unknown): MemoryFact => ({
+    factId: `${scope}-${key}`, tenantId: "t", scope, roleId: scope === "agent" ? "r" : null, projectId: scope === "project" ? "p" : null,
+    key, value, source: "test", confidence: 1, tier: "profile", expiresAt: null, visibleTo: null, supersededBy: null,
+  } as MemoryFact);
+  const noSkill = async () => null;
+
+  it("renders nothing when there are no facts", () => {
+    expect(formatProfileMemoryBlock([])).toBe("");
+  });
+
+  it("lists user, agent and project facts in scope order", () => {
+    const block = formatProfileMemoryBlock([fact("project", "charter", "Ship v1"), fact("agent", "tone", "brief"), fact("user", "name", "Ada")]);
+    expect(block.indexOf("[user] name: Ada")).toBeLessThan(block.indexOf("[agent] tone: brief"));
+    expect(block.indexOf("[agent] tone: brief")).toBeLessThan(block.indexOf("[project] charter: Ship v1"));
+  });
+
+  it("bounds the block, dropping whole facts and noting the omission", () => {
+    const many = Array.from({ length: 400 }, (_, i) => fact("user", `k${String(i).padStart(3, "0")}`, "x".repeat(50)));
+    const block = formatProfileMemoryBlock(many);
+    expect(block.length).toBeLessThanOrEqual(PROFILE_MEMORY_MAX_CHARS + 120);
+    expect(block).toMatch(/\d+ further profile fact\(s\) omitted/);
+    expect(block).not.toContain("k399");
+  });
+
+  it("assembleSystemPrompt and assembleChatPrompt include the same memory block", async () => {
+    const memoryFacts = [fact("project", "charter", "Ship v1")];
+    const base = { role: null, fallbackRoleId: "r", message: "hi", resolveEnabledSkill: noSkill, memoryFacts };
+    const sys = await assembleSystemPrompt(base);
+    const chat = await assembleChatPrompt({ ...base, summary: null, history: [] });
+    expect(sys).toContain(formatProfileMemoryBlock(memoryFacts));
+    expect(chat).toContain(formatProfileMemoryBlock(memoryFacts));
+  });
+
+  it("omits the block entirely when memoryFacts is absent", async () => {
+    const sys = await assembleSystemPrompt({ role: null, fallbackRoleId: "r", message: "hi", resolveEnabledSkill: noSkill });
+    expect(sys).not.toContain("Profile memory");
   });
 });

@@ -480,6 +480,9 @@ importers:
       '@oikonomos/harness-factory':
         specifier: workspace:*
         version: link:../../packages/harness-factory
+      '@oikonomos/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@oikonomos/policy':
         specifier: workspace:*
         version: link:../../packages/policy
