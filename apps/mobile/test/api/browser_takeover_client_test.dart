@@ -269,7 +269,21 @@ void main() {
             .where((m) => m['method'] == 'Input.dispatchKeyEvent')
             .toList();
         expect(keyEvents, hasLength(2));
-        expect(keyEvents[0]['params'], {'type': 'rawKeyDown', 'key': 'Enter'});
+        expect(keyEvents[0]['params'], {
+          'type': 'keyDown',
+          'key': 'Enter',
+          'code': 'Enter',
+          'windowsVirtualKeyCode': 13,
+          'nativeVirtualKeyCode': 13,
+          'text': '\r',
+        });
+        expect(keyEvents[1]['params'], {
+          'type': 'keyUp',
+          'key': 'Enter',
+          'code': 'Enter',
+          'windowsVirtualKeyCode': 13,
+          'nativeVirtualKeyCode': 13,
+        });
         expect(keyEvents[0]['sessionId'], 'session-1');
       },
     );
@@ -296,6 +310,40 @@ void main() {
       subscription.dispatchKey('Tab');
       await Future<void>.delayed(Duration.zero);
       expect(socket.sent.length, before);
+    });
+
+    test('Backspace, Tab, unknown keys and chars send the exact CDP payloads', () async {
+      final fake = FakeHttpClient();
+      final apiClient = await _loggedIn(fake);
+      late _FakeCdpSocket socket;
+      final sub = BrowserTakeoverClient(
+        apiClient: apiClient,
+        connector: (url, {headers}) async {
+          socket = _FakeCdpSocket();
+          return socket;
+        },
+      ).takeover(runId: 'run-1', onFrame: (_) {}, onDone: () {});
+      await Future<void>.delayed(Duration.zero);
+      await _driveAttachSequence(socket);
+      final base = socket.sent.length;
+      sub.dispatchKey('Backspace');
+      sub.dispatchKey('Tab');
+      sub.dispatchKey('Escape');
+      sub.typeText('a');
+      final p = socket.sent
+          .skip(base)
+          .where((m) => m['method'] == 'Input.dispatchKeyEvent')
+          .map((m) => m['params'])
+          .toList();
+      expect(p, [
+        {'type': 'rawKeyDown', 'key': 'Backspace', 'code': 'Backspace', 'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8},
+        {'type': 'keyUp', 'key': 'Backspace', 'code': 'Backspace', 'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8},
+        {'type': 'rawKeyDown', 'key': 'Tab', 'code': 'Tab', 'windowsVirtualKeyCode': 9, 'nativeVirtualKeyCode': 9},
+        {'type': 'keyUp', 'key': 'Tab', 'code': 'Tab', 'windowsVirtualKeyCode': 9, 'nativeVirtualKeyCode': 9},
+        {'type': 'rawKeyDown', 'key': 'Escape'},
+        {'type': 'keyUp', 'key': 'Escape'},
+        {'type': 'char', 'text': 'a'},
+      ]);
     });
   });
 }

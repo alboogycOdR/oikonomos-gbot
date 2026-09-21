@@ -97,6 +97,19 @@ Future<BrowserTakeoverWebSocketLike> _defaultConnector(
   return _RealBrowserTakeoverWebSocket(socket);
 }
 
+class _KeyDescriptor {
+  const _KeyDescriptor(this.code, this.keyCode, [this.text]);
+  final String code;
+  final int keyCode;
+  final String? text;
+}
+
+const _keyDescriptors = <String, _KeyDescriptor>{
+  'Enter': _KeyDescriptor('Enter', 13, '\r'),
+  'Backspace': _KeyDescriptor('Backspace', 8),
+  'Tab': _KeyDescriptor('Tab', 9),
+};
+
 /// Handle for one open browser-takeover session. [tap]/[dispatchKey] send
 /// genuine CDP input once the flatten-attach + screencast subscription
 /// sequence has completed (buffered otherwise — see [_pendingInput]).
@@ -144,10 +157,32 @@ class BrowserTakeoverSubscription {
   /// Sends one non-printable key (e.g. `Enter`, `Backspace`, `Tab`) as a
   /// real `rawKeyDown`/`keyUp` pair, CDP's own convention for keys that
   /// have no `char` text of their own.
+  ///
+  /// Chromium ignores an editing key whose event carries no
+  /// `windowsVirtualKeyCode`, and only submits a form on Enter when a
+  /// `keyDown` carries the carriage-return `text`. Known keys therefore get
+  /// the full descriptor from [_keyDescriptors]; unknown keys keep the bare
+  /// `key`-only pair.
   void dispatchKey(String key) {
     if (_closed) return;
-    _sendCommand('Input.dispatchKeyEvent', {'type': 'rawKeyDown', 'key': key});
-    _sendCommand('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': key});
+    final d = _keyDescriptors[key];
+    if (d == null) {
+      _sendCommand('Input.dispatchKeyEvent', {'type': 'rawKeyDown', 'key': key});
+      _sendCommand('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': key});
+      return;
+    }
+    final base = <String, dynamic>{
+      'key': key,
+      'code': d.code,
+      'windowsVirtualKeyCode': d.keyCode,
+      'nativeVirtualKeyCode': d.keyCode,
+    };
+    _sendCommand('Input.dispatchKeyEvent', {
+      'type': d.text == null ? 'rawKeyDown' : 'keyDown',
+      ...base,
+      if (d.text != null) 'text': d.text,
+    });
+    _sendCommand('Input.dispatchKeyEvent', {'type': 'keyUp', ...base});
   }
 
   void close() {
