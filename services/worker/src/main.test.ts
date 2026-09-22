@@ -180,7 +180,13 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
         humanRequestExpiryMs: 1, humanRequestSweepIntervalMs: 20,
       });
       try {
-        for (let attempt = 0; attempt < 50 && (await getRun(options, persisted.runId))?.status !== "failed"; attempt += 1) await delay(20);
+        let auditObserved = false;
+        for (let attempt = 0; attempt < 50 && !auditObserved; attempt += 1) {
+          const audit = await getAuditEventsForRun(options, persisted.runId);
+          auditObserved = audit.some((event) => event.eventType === "run.human_request_expired" && event.payload.kind === "secret_request");
+          if (!auditObserved) await delay(20);
+        }
+        expect(auditObserved).toBe(true);
         expect(await getRun(options, persisted.runId)).toMatchObject({ status: "failed", failureNote: "Human input request expired without an answer." });
         const audit = await getAuditEventsForRun(options, persisted.runId);
         expect(audit.some((event) => event.eventType === "run.human_request_expired" && event.payload.kind === "secret_request")).toBe(true);
