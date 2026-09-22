@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createTaskExecutionRun, getAuditEventsForRun, getRun, listRuns, type DatabaseOptions } from "@oikonomos/db";
+import { createSecretRequest, createTaskExecutionRun, getAuditEventsForRun, getOrCreateThreadForRole, getRun, listMessages, listRuns, type DatabaseOptions } from "@oikonomos/db";
 
 import { purgePgBossQueue, withPgBossQueueLock } from "./jobs/pgBossTestCleanup.js";
 import { WORKER_HEARTBEAT_JOB, WORKER_ROUTINE_POLL_JOB, WORKER_RUN_EXECUTION_JOB } from "./jobs/workerJobQueue.js";
@@ -157,6 +157,41 @@ integration("runWorker — the real worker process entrypoint (TASK-226 / OIK-10
       } finally {
         await worker.stop();
       }
+    });
+  }, 20_000);
+
+  it("expires an unanswered secret request through the real worker sweep, fails its run, and emits its liveness audit", async () => {
+    const thread = await getOrCreateThreadForRole(options, { roleId: "inbox-triage" });
+    const persisted = await createTaskExecutionRun(options, {
+      task: { roleId: "inbox-triage", title: "TASK-323 expiry", goal: "must stop", requestedBy: "test:task-323-expiry" },
+      execution: { version: 1, kind: "chat", threadId: thread.id }, provider: "claude",
+    });
+    await parkTaskRun(options, persisted.runId);
+    const request = await createSecretRequest(options, {
+      tenantId: persisted.task.tenantId, roleId: persisted.task.roleId, runId: persisted.runId, label: "token", purpose: "test expiry",
+    });
+    await pool.query("UPDATE secret_requests SET created_at = now() - interval '2 minutes' WHERE request_id = $1", [request.requestId]);
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_HEARTBEAT_JOB);
+      await purgePgBossQueue(pool, WORKER_ROUTINE_POLL_JOB);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const worker = await runWorker({
+        connectionString: connectionString!, tenantId: "task-323-no-routines", reconcileFilter: { taskId: persisted.task.taskId },
+        humanRequestExpiryMs: 1, humanRequestSweepIntervalMs: 20,
+      });
+      try {
+        let auditObserved = false;
+        for (let attempt = 0; attempt < 50 && !auditObserved; attempt += 1) {
+          const audit = await getAuditEventsForRun(options, persisted.runId);
+          auditObserved = audit.some((event) => event.eventType === "run.human_request_expired" && event.payload.kind === "secret_request");
+          if (!auditObserved) await delay(20);
+        }
+        expect(auditObserved).toBe(true);
+        expect(await getRun(options, persisted.runId)).toMatchObject({ status: "failed", failureNote: "Human input request expired without an answer." });
+        const audit = await getAuditEventsForRun(options, persisted.runId);
+        expect(audit.some((event) => event.eventType === "run.human_request_expired" && event.payload.kind === "secret_request")).toBe(true);
+        expect((await listMessages(options, thread.id)).some((message) => message.body.includes("not answered in time"))).toBe(true);
+      } finally { await worker.stop(); }
     });
   }, 20_000);
 });

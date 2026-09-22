@@ -2,7 +2,7 @@ import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
 
-export const secretRequestStatuses = ["pending", "fulfilled", "declined"] as const;
+export const secretRequestStatuses = ["pending", "fulfilled", "declined", "expired"] as const;
 export type SecretRequestStatus = (typeof secretRequestStatuses)[number];
 export const SECRET_REQUEST_LABEL_MAX_CHARS = 200;
 export const SECRET_REQUEST_PURPOSE_MAX_CHARS = 2_000;
@@ -26,6 +26,21 @@ export interface SecretRequest {
   secretRef: string | null;
   createdAt: Date;
   fulfilledAt: Date | null;
+}
+
+/** Atomically-expired pending requests, returned so the worker can close their parked runs. */
+export async function expirePendingSecretRequests(options: DatabaseOptions, olderThan: Date): Promise<SecretRequest[]> {
+  if (!(olderThan instanceof Date) || Number.isNaN(olderThan.getTime())) throw new Error("olderThan must be a valid Date.");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<SecretRequestRow>(
+      `UPDATE secret_requests AS request SET status = 'expired'
+       WHERE request.status = 'pending' AND request.created_at < $1
+         AND EXISTS (SELECT 1 FROM runs WHERE runs.run_id = request.run_id AND runs.status = 'waiting_approval')
+       RETURNING ${columns}`,
+      [olderThan],
+    );
+    return result.rows.map(toSecretRequest);
+  });
 }
 
 interface SecretRequestRow extends QueryResultRow {

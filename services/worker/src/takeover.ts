@@ -1,5 +1,5 @@
 import { recordAuditEvent } from "@oikonomos/audit";
-import { getAuditEventsForRun, getRun, type DatabaseOptions, type Run } from "@oikonomos/db";
+import { getAuditEventsForRun, getRun, listRuns, type DatabaseOptions, type Run } from "@oikonomos/db";
 
 import { resumeInterruptedRun } from "./runLifecycle.js";
 
@@ -39,6 +39,8 @@ const HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE = "run.human_takeover_required";
 
 /** Recorded once a human has completed the required step (signed in, solved a CAPTCHA, etc.). */
 export const TAKEOVER_COMPLETED_EVENT_TYPE = "run.human_takeover_completed";
+export const HUMAN_REQUEST_EXPIRED_EVENT_TYPE = "run.human_request_expired";
+export const DEFAULT_HUMAN_REQUEST_EXPIRY_MS = 10 * 60_000;
 
 export interface TakeoverState {
   readonly runId: string;
@@ -81,6 +83,24 @@ export async function getTakeoverState(options: DatabaseOptions, runId: string):
   if (lastRequired === undefined) return { runId, pending: false };
   if (lastCompletedAt !== undefined && lastCompletedAt >= lastRequired.at) return { runId, pending: false };
   return { runId, pending: true, kind: lastRequired.kind, detail: lastRequired.detail };
+}
+
+/** Finds unclaimed takeover parks older than the expiry. */
+export async function listExpiredTakeovers(options: DatabaseOptions, olderThan: Date): Promise<Run[]> {
+  const expired: Run[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listRuns(options, { status: "waiting_approval", limit: 200, cursor });
+    for (const run of page.runs) {
+      const state = await getTakeoverState(options, run.runId);
+      if (!state.pending) continue;
+      const events = await getAuditEventsForRun(options, run.runId);
+      const required = [...events].reverse().find((event) => event.eventType === HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE);
+      if (required !== undefined && required.at < olderThan) expired.push(run);
+    }
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return expired;
 }
 
 export interface CompleteTakeoverResult {

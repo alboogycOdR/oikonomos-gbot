@@ -5,7 +5,7 @@ import { recordAuditEvent } from "@oikonomos/audit";
 import { getRun, type DatabaseOptions } from "@oikonomos/db";
 
 import { startTaskRun } from "./runLifecycle.js";
-import { completeTakeover, getTakeoverState, TAKEOVER_COMPLETED_EVENT_TYPE } from "./takeover.js";
+import { completeTakeover, getTakeoverState, listExpiredTakeovers, TAKEOVER_COMPLETED_EVENT_TYPE } from "./takeover.js";
 
 const HUMAN_TAKEOVER_REQUIRED_EVENT_TYPE = "run.human_takeover_required";
 
@@ -144,4 +144,11 @@ integration("takeover — worker-side takeover state and hand-back (TASK-188 / G
       expect(state).toEqual({ runId: run.runId, pending: true, kind: "payment", detail: "second, later payment page" });
     },
   );
+
+  it("never selects a takeover a human has completed for expiry, regardless of the required event age", async () => {
+    const run = await parkForTakeover("s8");
+    expect((await completeTakeover(options, run.runId)).completed).toBe(true);
+    const expired = await listExpiredTakeovers(options, new Date());
+    expect(expired.some((candidate) => candidate.runId === run.runId)).toBe(false);
+  });
 });
