@@ -15,6 +15,7 @@ import { GEMINI_PROVIDER_ID } from "./geminiChatRun.js";
 import { resolveRoleIdentifier } from "./resolveRoleIdentifier.js";
 import { createRoutineFromToolInput, createRoutineInputSchema, CREATE_ROUTINE_TOOL_DESCRIPTION, parseCreateRoutineInput } from "./routineTool.js";
 import { createProjectTools, type ProjectToolName } from "./projectTools.js";
+import { guardNavigationTarget, type NavigationDenialCategory } from "./navigationGuard.js";
 
 /**
  * Sandbox-backed `GeminiTool` implementations (TASK-211).
@@ -456,6 +457,8 @@ export interface SteelGeminiContext extends SandboxToolContext {
    * and does not close about the human-takeover propagation gap.
    */
   readonly onHumanTakeover?: (kind: string, detail: string) => Promise<void> | void;
+  /** Persists a category-only refusal audit record before the tool responds. */
+  readonly onNavigationDenied?: (category: NavigationDenialCategory) => Promise<void> | void;
 }
 
 const STEEL_TAKEOVER_INSTRUCTION =
@@ -511,11 +514,16 @@ export function createSteelGeminiTools(
       execute: async (arguments_) => {
         const sessionId = requireStringArgument(arguments_, "session_id");
         const url = requireStringArgument(arguments_, "url");
+        const navigation = guardNavigationTarget(url);
+        if (navigation.decision === "deny") {
+          await context.onNavigationDenied?.(navigation.category);
+          return { ok: false, error: "I can’t navigate to that address because it targets a restricted network location." };
+        }
         const websocketUrl = await fetchFreshWebsocketUrl(context, sessionId);
         if (websocketUrl === undefined) return { ok: false, error: "could not resolve a live CDP endpoint for this session" };
         const cdp = await runSteelCdp(context, websocketUrl, [
           { method: "Page.enable" },
-          { method: "Page.navigate", params: { url } },
+          { method: "Page.navigate", params: { url: navigation.url } },
           { waitForEvent: "Page.loadEventFired", timeoutMs: 15_000 },
           {
             method: "Runtime.evaluate",
@@ -533,7 +541,7 @@ export function createSteelGeminiTools(
           await context.onHumanTakeover?.(takeover.kind, takeover.detail);
           return { ok: false, human_takeover_required: true, kind: takeover.kind, detail: takeover.detail, instruction: STEEL_TAKEOVER_INSTRUCTION };
         }
-        return { ok: true, url, title: evaluated?.title ?? "" };
+        return { ok: true, url: navigation.url, title: evaluated?.title ?? "" };
       },
     },
     {

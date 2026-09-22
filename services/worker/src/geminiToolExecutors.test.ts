@@ -258,6 +258,25 @@ describe("createSteelGeminiTools — Steel Browser tools for the Gemini lane (TA
     // URL actually round-tripped through the CDP call correctly.
   });
 
+  it("refuses an internal navigation before CDP and persists only its category (TASK-325 liveness)", async () => {
+    const runCommand = vi.fn<SandboxClient["runCommand"]>();
+    const onNavigationDenied = vi.fn();
+    const { client } = fakeClient(runCommand);
+    const tools = createSteelGeminiTools({ client, endpoint, workspace, onNavigationDenied }, ALL_STEEL_TOOL_NAMES);
+
+    const result = await toolNamed(tools, "mcp__steel__steel_navigate").execute({
+      session_id: "sess-1",
+      url: "http://169.254.169.254/latest/meta-data?token=never-audit-this",
+    });
+
+    expect(result).toEqual({ ok: false, error: "I can’t navigate to that address because it targets a restricted network location." });
+    // Mutation-proof: bypassing the executor guard causes this category-only
+    // refusal evidence to disappear and this assertion to fail.
+    expect(onNavigationDenied).toHaveBeenCalledExactlyOnceWith("metadata");
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(JSON.stringify(onNavigationDenied.mock.calls)).not.toContain("token=");
+  });
+
   it("detects a human-takeover page during navigate, fires onHumanTakeover, and tells the model to stop — never a generic tool error", async () => {
     const runCommand = vi
       .fn()
