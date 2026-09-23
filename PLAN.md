@@ -10169,7 +10169,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-340
 **Title:** Gemini Steel lane: actionable element refs from snapshots
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** OpenBot comparison (agent-computer/src/aria-snapshot.ts: 16-role allow-list, refs, 200-element cap); TASK-325 navigation guard; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10184,12 +10184,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-23T23:10:03Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-23T23:38:01Z] [SV:S5] Actionable element refs (allow-list, e1.., cap 200) in steel_snapshot; steel_act accepts ref via DOM.resolveNode+callFunctionOn; stale/unknown refs refused with readable sentence; refs invalidated on navigate/release; TASK-325 guard untouched.
+**Artifacts:** services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, dossiers/TASK-340.md
+**Test_Evidence:** geminiToolExecutors.test.ts 30/30 pass (3 new TASK-340 tests; TASK-325 nav-guard tests unchanged and passing). Full isolated suite via scripts/test-isolated.ps1: failures only outside own files - db 1, evals-harness 1, control-api chat.routes 1 (400 vs 201), worker chatRunDriver/main/workerJobQueue/roleMessageDelivery (sandbox/env). Worker chatRunDriver/main/workerJobQueue match runMaster-worker-baseline.log. db, evals-harness and control-api failures and worker roleMessageDelivery were NOT baseline-verified. No failing file touches geminiToolExecutors. tsc on services/worker errors only on @oikonomos/db exports, none in owned files.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-23T23:10:03Z
+**Updated_At:** 2026-09-23T23:38:01Z
 
 ### TASK-338
 **Title:** Claude lane: end a sandbox run that goes silent
