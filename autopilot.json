@@ -22,6 +22,7 @@
         },
         "worktree_suffix": "grok",
         "branch_suffix": "gb",
+      "_retired_note": "2026-09-24 (ORCH, Alister): GB RETIRED from the roster. Only CX9 and S5 are builders; never assign GB new work. The entry stays defined solely so the 45 historical tasks recorded against GB still validate -- deleting it would make PLAN.md illegal. Not in builders.active, so the supervisor never dispatches it.",
         "briefing": "briefings/GROK_BUILD_BRIEFING.md",
         "auto_loads_ambient_context": false,
         "usage_provider": null,
