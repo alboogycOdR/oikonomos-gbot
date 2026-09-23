@@ -10142,7 +10142,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-339
 **Title:** Provenance block in every chat run's system prompt (both lanes)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** OpenBot comparison (deployment-wide provenance block appended by the deployment, not the bot package); TASK-306 (shared prompt assembly for both lanes); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10159,12 +10159,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-23T22:58:01Z] [SV:S5] PROVENANCE_BLOCK appended in buildRoleSystemPrompt (both lanes); ~60 tokens. Full-suite failures are not proven baseline: worker chatRunDriver fails with budget.platform_exceeded (env spend state, before prompt build), which the master baseline log does not show; control-api and evals-harness failures were not classified.
 - [2026-09-23T23:12:51Z] [ORCH] Duplicate session incident: the autopilot dispatched S5 on this task at 22:46:18Z and ORCH's manual dispatch started a second S5 session at 22:47:01Z in the same worktree; both ran to completion. REVIEWER: review the full branch diff, not either session's summary. Also note S5's own Test_Evidence says the full-suite failures were NOT classified against the master baseline, which the review standard requires.
+- [2026-09-24T00:00:00Z] [ORCH opus-4-8] APPROVED + MERGED (merge commit into master). Reviewed the full branch diff (not either duplicate session's summary). S5-authored but Owned_Paths = services/worker/src/promptAssembly.{ts,test.ts} = NOT a protected path, so Standing Rule 1 cross-model gate does NOT apply; normal Opus review is the gate. Territory CLEAN (3-file diff: the two Owned_Paths files + own dossiers/TASK-339.md; ZERO PLAN.md edits on branch; two identical-message feat commits from the duplicate sessions, no divergent work). PROVENANCE_BLOCK appended inside buildRoleSystemPrompt, which BOTH lanes route through (verified: assembleChatPrompt→assembleSystemPrompt→buildRoleSystemPrompt), so no role's instructions can drop it. AC1 ✓ (test drives real assembleSystemPrompt + assembleChatPrompt incl. empty-instructions and null role). AC2 ADR-005 liveness ✓ — the test asserts the literal wording "Never invent a source." through the REAL production assembly functions, so removing the append from buildRoleSystemPrompt turns it red (not a same-fixture check). AC3 ✓ — I ran the full recursive suite via scripts/test-isolated.ps1 -Init on BOTH master baseline and the branch worktree and classified every failure: branch introduces ZERO new failures; promptAssembly.test.ts 22/22 (was 21 on master; +1 is the new provenance block). All other reds (worker budget.platform_exceeded, Gemini HTTP 402 credits depleted, email.send enabled-state drift, pg-boss 5s timeouts, db deadlock, control-api three-bot 400) are pre-existing baseline classes (TASK-300 spend-ceiling / TASK-162 order-dependent); S5's uncertainty about them is now resolved. ~60-token cost recorded in dossier. Branch task/TASK-339-s5 deleted; no Depends_On dependents to unlock.
 **Artifacts:** services/worker/src/promptAssembly.ts, services/worker/src/promptAssembly.test.ts, dossiers/TASK-339.md
 **Test_Evidence:** promptAssembly.test.ts 22/22 pass, including new provenance test (empty-instructions role, null role, assembleSystemPrompt and assembleChatPrompt). Full suite via scripts/test-isolated.ps1: 3 packages fail (evals-harness, worker, control-api); worker failures are budget.platform_exceeded in chatRunDriver and others, unrelated to promptAssembly. Not matched to the master baseline log (different failures there). Log: runS5-339.log.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-23T22:58:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T00:00:00Z
 
 ### TASK-340
 **Title:** Gemini Steel lane: actionable element refs from snapshots
