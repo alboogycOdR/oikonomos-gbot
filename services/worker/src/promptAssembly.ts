@@ -2,6 +2,14 @@ import type { Role, Skill } from "@oikonomos/db";
 import type { MemoryFact } from "@oikonomos/memory";
 import type { ContextMessage } from "./contextCompaction.js";
 
+/**
+ * TASK-339 — deployment-wide provenance block. Appended by the deployment (inside
+ * buildRoleSystemPrompt, which every lane's assembly goes through), so no role's
+ * instructions can drop it. Wording v1; the owner may revise it.
+ */
+export const PROVENANCE_BLOCK =
+  "When you state a fact, say where it came from: the tool result, page, file or message you got it from. When something comes from your own general knowledge rather than a source you checked in this conversation, say so plainly. Never invent a source.";
+
 /** Build a useful identity even when an older role has no custom instructions. */
 export function buildRoleSystemPrompt(role: Role | null, fallbackRoleId: string): string {
   const name = role?.name ?? fallbackRoleId;
@@ -13,6 +21,7 @@ export function buildRoleSystemPrompt(role: Role | null, fallbackRoleId: string)
     description.length === 0 ? "Represent this bot identity clearly and helpfully." : `Your role description: ${description}`,
   ];
   if (instructions.length > 0) identity.push(`Your custom instructions:\n${instructions}`);
+  identity.push(PROVENANCE_BLOCK);
   return identity.join("\n\n");
 }
 
