@@ -9904,6 +9904,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:42:32Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap): territory widened to services/control-api/src/ports.ts, packages/db/src/database.ts and packages/db/src/index.ts for a production-wired readiness port. No active task owns them; TASK-331/333/335 touch ports.ts or index.ts but all depend on this task.
 - [2026-09-23T22:43:00Z] [SV:CX9] Recorded preflight and ownership conflict in dossiers/TASK-326.md; no code changed.
 - [2026-09-24T00:00:00Z] [ORCH opus-4-8] UNBLOCKED → pending. The 22:43:00Z auto-block was a race: it recited the exact OWNERSHIP_CONFLICT that the 22:42:32Z widen (commit 62ccebe) had already resolved — ports.ts + packages/db/database.ts + packages/db/index.ts are now in Owned_Paths. Branch task/TASK-326-cx9 is dossier-only (territory-clean). Re-dispatch to CX9. Never co-dispatch with TASK-249 (both own infra/compose/**).
+- [2026-09-23T22:50:21Z] [ORCH] Duplicate session incident: the autopilot relaunched CX9 on this task at 22:44Z after ORCH unblocked it, and ORCH's manual dispatch at 22:46Z started a second CX9 session in the same worktree. ORCH stopped the 22:46Z session at about 22:50Z; the 22:44Z session continues. Uncommitted edits in the worktree may partly come from the stopped session. REVIEWER: review the full branch diff, not the surviving session's summary.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
