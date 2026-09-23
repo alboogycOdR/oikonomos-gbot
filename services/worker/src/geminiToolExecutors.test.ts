@@ -335,6 +335,91 @@ describe("createSteelGeminiTools — Steel Browser tools for the Gemini lane (TA
     expect(result).toEqual({ ok: true, found: true });
   });
 
+  it("TASK-340: snapshot lists only allow-listed roles as e1.. refs, capped at 200", async () => {
+    const nodes: Record<string, unknown>[] = [
+      { role: { value: "heading" }, name: { value: "Title" }, backendDOMNodeId: 1 },
+      { role: { value: "button" }, name: { value: "Save" }, backendDOMNodeId: 2, properties: [{ name: "disabled", value: { value: true } }, { name: "level", value: { value: 3 } }] },
+      { role: { value: "link" }, name: { value: "Ignored" }, backendDOMNodeId: 3, ignored: true },
+      { role: { value: "textbox" }, name: { value: "Email" }, backendDOMNodeId: 4 },
+      ...Array.from({ length: 250 }, (_, i) => ({ role: { value: "link" }, name: { value: `l${i}` }, backendDOMNodeId: 100 + i })),
+    ];
+    const runCommand = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: restStdout({ id: "sess-1", websocketUrl: "ws://127.0.0.1:3000/devtools/1" }), stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: cdpStdout([{ method: "Accessibility.getFullAXTree", result: { nodes } }, evalResultStep("Page")]), stderr: "", exitCode: 0 });
+    const { client } = fakeClient(runCommand as unknown as SandboxClient["runCommand"]);
+    const tools = createSteelGeminiTools({ client, endpoint, workspace }, ALL_STEEL_TOOL_NAMES);
+
+    const result = (await toolNamed(tools, "mcp__steel__steel_snapshot").execute({ session_id: "sess-1" })) as {
+      elements: { ref: string; role: string; name: string; state: Record<string, unknown> }[];
+      elements_truncated?: boolean;
+    };
+    expect(result.elements).toHaveLength(200);
+    expect(result.elements_truncated).toBe(true);
+    expect(result.elements[0]).toEqual({ ref: "e1", role: "button", name: "Save", state: { disabled: true } });
+    expect(result.elements[1]).toMatchObject({ ref: "e2", role: "textbox", name: "Email" });
+    expect(result.elements.some((e) => e.role === "heading")).toBe(false);
+  });
+
+  it("TASK-340: acting by ref targets that element's backend node; a stale or unknown ref is refused", async () => {
+    const sessionRest = { stdout: restStdout({ id: "sess-1", websocketUrl: "ws://127.0.0.1:3000/devtools/1" }), stderr: "", exitCode: 0 };
+    const runCommand = vi
+      .fn()
+      .mockResolvedValueOnce(sessionRest)
+      .mockResolvedValueOnce({
+        stdout: cdpStdout([
+          { method: "Accessibility.getFullAXTree", result: { nodes: [
+            { role: { value: "button" }, name: { value: "A" }, backendDOMNodeId: 11 },
+            { role: { value: "button" }, name: { value: "B" }, backendDOMNodeId: 22 },
+          ] } },
+          evalResultStep("Page"),
+        ]),
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce(sessionRest)
+      .mockResolvedValueOnce({ stdout: cdpStdout([{ method: "DOM.resolveNode", result: {} }, evalResultStep({ found: true }), evalResultStep("after")]), stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce(sessionRest)
+      .mockResolvedValueOnce({ stdout: "", stderr: "No node with given id found", exitCode: 1 });
+    const { client } = fakeClient(runCommand as unknown as SandboxClient["runCommand"]);
+    const tools = createSteelGeminiTools({ client, endpoint, workspace }, ALL_STEEL_TOOL_NAMES);
+    const act = toolNamed(tools, "mcp__steel__steel_act");
+
+    // Unknown before any snapshot: refused without touching the browser.
+    expect(await act.execute({ session_id: "sess-1", ref: "e1", action: "click" })).toMatchObject({ ok: false, error: expect.stringContaining("snapshot") });
+    expect(runCommand).not.toHaveBeenCalled();
+
+    await toolNamed(tools, "mcp__steel__steel_snapshot").execute({ session_id: "sess-1" });
+    expect(await act.execute({ session_id: "sess-1", ref: "e2", action: "click" })).toEqual({ ok: true, found: true });
+    const actCommand = String((runCommand.mock.calls[3] as unknown as [unknown, { command: string }])[1].command);
+    const sent = Buffer.from(/'([A-Za-z0-9+/=]{20,})'$/.exec(actCommand)?.[1] ?? "", "base64").toString("utf8");
+    expect(sent).toContain('"backendNodeId":22');
+    expect(sent).toContain('"objectIdFromStep":0');
+
+    const stale = await act.execute({ session_id: "sess-1", ref: "e1", action: "click" });
+    expect(stale).toMatchObject({ ok: false, error: expect.stringMatching(/no longer valid/) });
+    // Stale ref dropped: the next use is unknown, not guessed.
+    expect(await act.execute({ session_id: "sess-1", ref: "e1", action: "click" })).toMatchObject({ ok: false, error: expect.stringContaining("Take a snapshot") });
+    expect(await act.execute({ session_id: "sess-1", ref: "e99", action: "click" })).toMatchObject({ ok: false });
+  });
+
+  it("TASK-340: navigating invalidates refs from earlier snapshots", async () => {
+    const sessionRest = { stdout: restStdout({ id: "sess-1", websocketUrl: "ws://127.0.0.1:3000/devtools/1" }), stderr: "", exitCode: 0 };
+    const runCommand = vi
+      .fn()
+      .mockResolvedValueOnce(sessionRest)
+      .mockResolvedValueOnce({ stdout: cdpStdout([{ method: "Accessibility.getFullAXTree", result: { nodes: [{ role: { value: "button" }, name: { value: "A" }, backendDOMNodeId: 5 }] } }, evalResultStep("Page")]), stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce(sessionRest)
+      .mockResolvedValueOnce({ stdout: cdpStdout([{}, {}, {}, evalResultStep({ title: "t", text: "hello" })]), stderr: "", exitCode: 0 });
+    const { client } = fakeClient(runCommand as unknown as SandboxClient["runCommand"]);
+    const tools = createSteelGeminiTools({ client, endpoint, workspace }, ALL_STEEL_TOOL_NAMES);
+    await toolNamed(tools, "mcp__steel__steel_snapshot").execute({ session_id: "sess-1" });
+    await toolNamed(tools, "mcp__steel__steel_navigate").execute({ session_id: "sess-1", url: "https://example.com" });
+    const calls = runCommand.mock.calls.length;
+    expect(await toolNamed(tools, "mcp__steel__steel_act").execute({ session_id: "sess-1", ref: "e1", action: "click" })).toMatchObject({ ok: false });
+    expect(runCommand.mock.calls.length).toBe(calls);
+  });
+
   it("act requires 'text' for type/fill but not for click", async () => {
     const { client } = fakeClient();
     const tools = createSteelGeminiTools({ client, endpoint, workspace }, ALL_STEEL_TOOL_NAMES);

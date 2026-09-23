@@ -323,6 +323,8 @@ interface CdpStep {
   readonly params?: Record<string, unknown>;
   readonly waitForEvent?: string;
   readonly timeoutMs?: number;
+  /** Inject the remote objectId returned by the result of an earlier step index. */
+  readonly objectIdFromStep?: number;
 }
 
 interface CdpStepResult {
@@ -405,7 +407,10 @@ ws.addEventListener("open", async () => {
         const params = await waitForEvent(step.waitForEvent, step.timeoutMs);
         results.push({ event: step.waitForEvent, params });
       } else {
-        const result = await send(step.method, step.params);
+        const stepParams = step.objectIdFromStep === undefined
+          ? step.params
+          : { ...(step.params || {}), objectId: results[step.objectIdFromStep].result.object.objectId };
+        const result = await send(step.method, stepParams);
         results.push({ method: step.method, result });
       }
     }
@@ -450,6 +455,69 @@ function evaluatedValue(step: CdpStepResult | undefined): unknown {
   return result?.result?.value;
 }
 
+/** Interactive roles a snapshot exposes as short actionable refs (TASK-340). */
+const ACTIONABLE_ROLES: ReadonlySet<string> = new Set([
+  "link", "button", "textbox", "searchbox", "checkbox", "radio", "switch", "combobox", "listbox",
+  "option", "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "slider", "spinbutton",
+]);
+const MAX_ACTIONABLE_ELEMENTS = 200;
+const ACTIONABLE_STATE_PROPERTIES: ReadonlySet<string> = new Set([
+  "checked", "disabled", "expanded", "selected", "pressed", "required", "invalid", "readonly",
+]);
+
+export interface ActionableElement {
+  readonly ref: string;
+  readonly role: string;
+  readonly name: string;
+  readonly state: Readonly<Record<string, string | boolean>>;
+}
+
+function axString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null) {
+    const inner = (value as { value?: unknown }).value;
+    if (typeof inner === "string" || typeof inner === "number") return String(inner);
+  }
+  return "";
+}
+
+/** Filters an AX tree to the allow-list, assigning e1, e2, ... and capping at 200. */
+export function buildActionableElements(nodes: readonly unknown[]): {
+  readonly elements: readonly ActionableElement[];
+  readonly backendIds: ReadonlyMap<string, number>;
+  readonly truncated: boolean;
+} {
+  const elements: ActionableElement[] = [];
+  const backendIds = new Map<string, number>();
+  let truncated = false;
+  for (const raw of nodes) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const node = raw as Record<string, unknown>;
+    if (node.ignored === true) continue;
+    const role = axString(node.role);
+    const backendId = node.backendDOMNodeId;
+    if (!ACTIONABLE_ROLES.has(role) || typeof backendId !== "number") continue;
+    if (elements.length >= MAX_ACTIONABLE_ELEMENTS) { truncated = true; break; }
+    const state: Record<string, string | boolean> = {};
+    if (Array.isArray(node.properties)) {
+      for (const property of node.properties as Array<{ name?: unknown; value?: unknown }>) {
+        if (typeof property?.name !== "string" || !ACTIONABLE_STATE_PROPERTIES.has(property.name)) continue;
+        const value = typeof property.value === "object" && property.value !== null ? (property.value as { value?: unknown }).value : property.value;
+        if (typeof value === "boolean" || typeof value === "string") state[property.name] = value;
+      }
+    }
+    const ref = `e${elements.length + 1}`;
+    elements.push({ ref, role, name: axString(node.name), state });
+    backendIds.set(ref, backendId);
+  }
+  return { elements, backendIds, truncated };
+}
+
+const STALE_REF_MESSAGE =
+  "That element reference is no longer valid because the page has changed. Take a fresh snapshot and use a ref from it.";
+const UNKNOWN_REF_MESSAGE =
+  "I don’t have an element with that reference. Take a snapshot first and use one of the refs it lists.";
+
 export interface SteelGeminiContext extends SandboxToolContext {
   /**
    * Fires synchronously inside a tool's `execute()`, before it returns —
@@ -474,6 +542,8 @@ export function createSteelGeminiTools(
   grantedToolNames: readonly string[],
 ): readonly SandboxGeminiTool[] {
   const granted = new Set(grantedToolNames);
+  // Latest snapshot's ref -> backend DOM node id, per Steel session (TASK-340).
+  const refsBySession = new Map<string, ReadonlyMap<string, number>>();
   const tools: SandboxGeminiTool[] = [
     {
       name: "mcp__steel__steel_session_create",
@@ -498,6 +568,7 @@ export function createSteelGeminiTools(
       tier: tierNumber("T1_draft"),
       execute: async (arguments_) => {
         const sessionId = requireStringArgument(arguments_, "session_id");
+        refsBySession.delete(sessionId);
         const response = await steelRest(context, "POST", `/sessions/${encodeURIComponent(sessionId)}/release`);
         return { ok: response.ok };
       },
@@ -519,6 +590,8 @@ export function createSteelGeminiTools(
           await context.onNavigationDenied?.(navigation.category);
           return { ok: false, error: "I can’t navigate to that address because it targets a restricted network location." };
         }
+        // A navigation invalidates every ref from earlier snapshots.
+        refsBySession.delete(sessionId);
         const websocketUrl = await fetchFreshWebsocketUrl(context, sessionId);
         if (websocketUrl === undefined) return { ok: false, error: "could not resolve a live CDP endpoint for this session" };
         const cdp = await runSteelCdp(context, websocketUrl, [
@@ -546,7 +619,7 @@ export function createSteelGeminiTools(
     },
     {
       name: "mcp__steel__steel_snapshot",
-      description: "Read the current page's accessibility tree and visible text.",
+      description: "Read the current page's accessibility tree and visible text, plus a short list of actionable elements each with a ref (e1, e2, ...) that steel_act accepts.",
       parameters: {
         type: "object",
         properties: { session_id: { type: "string" } },
@@ -572,33 +645,88 @@ export function createSteelGeminiTools(
           await context.onHumanTakeover?.(takeover.kind, takeover.detail);
           return { ok: false, human_takeover_required: true, kind: takeover.kind, detail: takeover.detail, instruction: STEEL_TAKEOVER_INSTRUCTION };
         }
-        return { ok: true, accessibility_tree: axResult?.nodes ?? [], visible_text: text };
+        const nodes = axResult?.nodes ?? [];
+        const actionable = buildActionableElements(nodes);
+        refsBySession.set(sessionId, actionable.backendIds);
+        return {
+          ok: true,
+          accessibility_tree: nodes,
+          visible_text: text,
+          elements: actionable.elements,
+          ...(actionable.truncated ? { elements_truncated: true } : {}),
+        };
       },
     },
     {
       name: "mcp__steel__steel_act",
-      description: "Click, type into, or fill a form field on the current page, addressed by CSS selector.",
+      description: "Click, type into, or fill a form field on the current page, addressed by a ref from the latest steel_snapshot (preferred) or a CSS selector.",
       parameters: {
         type: "object",
         properties: {
           session_id: { type: "string" },
-          selector: { type: "string", description: "CSS selector for the target element." },
+          ref: { type: "string", description: "Element ref (e1, e2, ...) from the latest steel_snapshot." },
+          selector: { type: "string", description: "CSS selector for the target element; use when no ref is available." },
           action: { type: "string", enum: ["click", "type", "fill"] },
           text: { type: "string", description: "Required for type/fill." },
         },
-        required: ["session_id", "selector", "action"],
+        required: ["session_id", "action"],
       },
       tier: tierNumber("T2_internal"),
       execute: async (arguments_) => {
         const sessionId = requireStringArgument(arguments_, "session_id");
-        const selector = requireStringArgument(arguments_, "selector");
         const action = requireStringArgument(arguments_, "action");
         if (action !== "click" && action !== "type" && action !== "fill") {
           throw new Error("Gemini tool argument 'action' must be one of click, type, fill.");
         }
         const text = action === "click" ? "" : requireStringArgument(arguments_, "text");
+        const refArgument = arguments_.ref;
+        const byRef = typeof refArgument === "string" && refArgument.length > 0;
+        const selector = byRef ? "" : requireStringArgument(arguments_, "selector");
+        let backendNodeId: number | undefined;
+        if (byRef) {
+          backendNodeId = refsBySession.get(sessionId)?.get(refArgument);
+          if (backendNodeId === undefined) return { ok: false, error: UNKNOWN_REF_MESSAGE };
+        }
         const websocketUrl = await fetchFreshWebsocketUrl(context, sessionId);
         if (websocketUrl === undefined) return { ok: false, error: "could not resolve a live CDP endpoint for this session" };
+        const pageTextStep: CdpStep = {
+          method: "Runtime.evaluate",
+          params: { expression: "document.body ? document.body.innerText.slice(0, 4000) : ''", returnByValue: true },
+        };
+        if (byRef && backendNodeId !== undefined) {
+          const declaration = action === "click"
+            ? "function() { this.click(); return { found: true }; }"
+            : "function(t) { this.focus(); this.value = t; this.dispatchEvent(new Event('input',{bubbles:true})); this.dispatchEvent(new Event('change',{bubbles:true})); return { found: true }; }";
+          const refCdp = await runSteelCdp(context, websocketUrl, [
+            { method: "DOM.resolveNode", params: { backendNodeId } },
+            {
+              method: "Runtime.callFunctionOn",
+              objectIdFromStep: 0,
+              params: {
+                functionDeclaration: declaration,
+                arguments: action === "click" ? [] : [{ value: text }],
+                returnByValue: true,
+              },
+            },
+            pageTextStep,
+          ]);
+          if (!refCdp.ok) {
+            // The node id no longer resolves: the page moved on since the snapshot.
+            if (/no node|could not find node|not found|backend/i.test(refCdp.raw.stderr ?? "")) {
+              refsBySession.delete(sessionId);
+              return { ok: false, error: STALE_REF_MESSAGE };
+            }
+            return { ok: false, error: "act failed" };
+          }
+          const refActed = evaluatedValue(refCdp.results?.[1]) as { found?: boolean } | undefined;
+          const refPageText = (evaluatedValue(refCdp.results?.[2]) as string | undefined) ?? "";
+          const refTakeover = detectTakeover(refPageText);
+          if (refTakeover !== undefined) {
+            await context.onHumanTakeover?.(refTakeover.kind, refTakeover.detail);
+            return { ok: false, human_takeover_required: true, kind: refTakeover.kind, detail: refTakeover.detail, instruction: STEEL_TAKEOVER_INSTRUCTION };
+          }
+          return { ok: refActed?.found ?? false, found: refActed?.found ?? false };
+        }
         const expression = action === "click"
           ? `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found:false }; el.click(); return { found:true }; })()`
           : `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found:false }; el.focus(); el.value = ${JSON.stringify(text)}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return { found:true }; })()`;
