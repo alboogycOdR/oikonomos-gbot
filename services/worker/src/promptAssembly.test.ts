@@ -3,7 +3,7 @@ import type { Role, Skill } from "@oikonomos/db";
 
 import type { MemoryFact } from "@oikonomos/memory";
 import type { ContextMessage } from "./contextCompaction.js";
-import { PROFILE_MEMORY_MAX_CHARS, formatProfileMemoryBlock, assembleChatPrompt, assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
+import { PROVENANCE_BLOCK, PROFILE_MEMORY_MAX_CHARS, formatProfileMemoryBlock, assembleChatPrompt, assembleSystemPrompt, buildRoleSystemPrompt, extractSkillTokens, formatSkillBlock } from "./promptAssembly.js";
 
 // TASK-175 carve: pure-function coverage for the extracted module. The
 // end-to-end proof that a real persisted role's identity/instructions reach
@@ -279,5 +279,21 @@ describe("profile memory block (TASK-306)", () => {
   it("omits the block entirely when memoryFacts is absent", async () => {
     const sys = await assembleSystemPrompt({ role: null, fallbackRoleId: "r", message: "hi", resolveEnabledSkill: noSkill });
     expect(sys).not.toContain("Profile memory");
+  });
+});
+
+// TASK-339 — ADR-005 liveness: asserts the literal wording, so removing the block fails.
+describe("provenance block", () => {
+  const LITERAL = "Never invent a source.";
+  it("is in the prompt of both lanes' assembly paths, even for empty instructions", async () => {
+    const r = role({ instructions: "" });
+    const resolve = async () => null;
+    expect(PROVENANCE_BLOCK).toContain(LITERAL);
+    expect(buildRoleSystemPrompt(r, "x")).toContain(PROVENANCE_BLOCK);
+    expect(buildRoleSystemPrompt(null, "x")).toContain(PROVENANCE_BLOCK);
+    const sys = await assembleSystemPrompt({ role: r, fallbackRoleId: "x", message: "hi", resolveEnabledSkill: resolve });
+    expect(sys).toContain(LITERAL);
+    const chat = await assembleChatPrompt({ role: r, fallbackRoleId: "x", message: "hi", resolveEnabledSkill: resolve, summary: null, history: [] });
+    expect(chat).toContain(LITERAL);
   });
 });
