@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import scheduling  # noqa: E402
 import tg_commands as tgc  # noqa: E402 — reuse git_pull/git_commit_and_push, don't reinvent
-from validate_plan import validate, parse_tasks, Report  # noqa: E402
+from validate_plan import validate, parse_tasks, Report, _apply_registry  # noqa: E402
 try:
     from team_stats import compute as compute_team  # noqa: E402
 except Exception:  # pragma: no cover
@@ -109,7 +109,7 @@ def _step_validate_plan(repo: Path) -> StepResult:
     if not plan.exists():
         return StepResult("validate_plan", False, "PLAN.md not found")
     try:
-        rep = validate(plan.read_text(encoding="utf-8"))
+        rep = validate(plan.read_text(encoding="utf-8"), registry_views=_apply_registry(str(repo)))
     except Exception as exc:  # noqa: BLE001
         return StepResult("validate_plan", False, f"validator crashed: {exc}")
     if rep.ok:
@@ -379,20 +379,10 @@ def _step_backup(repo: Path, retain_days: int) -> StepResult:
 
 # ======================================================= step 5: result handling
 def _pick_assignee(repo: Path) -> str:
-    """Per spec: 'per team_stats hint or GB by default'."""
-    review_path = repo / "REVIEW.md"
-    if compute_team is None or not review_path.exists():
-        return "GB"
-    try:
-        stats = compute_team(review_path.read_text(encoding="utf-8"))
-        hint = stats.get("assignment_hint", "") or ""
-        if hint.startswith("GB"):
-            return "GB"
-        if hint.startswith("CX"):
-            return "CX"
-    except Exception:  # noqa: BLE001
-        pass
-    return "GB"
+    """Always TBD (ORCH-owned). A MAINT task's Owned_Paths are scripts/**, hooks/**, PLAN.md and
+    tests/** -- the builder territory firewall forbids every builder from all of them, so assigning
+    one to a builder only parks it forever (five GB-assigned MAINT tasks sat idle 2026-09-19..23)."""
+    return "TBD"
 
 
 def _compose_maint_task(repo: Path, failed_steps: list[StepResult], now: datetime) -> tuple[str, str]:

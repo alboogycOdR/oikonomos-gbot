@@ -341,13 +341,14 @@ class TestComposeMaintTask:
         assert "backups/**" in owned_line
         assert "hooks/**" not in owned_line
 
-    def test_default_assignee_gb_when_no_review_md(self, tmp_path):
+    def test_assignee_is_tbd_without_review_md(self, tmp_path):
         repo = tmp_path
         (repo / "PLAN.md").write_text(SIMPLE_PLAN, encoding="utf-8")
-        assignee = maint._pick_assignee(repo)
-        assert assignee == "GB"
+        assert maint._pick_assignee(repo) == "TBD"
 
-    def test_assignee_follows_team_stats_hint(self, tmp_path):
+    def test_assignee_is_tbd_even_with_team_stats_hint(self, tmp_path):
+        # MAINT tasks own builder-forbidden paths (scripts/**, hooks/**, PLAN.md), so no builder
+        # may take one regardless of the team_stats hint.
         repo = tmp_path
         (repo / "PLAN.md").write_text(SIMPLE_PLAN, encoding="utf-8")
         review = "\n".join(
@@ -355,8 +356,22 @@ class TestComposeMaintTask:
             for i in range(11)
         )
         (repo / "REVIEW.md").write_text(review, encoding="utf-8")
-        assignee = maint._pick_assignee(repo)
-        assert assignee in ("CX", "GB")
+        assert maint._pick_assignee(repo) == "TBD"
+
+    def test_validate_step_honours_builder_registry(self, tmp_path):
+        # Regression: the nightly audit validated without the registry, so every task assigned to a
+        # registry-only unit such as CX9 was reported illegal (2026-09-19..23).
+        import json
+        repo = tmp_path
+        (repo / "autopilot.json").write_text(json.dumps({"builders": {
+            "active": ["CX9"],
+            "defined": {"CX9": {"cli": "codex", "branch_suffix": "cx9", "worktree_suffix": "codex9",
+                                "briefing": "briefings/CODEX_BRIEFING.md"}},
+        }}), encoding="utf-8")
+        (repo / "PLAN.md").write_text(SIMPLE_PLAN.replace("**Assigned_To:** GB", "**Assigned_To:** CX9"),
+                                      encoding="utf-8")
+        result = maint._step_validate_plan(repo)
+        assert result.passed, result.detail
 
     def test_description_is_single_line_even_with_multiline_detail(self, tmp_path):
         repo = tmp_path
