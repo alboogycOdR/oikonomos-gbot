@@ -9906,12 +9906,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T00:00:00Z] [ORCH opus-4-8] UNBLOCKED → pending. The 22:43:00Z auto-block was a race: it recited the exact OWNERSHIP_CONFLICT that the 22:42:32Z widen (commit 62ccebe) had already resolved — ports.ts + packages/db/database.ts + packages/db/index.ts are now in Owned_Paths. Branch task/TASK-326-cx9 is dossier-only (territory-clean). Re-dispatch to CX9. Never co-dispatch with TASK-249 (both own infra/compose/**).
 - [2026-09-23T22:50:21Z] [ORCH] Duplicate session incident: the autopilot relaunched CX9 on this task at 22:44Z after ORCH unblocked it, and ORCH's manual dispatch at 22:46Z started a second CX9 session in the same worktree. ORCH stopped the 22:46Z session at about 22:50Z; the 22:44Z session continues. Uncommitted edits in the worktree may partly come from the stopped session. REVIEWER: review the full branch diff, not the surviving session's summary.
 - [2026-09-23T22:58:01Z] [SV:CX9] Implemented and committed production database readiness route and watchdog behavior; isolated tests are queued behind the global test DB mutex. NEXT: When the shared test-database mutex is released, run scripts/test-isolated.ps1 -Filter @oikonomos/control-api, then the required full scripts/test-isolated.ps1 suite and record results.
+- [2026-09-23T23:43:01Z] [SV:CX9] Implementation and task-specific validation are complete; remaining work is retaining and classifying recursive-suite results against master. NEXT: Run retained full isolated-suite summaries for this branch and master, classify every non-own-package failure, then submit needs_review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-23T22:58:01Z
+**Updated_At:** 2026-09-23T23:43:01Z
 
 ### TASK-331
 **Title:** Thread roster: title and one-line preview on GET /threads
