@@ -6,7 +6,7 @@ import { createDatabaseBackedDeps, type ControlApiDeps } from "./ports.js";
 
 const TOKEN = "health-route-test-token";
 const connectionString = process.env.DATABASE_URL;
-const integration = connectionString === undefined ? describe.skip : describe;
+const integrationIt = connectionString === undefined ? it.skip : it;
 
 describe("GET /health/ready", () => {
   it("returns a category-only 503 when the database cannot be reached", async () => {
@@ -39,7 +39,7 @@ describe("GET /health/ready", () => {
     }
   });
 
-  integration("uses the production database pool and leaves liveness database-free", async () => {
+  integrationIt("uses the production database pool and leaves liveness database-free", async () => {
     const app = buildApp(createDatabaseBackedDeps({ connectionString: connectionString! }), { authToken: TOKEN, logger: false });
     try {
       const [ready, live] = await Promise.all([
