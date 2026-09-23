@@ -971,6 +971,13 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         "/health": {
           get: { summary: "Service health and build revision", operationId: "health", responses: { "200": { description: "Running build" } } },
         },
+        "/health/ready": {
+          get: {
+            summary: "Database readiness for the local process supervisor",
+            operationId: "readiness",
+            responses: { "200": { description: "Database answered" }, "503": { description: "Database is unreachable or timed out" } },
+          },
+        },
         "/tasks": {
           ...(base.paths["/tasks"] as Record<string, unknown>),
           get: {
@@ -1105,6 +1112,14 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   // Deliberately public: liveness probes cannot carry an operator credential.
   app.get("/health", { config: { public: true } }, async (_request, reply) => {
     await reply.code(200).send({ status: "ok", buildSha });
+  });
+
+  // `/health` remains liveness-only; this public route is the DB readiness probe.
+  app.get("/health/ready", { config: { public: true } }, async (_request, reply) => {
+    const readiness = await deps.checkDatabaseReadiness?.() ?? { ready: false as const, category: "db_unreachable" as const };
+    await reply.code(readiness.ready ? 200 : 503).send(
+      readiness.ready ? { status: "ok" } : { status: "error", category: readiness.category },
+    );
   });
 
   registerTemplateRoutes(app, deps);
