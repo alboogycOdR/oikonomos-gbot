@@ -10139,7 +10139,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-339
 **Title:** Provenance block in every chat run's system prompt (both lanes)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** OpenBot comparison (deployment-wide provenance block appended by the deployment, not the bot package); TASK-306 (shared prompt assembly for both lanes); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10150,16 +10150,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A test through the same assembly path TASK-306 uses proves the block appears for both lanes, including for a role with empty instructions.
 - [ ] ADR-005 liveness: the test fails if the block is removed from assembly.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; every non-own-package failure classified against the master baseline in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-339-s5
+**Started_At:** 2026-09-23T22:44:48Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-23T22:44:48Z
 
 ### TASK-340
 **Title:** Gemini Steel lane: actionable element refs from snapshots
