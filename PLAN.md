@@ -9885,7 +9885,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-326
 **Title:** Watchdog: detect an unreachable database, not just open ports
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Incident 2026-09-22/23 (below); CLAUDE.md non-negotiable 3 (fail closed) and "Every mechanical control ships a liveness assertion"; docs/decisions/ADR-005-control-liveness.md; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9902,12 +9902,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-23T22:42:32Z] [ORCH] OWNERSHIP_CONFLICT resolved (decomposition gap): territory widened to services/control-api/src/ports.ts, packages/db/src/database.ts and packages/db/src/index.ts for a production-wired readiness port. No active task owns them; TASK-331/333/335 touch ports.ts or index.ts but all depend on this task.
+- [2026-09-23T22:43:00Z] [SV:CX9] Recorded preflight and ownership conflict in dossiers/TASK-326.md; no code changed.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:42:32Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: readiness SELECT 1 requires changes to services/control-api/src/ports.ts and packages/db exports, outside TASK-326 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-23T22:43:00Z
 
 ### TASK-331
 **Title:** Thread roster: title and one-line preview on GET /threads
