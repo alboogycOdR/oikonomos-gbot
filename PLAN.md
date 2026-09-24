@@ -10236,7 +10236,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-331 (GET /threads title, preview, lastMessageAt); memory: mobile is the primary client; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10247,16 +10247,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Model parsing handles present, absent and null fields (unit tests).
 - [ ] Widget tests show the title, preview and relative time, and the old rendering when the fields are absent.
 - [ ] flutter test passes for the touched files; Dart is outside pnpm -r, so say so in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-332-s5
+**Started_At:** 2026-09-24T11:28:05Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T11:28:05Z
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
