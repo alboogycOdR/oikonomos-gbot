@@ -31,6 +31,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm typecheck
 
   test:
@@ -84,8 +85,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Apply schema (approvals FKs the canaries seed against)
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/postgres/migrations/001_schema_v1.up.sql
+      - name: Apply schema and baseline seed
+        run: |
+          while IFS= read -r migration; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" || exit $?
+          done < <(find infra/postgres/migrations -maxdepth 1 -type f -name '*.up.sql' -print | LC_ALL=C sort)
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO roles (role_id, tenant_id, name, title) VALUES ('inbox-triage','basileia','Inbox Triage','Inbox Triage') ON CONFLICT (role_id) DO NOTHING"
+          node packages/db/dist/seedInboxTriage.js
+          (cd services/worker && node dist/registerCapabilities.js)
         env:
           DATABASE_URL: postgresql://oikonomos:oikonomos@localhost:5432/oikonomos_canaries
       - name: CAN-01..CAN-08 (CI-blocking)
