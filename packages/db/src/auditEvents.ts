@@ -178,6 +178,35 @@ export async function getAuditEventsForRun(
 }
 
 /**
+ * Returns the most recent event of a type, optionally scoped to a tenant.
+ * This is deliberately a read-only liveness primitive: consumers can judge
+ * when a recurring control last produced durable evidence without inferring
+ * it from process state or a queue schedule.
+ */
+export async function getLatestAuditEvent(
+  options: DatabaseOptions,
+  eventType: string,
+  tenantId?: string,
+): Promise<AuditEvent | null> {
+  const normalizedEventType = requireNonEmpty(eventType, "eventType");
+  const normalizedTenantId = tenantId === undefined ? undefined : requireNonEmpty(tenantId, "tenantId");
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<AuditEventRow>(
+      `SELECT event_id, tenant_id, run_id, at, actor, event_type, capability, tier, payload, evidence_uri
+       FROM audit_events
+       WHERE event_type = $1
+         AND ($2::text IS NULL OR tenant_id = $2)
+       ORDER BY at DESC, event_id DESC
+       LIMIT 1`,
+      [normalizedEventType, normalizedTenantId ?? null],
+    );
+    const row = result.rows[0];
+    return row === undefined ? null : toAuditEvent(row);
+  });
+}
+
+/**
  * Atomically reserves one project assignment handoff for a manager run.
  * The transaction advisory-locks the run before counting its persisted
  * assignment events, so independent MCP processes cannot over-admit.
@@ -260,6 +289,12 @@ if (import.meta.vitest) {
       await expect(
         getAuditEventsForRun({ connectionString: "postgres://x" }, "not-a-uuid"),
       ).rejects.toThrow(/UUID/);
+    });
+
+    it("rejects an empty event type before opening a pool", async () => {
+      await expect(
+        getLatestAuditEvent({ connectionString: "postgres://x" }, "  "),
+      ).rejects.toThrow(/eventType/);
     });
   });
 }
