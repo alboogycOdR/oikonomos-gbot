@@ -10315,7 +10315,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-341
 **Title:** Make master CI green: build before typecheck, full schema and seed for canaries
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** ORCH CI diagnosis 2026-09-24 (fresh-clone reproduction of master d783765); TASK-023 (8d0e05e added pnpm build to the test job); scripts/test-isolated.ps1 lines 132-146 (baseline seed)
@@ -10327,13 +10327,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] The canaries job applies every migration plus the baseline seed; in a fresh clone against a fresh pgvector:pg16 Postgres, the job's exact steps give evals-harness 13/13 files passing. Unset OIK_DEFAULT_ROLE_PROVIDER and GEMINI_API_KEY locally, since CI doesn't set them.
 - [ ] No job, step or check is removed, skipped, or made continue-on-error (liveness: the canaries still fail if a canary assertion is broken).
 - [ ] Test_Evidence quotes the fresh-clone command outputs.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-341-cx9
+**Started_At:** 2026-09-24T13:24:33Z
 **Progress_Notes:**
 - [2026-09-24T13:30:00Z] [ORCH opus-5.5] Filed after the owner asked why they get so many identical CI failure emails. Critical: take it immediately after TASK-338.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T13:30:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T13:24:33Z
