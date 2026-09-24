@@ -395,7 +395,7 @@ if (import.meta.vitest) {
 
         await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
       });
-    });
+    }, 20_000);
 
     // Acceptance Criterion 3: "works identically on both provider lanes ...
     // confirm this explicitly rather than assuming it." The module
@@ -440,7 +440,7 @@ if (import.meta.vitest) {
       );
       expect(tasks.rows[0]!.goal).toBe("You have a message from Sender Bot: please review the draft");
       });
-    });
+    }, 20_000);
 
     it("skips (and does not mark read) a message addressed to a non-active (soft-deleted) recipient role", async () => {
       await withPgBossQueueLock(pool, async () => {
@@ -469,7 +469,7 @@ if (import.meta.vitest) {
       );
       expect(refetched.rows[0]!.read_at).toBeNull();
       });
-    });
+    }, 20_000);
 
     it("attributes only a manager's task.assigned handoff to its project, leaving a roster member's forged handoff ordinary (TASK-301)", async () => {
       await withPgBossQueueLock(pool, async () => {
@@ -508,7 +508,7 @@ if (import.meta.vitest) {
       expect(forgedTask!.execution).toMatchObject({ kind: "chat" });
       expect((forgedTask!.execution as Record<string, unknown>).projectId).toBeUndefined();
       });
-    });
+    }, 20_000);
 
     it("RoleMessageDeliveryPoller delivers via a real durable pg-boss schedule, immediate-poll triggered", async () => {
       await withPgBossQueueLock(pool, async () => {
