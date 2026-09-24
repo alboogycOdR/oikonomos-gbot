@@ -10236,7 +10236,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-331 (GET /threads title, preview, lastMessageAt); memory: mobile is the primary client; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10251,12 +10251,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-24T11:28:05Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T11:33:54Z] [ORCH opus-5.5] S5's commit was rejected by territory-precommit because its first claim commit (5668c19) was a no-op; 194a6d9 claimed properly. ORCH committed S5's staged work unchanged as b2cd5b7 on task/TASK-332-s5. REVIEW HELD: owner asked 2026-09-24 to build the whole queue first and review everything in one batch at the end, so this stays needs_review until then.
+**Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart
+**Test_Evidence:** S5 claim: flutter test test/screens/roster_screen_test.dart 15/15; flutter analyze clean on touched lib files. Dart is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T11:28:05Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T11:33:54Z
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
