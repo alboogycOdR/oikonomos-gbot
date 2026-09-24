@@ -10487,7 +10487,7 @@ Exit status 2
 
 ### TASK-344
 **Title:** Fix the TASK-121 group-route test that fails on master (FreeLLMAPI routing returns 400)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-121 (group threads, FreeLLMAPI routing of unaddressed messages); ORCH review runs 2026-09-24 (it fails on master and every branch)
@@ -10502,9 +10502,10 @@ Exit status 2
 **Started_At:** 2026-09-24T17:01:19Z
 **Progress_Notes:**
 - [2026-09-24T16:05:00Z] [ORCH opus-5.5] Filed under the "master failures become fix tasks, never baseline" rule adopted today.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T17:13:44Z] [SV:CX9] Restored the isolated fixture's correct Claude fallback expectations after the harness scrubbed Gemini/default-provider environment configuration.
+**Artifacts:** services/control-api/src/chat.routes.test.ts, dossiers/TASK-344.md
+**Test_Evidence:** pnpm --filter @oikonomos/control-api typecheck and git diff --check passed. scripts/test-isolated.ps1 -Init -Filter @oikonomos/control-api, then two consecutive -Filter @oikonomos/control-api runs passed; chat.routes.test.ts 47 tests and the TASK-121 FreeLLMAPI route were green.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T17:01:19Z
+**Updated_At:** 2026-09-24T17:13:44Z
