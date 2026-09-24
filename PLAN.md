@@ -10665,12 +10665,13 @@ Exit status 2
 **Started_At:** 2026-09-24T21:33:01Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-24T21:48:01Z] [SV:CX9] Implemented and committed c4e3264: DB Auto-review mutators, injectable route port, new API routes/OpenAPI, tenant-route tests, and grant re-sync. Dossier records the implementation choice and stopping point. NEXT: Add the required real-Postgres route test that drives a broker enforcement decision, then run pnpm build, root pnpm typecheck, and the full isolated recursive suite.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T21:33:01Z
+**Updated_At:** 2026-09-24T21:48:01Z
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
