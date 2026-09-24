@@ -194,11 +194,21 @@ class ApiClient {
         .toList();
   }
 
-  Future<Role> createRole(String name, String description) async {
+  Future<Role> createRole(
+    String name,
+    String description, {
+    String? avatarColor,
+    String? avatarShape,
+  }) async {
     final json = await _request(
       'POST',
       '/roles',
-      body: {'name': name, 'description': description},
+      body: {
+        'name': name,
+        'description': description,
+        if (avatarColor != null) 'avatarColor': avatarColor,
+        if (avatarShape != null) 'avatarShape': avatarShape,
+      },
     );
     return Role.fromJson(json as Map<String, dynamic>);
   }

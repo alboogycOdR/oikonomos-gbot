@@ -31,6 +31,8 @@ void main() {
       MaterialApp(home: CreateBotScreen(apiClient: client)),
     );
 
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('create-bot-submit')));
     await tester.pumpAndSettle();
 
@@ -88,8 +90,38 @@ void main() {
         find.byKey(const Key('bot-name-field')),
         'Research Assistant',
       );
-      await tester.tap(find.byKey(const Key('color-swatch-2')));
-      await tester.tap(find.byKey(const Key('shape-roundedSquare')));
+      for (final color in [
+        'red',
+        'orange',
+        'amber',
+        'yellow',
+        'lime',
+        'green',
+        'teal',
+        'cyan',
+        'blue',
+        'indigo',
+        'violet',
+        'pink',
+      ]) {
+        expect(find.byKey(Key('color-swatch-$color')), findsOneWidget);
+      }
+      for (final shape in [
+        'circle',
+        'square',
+        'rounded',
+        'hexagon',
+        'diamond',
+        'star',
+        'triangle',
+        'teardrop',
+      ]) {
+        expect(find.byKey(Key('shape-$shape')), findsOneWidget);
+      }
+      await tester.tap(find.byKey(const Key('color-swatch-violet')));
+      await tester.tap(find.byKey(const Key('shape-hexagon')));
+      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('create-bot-submit')));
       await tester.pumpAndSettle();
 
@@ -99,6 +131,15 @@ void main() {
         (r) => r.url.path == '/roles',
       );
       expect(rolesRequest.method, 'POST');
+      expect(
+        jsonDecode((rolesRequest as http.Request).body),
+        {
+          'name': 'Research Assistant',
+          'description': '',
+          'avatarColor': 'violet',
+          'avatarShape': 'hexagon',
+        },
+      );
       final instructionsRequest = fake.requests.firstWhere(
         (r) => r.url.path == '/roles/role-new' && r.method == 'PATCH',
       ) as http.Request;
@@ -150,6 +191,8 @@ void main() {
       find.byKey(const Key('bot-name-field')),
       'Research Assistant',
     );
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('create-bot-submit')));
     await tester.pumpAndSettle();
 

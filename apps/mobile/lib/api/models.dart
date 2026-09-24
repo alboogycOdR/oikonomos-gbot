@@ -7,6 +7,38 @@
 /// nested `approval` object because that is what the server sends).
 library;
 
+/// Stable avatar tokens accepted by the API. Keeping these token strings (not
+/// their visual values) in the wire model lets older clients safely ignore
+/// newly added or malformed values.
+const avatarColorTokens = <String>[
+  'red',
+  'orange',
+  'amber',
+  'yellow',
+  'lime',
+  'green',
+  'teal',
+  'cyan',
+  'blue',
+  'indigo',
+  'violet',
+  'pink',
+];
+
+const avatarShapeTokens = <String>[
+  'circle',
+  'square',
+  'rounded',
+  'hexagon',
+  'diamond',
+  'star',
+  'triangle',
+  'teardrop',
+];
+
+String? _avatarToken(Object? value, List<String> tokens) =>
+    value is String && tokens.contains(value) ? value : null;
+
 class Role {
   const Role({
     required this.id,
@@ -15,6 +47,8 @@ class Role {
     required this.avatarSeed,
     this.title,
     this.instructions,
+    this.avatarColor,
+    this.avatarShape,
   });
 
   final String id;
@@ -28,6 +62,8 @@ class Role {
   /// Custom system-prompt material. Null means none configured; PATCH
   /// `/roles/:roleId` requires `instructions` and treats `""` as clear.
   final String? instructions;
+  final String? avatarColor;
+  final String? avatarShape;
 
   factory Role.fromJson(Map<String, dynamic> json) {
     return Role(
@@ -37,6 +73,8 @@ class Role {
       avatarSeed: json['avatarSeed'] as String,
       title: json['title'] as String?,
       instructions: json['instructions'] as String?,
+      avatarColor: _avatarToken(json['avatarColor'], avatarColorTokens),
+      avatarShape: _avatarToken(json['avatarShape'], avatarShapeTokens),
     );
   }
 }
@@ -153,12 +191,16 @@ class SingleThread extends ThreadSummary {
     super.lastMessageAt,
     super.unreadCount,
     super.pinnedAt,
+    this.avatarColor,
+    this.avatarShape,
   });
 
   final String roleId;
   final String botName;
   final String botDescription;
   final String avatarSeed;
+  final String? avatarColor;
+  final String? avatarShape;
 
   factory SingleThread.fromJson(Map<String, dynamic> json) {
     return SingleThread(
@@ -178,6 +220,8 @@ class SingleThread extends ThreadSummary {
           ? json['unreadCount'] as int
           : 0,
       pinnedAt: ThreadSummary._optString(json['pinnedAt']),
+      avatarColor: _avatarToken(json['avatarColor'], avatarColorTokens),
+      avatarShape: _avatarToken(json['avatarShape'], avatarShapeTokens),
     );
   }
 }

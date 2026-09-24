@@ -649,6 +649,8 @@ class ChatScreenState extends State<ChatScreen> {
             BotAvatar(
               seed: widget.bot.avatarSeed,
               name: widget.bot.botName,
+              avatarColor: widget.bot.avatarColor,
+              avatarShape: widget.bot.avatarShape,
               size: 28,
             ),
             const SizedBox(width: 8),
@@ -788,6 +790,8 @@ class ChatScreenState extends State<ChatScreen> {
                   handoff: handoff,
                   otherName: other?.name ?? otherId,
                   avatarSeed: other?.avatarSeed ?? otherId,
+                  avatarColor: other?.avatarColor,
+                  avatarShape: other?.avatarShape,
                   onTap: () => _showHandoff(handoff, other?.name ?? otherId),
                 );
               },
@@ -1073,11 +1077,15 @@ class _HandoffChip extends StatelessWidget {
       {required this.handoff,
       required this.otherName,
       required this.avatarSeed,
+      this.avatarColor,
+      this.avatarShape,
       required this.onTap});
 
   final RoleHandoff handoff;
   final String otherName;
   final String avatarSeed;
+  final String? avatarColor;
+  final String? avatarShape;
   final VoidCallback onTap;
 
   @override
@@ -1085,7 +1093,13 @@ class _HandoffChip extends StatelessWidget {
         padding: const EdgeInsets.only(right: 8),
         child: ActionChip(
           key: Key('handoff-chip-${handoff.id}'),
-          avatar: BotAvatar(seed: avatarSeed, name: otherName, size: 22),
+          avatar: BotAvatar(
+            seed: avatarSeed,
+            name: otherName,
+            avatarColor: avatarColor,
+            avatarShape: avatarShape,
+            size: 22,
+          ),
           label: Text('1 message with $otherName'),
           onPressed: onTap,
         ),
