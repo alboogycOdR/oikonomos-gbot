@@ -431,6 +431,29 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/threads/{id}/read": {
+        post: {
+          summary: "Mark a tenant-owned thread read",
+          operationId: "markThreadRead",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { messageAt: { type: "string", format: "date-time" } } } } } },
+          responses: { "200": { description: "Read marker stored" }, "404": { description: "No owned thread with that id" } },
+        },
+      },
+      "/threads/{id}/pin": {
+        put: {
+          summary: "Pin a tenant-owned thread",
+          operationId: "pinThread",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "200": { description: "Pin stored" }, "404": { description: "No owned thread with that id" } },
+        },
+        delete: {
+          summary: "Remove a tenant-owned thread pin",
+          operationId: "unpinThread",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "204": { description: "Pin removed" }, "404": { description: "No owned thread with that id" } },
+        },
+      },
       "/secret-requests": {
         get: {
           summary: "List pending secret requests (TASK-187, G-05b)",
@@ -525,6 +548,8 @@ export function getOpenApiDocument(): Record<string, unknown> {
               },
             },
             lastMessageAt: { type: "string", format: "date-time", nullable: true },
+            unreadCount: { type: "integer", minimum: 0 },
+            pinnedAt: { type: "string", format: "date-time", nullable: true },
             updatedAt: { type: "string", format: "date-time" },
           },
         },
