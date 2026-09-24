@@ -106,6 +106,20 @@ $taskName = "OIKONOMOS-ServiceWatchdog"
 $prod = [Environment]::GetEnvironmentVariable("DATABASE_URL", "User")
 if (-not $prod) { $prod = $env:DATABASE_URL }
 if (-not $prod) { throw "DATABASE_URL is not set (User scope or process)." }
+
+# 2026-09-24 (ORCH): scrub operator configuration from THIS process before any
+# node/pnpm child runs. Everything except DATABASE_URL used to pass through, so
+# OIK_DEFAULT_ROLE_PROVIDER=gemini + GEMINI_API_KEY routed provider-less test
+# roles onto the live Gemini lane (real paid calls, HTTP 402, 5s timeouts): ~22
+# worker failures that were really the operator's shell. Tests that need one of
+# these set it themselves. Process scope only; the User-scope values are untouched.
+$scrubPattern = '^(OIK_|OIKONOMOS_|GEMINI_|GOOGLE_API_KEY$|ANTHROPIC_|OPENAI_|OPENROUTER_|FREELLMAPI_|USD_TO_ZAR_RATE$)'
+$scrubbed = @(Get-ChildItem env: | Where-Object { $_.Name -match $scrubPattern } | ForEach-Object { $_.Name })
+foreach ($n in $scrubbed) { Remove-Item -Path "env:$n" -ErrorAction SilentlyContinue }
+# Liveness (ADR-005): fail if the scrub is inert, i.e. a matching variable survived it.
+$survivors = @(Get-ChildItem env: | Where-Object { $_.Name -match $scrubPattern })
+if ($survivors.Count -gt 0) { throw "[test-isolated] env scrub inert: $($survivors.Name -join ', ') still set" }
+Write-Host "[test-isolated] scrubbed $($scrubbed.Count) operator env var(s) from the test process"
 $uri = [Uri]$prod
 if ($uri.AbsolutePath -eq "/$testDb") { throw "DATABASE_URL already points at $testDb; refusing to guess the production name." }
 $testUrl = $prod.Substring(0, $prod.LastIndexOf("/")) + "/$testDb" + $uri.Query
