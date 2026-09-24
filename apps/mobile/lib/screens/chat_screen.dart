@@ -51,11 +51,17 @@ class ChatScreen extends StatefulWidget {
     required this.apiClient,
     required this.bot,
     this.filePicker = const ChannelFilePicker(),
+    this.markReadOnOpen = false,
   });
 
   final ApiClient apiClient;
   final SingleThread bot;
   final FilePickerPort filePicker;
+
+  /// The roster is the normal thread-entry point and opts into recording a
+  /// read marker. Keeping this opt-in preserves direct embedded uses of the
+  /// reusable chat surface that do not represent a viewer opening a thread.
+  final bool markReadOnOpen;
 
   @override
   State<ChatScreen> createState() => ChatScreenState();
@@ -110,6 +116,14 @@ class ChatScreenState extends State<ChatScreen> {
       const Duration(seconds: 5),
       (_) => _pollTakeover(),
     );
+  }
+
+  Future<void> _markThreadRead() async {
+    try {
+      await widget.apiClient.markThreadRead(widget.bot.id);
+    } catch (_) {
+      // The chat itself remains usable if read-marker support is unavailable.
+    }
   }
 
   /// Template status is informational only: §6.2 explicitly forbids
@@ -474,6 +488,11 @@ class ChatScreenState extends State<ChatScreen> {
         authHeaders: () => widget.apiClient.cookieHeaders,
         httpClient: widget.apiClient.httpClient,
       );
+      if (widget.markReadOnOpen) {
+        // Read markers are best-effort metadata: wait until the transcript
+        // request is complete so failure cannot interfere with opening chat.
+        unawaited(_markThreadRead());
+      }
     } on UnauthorizedError {
       if (!mounted) return;
       Navigator.of(context).pop();

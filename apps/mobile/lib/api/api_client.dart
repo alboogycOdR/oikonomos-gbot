@@ -136,6 +136,9 @@ class ApiClient {
           body: body == null ? null : jsonEncode(body),
         );
         break;
+      case 'DELETE':
+        response = await _client.delete(uri, headers: _headers(json: false));
+        break;
       default:
         throw ArgumentError('unsupported method $method');
     }
@@ -539,6 +542,25 @@ class ApiClient {
     return json
         .map((entry) => ThreadSummary.fromJson(entry as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Records that the authenticated viewer has opened a thread. The server
+  /// accepts an optional message cursor, but opening the mobile chat marks at
+  /// its current time so newly-arriving messages remain unread.
+  Future<void> markThreadRead(String threadId) async {
+    await _request('POST', '/threads/${_id(threadId)}/read');
+  }
+
+  /// Pins a thread for the authenticated viewer and returns its server time.
+  Future<String?> pinThread(String threadId) async {
+    final json = await _request('PUT', '/threads/${_id(threadId)}/pin')
+        as Map<String, dynamic>;
+    return json['pinnedAt'] as String?;
+  }
+
+  /// Removes the authenticated viewer's pin from a thread.
+  Future<void> unpinThread(String threadId) async {
+    await _request('DELETE', '/threads/${_id(threadId)}/pin');
   }
 
   Future<List<ThreadMessage>> listThreadMessages(
