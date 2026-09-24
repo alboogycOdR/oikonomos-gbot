@@ -10167,7 +10167,7 @@ Exit status 2
 
 ### TASK-335
 **Title:** Group routing: named fallback reasons and the only-holder rule
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (routing/classify.ts: five named fallback reasons, a system named in the message that exactly one bot can reach wins); services/control-api/src/ports.ts groupRoutingPrompt; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10186,14 +10186,14 @@ Exit status 2
 - [2026-09-24T17:47:35Z] [SV:CX9] Fixed all REWORK findings: explicit mentions now precede fallback shortcuts, email addresses no longer create off-roster mentions, and single-candidate fallback is audited once.
 **Artifacts:** services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, dossiers/TASK-335.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init -Filter @oikonomos/control-api passed; scripts/test-isolated.ps1 full recursive suite passed with no non-own-package failures; pnpm build and pnpm typecheck passed; git diff --check passed.
-**Review_Findings:** REWORK (ORCH opus-5.5, batch review). F1 BLOCKING, explicit mentions are overridden. services/worker/src/groupRouting.ts route() resolves @everyone and explicit @member mentions deterministically before any scoring, but routeGroupMessageWithFallback runs single_candidate, onlySystemHolder and hasOffRosterMention BEFORE calling route(). So '@Alice please check my gmail' routes to Bob when Bob is the only gmail holder, '@everyone ...gmail...' goes to one member, and '@Alice @Mallory' (Mallory off-roster) falls back to members[0] instead of Alice. FIX: apply the only-holder shortcut and all fallback classification ONLY to an unaddressed message, i.e. when there is no @everyone and no on-roster mention. Add tests: an explicit on-roster mention beats the only-holder rule; @everyone beats it; a mix of on- and off-roster mentions routes to the on-roster member with no fallback. F2 BLOCKING, email addresses trip off_roster. The hasOffRosterMention regex /@([\p{L}\p{N}_-]+)/ has no left boundary, so 'send it to jane@example.com' counts as an off-roster mention and falls back to the default bot. Require a start-of-string or non-word character before @ (match how groupRouting.ts mentionsIn parses mentions, and reuse its normalization rather than a second parser if you can), with a test. F3, minor: single_candidate audits on every message in a one-member group, including the deterministic first pass. Fine per spec, but confirm it's audited once per message, not twice (the deterministic pass plus the Tier-0 pass). The rest is good: named categories, UnparsedGroupRoutingScoreError, the word-boundary system-name match, the unconfident rule when every score is 0, and FREE_LLM_API-missing behaviour unchanged. Evidence required: ports.test.ts plus isolated control-api via scripts/test-isolated.ps1, pnpm build and pnpm typecheck exit 0.
+**Review_Findings:** APPROVED after rework (ORCH opus-5.5, batch). First pass: REWORK F1 (shortcuts overrode explicit @mentions and @everyone) and F2 (email addresses counted as off-roster mentions). Fixed: shortcuts apply only to unaddressed messages, and the mention regex requires a boundary before @, with tests. ORCH's independent run on 0357b69: build 0, typecheck 0, worker 371/0, control-api 382/1 (the TASK-121 test, fixed by TASK-344), db 297/0 plus an intermittent suite-level projects.ts afterAll FK failure. That file isn't in 335's territory; filed as TASK-345.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T17:47:35Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T18:00:44Z
 
 ### TASK-337
 **Title:** Sandbox reaper re-checks idleness before reaping and logs give-ups
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** OpenBot comparison (work/culler.ts: re-checks "used again" before acting, logs when it gives up); services/worker/src/sandboxReaper.ts; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10211,10 +10211,10 @@ Exit status 2
 - [2026-09-24T17:40:21Z] [SV:CX9] Atomic reaper claim, used-again skip logging, bounded categorized give-up logging, and same-sweep retry prevention committed as 7634019.
 **Artifacts:** packages/db/src/index.ts, packages/db/src/roleSandboxes.ts, packages/db/src/roleSandboxes.test.ts, services/worker/src/sandboxReaper.ts, services/worker/src/sandboxReaper.test.ts, dossiers/TASK-337.md
 **Test_Evidence:** pnpm db/worker typecheck passed; git diff --check passed; isolated worker suite passed 39 files, 373 tests, 1 skipped. Required isolated full recursive run: 18 packages passed; sole non-owned failure is master-baseline TASK-121 at control-api chat.routes.test.ts:1459, fixed on unmerged TASK-344 branch f581bed (Gemini expectation must be Claude after environment scrub).
-**Review_Findings:** —
+**Review_Findings:** APPROVED first pass (ORCH opus-5.5, batch). An atomic claim (a single UPDATE on state, sandbox, last_used_at < cutoff, setting Stopping) happens before destroy; a used-again skip is logged; release is bounded at 3 attempts with one categorized give-up per sweep; handled ids stop the same sweep re-reaping it as an orphan. ORCH's independent run on 7634019 (clean DB): build 0, typecheck 0, db 298/0, worker 373/0; control-api only the TASK-121 test (fixed by TASK-344, now merged). An earlier run was invalidated by a concurrent -Init. FOLLOW-UP NOTE, outside spec: resolveRoleSandbox trusts live provider state and never checks the DB 'Stopping' claim, so a turn that STARTS after the claim, while the release is in flight, can still get its sandbox destroyed. That's narrower than the original race; it's a candidate for a later task.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T17:40:21Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T18:00:43Z
 
 ### TASK-336
 **Title:** Guard Claude-lane Steel navigation (the Gemini lane was TASK-325)
@@ -10512,3 +10512,26 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-24T17:54:18Z
+
+### TASK-345
+**Title:** Test isolation: projects.ts real-Postgres suite afterAll FK failure (thread_members)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** ORCH batch review 2026-09-24 (intermittent suite-level failure in packages/db src/projects.ts, TASK-276 block, ~L1588); same class as TASK-342 (f)
+**Depends_On:** —
+**Owned_Paths:** packages/db/src/projects.ts
+**Description:** The in-source vitest block in packages/db/src/projects.ts ('@oikonomos/db projects — real Postgres CRUD + FK (TASK-276)') intermittently fails its afterAll, deleting threads while thread_members rows still reference them (thread_members_thread_id_fkey). Delete dependent thread_members, and any other FK children the fixtures create, first, scoped to the test's own tenant or ids. Change only the test block's cleanup, never production code.
+**Acceptance_Criteria:**
+- [ ] Three consecutive -Filter @oikonomos/db runs via scripts/test-isolated.ps1 (-Init before the first only) with the projects.ts suite green each time; quote the Tests lines.
+- [ ] Only the vitest block's cleanup changed (git diff shows no production-code change).
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T18:10:00Z] [ORCH opus-5.5] Filed from the batch review under the "master failures become fix tasks" rule.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T18:10:00Z

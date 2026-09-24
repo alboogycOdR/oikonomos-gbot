@@ -1936,3 +1936,5 @@ that drives the real production recording path.
 | TASK-334 | CX9 | rework (small) | flutter 208/208 clean; badge stale after returning from chat; no pinned indicator | first-pass: no | 2026-09-24T17:31:49Z |
 | TASK-344 | CX9 | approved | fixture expected env-leaked gemini; now claude; all suites green | first-pass: yes | 2026-09-24T17:54:19Z |
 | TASK-343 | CX9 | approved | $1,000 fixture scoped to its test; worker 371/0 | first-pass: yes | 2026-09-24T17:54:19Z |
+| TASK-337 | CX9 | approved | atomic claim-before-reap, bounded give-up; db 298/0 worker 373/0; follow-up: turn starting after claim | first-pass: yes | 2026-09-24T18:00:44Z |
+| TASK-335 | CX9 | approved (after rework) | mention precedence + email boundary fixed; control-api 382/1 (TASK-121, fixed) | first-pass: no | 2026-09-24T18:00:44Z |
