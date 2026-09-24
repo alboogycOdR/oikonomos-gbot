@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
+import '../api/models.dart';
 import '../charter/charter_template.dart';
 import '../widgets/avatar.dart';
 
@@ -13,17 +14,8 @@ import '../widgets/avatar.dart';
 /// (services/control-api/src/app.ts) grants only built-in capabilities
 /// server-side and accepts no tier/capability input from either client.
 ///
-/// The reference screenshots show a 12-swatch/8-shape avatar grid; this
-/// screen ships the reasonable subset [avatarPalette] (6 colors, already
-/// shared with `BotAvatar`/the web `Avatar.tsx`) x 2 shapes, noted here
-/// as the deliberate scoping choice. More importantly: `POST /roles`
-/// derives `avatarSeed` from the server-generated `roleId`
-/// (`serializeRole` in app.ts) and accepts no avatar field at all, so
-/// whatever the user picks here can only ever be a **preview** of what
-/// an initials-on-color avatar looks like — it is never sent to the
-/// server, and the roster reload afterwards shows the real
-/// (roleId-seeded) color/shape instead. The preview label below makes
-/// that explicit so it isn't mistaken for a persisted choice.
+/// The selection uses the API's stable 12-color/8-shape token contract and
+/// is persisted with the new role, rather than being a local preview only.
 class CreateBotScreen extends StatefulWidget {
   const CreateBotScreen({super.key, required this.apiClient});
 
@@ -36,7 +28,7 @@ class CreateBotScreen extends StatefulWidget {
 class CreateBotScreenState extends State<CreateBotScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  int _colorIndex = 0;
+  String _colorToken = avatarColorTokens.first;
   AvatarShape _shape = AvatarShape.circle;
   bool _submitting = false;
   String? _error;
@@ -63,6 +55,8 @@ class CreateBotScreenState extends State<CreateBotScreen> {
       final role = await widget.apiClient.createRole(
         name,
         _descriptionController.text.trim(),
+        avatarColor: _colorToken,
+        avatarShape: _shape.token,
       );
       await widget.apiClient.updateRoleInstructions(
         role.id,
@@ -95,17 +89,10 @@ class CreateBotScreenState extends State<CreateBotScreen> {
               child: BotAvatar(
                 key: const Key('avatar-preview'),
                 seed: 'preview',
-                color: avatarPalette[_colorIndex],
+                avatarColor: _colorToken,
                 name: _nameController.text.isEmpty ? '?' : _nameController.text,
                 shape: _shape,
                 size: 64,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Center(
-              child: Text(
-                'Preview only — the server assigns the real avatar color.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ),
             const SizedBox(height: 16),
@@ -131,16 +118,16 @@ class CreateBotScreenState extends State<CreateBotScreen> {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: List.generate(avatarPalette.length, (index) {
-                final selected = index == _colorIndex;
+              children: avatarColorTokens.map((token) {
+                final selected = token == _colorToken;
                 return GestureDetector(
-                  key: Key('color-swatch-$index'),
-                  onTap: () => setState(() => _colorIndex = index),
+                  key: Key('color-swatch-$token'),
+                  onTap: () => setState(() => _colorToken = token),
                   child: Container(
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: avatarPalette[index],
+                      color: avatarColorForToken(token),
                       shape: BoxShape.circle,
                       border: selected
                           ? Border.all(width: 3, color: Colors.black)
@@ -148,7 +135,7 @@ class CreateBotScreenState extends State<CreateBotScreen> {
                     ),
                   ),
                 );
-              }),
+              }).toList(),
             ),
             const SizedBox(height: 16),
             const Text('Shape'),
@@ -158,8 +145,8 @@ class CreateBotScreenState extends State<CreateBotScreen> {
               children: AvatarShape.values.map((shape) {
                 final selected = shape == _shape;
                 return ChoiceChip(
-                  key: Key('shape-${shape.name}'),
-                  label: Text(shape.name),
+                  key: Key('shape-${shape.token}'),
+                  label: Text(shape.token),
                   selected: selected,
                   onSelected: (_) => setState(() => _shape = shape),
                 );

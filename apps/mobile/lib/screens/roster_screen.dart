@@ -314,7 +314,12 @@ class _RosterScreenState extends State<RosterScreen> {
         final bot = _bots[index];
         return ListTile(
           key: Key('bot-tile-${bot.id}'),
-          leading: BotAvatar(seed: bot.avatarSeed, name: bot.botName),
+          leading: BotAvatar(
+            seed: bot.avatarSeed,
+            name: bot.botName,
+            avatarColor: bot.avatarColor,
+            avatarShape: bot.avatarShape,
+          ),
           title: Text(
             (bot.title != null && bot.title!.trim().isNotEmpty)
                 ? bot.title!
