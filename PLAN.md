@@ -10462,7 +10462,7 @@ Exit status 2
 
 ### TASK-343
 **Title:** Test isolation: subprocessProviders spend fixture must not overlap other suites
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-342 F2 classification (CX9, verified by ORCH 2026-09-24)
@@ -10477,12 +10477,13 @@ Exit status 2
 **Started_At:** 2026-09-24T16:54:56Z
 **Progress_Notes:**
 - [2026-09-24T14:55:00Z] [ORCH opus-5.5] Filed from TASK-342 F2.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T17:01:08Z] [SV:CX9] Scoped the $1,000 subprocess spend fixture to its test with finally cleanup; committed aa6defc.
+**Artifacts:** services/worker/src/subprocessProviders.test.ts, dossiers/TASK-343.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Init -Filter @oikonomos/worker, followed by two runs without -Init: all exited 0; subprocessProviders.test.ts 13 tests each run; zero budget.platform_exceeded. pnpm --filter @oikonomos/worker exec tsc --noEmit and git diff --check exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T16:54:56Z
+**Updated_At:** 2026-09-24T17:01:08Z
 
 ### TASK-344
 **Title:** Fix the TASK-121 group-route test that fails on master (FreeLLMAPI routing returns 400)
