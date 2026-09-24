@@ -71,6 +71,7 @@ import {
   listBotTemplates as dbListBotTemplates,
   listRoleMessages as dbListRoleMessages,
   updateRoleInstructions as dbUpdateRoleInstructions,
+  updateRoleAvatar as dbUpdateRoleAvatar,
   listRoutines as dbListRoutines,
   listRuns as dbListRuns,
   queryRunLatencyStats as dbQueryRunLatencyStats,
@@ -339,6 +340,7 @@ export interface ControlApiDeps {
   revokeRoleGrant(roleId: string, capabilityId: string): Promise<void>;
   listRoles(filter: { tenantId: string; status?: "active" | "hidden" | "deleted" }): Promise<Role[]>;
   updateRoleInstructions(roleId: string, instructions: string): Promise<Role | null>;
+  updateRoleAvatar?(input: { roleId: string; tenantId: string; avatarColor?: import("@oikonomos/db").AvatarColor; avatarShape?: import("@oikonomos/db").AvatarShape }): Promise<Role | null>;
   listRoleMessages(filter: { tenantId: string; toRoleId?: string; fromRoleId?: string }): Promise<RoleMessage[]>;
   listRoutines(filter: { tenantId: string; roleId?: string }): Promise<Routine[]>;
   setRoutinePaused?(routineId: string, tenantId: string, paused: boolean): Promise<Routine | null>;
@@ -795,6 +797,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       withDatabase(options, (database) => database.revokeRoleGrant(roleId, capabilityId)),
     listRoles: (filter) => dbListRoles(options, filter),
     updateRoleInstructions: (roleId, instructions) => dbUpdateRoleInstructions(options, roleId, instructions),
+    updateRoleAvatar: (input) => dbUpdateRoleAvatar(options, input),
     listRoleMessages: (filter) => dbListRoleMessages(options, filter),
     listRoutines: (filter) => dbListRoutines(options, filter),
     setRoutinePaused: async (routineId, tenantId, paused) => {
