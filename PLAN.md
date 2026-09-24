@@ -10027,12 +10027,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T15:31:20Z] [SV:CX9] Preflight complete; implementation blocked before edits by an unowned sendToRole propagation layer.
 - [2026-09-24T15:31:41Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved by ORCH: added services/workspace/src/mailbox.ts and mailbox.test.ts to Owned_Paths. No other active or pending task owns them. Extend SendToRoleInput with an optional sourceRunId and forward it to sendRoleMessage; keep existing callers working.
+- [2026-09-24T15:43:14Z] [SV:CX9] Implemented and committed hop-depth cap, SHA-256 source-run idempotency, category-only audits, migration 036, and Claude/Gemini run-ID propagation. Targeted isolated DB and worker suites pass; full recursive test-isolated run remains. NEXT: Run the required full recursive scripts/test-isolated.ps1 suite, classify any non-own-package failures, then submit for review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T15:31:41Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T15:43:14Z
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
