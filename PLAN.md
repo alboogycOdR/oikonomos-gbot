@@ -10464,7 +10464,7 @@ Exit status 2
 
 ### TASK-343
 **Title:** Test isolation: subprocessProviders spend fixture must not overlap other suites
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-342 F2 classification (CX9, verified by ORCH 2026-09-24)
@@ -10482,14 +10482,14 @@ Exit status 2
 - [2026-09-24T17:01:08Z] [SV:CX9] Scoped the $1,000 subprocess spend fixture to its test with finally cleanup; committed aa6defc.
 **Artifacts:** services/worker/src/subprocessProviders.test.ts, dossiers/TASK-343.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init -Filter @oikonomos/worker, followed by two runs without -Init: all exited 0; subprocessProviders.test.ts 13 tests each run; zero budget.platform_exceeded. pnpm --filter @oikonomos/worker exec tsc --noEmit and git diff --check exited 0.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first pass (ORCH opus-5.5, batch). The $1,000 fixture is now created and deleted inside its own test (finally). ORCH's independent run on aa6defc: build 0, typecheck 0, db 297/0, worker 371/0 with zero budget.platform_exceeded; control-api's only failure is the TASK-121 test fixed by TASK-344 (merged alongside).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T17:01:08Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T17:54:19Z
 
 ### TASK-344
 **Title:** Fix the TASK-121 group-route test that fails on master (FreeLLMAPI routing returns 400)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-121 (group threads, FreeLLMAPI routing of unaddressed messages); ORCH review runs 2026-09-24 (it fails on master and every branch)
@@ -10507,7 +10507,7 @@ Exit status 2
 - [2026-09-24T17:13:44Z] [SV:CX9] Restored the isolated fixture's correct Claude fallback expectations after the harness scrubbed Gemini/default-provider environment configuration.
 **Artifacts:** services/control-api/src/chat.routes.test.ts, dossiers/TASK-344.md
 **Test_Evidence:** pnpm --filter @oikonomos/control-api typecheck and git diff --check passed. scripts/test-isolated.ps1 -Init -Filter @oikonomos/control-api, then two consecutive -Filter @oikonomos/control-api runs passed; chat.routes.test.ts 47 tests and the TASK-121 FreeLLMAPI route were green.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first pass (ORCH opus-5.5, batch). Root cause: TASK-284 made this providerless fixture expect Gemini, which only held while the operator's OIK_DEFAULT_ROLE_PROVIDER=gemini leaked into tests. With the env scrubbed, the runtime correctly falls back to Claude. The FreeLLMAPI routing assertions (scoring, 3 prompts, spend, selected recipient) are kept. ORCH's independent run on f581bed: build 0, typecheck 0, db 297/0, worker 371/0, control-api 371/0. Suggestion: pin provider explicitly in the fixture so it can't drift with env defaults again.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T17:13:44Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T17:54:18Z
