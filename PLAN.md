@@ -10346,7 +10346,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-342
 **Title:** Test isolation: stop leaked spend and pg-boss races from failing the worker suite
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** ORCH worker-suite diagnosis 2026-09-24 (master 2ac38a4, isolated DB); ADR-005 (liveness)
@@ -10357,13 +10357,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] Running spendReservations.test.ts leaves zero new spend_records rows (proved by a count before and after, in Test_Evidence).
 - [ ] Full recursive suite via scripts/test-isolated.ps1 twice in a row with -Init only before the first run: zero budget.platform_exceeded, zero "Queue worker.run-execution does not exist" and zero thread_members FK errors.
 - [ ] Every remaining failure is classified in Test_Evidence, with no bare "baseline" label: each gets a named cause.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-342-cx9
+**Started_At:** 2026-09-24T14:15:16Z
 **Progress_Notes:**
 - [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T14:20:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T14:15:16Z
