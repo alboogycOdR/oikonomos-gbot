@@ -10539,7 +10539,7 @@ Exit status 2
 
 ### TASK-346
 **Title:** Test isolation: roles.test backfill-guard test is intermittent (migration deadlock)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** ORCH review runs 2026-09-24: packages/db src/roles.test.ts 'backfill guard: a role_grants row referencing an unknown role_id, present BEFORE migration 004 runs, is backfilled rather than erroring' (TASK-084) failed in roughly 1 of 3 db runs on master and branches; CX9 observed a migration-backfill deadlock
@@ -10553,9 +10553,10 @@ Exit status 2
 **Started_At:** 2026-09-24T18:13:18Z
 **Progress_Notes:**
 - [2026-09-24T18:20:00Z] [ORCH opus-5.5] Filed under the "master failures become fix tasks" rule.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T18:23:01Z] [SV:CX9] Isolated migration-004 backfill replay in a per-test schema, eliminating shared FK DDL deadlocks; committed as 686b28d.
+**Artifacts:** packages/db/src/roles.test.ts, dossiers/TASK-346.md
+**Test_Evidence:** pnpm --filter @oikonomos/db exec tsc --noEmit and git diff --check passed. scripts/test-isolated.ps1 -Init -Filter @oikonomos/db plus four consecutive non-init DB runs all exited 0; each showed roles.test.ts 27 tests green and 298 passed, 2 skipped.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T18:13:18Z
+**Updated_At:** 2026-09-24T18:23:01Z
