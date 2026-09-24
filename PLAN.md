@@ -10315,7 +10315,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-341
 **Title:** Make master CI green: build before typecheck, full schema and seed for canaries
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** ORCH CI diagnosis 2026-09-24 (fresh-clone reproduction of master d783765); TASK-023 (8d0e05e added pnpm build to the test job); scripts/test-isolated.ps1 lines 132-146 (baseline seed)
@@ -10334,7 +10334,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T13:37:42Z] [SV:CX9] CI typecheck now builds first; canaries apply all sorted migrations and run the required role, inbox, and capability seeds.
 **Artifacts:** .github/workflows/ci.yml, dossiers/TASK-341.md
 **Test_Evidence:** Fresh clone: pnpm install --frozen-lockfile, pnpm build, and pnpm typecheck completed without errors. Disposable pgvector PostgreSQL: migrations 001-033 + inbox-triage seed + seedInboxTriage.js + registerCapabilities.js; pnpm canaries passed 13/13 files, 19/19 tests. Bash migration-loop syntax and git diff --check passed.
-**Review_Findings:** —
+**Review_Findings:** APPROVED (ORCH opus-5.5). Territory: ci.yml plus the dossier only. The diff matches ORCH's independent fresh-clone diagnosis, which reproduced these exact steps (all migrations, role, seedInboxTriage, registerCapabilities) at 13/13 files and 19/19 tests, plus build-then-typecheck exiting 0. No job or step was removed or softened. Final proof is the next GitHub CI run on master.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T13:37:42Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T13:38:00Z
