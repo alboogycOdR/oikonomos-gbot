@@ -10115,7 +10115,7 @@ Exit status 2
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (routines: one notice on the first failure, switch-off after ten consecutive failures, separate from queue retries); Addendum F section 3.4 (missed fires); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10131,12 +10131,13 @@ Exit status 2
 **Started_At:** 2026-09-24T15:59:28Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T16:11:20Z] [SV:CX9] Implemented routine fatigue notices and ten-failure pause; committed 610ac02 with verification recorded in cdb2508.
+**Artifacts:** packages/db/src/routines.ts, packages/db/src/routines.test.ts, packages/db/src/index.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, dossiers/TASK-329.md
+**Test_Evidence:** pnpm --filter @oikonomos/db build and pnpm --filter @oikonomos/worker exec tsc --noEmit passed. Isolated DB suite: 45 files/295 tests passed, 2 skipped; only pre-existing out-of-territory projects.ts:1588 thread_members FK cleanup failure. Isolated worker suite: TASK-329 test passed; one unrelated intermittent pg-boss queue-purge race in TASK-247 DST test. Full scripts/test-isolated.ps1 stopped at the same DB baseline cleanup failure; git diff --check passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T15:59:28Z
+**Updated_At:** 2026-09-24T16:11:20Z
 
 ### TASK-330
 **Title:** Routine sweep liveness: prove the routine poller is alive
