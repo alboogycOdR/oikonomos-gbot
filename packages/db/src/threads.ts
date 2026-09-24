@@ -21,6 +21,15 @@ export interface Thread {
   title: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Present when loaded through the roster listing query (TASK-331). */
+  preview?: ThreadPreview | null;
+  /** Timestamp of the message represented by `preview`, or null when empty. */
+  lastMessageAt?: Date | null;
+}
+
+export interface ThreadPreview {
+  text: string;
+  authorKind: "user" | "bot" | "system";
 }
 
 export interface NewGroupThread {
@@ -35,6 +44,10 @@ export interface GroupThread {
   createdAt: Date;
   updatedAt: Date;
   memberRoleIds: string[];
+  /** Present when loaded through the roster listing query (TASK-331). */
+  preview?: ThreadPreview | null;
+  /** Timestamp of the message represented by `preview`, or null when empty. */
+  lastMessageAt?: Date | null;
 }
 
 export interface ThreadMember {
@@ -49,6 +62,9 @@ interface ThreadRow extends QueryResultRow {
   title: string | null;
   created_at: Date;
   updated_at: Date;
+  preview_text?: string | null;
+  preview_author_kind?: ThreadPreview["authorKind"] | null;
+  last_message_at?: Date | null;
 }
 
 interface ThreadMemberRow extends QueryResultRow {
@@ -76,12 +92,19 @@ function toThread(row: ThreadRow): Thread {
     // a string if one is ever encountered through this module.
     throw new Error(`Thread ${row.id} has no role_id (group threads are not yet supported by this module).`);
   }
+  const preview = row.preview_text === undefined
+    ? undefined
+    : row.preview_text === null
+      ? null
+      : { text: row.preview_text, authorKind: row.preview_author_kind! };
   return {
     id: row.id,
     roleId: row.role_id,
     title: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(preview === undefined ? {} : { preview }),
+    ...(row.last_message_at === undefined ? {} : { lastMessageAt: row.last_message_at }),
   };
 }
 
@@ -90,12 +113,19 @@ function toThreadMember(row: ThreadMemberRow): ThreadMember {
 }
 
 function toGroupThread(row: ThreadRow, memberRoleIds: string[]): GroupThread {
+  const preview = row.preview_text === undefined
+    ? undefined
+    : row.preview_text === null
+      ? null
+      : { text: row.preview_text, authorKind: row.preview_author_kind! };
   return {
     id: row.id,
     title: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     memberRoleIds,
+    ...(preview === undefined ? {} : { preview }),
+    ...(row.last_message_at === undefined ? {} : { lastMessageAt: row.last_message_at }),
   };
 }
 
@@ -180,10 +210,35 @@ export async function listThreads(options: DatabaseOptions): Promise<Thread[]> {
 export async function listAllThreadsWithMembers(options: DatabaseOptions): Promise<Array<Thread | GroupThread>> {
   return withPool(options, async (pool) => {
     const result = await pool.query<ThreadRow & { member_role_ids: string[] | null }>(
-      `SELECT ${qualifiedThreadColumns}, array_remove(array_agg(thread_members.role_id ORDER BY thread_members.created_at ASC, thread_members.role_id ASC), NULL) AS member_role_ids
+      `SELECT threads.id, threads.role_id,
+              members.member_role_ids,
+              COALESCE(threads.title, first_user.derived_title) AS title,
+              threads.created_at, threads.updated_at,
+              latest.preview_text,
+              latest.preview_author_kind,
+              latest.last_message_at
        FROM threads
-       LEFT JOIN thread_members ON thread_members.thread_id = threads.id
-       GROUP BY threads.id
+       LEFT JOIN LATERAL (
+         SELECT array_agg(thread_members.role_id ORDER BY thread_members.created_at ASC, thread_members.role_id ASC) AS member_role_ids
+         FROM thread_members
+         WHERE thread_members.thread_id = threads.id
+       ) members ON true
+       LEFT JOIN LATERAL (
+         SELECT NULLIF(array_to_string((regexp_split_to_array(regexp_replace(trim(messages.body), '\\s+', ' ', 'g'), '\\s+'))[1:6], ' '), '') AS derived_title
+         FROM messages
+         WHERE messages.thread_id = threads.id AND messages.role = 'user'
+         ORDER BY messages.created_at ASC, messages.id ASC
+         LIMIT 1
+       ) first_user ON true
+       LEFT JOIN LATERAL (
+         SELECT left(regexp_replace(trim(messages.body), '\\s+', ' ', 'g'), 120) AS preview_text,
+                messages.role AS preview_author_kind,
+                messages.created_at AS last_message_at
+         FROM messages
+         WHERE messages.thread_id = threads.id
+         ORDER BY messages.created_at DESC, messages.id DESC
+         LIMIT 1
+       ) latest ON true
        ORDER BY threads.updated_at DESC, threads.id DESC`,
     );
     return result.rows.map((row) => row.role_id === null

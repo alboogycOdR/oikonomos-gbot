@@ -11,6 +11,7 @@ import {
   createThread,
   defaultPoolConfig,
   getOrCreateThreadForRole,
+  insertMessage,
   getThreadsForRole,
   listThreadMembers,
   listAllThreadsWithMembers,
@@ -177,6 +178,47 @@ integration("packages/db threads — migration + CRUD (TASK-105)", () => {
     const second = await getOrCreateThreadForRole({ connectionString: connectionString! }, { roleId, title: "ignored" });
     expect(second.id).toBe(first.id);
     expect(second.title).toBe(first.title);
+  });
+
+  it("derives roster titles and latest-message previews in the listing query (TASK-331)", async () => {
+    const rosterRoleId = "task-331-threads-roster-role";
+    const titledRoleId = "task-331-threads-titled-role";
+    async function removeRosterFixtures(): Promise<void> {
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1))", [[rosterRoleId, titledRoleId]]);
+      await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1)", [[rosterRoleId, titledRoleId]]);
+      await pool.query("DELETE FROM threads WHERE role_id = ANY($1)", [[rosterRoleId, titledRoleId]]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [[rosterRoleId, titledRoleId]]);
+    }
+    await removeRosterFixtures();
+    try {
+      await createRole({ connectionString: connectionString! }, { roleId: rosterRoleId, tenantId, name: "Roster Bot", title: "Roster Bot" });
+      await createRole({ connectionString: connectionString! }, { roleId: titledRoleId, tenantId, name: "Titled Bot", title: "Titled Bot" });
+      const rosterThread = await createThread({ connectionString: connectionString! }, { roleId: rosterRoleId });
+      const titledThread = await createThread({ connectionString: connectionString! }, { roleId: titledRoleId, title: "Stored title wins" });
+      const firstUser = await insertMessage(
+        { connectionString: connectionString! },
+        { threadId: rosterThread.id, role: "user", body: "  First title should keep only six words today  " },
+      );
+      const latest = await insertMessage(
+        { connectionString: connectionString! },
+        { threadId: rosterThread.id, role: "bot", body: "  Latest\n  bot\tupdate  " },
+      );
+
+      const roster = await listAllThreadsWithMembers({ connectionString: connectionString! });
+      expect(roster.find((thread) => thread.id === rosterThread.id)).toEqual(expect.objectContaining({
+        title: "First title should keep only six",
+        preview: { text: "Latest bot update", authorKind: "bot" },
+        lastMessageAt: latest.createdAt,
+      }));
+      expect(roster.find((thread) => thread.id === titledThread.id)).toEqual(expect.objectContaining({
+        title: "Stored title wins",
+        preview: null,
+        lastMessageAt: null,
+      }));
+      expect(firstUser.createdAt).toBeInstanceOf(Date);
+    } finally {
+      await removeRosterFixtures();
+    }
   });
 
   it("creates group threads atomically and lists both thread shapes", async () => {
