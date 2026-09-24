@@ -219,6 +219,45 @@ describe("group routing fallback evidence and system holders (TASK-335)", () => 
     expect(audits).toEqual([]);
   });
 
+  it("lets an explicit roster mention beat the only-holder shortcut", async () => {
+    const { result, audits, scorer } = await routeWith({
+      message: "@Alpha please check Gmail",
+      grantsByRoleId: new Map([["beta", [{ roleId: "beta", capabilityId: "gmail.send", maxTier: "T1_draft", constraints: {} }]]]),
+    });
+    expect(result).toMatchObject({ recipients: [members[0]], reason: "mentioned" });
+    expect(scorer).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it("lets @everyone beat the only-holder shortcut", async () => {
+    const { result, audits, scorer } = await routeWith({
+      message: "@everyone please check Gmail",
+      grantsByRoleId: new Map([["beta", [{ roleId: "beta", capabilityId: "gmail.send", maxTier: "T1_draft", constraints: {} }]]]),
+    });
+    expect(result).toMatchObject({ recipients: members, reason: "everyone" });
+    expect(scorer).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it("routes an on-roster mention despite a simultaneous off-roster mention", async () => {
+    const { result, audits, scorer } = await routeWith({ message: "@Alpha @Mallory please help" });
+    expect(result).toMatchObject({ recipients: [members[0]], reason: "mentioned" });
+    expect(scorer).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it("does not interpret an email address as an off-roster mention", async () => {
+    const { result, audits, scorer } = await routeWith({ message: "Send it to jane@example.com" });
+    expect(result).toMatchObject({ recipients: [members[0]], reason: "scored" });
+    expect(scorer).toHaveBeenCalledTimes(2);
+    expect(audits).toEqual([]);
+  });
+
+  it("audits a single-candidate fallback exactly once", async () => {
+    const { audits } = await routeWith({ members: [members[0]!] });
+    expect(audits).toEqual(["single_candidate"]);
+  });
+
   it("does not apply the system-holder shortcut when two members hold the grant", async () => {
     const grant = { capabilityId: "gmail.send", maxTier: "T1_draft" as const, constraints: {} };
     const { result, audits, scorer } = await routeWith({

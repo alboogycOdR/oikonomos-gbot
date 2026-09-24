@@ -245,12 +245,17 @@ export async function routeGroupMessageWithFallback(
     return { recipients: [options.members[0]!], reason: "scored" };
   };
 
-  if (options.members.length === 1) return defaultRoute("single_candidate");
+  // `route` owns deterministic mention routing. These shortcuts must only
+  // apply to unaddressed messages, otherwise a capability holder could
+  // override an explicit recipient (or @everyone).
+  if (!hasExplicitRosterRoute(message, options.members)) {
+    if (options.members.length === 1) return defaultRoute("single_candidate");
 
-  const systemHolder = onlySystemHolder(message, options.members, options.grantsByRoleId);
-  if (systemHolder !== null) return { recipients: [systemHolder], reason: "mentioned" };
+    const systemHolder = onlySystemHolder(message, options.members, options.grantsByRoleId);
+    if (systemHolder !== null) return { recipients: [systemHolder], reason: "mentioned" };
 
-  if (hasOffRosterMention(message, options.members)) return defaultRoute("off_roster");
+    if (hasOffRosterMention(message, options.members)) return defaultRoute("off_roster");
+  }
 
   const scores: number[] = [];
   try {
@@ -1111,8 +1116,24 @@ function onlySystemHolder(
 }
 
 function hasOffRosterMention(message: string, members: readonly GroupRoute["recipients"][number][]): boolean {
-  const mentions = [...message.matchAll(/@([\p{L}\p{N}_-]+)/gu)].map((match) => normalizeRoutingName(match[1]!));
+  const mentions = routingMentions(message);
   return mentions.some((mention) => mention !== "everyone" && !members.some((member) => normalizeRoutingName(member.name) === mention));
+}
+
+function hasExplicitRosterRoute(message: string, members: readonly GroupRoute["recipients"][number][]): boolean {
+  const mentions = routingMentions(message);
+  return mentions.includes("everyone") || mentions.some((mention) =>
+    members.some((member) => normalizeRoutingName(member.name) === mention),
+  );
+}
+
+/**
+ * Parse standalone @mentions only. The leading boundary deliberately keeps
+ * an email address such as jane@example.com from becoming @example.
+ */
+function routingMentions(message: string): string[] {
+  return [...message.matchAll(/(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}_-]+)/gu)]
+    .map((match) => normalizeRoutingName(match[1]!));
 }
 
 function systemNamesForCapability(capabilityId: string): readonly string[] {
