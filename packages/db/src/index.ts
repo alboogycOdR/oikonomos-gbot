@@ -1,6 +1,8 @@
 export {
   Database,
+  checkDatabaseReadiness,
   defaultPoolConfig,
+  type DatabaseReadiness,
   type DatabaseOptions,
 } from "./database.js";
 export {

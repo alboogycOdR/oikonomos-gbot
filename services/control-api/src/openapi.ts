@@ -16,6 +16,16 @@ export function getOpenApiDocument(): Record<string, unknown> {
         "Tasks, runs, approvals and evidence — the only surface that talks to the DB (OIK-084). Telegram and other clients consume this API, never packages/db directly.",
     },
     paths: {
+      "/health/ready": {
+        get: {
+          summary: "Database readiness for the local process supervisor",
+          operationId: "readiness",
+          responses: {
+            "200": { description: "Database answered" },
+            "503": { description: "Database is unreachable or timed out" },
+          },
+        },
+      },
       "/projects": {
         post: {
           summary: "Create a project: one group thread, a roster of at most 6, at most one manager, and the charter, in one transaction (TASK-304, spec §9.1)",

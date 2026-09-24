@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   Database,
+  checkDatabaseReadiness,
   createTask as dbCreateTask,
   createTaskExecutionRun as dbCreateTaskExecutionRun,
   createRoutine as dbCreateRoutine,
@@ -100,6 +101,7 @@ import {
   type AuditEvent,
   type BotTemplate,
   type Capability,
+  type DatabaseReadiness,
   type DatabaseOptions,
   type NewTask,
   type TaskExecution,
@@ -221,6 +223,8 @@ export interface ProjectPorts {
 }
 
 export interface ControlApiDeps {
+  /** TASK-326: category-only readiness for the public supervisor probe. */
+  checkDatabaseReadiness?(): Promise<DatabaseReadiness>;
   /** TASK-304: project workspace routes; `501` when absent. */
   projects?: ProjectPorts;
   createTask(input: NewTask): Promise<Task>;
@@ -687,6 +691,7 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     pushTransport,
   });
   return {
+    checkDatabaseReadiness: () => checkDatabaseReadiness(options),
     createTask: (input) => dbCreateTask(options, input),
     submitTaskExecution,
     createRoutine: async (input) => dbCreateRoutine(options, input),

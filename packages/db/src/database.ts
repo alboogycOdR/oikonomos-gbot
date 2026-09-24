@@ -25,6 +25,11 @@ export interface DatabaseOptions {
   poolConfig?: Partial<typeof defaultPoolConfig>;
 }
 
+/** Category-only result intended for health endpoints and process supervisors. */
+export type DatabaseReadiness =
+  | { readonly ready: true }
+  | { readonly ready: false; readonly category: "db_unreachable" | "db_timeout" };
+
 /**
  * One Pool per (connectionString, poolConfig) identity. Accessor functions
  * go through `withPool` so a request-scoped `DatabaseOptions` value — or any
@@ -76,6 +81,39 @@ export async function withPool<T>(
   fn: (pool: Pool) => Promise<T>,
 ): Promise<T> {
   return fn(getSharedPool(options));
+}
+
+/**
+ * Exercises the application's shared pool without exposing its connection
+ * configuration. The race covers both a blocked pool checkout and a query
+ * that has reached PostgreSQL but does not complete promptly.
+ */
+export async function checkDatabaseReadiness(
+  options: DatabaseOptions,
+  timeoutMs = 3_000,
+): Promise<DatabaseReadiness> {
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error("database readiness timed out"));
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([
+      withPool(options, async (pool) => { await pool.query("SELECT 1"); }),
+      timeout,
+    ]);
+    return { ready: true };
+  } catch {
+    return timedOut
+      ? { ready: false, category: "db_timeout" }
+      : { ready: false, category: "db_unreachable" };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export async function closeSharedPools(): Promise<void> {
