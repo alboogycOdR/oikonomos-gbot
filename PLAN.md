@@ -10515,7 +10515,7 @@ Exit status 2
 
 ### TASK-345
 **Title:** Test isolation: projects.ts real-Postgres suite afterAll FK failure (thread_members)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** ORCH batch review 2026-09-24 (intermittent suite-level failure in packages/db src/projects.ts, TASK-276 block, ~L1588); same class as TASK-342 (f)
@@ -10529,9 +10529,10 @@ Exit status 2
 **Started_At:** 2026-09-24T18:00:55Z
 **Progress_Notes:**
 - [2026-09-24T18:10:00Z] [ORCH opus-5.5] Filed from the batch review under the "master failures become fix tasks" rule.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T18:07:01Z] [SV:CX9] Cleanup-only FK ordering fix committed; projects.ts suite passed all three isolated DB runs.
+**Artifacts:** packages/db/src/projects.ts, dossiers/TASK-345.md
+**Test_Evidence:** pnpm --filter @oikonomos/db exec tsc --noEmit and git diff --check passed. Three scripts/test-isolated.ps1 DB runs showed src/projects.ts (14 tests) green each time; one full run: 298 passed, 2 skipped. Two runs had unrelated roles.test.ts migration-backfill deadlocks, documented in dossier.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T18:00:55Z
+**Updated_At:** 2026-09-24T18:07:01Z
