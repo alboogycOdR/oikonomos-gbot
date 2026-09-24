@@ -1933,3 +1933,4 @@ that drives the real production recording path.
 | TASK-329 | CX9 | approved (after rework) | logic correct; F1 pg-boss race + F2 afterAll FK fixed; worker 370/0 x3; noted 60s->20s timeout risk on TASK-305 test | first-pass: no | 2026-09-24T16:30:08Z |
 | TASK-330 | CX9 | approved | counts-only sweep + stale helper; build/typecheck 0, db 297/0, worker 371/0 x2 | first-pass: yes | 2026-09-24T16:41:19Z |
 | TASK-335 | CX9 | rework | shortcuts run before explicit @mention/@everyone (override); email addresses trip off_roster | first-pass: no | 2026-09-24T17:30:42Z |
+| TASK-334 | CX9 | rework (small) | flutter 208/208 clean; badge stale after returning from chat; no pinned indicator | first-pass: no | 2026-09-24T17:31:49Z |
