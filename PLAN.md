@@ -10649,11 +10649,11 @@ Exit status 2
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 7 (the L2 reviewer MODEL is deferred; this is NOT that); owner decision 2026-09-24: Auto-review = UI over existing approvals; packages/db/src/requireApprovalRules.ts (TASK-084, Addendum F 5.4; enforced by the broker via TASK-086)
-**Depends_On:** TASK-347
+**Depends_On:** TASK-347, TASK-360
 **Owned_Paths:** packages/db/src/requireApprovalRules.ts, packages/db/src/requireApprovalRules.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/autoReview.routes.test.ts, services/control-api/src/index.ts, services/control-api/src/brokerHttpRoute.ts, services/control-api/src/brokerHttpRoute.test.ts
 **Description:** Grok Bot's per-bot 'Auto-review: require approval for risky shell, MCP, and computer actions' maps onto our existing Require-Approval rules, which the broker already enforces. Do NOT touch packages/broker or packages/policy (protected); data and API only. Add GET /roles/:roleId/auto-review -> {enabled, rules} and PUT /roles/:roleId/auto-review {enabled}. Enabling creates or re-enables one role-scoped rule per granted capability whose default tier is above T0, with created_by='auto-review'; disabling disables exactly those rules and never touches rules created any other way. Add GET/POST/DELETE /roles/:roleId/review-rules for the Rules page (list all of the role's rules; add one for a capability; remove or disable one). Add the db functions needed (set enabled, list by role). Cover grants added AFTER Auto-review is on, either by re-syncing on grant or by evaluating at GET/PUT time, and document the choice in the dossier. Tenant ownership on every route.
 **Acceptance_Criteria:**
@@ -10671,12 +10671,13 @@ Exit status 2
 - [2026-09-24T22:08:01Z] [SV:CX9] Committed production Auto-review port wiring in 134bd13; dossier records the remaining live-broker composition gap.
 - [2026-09-25T00:00:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve), blocker VERIFIED not rubber-stamped. Confirmed directly: `getRequireApprovalRules` is an OPTIONAL BrokerDependency port (packages/broker/src/index.ts:164) that defaults to `[]` at index.ts:739 when unsupplied, and `registry.brokerPorts()` (capabilityRegistry.ts:172) returns only getCapability|getRoleGrant|isCapabilityDeclaredDisabled — it does NOT include getRequireApprovalRules. Neither production broker construction site (brokerHttpRoute.ts:176, chatRunDriver.ts:1733) supplies the port, so require-approval rules — including Auto-review rules — currently do NOT affect any live broker decision. CX9's blocker is correct and correctly localized: the LIVENESS AC needs the port supplied at brokerHttpRoute.ts (the ADR-001 PreToolUse enforcement path). No packages/broker edit required — the optional port already exists; 350 only supplies it, reading the existing DB rules. brokerHttpRoute.ts + .test.ts are referenced only by done/merged tasks (TASK-197 and the brokerToken relocation), unowned by any active task, not a protected path, not firewalled. Re-carved both into Owned_Paths. Resume on task/TASK-350-cx9 from 134bd13 — do NOT re-branch. NEXT: supply getRequireApprovalRules into BrokerDependencies at brokerHttpRoute.ts reading the role's rules from DB; add/complete the real-Postgres LIVENESS test that flips a real T1 enforcement decision with Auto-review ON vs OFF; then pnpm build + root typecheck + full isolated recursive suite in the FOREGROUND.
 - [2026-09-24T22:18:01Z] [SV:CX9] Wired production broker rule reads in a971fbc; the required T1 liveness proof is blocked by protected broker enforcement configuration.
+- [2026-09-24T22:21:59Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved: the broker change goes to TASK-360 (protected, CX9). This task waits on it. Keep the branch (c4e3264 plus work), then add the broker-backed liveness test once 360 is merged.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: T1 capabilities do not opt into broker enforcement, so persisted Auto-review rules are never evaluated; packages/broker/src/builtinTools.ts is protected/outside TASK-350.
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T22:18:01Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T22:21:59Z
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
@@ -10886,3 +10887,28 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-24T19:53:52Z
+
+### TASK-360
+**Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** TASK-350 OWNERSHIP_CONFLICT (2026-09-25): packages/broker/src/index.ts ~L691-718, where legacy capabilities (enforcementEnabled !== true) never consult Require-Approval rules; Addendum F section 5.4 (F15 rules); ADR-001 (broker enforcement point); owner decision 2026-09-24: Auto-review = UI over the existing require-approval rules
+**Depends_On:** —
+**Owned_Paths:** packages/broker/src/index.ts, packages/broker/src/legacyRequireApproval.test.ts
+**Description:** PROTECTED PATH (packages/broker/**): CX9 authors, and ORCH (Claude) is the different-model adversarial reviewer. Today only capabilities with enforcementEnabled: true (currently just workspace.retire_bot) go through the Addendum F gate that evaluates Require-Approval rules. Every other capability takes the legacy branch at index.ts ~L691, which allows anything below APPROVAL_TIER without ever looking at rules. So Auto-review rules (TASK-350) would be saved but never enforced for T1 tools such as send_to_role, rename_self and create_routine. Make the SMALLEST change: in the legacy branch, BEFORE the below-APPROVAL_TIER allow, if an enabled Require-Approval rule matches this role and capability (and its target predicate, if any, using the existing matcher from packages/policy), route to the existing resolveApprovalRequired path instead of allowing. The change must ONLY ever add approvals: it never allows anything that is denied today, the tier-ceiling and T4 denials stay first, and with zero rules behaviour is byte-identical. Do NOT flip capabilities to enforcementEnabled and do NOT change builtinTools.ts or connector manifests; migrating capabilities to the full gate is a separate, larger decision. Fail closed: if the rules can't be read, deny.
+**Acceptance_Criteria:**
+- [ ] Tests: a T1 legacy capability with a matching enabled rule parks for approval; with the rule disabled, or with no rule, it is allowed exactly as before; a non-matching target predicate doesn't trigger; the ceiling and T4 denials still win; a rules-read failure denies (fail closed).
+- [ ] LIVENESS (ADR-005): the matching-rule test fails if the new check is removed.
+- [ ] No change to builtinTools.ts, capabilityRegistry.ts or packages/connectors/manifests (git diff shows only Owned_Paths).
+- [ ] `pnpm build` and `pnpm typecheck` exit 0; full recursive suite via scripts/test-isolated.ps1 in the foreground, every failure classified.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T22:21:59Z] [ORCH opus-5.5] Filed from TASK-350's OWNERSHIP_CONFLICT. This tightens the broker only: it adds approvals and never removes them. Protected path, so CX9 builds it and ORCH reviews adversarially as the different model.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T22:21:59Z
