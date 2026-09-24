@@ -921,7 +921,7 @@ export function createWorkspaceGeminiTools(
       execute: async (arguments_) => {
         const input = parseSendToRoleInput(arguments_, context.roleId, context.tenantId);
         const resolvedToRoleId = await resolveRoleIdentifier({ connectionString: context.connectionString }, context.roleId, input.toRoleId);
-        return sendToRole({ connectionString: context.connectionString }, { ...input, toRoleId: resolvedToRoleId });
+        return sendToRole({ connectionString: context.connectionString }, { ...input, toRoleId: resolvedToRoleId, ...(context.runId === undefined ? {} : { sourceRunId: context.runId }) });
       },
     });
   }

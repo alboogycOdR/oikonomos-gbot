@@ -475,6 +475,29 @@ describe("createWorkspaceGeminiTools — deliberately NOT sandboxed, unlike ever
     ]);
   });
 
+  (connectionString === undefined ? it.skip : it)("passes its worker-bound run ID to idempotent send_to_role", async () => {
+    const fromRoleId = "task-328-gemini-from";
+    const toRoleId = "task-328-gemini-to";
+    const pool = new Pool({ connectionString: connectionString!, ...defaultPoolConfig });
+    try {
+      await pool.query("DELETE FROM role_messages WHERE from_role_id = ANY($1::text[]) OR to_role_id = ANY($1::text[])", [[fromRoleId, toRoleId]]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[fromRoleId, toRoleId]]);
+      await createRole({ connectionString: connectionString! }, { roleId: fromRoleId, name: fromRoleId, title: "TASK-328 Gemini fixture" });
+      await createRole({ connectionString: connectionString! }, { roleId: toRoleId, name: toRoleId, title: "TASK-328 Gemini fixture" });
+      const [tool] = createWorkspaceGeminiTools(
+        { connectionString: connectionString!, tenantId: "basileia", roleId: fromRoleId, runId: crypto.randomUUID() },
+        ["mcp__workspace__send_to_role"],
+      );
+      await tool!.execute({ toRoleId, body: "one durable handoff" });
+      expect(await tool!.execute({ toRoleId, body: "one durable handoff" })).toMatchObject({ message: "already sent" });
+      expect((await pool.query("SELECT 1 FROM role_messages WHERE from_role_id = $1 AND to_role_id = $2", [fromRoleId, toRoleId])).rowCount).toBe(1);
+    } finally {
+      await pool.query("DELETE FROM role_messages WHERE from_role_id = ANY($1::text[]) OR to_role_id = ANY($1::text[])", [[fromRoleId, toRoleId]]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1::text[])", [[fromRoleId, toRoleId]]);
+      await pool.end();
+    }
+  });
+
   it("mounts create_routine only when granted", () => {
     const granted = createWorkspaceGeminiTools(
       { connectionString: "unused", tenantId: "basileia", roleId: "role-1" },
