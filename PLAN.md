@@ -9885,7 +9885,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-326
 **Title:** Watchdog: detect an unreachable database, not just open ports
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Incident 2026-09-22/23 (below); CLAUDE.md non-negotiable 3 (fail closed) and "Every mechanical control ships a liveness assertion"; docs/decisions/ADR-005-control-liveness.md; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9907,12 +9907,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:50:21Z] [ORCH] Duplicate session incident: the autopilot relaunched CX9 on this task at 22:44Z after ORCH unblocked it, and ORCH's manual dispatch at 22:46Z started a second CX9 session in the same worktree. ORCH stopped the 22:46Z session at about 22:50Z; the 22:44Z session continues. Uncommitted edits in the worktree may partly come from the stopped session. REVIEWER: review the full branch diff, not the surviving session's summary.
 - [2026-09-23T22:58:01Z] [SV:CX9] Implemented and committed production database readiness route and watchdog behavior; isolated tests are queued behind the global test DB mutex. NEXT: When the shared test-database mutex is released, run scripts/test-isolated.ps1 -Filter @oikonomos/control-api, then the required full scripts/test-isolated.ps1 suite and record results.
 - [2026-09-23T23:43:01Z] [SV:CX9] Implementation and task-specific validation are complete; remaining work is retaining and classifying recursive-suite results against master. NEXT: Run retained full isolated-suite summaries for this branch and master, classify every non-own-package failure, then submit needs_review.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T00:08:01Z] [SV:CX9] Production database readiness route and watchdog outage handling are implemented and fully validated.
+**Artifacts:** infra/compose/service-watchdog.ps1, packages/db/src/database.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/ports.ts, services/control-api/src/health.routes.test.ts, dossiers/TASK-326.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/control-api: health.routes.test.ts 4/4 passed; only unrelated TASK-121 FreeLLMAPI group-route 400-vs-201 red. scripts/test-isolated.ps1 recursive branch and master runs completed: branchâ€™s evals-harness budget.platform_exceeded, worker environment/provider/config/pg-boss failures, and control-api TASK-121 red match master baseline classes; no TASK-326 regression. pnpm --filter @oikonomos/db build, pnpm --filter @oikonomos/control-api typecheck, and powershell -File infra/compose/service-watchdog.ps1 -SelfTest passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-23T23:43:01Z
+**Updated_At:** 2026-09-24T00:08:01Z
 
 ### TASK-331
 **Title:** Thread roster: title and one-line preview on GET /threads
