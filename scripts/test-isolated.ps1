@@ -120,6 +120,24 @@ foreach ($n in $scrubbed) { Remove-Item -Path "env:$n" -ErrorAction SilentlyCont
 $survivors = @(Get-ChildItem env: | Where-Object { $_.Name -match $scrubPattern })
 if ($survivors.Count -gt 0) { throw "[test-isolated] env scrub inert: $($survivors.Name -join ', ') still set" }
 Write-Host "[test-isolated] scrubbed $($scrubbed.Count) operator env var(s) from the test process"
+
+# 2026-09-24 (owner request): test/dev Gemini traffic bills a SEPARATE key, never
+# the production one. Opt-in: set User-scope TEST_GEMINI_API_KEY to a key from a
+# dedicated AI Studio project. Only live tests that pin provider gemini use it;
+# provider-less test roles still fall back to Claude (no default is re-exported).
+$devGeminiKey = [Environment]::GetEnvironmentVariable("TEST_GEMINI_API_KEY", "User")
+if ($devGeminiKey) {
+  $prodGeminiKey = [Environment]::GetEnvironmentVariable("GEMINI_API_KEY", "User")
+  # Liveness: refuse if the "dev" key is really the production key.
+  if ($prodGeminiKey -and $devGeminiKey -eq $prodGeminiKey) {
+    throw "[test-isolated] TEST_GEMINI_API_KEY equals the production GEMINI_API_KEY; create a separate key for tests"
+  }
+  $env:GEMINI_API_KEY = $devGeminiKey
+  Write-Host "[test-isolated] Gemini: using the dedicated TEST key (production key not exposed)"
+} else {
+  Write-Host "[test-isolated] Gemini: no TEST_GEMINI_API_KEY set; tests cannot reach Gemini"
+}
+Remove-Item -Path env:TEST_GEMINI_API_KEY -ErrorAction SilentlyContinue
 $uri = [Uri]$prod
 if ($uri.AbsolutePath -eq "/$testDb") { throw "DATABASE_URL already points at $testDb; refusing to guess the production name." }
 $testUrl = $prod.Substring(0, $prod.LastIndexOf("/")) + "/$testDb" + $uri.Query
