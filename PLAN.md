@@ -10363,9 +10363,9 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
 - [2026-09-24T14:26:24Z] [SV:CX9] Committed verified spend-cleanup and pg-boss fixture isolation fixes (140d2c9); two required recursive isolated suites are still serialized behind the harness mutex. NEXT: Wait for the already-running recursive isolated suites to exit, collect/classify final results, then request review.
 - [2026-09-24T14:26:54Z] [ORCH opus-5.5] ORCH moved this to needs_review. CX9's fixes are committed (140d2c9) with targeted evidence; its two recursive passes were cut short by the harness mutex, so ORCH is running the AC's two back-to-back full passes as the review.
-**Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:** packages/db/src/spendReservations.test.ts, services/worker/src/roleMessageDelivery.ts
+**Test_Evidence:** CX9 claim: isolated db suite 46 files, 292 passed, 2 skipped; spendReservations 8/8; post-run task-300 spend_records count 0; worker-owned suites pass, workspaceTools 7/7 (so (g) was downstream of the email.send drift that TASK-338 F4 fixed); worker tsc passes. Recursive passes are pending, and ORCH is running them.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-24T14:26:54Z
+**Updated_At:** 2026-09-24T14:27:05Z
