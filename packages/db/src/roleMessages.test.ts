@@ -8,6 +8,8 @@ import {
   createProjectArtifact,
   createProjectTask,
   createRole,
+  claimRoleMessageDelivery,
+  failRoleMessageDelivery,
   defaultPoolConfig,
   getRoleMessage,
   listRoleMessages,
@@ -193,6 +195,27 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
 
     const secondMark = await markRoleMessageRead({ connectionString: connectionString! }, sent.messageId);
     expect(secondMark.readAt).toEqual(firstMark.readAt);
+  });
+
+  it("atomically counts five failed delivery leases, then makes the fifth terminal (TASK-327 liveness)", async () => {
+    const sent = await sendRoleMessage(
+      { connectionString: connectionString! },
+      { tenantId, fromRoleId, toRoleId, body: "retry cap" },
+    );
+    let finalAttempt;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const claimed = await claimRoleMessageDelivery({ connectionString: connectionString! }, sent.messageId);
+      expect(claimed?.deliveryAttempts).toBe(attempt);
+      expect(claimed?.deliveryClaimToken).not.toBeNull();
+      finalAttempt = await failRoleMessageDelivery(
+        { connectionString: connectionString! }, sent.messageId, claimed!.deliveryClaimToken!, "delivery_error",
+      );
+      if (attempt < 5) expect(finalAttempt?.readAt).toBeNull();
+    }
+    expect(finalAttempt).toMatchObject({ deliveryAttempts: 5, lastDeliveryError: "delivery_error" });
+    expect(finalAttempt?.readAt).not.toBeNull();
+    expect(finalAttempt?.deliveryFailedAt).not.toBeNull();
+    expect(await claimRoleMessageDelivery({ connectionString: connectionString! }, sent.messageId)).toBeNull();
   });
 
   it("markRoleMessageRead throws for an unknown messageId", async () => {
