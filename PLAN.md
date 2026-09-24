@@ -10209,7 +10209,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-338
 **Title:** Claude lane: end a sandbox run that goes silent
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (channels/stall-guard.ts: wire-quiet timer); services/worker/src/chatRunDriver.ts SANDBOX_COMMAND_TIMEOUT_MS; TASK-316 visible failure message; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10222,7 +10222,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] ADR-005 liveness: the silent-command test fails if the timer is removed.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; every non-own-package failure classified against the master baseline in Test_Evidence.
 **Branch:** task/TASK-338-cx9
-**Started_At:** 2026-09-24T12:06:44Z
+**Started_At:** 2026-09-24T13:38:21Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T06:58:00Z] [SV] run ended without CONTROL block — state unchanged, see .devteam\runs\TASK-338-2026-09-24T06-55-39Z.log
@@ -10239,8 +10239,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/sandbox-client: 26/26 passed; sandbox-client typecheck passed. Isolated worker and full recursive suites completed; non-owned baseline failures were evals/provider environment, worker budget/Gemini/timeout, and control-api TASK-121 400-vs-201.
 **Review_Findings:** REWORK (ORCH opus-5.5, 2026-09-24). F1 BLOCKING, the silence guard kills healthy long turns in production. claudePrintCommand runs the real CLI with --output-format json (chatRunDriver.ts ~L1408), which writes stdout once at the end of the turn and emits no tool events on the stream. A real turn that spends more than OIK_CLAUDE_SILENCE_TIMEOUT_MS (180s) in tool loops or thinking therefore produces zero execd events and is cancelled as 'silent', which breaks the Description's rule that a quiet but progressing tool is not killed. It also cuts the real limit from 10 min to 3 min for every legitimate long turn. The tests pass only because the fake command emits periodic onActivity. FIX: make the production command produce incremental events, e.g. --output-format stream-json --verbose, so every assistant and tool_use/tool_result line is a stdout chunk. Then parse the final result envelope from the stream-json lines (the type:result line) wherever eventFromSandboxStdout currently expects the single json envelope, keeping cost and usage extraction identical. Add a test that feeds realistic stream-json stdout (several tool events, then a result line) through the driver, and assert it yields the same event, cost and usage as today's json path. F2, verify execd keepalives: onActivity fires on ANY non-comment SSE event. If execd emits periodic non-output events (e.g. a status or heartbeat type) while a command is hung, the guard never fires. Confirm against the execd stream event types and count only stdout, stderr and tool-bearing events as activity, with a test. F3, NOTE, no change required: cancellation is client-side (the stream is aborted), and the in-sandbox process remains bounded by execd's server-side timeout. Say so in the dossier. Everything else is good: territory clean, the audit category is recorded, the SandboxSilenceError visible message is correct, and the ADR-005 liveness test is sound.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T13:24:30Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T13:38:21Z
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
