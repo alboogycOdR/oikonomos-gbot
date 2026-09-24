@@ -1,6 +1,6 @@
 import { issueApproval, verifyAndConsume } from "@oikonomos/approvals";
 import { DEFAULT_GEMINI_MODEL } from "@oikonomos/agent-providers";
-import { handlePreToolUse } from "@oikonomos/broker";
+import { BrokerFailure, handlePreToolUse } from "@oikonomos/broker";
 import { BUILTIN_TOOLS, CapabilityRegistry, PolicyRegistry, declaredToolsFromManifest, type BrokerDependencies, type PreToolUseRequest } from "@oikonomos/broker";
 import {
   createConnectorSessionPool,
@@ -66,6 +66,7 @@ import { assembleSystemPrompt, buildRoleSystemPrompt, type SkillResolver } from 
 import { maybeCompact } from "./contextCompaction.js";
 import { createTierZeroProvider, resolveTierZeroEnvConfig, type CreateTierZeroProviderOptions } from "./tierZeroProvider.js";
 import { createChatRunWorkspace, removeChatRunWorkspace } from "./runWorkspace.js";
+import { guardNavigationTarget } from "./navigationGuard.js";
 import {
   combineConnectorContexts,
   isBrowserLaneGranted,
@@ -1768,7 +1769,12 @@ const DESTINATION_EXTRACTORS: Readonly<Record<string, (input: Record<string, unk
   mcp__project__register_artifact: (input) => input.ref,
   mcp__project__record_decision: (input) => input.projectId,
 
-  mcp__steel__steel_navigate: (input) => input.url,
+  mcp__steel__steel_navigate: (input) => {
+    if (typeof input.url !== "string") return input.url;
+    const navigation = guardNavigationTarget(input.url);
+    if (navigation.decision === "deny") throw new BrokerFailure(`navigation.denied.${navigation.category}`);
+    return navigation.url;
+  },
   mcp__steel__steel_act: (input) => input.action,
   mcp__steel__steel_snapshot: () => STEEL_CURRENT_PAGE_DESTINATION,
   mcp__steel__steel_screenshot: () => STEEL_CURRENT_PAGE_DESTINATION,

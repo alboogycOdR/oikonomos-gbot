@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { mintBrokerToken, type BrokerDependencies, type BrokerTokenBinding, type PreToolUseRequest } from "@oikonomos/broker";
+// Exercise the source extractor. Package exports resolve to the last built
+// worker artifact under Vitest, which would make this test silently assess a
+// previous build instead of the Claude-lane change under review.
+const { destinationFor } = await import(new URL("../../worker/src/chatRunDriver.js", import.meta.url).href);
 import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
@@ -35,7 +39,7 @@ function request(overrides: Partial<PreToolUseRequest> = {}): PreToolUseRequest 
   };
 }
 
-function dependencies(): BrokerDependencies {
+function dependencies(overrides: Partial<BrokerDependencies> = {}): BrokerDependencies {
   return {
     isCapabilitiesEnabled: () => true,
     getCapability: async () => ({ toolName: "Read", capabilityId: "fs.read", defaultTier: "T0_observe" }),
@@ -46,6 +50,7 @@ function dependencies(): BrokerDependencies {
     issueApprovalDependencies: {} as BrokerDependencies["issueApprovalDependencies"],
     consumeDependencies: {} as BrokerDependencies["consumeDependencies"],
     recordDecision: vi.fn(async () => ({ eventId: "audit-197" })),
+    ...overrides,
   };
 }
 
@@ -148,6 +153,63 @@ describe("POST /v1/broker/pretooluse (TASK-197)", () => {
       const response = await inject(app, request());
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({ decision: "deny", reason: "broker.timeout" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ["http://169.254.169.254/latest/meta-data", "metadata"],
+    ["http://127.0.0.1/private", "loopback"],
+    ["http://169.254.1.1/private", "link_local"],
+    ["http://10.1.2.3/private", "private_network"],
+    ["https://user:password@example.test/private?token=secret", "credentials"],
+    ["file:///etc/passwd", "non_http_scheme"],
+    ["not a url", "malformed_url"],
+  ])("denies Claude Steel navigation to %s with category-only audit data", async (url, category) => {
+    const recordDecision = vi.fn(async (_event: unknown) => ({ eventId: "audit-navigation-denied" }));
+    const deps = dependencies({
+      destinationFor,
+      getCapability: vi.fn(async () => ({
+        toolName: "mcp__steel__steel_navigate", capabilityId: "browser.navigate", defaultTier: "T1_draft" as const,
+      })),
+      recordDecision,
+    });
+    const app = buildBrokerHttpApp({ dependencies: deps, signingKey: SIGNING_KEY });
+    try {
+      const response = await inject(app, request({
+        toolName: "mcp__steel__steel_navigate",
+        input: { url },
+      }));
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        decision: "deny", reason: `navigation.denied.${category}`, auditEventId: "audit-navigation-denied", toolUseId: "tool-use-197",
+      });
+      expect(deps.getCapability).not.toHaveBeenCalled();
+      const auditPayload = JSON.stringify(recordDecision.mock.calls[0]?.[0]);
+      expect(auditPayload).not.toContain(url);
+      expect(auditPayload).toContain(`navigation.denied.${category}`);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("allows an ordinary public HTTPS URL through the real Claude destination extractor", async () => {
+    const deps = dependencies({
+      destinationFor,
+      getCapability: vi.fn(async () => ({
+        toolName: "mcp__steel__steel_navigate", capabilityId: "browser.navigate", defaultTier: "T1_draft" as const,
+      })),
+    });
+    const app = buildBrokerHttpApp({ dependencies: deps, signingKey: SIGNING_KEY });
+    try {
+      const response = await inject(app, request({
+        toolName: "mcp__steel__steel_navigate",
+        input: { url: "https://example.test/public?q=ok" },
+      }));
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ decision: "allow", tier: "T1_draft" });
+      expect(deps.getCapability).toHaveBeenCalledOnce();
     } finally {
       await app.close();
     }

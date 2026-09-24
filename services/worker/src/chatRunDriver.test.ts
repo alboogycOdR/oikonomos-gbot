@@ -239,6 +239,30 @@ describe("chat run driver governance helpers", () => {
     expect(() => destinationFor({ ...base, toolName: "WebFetch", input: { url: "https://example.test" } })).toThrow(/No governed destination/);
   });
 
+  it.each([
+    ["http://169.254.169.254/latest/meta-data", "metadata"],
+    ["http://127.0.0.1/private", "loopback"],
+    ["http://169.254.1.1/private", "link_local"],
+    ["http://10.1.2.3/private", "private_network"],
+    ["https://user:password@example.test/private?token=secret", "credentials"],
+    ["file:///etc/passwd", "non_http_scheme"],
+    ["not a url", "malformed_url"],
+  ])("fails closed for Claude Steel navigation to %s as %s", (url, category) => {
+    expect(() => destinationFor({
+      ...base,
+      toolName: "mcp__steel__steel_navigate",
+      input: { url },
+    })).toThrow(`navigation.denied.${category}`);
+  });
+
+  it("allows a public Claude Steel navigation target (TASK-336 liveness)", () => {
+    expect(destinationFor({
+      ...base,
+      toolName: "mcp__steel__steel_navigate",
+      input: { url: "https://example.test/public?q=ok" },
+    })).toBe("https://example.test/public?q=ok");
+  });
+
   // TASK-207 non-blocking (Fable review of d44e64a): the exact bug class
   // this task fixed — a manifest tool declared with no matching
   // destinationFor branch — is only caught by hand when someone happens to

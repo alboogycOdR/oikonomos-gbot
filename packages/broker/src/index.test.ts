@@ -8,6 +8,7 @@ import { SEALED_SECRET_ROOT } from "@oikonomos/shared";
 import {
   builtinDescribers,
   BUILTIN_TOOLS,
+  BrokerFailure,
   DESCRIBE_DENIED_AUDIT_TYPE,
   describeToolCall,
   handlePreToolUse,
@@ -111,6 +112,22 @@ describe("handlePreToolUse — D3 secret-path gate (Addendum F N13)", () => {
       reason: "broker.dependency_failure",
       auditEventId: "audit-secret-1",
     });
+  });
+
+  it("keeps a category-only navigation denial when destination resolution fails", async () => {
+    const deniedUrl = "https://user:password@example.test/private?token=secret";
+    const deps = dependencies({
+      destinationFor: vi.fn(() => { throw new BrokerFailure("navigation.denied.credentials"); }),
+    });
+
+    await expect(handlePreToolUse({ ...request, toolName: "mcp__steel__steel_navigate", input: { url: deniedUrl } }, deps)).resolves.toEqual({
+      decision: "deny",
+      reason: "navigation.denied.credentials",
+      auditEventId: "audit-secret-1",
+    });
+    const event = (deps.recordDecision as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(JSON.stringify(event)).not.toContain(deniedUrl);
+    expect(event).toMatchObject({ reason: "navigation.denied.credentials" });
   });
 
   it("LIVENESS: removing the index guard call makes the sealed read canary RED", async () => {
