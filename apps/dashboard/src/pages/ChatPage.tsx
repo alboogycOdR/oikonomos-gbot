@@ -12,6 +12,8 @@ import type {
 import { ResultsView } from "../components/workspace/ResultsView";
 import { WorkView } from "../components/workspace/WorkView";
 import { ComputerView } from "../components/workspace/computer/ComputerView";
+import { ProjectArtifactRegister } from "../components/workspace/project/ProjectArtifactRegister";
+import { ProjectBoard } from "../components/workspace/project/ProjectBoard";
 import { WorkspaceTabs, type WorkspaceView } from "../components/workspace/WorkspaceTabs";
 import {
   BUILD_SHA,
@@ -20,6 +22,7 @@ import {
   getWorkspaceSummary,
   isGroupThread,
   listRoles,
+  listProjects,
   listRoutines,
   listThreadMessages,
   listThreads,
@@ -27,6 +30,7 @@ import {
   UnauthorizedError,
   type GroupThread,
   type Role,
+  type Project,
   type Routine,
   type Thread,
   type ThreadMessage,
@@ -215,6 +219,8 @@ export function ChatPage() {
   const [summaryByThreadId, setSummaryByThreadId] = useState<Record<string, WorkspaceSummaryEntry>>({});
   /** TASK-239 (spec §4.3) — the active thread's failed-run reason, once fetched. */
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
+  /** TASK-309 — a project is identified by its owned group thread, not by a title convention. */
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   const { dispatch, getThread } = useWorkspaceState();
   // Which threads' initial `GET /threads/:id/messages` history has already
@@ -387,6 +393,33 @@ export function ChatPage() {
   // actually own, so a foreign/unknown id in the URL never drives a
   // messages/stream fetch (spec §2.6 "never another user's data").
   const activeThreadId = threadExists ? routeThreadId : undefined;
+
+  useEffect(() => {
+    if (activeThreadId === undefined || (view !== "work" && view !== "results")) {
+      setActiveProject(null);
+      return undefined;
+    }
+    let cancelled = false;
+    // Never briefly render a previous thread's project while this thread's
+    // authoritative project lookup is in flight.
+    setActiveProject(null);
+    listProjects()
+      .then((projects) => {
+        if (!cancelled) setActiveProject(projects.find((project) => project.threadId === activeThreadId) ?? null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (!handleAuthError(err)) {
+          // Project support is additive: a project-list failure must not hide
+          // the established routine/receipt view for a regular thread.
+          console.error("failed to resolve project for workspace thread", err);
+          setActiveProject(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeThreadId, view, handleAuthError]);
 
   const loadMessages = useCallback(
     async (threadId: string) => {
@@ -688,17 +721,33 @@ export function ChatPage() {
       {!loading || bots.length > 0 ? (
         <div className="min-h-0 flex-1">
           {view === "results" ? (
-            <ResultsView completedRunId={activeCompletedRunId} onUnauthorized={markUnauthenticated} />
+            activeProject === null ? (
+              <ResultsView completedRunId={activeCompletedRunId} onUnauthorized={markUnauthenticated} />
+            ) : (
+              <ProjectArtifactRegister
+                projectId={activeProject.projectId}
+                projectName={activeProject.name}
+                onUnauthorized={markUnauthenticated}
+              />
+            )
           ) : view === "work" ? (
-            <WorkView
-              routines={workRoutines}
-              loading={routinesLoading}
-              error={routinesError}
-              latestRunStatus={activeSummary?.latestRun?.status}
-              onRoutineChanged={handleRoutineChanged}
-              onUnauthorized={markUnauthenticated}
-              onError={setRoutinesError}
-            />
+            activeProject === null ? (
+              <WorkView
+                routines={workRoutines}
+                loading={routinesLoading}
+                error={routinesError}
+                latestRunStatus={activeSummary?.latestRun?.status}
+                onRoutineChanged={handleRoutineChanged}
+                onUnauthorized={markUnauthenticated}
+                onError={setRoutinesError}
+              />
+            ) : (
+              <ProjectBoard
+                projectId={activeProject.projectId}
+                projectName={activeProject.name}
+                onUnauthorized={markUnauthenticated}
+              />
+            )
           ) : view === "computer" ? (
             <ComputerView roleId={activeBot?.roleId} onUnauthorized={markUnauthenticated} />
           ) : (

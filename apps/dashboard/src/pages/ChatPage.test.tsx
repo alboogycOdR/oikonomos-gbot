@@ -694,6 +694,7 @@ describe("ChatPage", () => {
         const url = String(input);
         if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
         if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/projects")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
         // If ChatPage ever calls this for a thread it doesn't own, that's
@@ -876,6 +877,7 @@ describe("ChatPage", () => {
         if (override !== undefined) return override;
         if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
         if (url.endsWith("/roles")) return new Response(JSON.stringify([]), { status: 200 });
+        if (url.endsWith("/projects")) return new Response(JSON.stringify([]), { status: 200 });
         if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify(COMPLETED_SUMMARY), { status: 200 });
         if (url.endsWith("/threads")) return new Response(JSON.stringify([THREAD]), { status: 200 });
         if (url.includes("/threads/thread-1/stream")) return openStream();
@@ -931,6 +933,47 @@ describe("ChatPage", () => {
 
       await user.click(screen.getByRole("button", { name: /confirm test run/i }));
       await waitFor(() => expect(calls).toHaveLength(1));
+    });
+
+    it("uses a project thread's Work and Results views for the board, artifact register, and blocked attention inbox (§9.2)", async () => {
+      const project = {
+        projectId: "project-1",
+        threadId: "thread-1",
+        name: "Launch plan",
+        goal: "launch",
+        doneCriterion: "done",
+        status: "active",
+        budgetUsd: null,
+        createdBy: "human:basileia",
+        createdAt: "2026-09-24T00:00:00.000Z",
+        updatedAt: "2026-09-24T00:00:00.000Z",
+      };
+      global.fetch = baseHandler((url) => {
+        if (url.endsWith("/projects")) return new Response(JSON.stringify([project]), { status: 200 });
+        if (url.endsWith("/projects/project-1/tasks")) {
+          return new Response(JSON.stringify([
+            { taskId: "task-blocked", projectId: "project-1", title: "Get legal signoff", description: "", ownerRoleId: null, state: "blocked", blockedReason: "Waiting for counsel", doneCriterion: "", createdBy: "human:basileia", createdAt: "2026-09-24T00:00:00.000Z", updatedAt: "2026-09-24T00:00:00.000Z" },
+            { taskId: "task-todo", projectId: "project-1", title: "Draft launch notes", description: "", ownerRoleId: null, state: "todo", blockedReason: null, doneCriterion: "", createdBy: "human:basileia", createdAt: "2026-09-24T00:00:00.000Z", updatedAt: "2026-09-24T00:00:00.000Z" },
+          ]), { status: 200 });
+        }
+        if (url.endsWith("/projects/project-1/artifacts")) {
+          return new Response(JSON.stringify([
+            { artifactId: "artifact-1", projectId: "project-1", taskId: null, kind: "workspace_file", ref: "/oikonomos/workspace/projects/project-1/STATUS.md", sha256: null, byteSize: 42, producedByRoleId: null, producedByRunId: null, label: "STATUS.md", createdAt: "2026-09-24T00:00:00.000Z" },
+          ]), { status: 200 });
+        }
+        return undefined;
+      });
+
+      const { unmount } = renderPage("/workspace/thread-1/work");
+      expect(await screen.findByText("Launch plan board")).toBeInTheDocument();
+      const attentionInbox = await screen.findByLabelText("Attention inbox");
+      expect(attentionInbox).toHaveTextContent("Get legal signoff");
+      expect(attentionInbox).toHaveTextContent("Waiting for counsel");
+      unmount();
+
+      renderPage("/workspace/thread-1/results");
+      expect(await screen.findByText("Launch plan artifact register")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Artifact register")).toHaveTextContent("STATUS.md");
     });
 
     it("pause/resume call the real routes and reflect the returned state, without changing the displayed run state (§7.3, §1)", async () => {
