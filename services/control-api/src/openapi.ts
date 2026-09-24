@@ -149,6 +149,17 @@ export function getOpenApiDocument(): Record<string, unknown> {
         },
       },
       "/routines/{id}/test-run": { post: { summary: "Fire a routine immediately", operationId: "testRunRoutine", responses: { "202": { description: "Test run accepted; test run performs real work" }, "404": { description: "No routine with that id" } } } },
+      "/roles/{roleId}/auto-review": {
+        get: { summary: "Get a bot's Auto-review switch and approval rules", operationId: "getAutoReview", responses: { "200": { description: "Auto-review state" }, "404": { description: "No such bot in this tenant" } } },
+        put: { summary: "Enable or disable Auto-review for a bot", operationId: "setAutoReview", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["enabled"], properties: { enabled: { type: "boolean" } } } } } }, responses: { "200": { description: "Updated Auto-review state" }, "404": { description: "No such bot in this tenant" } } },
+      },
+      "/roles/{roleId}/review-rules": {
+        get: { summary: "List a bot's Require-Approval rules", operationId: "listReviewRules", responses: { "200": { description: "Review rules" }, "404": { description: "No such bot in this tenant" } } },
+        post: { summary: "Add a manual Require-Approval rule for a granted capability", operationId: "createReviewRule", responses: { "201": { description: "Review rule created" }, "400": { description: "Capability is not granted" } } },
+      },
+      "/roles/{roleId}/review-rules/{ruleId}": {
+        delete: { summary: "Disable a bot review rule", operationId: "disableReviewRule", responses: { "204": { description: "Rule disabled" }, "404": { description: "No such rule or bot in this tenant" } } },
+      },
       "/routines/{id}/pause": { post: { summary: "Pause a routine", operationId: "pauseRoutine", responses: { "200": { description: "Routine paused" }, "404": { description: "No routine with that id" } } } },
       "/routines/{id}/resume": { post: { summary: "Resume a routine", operationId: "resumeRoutine", responses: { "200": { description: "Routine resumed" }, "404": { description: "No routine with that id" } } } },
       "/tasks": {

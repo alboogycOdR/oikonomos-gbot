@@ -7,6 +7,9 @@ import {
   defaultPoolConfig,
   getRequireApprovalRule,
   listRequireApprovalRules,
+  setAutoReviewEnabled,
+  setRequireApprovalRuleEnabled,
+  syncAutoReviewForGrant,
 } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -17,11 +20,13 @@ integration("packages/db requireApprovalRules — read + CRUD + FK (TASK-084)", 
   const tenantId = "task-084-rules-suite";
   const roleId = "task-084-rules-suite-role";
   const capabilityId = "task-084-rules-suite-cap";
+  const riskyCapabilityId = "task-350-rules-suite-risk";
 
   async function cleanup(): Promise<void> {
     await pool.query(`DELETE FROM require_approval_rules WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM capabilities WHERE capability_id = $1`, [capabilityId]);
+    await pool.query(`DELETE FROM capabilities WHERE capability_id = $1`, [riskyCapabilityId]);
   }
 
   beforeAll(async () => {
@@ -31,6 +36,11 @@ integration("packages/db requireApprovalRules — read + CRUD + FK (TASK-084)", 
       `INSERT INTO capabilities (capability_id, description, default_tier, adapter, enabled)
        VALUES ($1, 'd', 'T0_observe', 'x', true)`,
       [capabilityId],
+    );
+    await pool.query(
+      `INSERT INTO capabilities (capability_id, description, default_tier, adapter, enabled)
+       VALUES ($1, 'risky', 'T1_draft', 'x', true)`,
+      [riskyCapabilityId],
     );
     await createRole(
       { connectionString: connectionString! },
@@ -114,6 +124,29 @@ integration("packages/db requireApprovalRules — read + CRUD + FK (TASK-084)", 
     expect(all.map((r) => r.ruleId).sort()).toEqual(
       [tenantWide.ruleId, roleScoped.ruleId].sort(),
     );
+  });
+
+  it("TASK-350 Auto-review creates/re-enables only risky granted rules and preserves manual rules", async () => {
+    await pool.query(`DELETE FROM require_approval_rules WHERE tenant_id = $1`, [tenantId]);
+    await pool.query(
+      `INSERT INTO role_grants (role_id, capability_id, max_tier, constraints)
+       VALUES ($1, $2, 'T1_draft', '{}'::jsonb)`,
+      [roleId, riskyCapabilityId],
+    );
+    const manual = await createRequireApprovalRule(
+      { connectionString: connectionString! },
+      { tenantId, roleId, capabilityId, createdBy: "manual" },
+    );
+    await setAutoReviewEnabled({ connectionString: connectionString! }, { tenantId, roleId, enabled: true });
+    let rules = await listRequireApprovalRules({ connectionString: connectionString! }, { tenantId, roleId });
+    expect(rules.filter((rule) => rule.createdBy === "auto-review").map((rule) => rule.capabilityId)).toEqual([riskyCapabilityId]);
+    await setAutoReviewEnabled({ connectionString: connectionString! }, { tenantId, roleId, enabled: false });
+    rules = await listRequireApprovalRules({ connectionString: connectionString! }, { tenantId, roleId });
+    expect(rules.find((rule) => rule.ruleId === manual.ruleId)?.enabled).toBe(true);
+    expect(rules.find((rule) => rule.createdBy === "auto-review")?.enabled).toBe(false);
+    await expect(setRequireApprovalRuleEnabled({ connectionString: connectionString! }, { tenantId: "other", roleId, ruleId: manual.ruleId, enabled: false })).resolves.toBeNull();
+    await syncAutoReviewForGrant({ connectionString: connectionString! }, { tenantId, roleId, capabilityId: riskyCapabilityId });
+    expect((await listRequireApprovalRules({ connectionString: connectionString! }, { tenantId, roleId })).filter((rule) => rule.createdBy === "auto-review")).toHaveLength(1);
   });
 
   it("listRequireApprovalRules enabledOnly excludes disabled rules", async () => {
