@@ -1927,3 +1927,4 @@ that drives the real production recording path.
 | TASK-338 | CX9 | approved (after rework) | F1 json-format false-silence, F2 keepalive activity, F4 fixture leak — all fixed; independent worker 364/366, remaining are TASK-342/master | first-pass: no | 2026-09-24T14:15:11Z |
 | TASK-342 | CX9 | approved (after rework) | spend leak/pg-boss race/FK fixed; F1 lock-wait timeouts fixed; worker 365/0 twice | first-pass: no | 2026-09-24T14:48:03Z |
 | TASK-327 | CX9 | rework | stale base (pre-342); poison-row + worker-level cap/notice tests missing; failure-path isolation hole | first-pass: no | 2026-09-24T15:09:09Z |
+| TASK-327 | CX9 | approved (after rework) | F1-F6 fixed; db 293/0, worker 368/0 x2 | first-pass: no | 2026-09-24T15:27:00Z |
