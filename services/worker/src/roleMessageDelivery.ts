@@ -334,6 +334,7 @@ if (import.meta.vitest) {
       await pool.query(`DELETE FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
+      await pool.query(`DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1))`, [tenantId]);
       await pool.query(`DELETE FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1)`, [tenantId]);
       await pool.query(`DELETE FROM roles WHERE tenant_id = $1`, [tenantId]);
       await pool.end();
@@ -394,7 +395,7 @@ if (import.meta.vitest) {
 
         await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
       });
-    });
+    }, 20_000);
 
     // Acceptance Criterion 3: "works identically on both provider lanes ...
     // confirm this explicitly rather than assuming it." The module
@@ -412,6 +413,7 @@ if (import.meta.vitest) {
     // boundary is provider selection reaching the run, not re-proving that
     // driver's internals.
     it("selects the gemini lane for a gemini-provider recipient, with the identical delivered goal text", async () => {
+      await withPgBossQueueLock(pool, async () => {
       const senderId = `task-273-sender-gemini-${crypto.randomUUID()}`;
       const recipientId = `task-273-recipient-gemini-${crypto.randomUUID()}`;
       await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender Bot", title: "Sender" });
@@ -437,9 +439,11 @@ if (import.meta.vitest) {
         [tenantId, recipientId],
       );
       expect(tasks.rows[0]!.goal).toBe("You have a message from Sender Bot: please review the draft");
-    });
+      });
+    }, 20_000);
 
     it("skips (and does not mark read) a message addressed to a non-active (soft-deleted) recipient role", async () => {
+      await withPgBossQueueLock(pool, async () => {
       // role_messages.to_role_id carries a REFERENCES roles(role_id) FK with
       // no ON DELETE action, so a hard-missing role can never actually be
       // the recipient of a pending message — the real, reachable case this
@@ -464,9 +468,11 @@ if (import.meta.vitest) {
         [sent.messageId],
       );
       expect(refetched.rows[0]!.read_at).toBeNull();
-    });
+      });
+    }, 20_000);
 
     it("attributes only a manager's task.assigned handoff to its project, leaving a roster member's forged handoff ordinary (TASK-301)", async () => {
+      await withPgBossQueueLock(pool, async () => {
       const managerId = `task-301-manager-${crypto.randomUUID()}`;
       const specialistId = `task-301-specialist-${crypto.randomUUID()}`;
       const forgedSenderId = `task-301-forged-${crypto.randomUUID()}`;
@@ -501,7 +507,8 @@ if (import.meta.vitest) {
       expect(managerTask!.execution).toMatchObject({ kind: "chat", projectId: project.projectId });
       expect(forgedTask!.execution).toMatchObject({ kind: "chat" });
       expect((forgedTask!.execution as Record<string, unknown>).projectId).toBeUndefined();
-    });
+      });
+    }, 20_000);
 
     it("RoleMessageDeliveryPoller delivers via a real durable pg-boss schedule, immediate-poll triggered", async () => {
       await withPgBossQueueLock(pool, async () => {
