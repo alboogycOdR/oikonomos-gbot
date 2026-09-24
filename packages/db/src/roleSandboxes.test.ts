@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  claimRoleSandboxForReap,
   createRole,
   defaultPoolConfig,
   getRoleSandbox,
@@ -25,6 +26,9 @@ describe("role sandboxes input validation", () => {
       roleId: "role", sandboxId: "sandbox", state: "nope" as never, execdTokenRef: "secret://x",
     })).rejects.toThrow(/state/);
     await expect(updateRoleSandboxState(options, "role", "nope" as never)).rejects.toThrow(/state/);
+    await expect(claimRoleSandboxForReap(options, {
+      roleId: "role", sandboxId: "sandbox", state: "Paused", idleBefore: new Date("invalid"),
+    })).rejects.toThrow(/idleBefore/);
   });
 });
 
@@ -58,5 +62,23 @@ integration("listRoleSandboxes", () => {
       expect.objectContaining({ roleId: "task-312-db-active", tenantId: "task-312-db-a", roleStatus: "active" }),
       expect.objectContaining({ roleId: "task-312-db-deleted", tenantId: "task-312-db-b", roleStatus: "deleted" }),
     ]));
+  });
+
+  it("does not claim an idle office after a concurrent turn refreshes its last-use time", async () => {
+    const roleId = "task-312-db-race";
+    await createRole(options, { roleId, tenantId: "task-312-db-race-tenant", name: "Race", title: "Race role" });
+    await upsertRoleSandbox(options, { roleId, sandboxId: "task-312-race", state: "Paused", execdTokenRef: "secret://race" });
+    await pool.query("UPDATE role_sandboxes SET last_used_at = now() - interval '10 days' WHERE role_id = $1", [roleId]);
+    const selected = await getRoleSandbox(options, roleId);
+    expect(selected).not.toBeNull();
+    await updateRoleSandboxState(options, roleId, "Running");
+
+    await expect(claimRoleSandboxForReap(options, {
+      roleId,
+      sandboxId: selected!.sandboxId,
+      state: selected!.state,
+      idleBefore: new Date(Date.now() - 3 * 24 * 60 * 60_000),
+    })).resolves.toBeNull();
+    expect((await getRoleSandbox(options, roleId))?.state).toBe("Running");
   });
 });
