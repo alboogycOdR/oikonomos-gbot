@@ -10346,7 +10346,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-342
 **Title:** Test isolation: stop leaked spend and pg-boss races from failing the worker suite
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** ORCH worker-suite diagnosis 2026-09-24 (master 2ac38a4, isolated DB); ADR-005 (liveness)
@@ -10362,9 +10362,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
 - [2026-09-24T14:26:24Z] [SV:CX9] Committed verified spend-cleanup and pg-boss fixture isolation fixes (140d2c9); two required recursive isolated suites are still serialized behind the harness mutex. NEXT: Wait for the already-running recursive isolated suites to exit, collect/classify final results, then request review.
+- [2026-09-24T14:26:54Z] [ORCH opus-5.5] ORCH moved this to needs_review. CX9's fixes are committed (140d2c9) with targeted evidence; its two recursive passes were cut short by the harness mutex, so ORCH is running the AC's two back-to-back full passes as the review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T14:26:24Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T14:26:54Z
