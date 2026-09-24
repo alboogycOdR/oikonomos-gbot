@@ -9266,7 +9266,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-309
 **Title:** Dashboard: project board on the Work view, artifact register on the Results view, blocked items in the attention inbox (P-7c)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.2 (Work view becomes the board for a project thread; Results view lists the register; attention inbox lists blocked items with reasons).
@@ -9285,6 +9285,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T00:33:01Z] [SV:CX9] Preflight passed; the views lack the active thread/project context, which only ChatPage.tsx owns.
 - [2026-09-24T01:12:53Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to apps/dashboard/src/pages/ChatPage.tsx and ChatPage.test.tsx (no active task owns them).
 - [2026-09-24T02:28:01Z] [SV:CX9] Implemented project-thread board, artifact register, and blocked-item attention inbox; committed as d822018.
+- [2026-09-24T03:05:00Z] [ORCH opus-4-8] APPROVED, merged --no-ff. Territory clean (all 7 files in Owned_Paths). No PLAN.md edits on branch. Independently verified: dashboard 160/160 tests PASS, typecheck PASS, build PASS (matches Test_Evidence). No protected paths. Graceful additive fallback (project-list failure preserves routine/receipt view). Branch deleted; worktree retained.
 **Artifacts:** apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/workspace/project/ProjectBoard.tsx, apps/dashboard/src/components/workspace/project/ProjectArtifactRegister.tsx, dossiers/TASK-309.md
 **Test_Evidence:** pnpm --filter @oikonomos/dashboard typecheck PASS; pnpm --filter @oikonomos/dashboard build PASS; scripts/test-isolated.ps1 -Filter @oikonomos/dashboard PASS: 25 test files, 160 tests.
 **Review_Findings:** —
@@ -9888,7 +9889,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-326
 **Title:** Watchdog: detect an unreachable database, not just open ports
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** Incident 2026-09-22/23 (below); CLAUDE.md non-negotiable 3 (fail closed) and "Every mechanical control ships a liveness assertion"; docs/decisions/ADR-005-control-liveness.md; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9911,6 +9912,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:58:01Z] [SV:CX9] Implemented and committed production database readiness route and watchdog behavior; isolated tests are queued behind the global test DB mutex. NEXT: When the shared test-database mutex is released, run scripts/test-isolated.ps1 -Filter @oikonomos/control-api, then the required full scripts/test-isolated.ps1 suite and record results.
 - [2026-09-23T23:43:01Z] [SV:CX9] Implementation and task-specific validation are complete; remaining work is retaining and classifying recursive-suite results against master. NEXT: Run retained full isolated-suite summaries for this branch and master, classify every non-own-package failure, then submit needs_review.
 - [2026-09-24T00:08:01Z] [SV:CX9] Production database readiness route and watchdog outage handling are implemented and fully validated.
+- [2026-09-24T03:05:00Z] [ORCH opus-4-8] APPROVED, merged --no-ff. Territory clean (all files in Owned_Paths; packages/db and infra/compose are NOT protected paths). No PLAN.md edits on branch. Independently verified in review worktree via test-isolated.ps1 -Init: control-api 359/359 PASS incl health.routes.test.ts 4/4 (real 503 db_unreachable via createDatabaseBackedDeps pointed at a closed port, 503 db_timeout, integration 200, openapi); db 290/290 PASS; watchdog -SelfTest printed SELFTEST PASS (marker created on 503, cleared on 200); db build + control-api typecheck PASS. Rule 5: readiness driven through the real production factory (checkDatabaseReadiness→withPool→SELECT 1) and the real watchdog tick (Invoke-DatabaseWatchdog against a live TCP stub) — proven to fire and fail closed; no connection details in response/logs. Branch deleted; worktree retained. UNLOCKS TASK-331/333/335 (Depends_On TASK-326).
 **Artifacts:** infra/compose/service-watchdog.ps1, packages/db/src/database.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/ports.ts, services/control-api/src/health.routes.test.ts, dossiers/TASK-326.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/control-api: health.routes.test.ts 4/4 passed; only unrelated TASK-121 FreeLLMAPI group-route 400-vs-201 red. scripts/test-isolated.ps1 recursive branch and master runs completed: branchâ€™s evals-harness budget.platform_exceeded, worker environment/provider/config/pg-boss failures, and control-api TASK-121 red match master baseline classes; no TASK-326 regression. pnpm --filter @oikonomos/db build, pnpm --filter @oikonomos/control-api typecheck, and powershell -File infra/compose/service-watchdog.ps1 -SelfTest passed.
 **Review_Findings:** —
@@ -10121,7 +10123,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-336
 **Title:** Guard Claude-lane Steel navigation (the Gemini lane was TASK-325)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-325 (services/worker/src/navigationGuard.ts); services/worker/src/chatRunDriver.ts DESTINATION_EXTRACTORS; CLAUDE.md non-negotiables 3 and 5; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10139,6 +10141,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-23T22:42:32Z] [ORCH] Reassigned S5 -> CX9: the fix needs packages/broker (protected), which a Claude author may not change without a non-Claude reviewer; CX9 authoring lets the Opus reviewer serve as the different model. Territory widened to packages/broker/src/index.ts and index.test.ts. S5's dossier findings stand; S5's branch task/TASK-336-s5 holds only the dossier note.
 - [2026-09-24T00:28:01Z] [SV:CX9] Claude Steel navigation is guarded through the real broker/Fastify path; category-only denial reasons are audited without URLs. Commit 712688f.
+- [2026-09-24T03:05:00Z] [ORCH opus-4-8] APPROVED, merged --no-ff. CROSS-MODEL OK: touches packages/broker (PROTECTED) but author is CX9 (non-Claude/Codex), so the Opus reviewer is a different model family — standing rule 1 satisfied, no separate CX9 review task needed. Broker change is minimal: reason union widened with `navigation.denied.${string}` only; failureReason already surfaced BrokerFailure.reason unchanged, so no decision-logic change. Territory clean; no PLAN.md edits on branch. Independently verified: broker 189/189 PASS incl index.test.ts 16/16; control-api 363/363 PASS incl brokerHttpRoute.test.ts 14/14 (the real destinationFor imported from source, denies every blocked class before getCapability, allows ordinary https, audit payload asserted to exclude the URL). worker suite 30 failures ALL classified against master baseline (31 failures, same 5 files, same causes: Gemini 402, email.send drift, timeouts, sandbox execd, FK teardown, TASK-226 started/completed) — none in the governance-helpers block where 336's new synchronous destinationFor tests live; those pass. Rule 5: control driven through buildBrokerHttpApp + real extractor, proven to fail closed if guard removed. Branch deleted; worktree retained.
 **Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/brokerHttpRoute.test.ts, packages/broker/src/index.ts, packages/broker/src/index.test.ts, dossiers/TASK-336.md
 **Test_Evidence:** pnpm --filter @oikonomos/broker typecheck PASS; pnpm --filter @oikonomos/control-api typecheck PASS; scripts/test-isolated.ps1 -Filter @oikonomos/broker: 189/189 PASS; scripts/test-isolated.ps1 -Filter @oikonomos/control-api: brokerHttpRoute.test.ts 14/14 PASS (only pre-existing TASK-121 FreeLLMAPI 400 vs 201 remains); scripts/test-isolated.ps1 full recursive run: TASK-336 assertions pass; remaining failures classified in dossier as pre-existing DB deadlock/project suite, budget.platform_exceeded, Gemini 402, email.send enabled-state drift, pg-boss, and TASK-121 classes.
 **Review_Findings:** —
