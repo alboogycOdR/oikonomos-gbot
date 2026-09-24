@@ -10361,9 +10361,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-24T14:15:16Z
 **Progress_Notes:**
 - [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
+- [2026-09-24T14:26:24Z] [SV:CX9] Committed verified spend-cleanup and pg-boss fixture isolation fixes (140d2c9); two required recursive isolated suites are still serialized behind the harness mutex. NEXT: Wait for the already-running recursive isolated suites to exit, collect/classify final results, then request review.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T14:15:16Z
+**Updated_At:** 2026-09-24T14:26:24Z
