@@ -1,8 +1,8 @@
 ---
-plan_version: 40.7
-last_updated: 2026-09-25T01:30:00Z
+plan_version: 40.8
+last_updated: 2026-09-25T02:00:00Z
 overall_status: in_progress
-orchestrator_notes: "2026-09-25T01:30:00Z STATUS SCAN v40.7 (ORCH opus-4.8): plan legal (15 MAINT latent-isolation warns, not co-dispatchable). Reality check clean: only TASK-350 active; branch task/TASK-350-cx9 = 3 [TASK-350]-suffixed commits, all 9 changed files inside Owned_Paths (incl. re-carved brokerHttpRoute.ts + index.ts), NO territory violation. TASK-350 self-blocked 22:18 -> ESCALATION (not a re-carve): CX9 correctly diagnosed that the mandated ADR-005 T1 liveness AC cannot be met with current territory. VERIFIED directly: packages/broker/src/builtinTools.ts has exactly ONE enforcementEnabled:true (the T4 retire_bot, line 76); the broker returns allow on the legacy branch BEFORE reading persisted require-approval rules for every T1 capability. So the existing Require-Approval rules the whole Auto-review feature layers on are INERT for the shell/MCP/computer tiers it targets. This is an architectural/security decision (which risky T1 capabilities opt into broker enforcement) touching a protected ADR-001 path, NOT mechanical carving -> owner (Alister) call + likely ADR. RECOMMENDATION: file a new single-owner dep task on packages/broker/src/builtinTools.ts(+tests) setting enforcementEnabled:true on the specific risky T1 shell/MCP/computer capabilities named in the Auto-review wording; author CX9 (non-Claude), adversarial review by ORCH (Claude, valid different-model); record an ADR for the enforcement-scope change; make TASK-350 Depends_On it and keep its liveness AC as-is. TASK-350 stays blocked pending owner decision on WHICH capabilities. Other blocked (162,234,288) unchanged, previously escalated. No stale heartbeat, no unlocked deps."
+orchestrator_notes: "2026-09-25T02:00:00Z STATUS SCAN v40.8 (ORCH opus-4.8): plan legal (15 MAINT latent warns only). WAVE IS IDLE — zero tasks in_progress/claimed; nothing is building, so no stale-heartbeat drift possible. Reality check clean: task/TASK-350-cx9 = 5 [TASK-350] commits, 9 files all in Owned_Paths, NO territory violation; task/TASK-349-cx9 = dossier only, clean. Branches task/TASK-359-cx9 and task/TASK-360-cx9 exist but are empty (0 commits ahead of master) — leftover worktree branches, not work. CHANGE THIS SCAN: TASK-349 unblocked via §7 re-carve (blocker verified) — added the 4 rendering files + tests (ChatPage/BotSidebar/ConversationPane/GroupThreadDialog), all unowned-by-active-task, unprotected, and strictly upstream of the pending web tasks (358→354→349) so no isolation conflict; status blocked->pending, plan re-validated legal. CRITICAL PATH: TASK-360 (broker legacy require-approval honouring, protected, CX9 author + ORCH different-model adversarial review) unblocks TASK-350's liveness AC; both have no other deps and are ready. Ready-to-dispatch queue (all CX9, no unmet deps): 360, 359, 349, 350(after 360), 351, 356. Blocked backlog unchanged/previously escalated: 162 (flaky real-PG tests), 234 (android KGP), 288 (web Computer nav) — none on the chat-product critical path. NEXT: /devteam-dispatch the ready queue (360 first as it gates 350), then batch-review at wave end per standing owner preference."
 ---
 
 # Project Plan
@@ -10631,21 +10631,23 @@ Exit status 2
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
 **Depends_On:** TASK-347
-**Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/Avatar.tsx, apps/dashboard/src/components/chat/Avatar.test.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts
+**Owned_Paths:** apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/Avatar.tsx, apps/dashboard/src/components/chat/Avatar.test.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/BotSidebar.test.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx
 **Description:** Web CreateBotDialog gets the same 12x8 picker, sends avatarColor/avatarShape, and Avatar.tsx renders the saved colour and shape (sidebar, conversation header, group dialog). Null keeps the derived avatar. Use TASK-347's token names so mobile and web match.
 **Acceptance_Criteria:**
 - [ ] Component tests: selection sent on create; saved avatar rendered; null fallback.
 - [ ] apps/dashboard tests, lint and build pass; `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
 **Branch:** task/TASK-349-cx9
-**Started_At:** 2026-09-24T22:20:22Z
+**Started_At:** 2026-09-24T23:11:31Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-24T22:28:01Z] [SV:CX9] Verified the 12x8 token contract and recorded the exact rendering-path ownership gap in the task dossier.
+- [2026-09-25T02:00:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve). Blocker VERIFIED, not rubber-stamped: rendering the saved avatar in the sidebar, conversation header and group dialog genuinely needs ChatPage.tsx, BotSidebar.tsx, ConversationPane.tsx and GroupThreadDialog.tsx. Confirmed all four (plus their .test.tsx) are (a) not a protected path, (b) not the territory firewall, (c) owned by NO active task — the wave is idle, and the pending web tasks that share them (TASK-354 owns none of these four; TASK-358 shares only BotSidebar.tsx/types.ts/api.ts) sit strictly DOWNSTREAM of 349 in the dependency chain (358→354→349), so they can never be co-active with it. Re-carved all four + tests into Owned_Paths, same precedent as TASK-350 (index.ts/brokerHttpRoute.ts) and TASK-309 (ChatPage.tsx). Branch task/TASK-349-cx9 (bd9582f, dossier only) stands — resume, do NOT re-branch. Plan re-validated legal after the change.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T22:20:22Z
+**Updated_At:** 2026-09-24T23:11:31Z
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
@@ -10890,7 +10892,7 @@ Exit status 2
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
-**Status:** pending
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-350 OWNERSHIP_CONFLICT (2026-09-25): packages/broker/src/index.ts ~L691-718, where legacy capabilities (enforcementEnabled !== true) never consult Require-Approval rules; Addendum F section 5.4 (F15 rules); ADR-001 (broker enforcement point); owner decision 2026-09-24: Auto-review = UI over the existing require-approval rules
@@ -10902,13 +10904,14 @@ Exit status 2
 - [ ] LIVENESS (ADR-005): the matching-rule test fails if the new check is removed.
 - [ ] No change to builtinTools.ts, capabilityRegistry.ts or packages/connectors/manifests (git diff shows only Owned_Paths).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0; full recursive suite via scripts/test-isolated.ps1 in the foreground, every failure classified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-360-cx9
+**Started_At:** 2026-09-24T22:51:21Z
 **Progress_Notes:**
 - [2026-09-24T22:21:59Z] [ORCH opus-5.5] Filed from TASK-350's OWNERSHIP_CONFLICT. This tightens the broker only: it adds approvals and never removes them. Protected path, so CX9 builds it and ORCH reviews adversarially as the different model.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T23:03:01Z] [SV:CX9] Legacy capabilities now apply matching Require-Approval rules before the below-T3 allow; ceilings and T4 denials remain first, and rule-read failures fail closed.
+**Artifacts:** packages/broker/src/index.ts, packages/broker/src/legacyRequireApproval.test.ts
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/broker: 195/195 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0; scripts/test-isolated.ps1 -Init succeeded; foreground scripts/test-isolated.ps1: exit 0 (only non-fatal pre-existing React act() warnings observed, no failures).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T22:21:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T23:03:01Z
