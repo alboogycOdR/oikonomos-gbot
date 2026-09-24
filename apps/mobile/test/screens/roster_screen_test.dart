@@ -233,6 +233,8 @@ void main() {
     ]);
 
     await tester.enterText(find.byKey(const Key('bot-name-field')), 'Helper');
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('create-bot-submit')));
     await tester.pumpAndSettle();
 
