@@ -10649,7 +10649,7 @@ Exit status 2
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 7 (the L2 reviewer MODEL is deferred; this is NOT that); owner decision 2026-09-24: Auto-review = UI over existing approvals; packages/db/src/requireApprovalRules.ts (TASK-084, Addendum F 5.4; enforced by the broker via TASK-086)
@@ -10668,12 +10668,13 @@ Exit status 2
 - [2026-09-24T21:48:01Z] [SV:CX9] Implemented and committed c4e3264: DB Auto-review mutators, injectable route port, new API routes/OpenAPI, tenant-route tests, and grant re-sync. Dossier records the implementation choice and stopping point. NEXT: Add the required real-Postgres route test that drives a broker enforcement decision, then run pnpm build, root pnpm typecheck, and the full isolated recursive suite.
 - [2026-09-24T21:58:01Z] [SV:CX9] Recorded production-wiring blocker in dossier commit 2db3ce2.
 - [2026-09-24T22:05:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve). Valid gap: the LIVENESS AC needs the routes live in production, which requires services/control-api/src/index.ts#start() to construct createDatabaseAutoReviewPort(dbOptions) and pass it into buildApp — same wiring pattern already used for TASK-193 (threadContext), TASK-203 (liveAgent), TASK-250 (secretRequests). index.ts is not protected, not firewalled, and owned by no active task (all prior owners done). Added it to Owned_Paths. Branch diff clean (all files in scope, [TASK-350] suffixes present). Resume on task/TASK-350-cx9 from the dossier stopping point — do NOT re-branch; c4e3264 stands. NEXT after wiring: add the real-Postgres broker-enforcement test, then pnpm build + root typecheck + full isolated recursive suite in the FOREGROUND.
+- [2026-09-24T22:08:01Z] [SV:CX9] Committed production Auto-review port wiring in 134bd13; dossier records the remaining live-broker composition gap.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T22:05:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/brokerHttpRoute.ts must supply getRequireApprovalRules to the production broker dependencies for Auto-review rules to affect live broker decisions; it is outside TASK-350 Owned_Paths.
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T22:08:01Z
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
