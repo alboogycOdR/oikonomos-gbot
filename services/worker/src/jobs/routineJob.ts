@@ -4,12 +4,16 @@ import {
   getRole,
   getSkill,
   listProjectArtifacts,
+  listRecentRoutineOutcomes,
   listRoutines,
+  insertMessage,
   recordRoutineFire,
   resolveRoleRuntime,
   routineInputsAvailable,
+  setRoutinePaused,
   type DatabaseOptions,
   type Routine,
+  type RoutineFireOutcome,
 } from "@oikonomos/db";
 
 import { nextFireAtFromCron } from "../routineTool.js";
@@ -55,6 +59,58 @@ async function routineGoal(options: DatabaseOptions, routine: Routine): Promise<
 function computeNextFireAt(routine: Routine, now: Date): Date | null {
   if (routine.schedule === null) return null;
   return nextFireAtFromCron(routine.schedule, routine.timezone, routine.nextFireAt ?? now);
+}
+
+/**
+ * TASK-329: a `stopped` fire is a routine failure. `missed` deliberately
+ * does not participate: Addendum F §3.4 says an unavailable environment is
+ * not a catch-up failure. `changes_only` stops are intentional no-op fires,
+ * likewise outside the streak. A queued run resets it; paused/skipped
+ * outcomes end the scan defensively.
+ */
+function consecutiveRoutineFailures(outcomes: ReadonlyArray<{ outcome: RoutineFireOutcome; reason: string | null }>): number {
+  let failures = 0;
+  for (const { outcome, reason } of outcomes) {
+    if (outcome === "missed") continue;
+    if (outcome === "stopped" && reason?.startsWith("changes_only:")) continue;
+    if (outcome === "stopped") {
+      failures += 1;
+      continue;
+    }
+    break;
+  }
+  return failures;
+}
+
+async function recordRoutineOutcome(
+  options: DatabaseOptions,
+  routine: Routine,
+  outcome: RoutineFireOutcome,
+  nextFireAt: Date | null | undefined,
+  reason: string | null,
+  reportedStatusSha?: string | null,
+): Promise<void> {
+  await recordRoutineFire(options, routine.routineId, outcome, nextFireAt, reason, reportedStatusSha);
+  if (outcome !== "stopped") return;
+
+  const failures = consecutiveRoutineFailures(await listRecentRoutineOutcomes(options, routine.routineId, 20));
+  if (failures !== 1 && failures !== 10) return;
+
+  const thread = await getOrCreateThreadForRole(options, { roleId: routine.roleId });
+  if (failures === 10) {
+    await setRoutinePaused(options, routine.routineId, true);
+    await insertMessage(options, {
+      threadId: thread.id,
+      role: "system",
+      body: `Routine "${routine.name}" was paused after 10 consecutive failures: ${reason ?? "no reason recorded"}`,
+    });
+    return;
+  }
+  await insertMessage(options, {
+    threadId: thread.id,
+    role: "system",
+    body: `Routine "${routine.name}" failed: ${reason ?? "no reason recorded"}`,
+  });
 }
 
 /**
@@ -175,14 +231,14 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
       }
       const unavailableReason = await routineInputsAvailable(options, routine);
       if (unavailableReason !== null && (routine.onMissingSource ?? "report_and_stop") === "report_and_stop") {
-        await recordRoutineFire(options, routine.routineId, "stopped", routine.nextFireAt, unavailableReason);
+        await recordRoutineOutcome(options, routine, "stopped", routine.nextFireAt, unavailableReason);
         return { routineId: routine.routineId, outcome: "stopped" as const };
       }
       const gate = await statusGate(options, routine);
       if (gate.gated && gate.unchanged) {
         // No column for a "silent" outcome (CHECK in 016); `stopped` = no run, reason says why.
-        await recordRoutineFire(
-          options, routine.routineId, "stopped", computeNextFireAt(routine, now), 
+        await recordRoutineOutcome(
+          options, routine, "stopped", computeNextFireAt(routine, now),
           gate.sha === null ? "changes_only: no STATUS.md to report" : "changes_only: STATUS.md unchanged since last report",
         );
         return { routineId: routine.routineId, outcome: "skipped_unchanged" as const };
@@ -192,9 +248,9 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
         createTask: async (input) => {
           await createAndEnqueueRoutineRun(options, input);
         },
-        recordFire: async (routineId, fireOutcome, nextFireAt) => {
-          await recordRoutineFire(
-            options, routineId, fireOutcome, nextFireAt, null,
+        recordFire: async (_routineId, fireOutcome, nextFireAt) => {
+          await recordRoutineOutcome(
+            options, routine, fireOutcome, nextFireAt, null,
             fireOutcome === "queued" && gate.gated ? gate.sha : null,
           );
         },

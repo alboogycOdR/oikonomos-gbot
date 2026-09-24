@@ -3,14 +3,17 @@ import {
   createProjectArtifact,
   createRole,
   getOrCreateThreadForRole,
+  getRoutine,
   createRoutine,
   createSkill,
   defaultPoolConfig,
   getRoutineSpendUsd,
+  listMessages,
   listEnabledForRole,
   listTasks,
   setEnabledForRole,
   setRoutinePaused,
+  recordRoutineFire,
 } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -35,6 +38,15 @@ integration("routine parity poller (TASK-182)", () => {
     // TASK-258: a scheduled fire now atomically creates a real `runs` row
     // alongside its task, so cleanup must delete the dependent `runs` row
     // first — deleting `tasks` directly would violate `runs_task_id_fkey`.
+    // Messages can reference both a run and the role-owned thread.  Remove
+    // them before either parent so routine-fire notices and queued-run output
+    // cannot make this suite's cleanup depend on FK timing.
+    await pool.query(
+      `DELETE FROM messages
+       WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1))
+          OR thread_id IN (SELECT id FROM threads WHERE role_id IN (SELECT role_id FROM roles WHERE tenant_id = $1))`,
+      [tenantId],
+    );
     await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM role_routines WHERE tenant_id = $1`, [tenantId]);
@@ -96,70 +108,119 @@ integration("routine parity poller (TASK-182)", () => {
     expect((await listTasks({ connectionString: connectionString! }, { tenantId })).tasks).toHaveLength(0);
   });
 
-  it("carries a bound skill token into the assembled prompt's skill block", async () => {
-    const roleId = `task-182-skill-${crypto.randomUUID()}`;
-    const role = await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "Skill role", title: "Skill role" });
-    const skill = await createSkill({ connectionString: connectionString! }, {
-      tenantId,
-      name: "weekly-export",
-      description: "Exports a weekly report",
-      body: "Gather the week's data and export it.",
-    });
-    await setEnabledForRole({ connectionString: connectionString! }, roleId, skill.skillId, true);
-    const routine = await createRoutine({ connectionString: connectionString! }, {
-      roleId,
-      tenantId,
-      name: "Weekly export",
-      skillId: skill.skillId,
-      definition: { goal: "Export this week's report" },
-      nextFireAt: new Date(Date.now() - 1_000),
-    });
+  it("TASK-329: notifies on a first failure, ignores missed fires, resets on success, then pauses on the tenth failure", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const db = { connectionString: connectionString! };
+      const roleId = `task-329-fatigue-${crypto.randomUUID()}`;
+      await createRole(db, { roleId, tenantId, name: "Fatigue", title: "Fatigue" });
+      const routine = await createRoutine(db, {
+        roleId, tenantId, name: "Watch source", definition: { inputs: ["missing.task-329.source"] },
+        nextFireAt: new Date(Date.now() - 1_000),
+      });
+      const thread = await getOrCreateThreadForRole(db, { roleId });
+      const messages = async () => (await listMessages(db, thread.id)).filter((message) => message.body.includes('Routine "Watch source"'));
 
-    await expect(runDueRoutinePoll({ connectionString: connectionString!, tenantId })).resolves.toContainEqual({
-      routineId: routine.routineId,
-      outcome: "queued",
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(1);
+
+      // Misses are deliberately ignored by the fatigue streak; the second
+      // stop remains a later failure and must not create another notice.
+      await recordRoutineFire(db, routine.routineId, "missed");
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(1);
+
+      // A successful queued fire resets the streak. Reconfigure only this
+      // test fixture, then the next failure is visibly a new first failure.
+      await pool.query(`UPDATE role_routines SET definition = $2::jsonb WHERE routine_id = $1`, [routine.routineId, JSON.stringify({ goal: "recover" })]);
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+      await pool.query(`UPDATE role_routines SET definition = $2::jsonb WHERE routine_id = $1`, [routine.routineId, JSON.stringify({ inputs: ["missing.task-329.source"] })]);
+
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(2);
+      for (let attempt = 2; attempt <= 10; attempt += 1) {
+        await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      }
+
+      // This is the liveness assertion: without the pause rule, a tenth
+      // failure leaves the routine live and this persisted state is false.
+      expect((await getRoutine(db, routine.routineId))?.paused).toBe(true);
+      expect(await messages()).toHaveLength(3);
+      expect((await messages()).at(-1)?.body).toContain("paused after 10 consecutive failures");
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "skipped_paused" });
+      expect(await messages()).toHaveLength(3);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
     });
-    const task = (await listTasks({ connectionString: connectionString! }, { tenantId })).tasks.find((candidate) => candidate.routineId === routine.routineId);
-    expect(task?.goal).toBe("/weekly-export Export this week's report");
-    const enabledSkills = await listEnabledForRole({ connectionString: connectionString! }, roleId);
-    const prompt = await assembleSystemPrompt({
-      role,
-      fallbackRoleId: roleId,
-      message: task!.goal,
-      resolveEnabledSkill: async (name) => enabledSkills.find((candidate) => candidate.name === name) ?? null,
+  }, 20_000);
+
+  it("carries a bound skill token into the assembled prompt's skill block", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      const roleId = `task-182-skill-${crypto.randomUUID()}`;
+      const role = await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "Skill role", title: "Skill role" });
+      const skill = await createSkill({ connectionString: connectionString! }, {
+        tenantId,
+        name: "weekly-export",
+        description: "Exports a weekly report",
+        body: "Gather the week's data and export it.",
+      });
+      await setEnabledForRole({ connectionString: connectionString! }, roleId, skill.skillId, true);
+      const routine = await createRoutine({ connectionString: connectionString! }, {
+        roleId,
+        tenantId,
+        name: "Weekly export",
+        skillId: skill.skillId,
+        definition: { goal: "Export this week's report" },
+        nextFireAt: new Date(Date.now() - 1_000),
+      });
+
+      await expect(runDueRoutinePoll({ connectionString: connectionString!, tenantId })).resolves.toContainEqual({
+        routineId: routine.routineId,
+        outcome: "queued",
+      });
+      const task = (await listTasks({ connectionString: connectionString! }, { tenantId })).tasks.find((candidate) => candidate.routineId === routine.routineId);
+      expect(task?.goal).toBe("/weekly-export Export this week's report");
+      const enabledSkills = await listEnabledForRole({ connectionString: connectionString! }, roleId);
+      const prompt = await assembleSystemPrompt({
+        role,
+        fallbackRoleId: roleId,
+        message: task!.goal,
+        resolveEnabledSkill: async (name) => enabledSkills.find((candidate) => candidate.name === name) ?? null,
+      });
+      expect(prompt).toContain("## Skill: weekly-export");
+      expect(prompt).toContain("Gather the week's data and export it.");
     });
-    expect(prompt).toContain("## Skill: weekly-export");
-    expect(prompt).toContain("Gather the week's data and export it.");
-  });
+  }, 20_000);
 
   it("TASK-247 / §9.3: advances next_fire_at using the routine's IANA timezone across a DST boundary", async () => {
-    const roleId = `task-247-dst-${crypto.randomUUID()}`;
-    await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "DST routine", title: "DST routine" });
-    // 2027-03-13 09:00 America/New_York is EST (UTC-5) == 14:00Z. The next
-    // 9am-local occurrence, 2027-03-14, falls the day DST springs forward,
-    // so it is EDT (UTC-4) == 13:00Z — one hour earlier in UTC despite an
-    // identical local wall-clock time.
-    const dueAt = new Date("2027-03-13T14:00:00.000Z");
-    const routine = await createRoutine({ connectionString: connectionString! }, {
-      roleId,
-      tenantId,
-      name: "DST-crossing routine",
-      schedule: "0 9 * * *",
-      timezone: "America/New_York",
-      definition: { goal: "Cross the DST boundary" },
-      nextFireAt: dueAt,
+    await withPgBossQueueLock(pool, async () => {
+      const roleId = `task-247-dst-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId, tenantId, name: "DST routine", title: "DST routine" });
+      // 2027-03-13 09:00 America/New_York is EST (UTC-5) == 14:00Z. The next
+      // 9am-local occurrence, 2027-03-14, falls the day DST springs forward,
+      // so it is EDT (UTC-4) == 13:00Z — one hour earlier in UTC despite an
+      // identical local wall-clock time.
+      const dueAt = new Date("2027-03-13T14:00:00.000Z");
+      const routine = await createRoutine({ connectionString: connectionString! }, {
+        roleId,
+        tenantId,
+        name: "DST-crossing routine",
+        schedule: "0 9 * * *",
+        timezone: "America/New_York",
+        definition: { goal: "Cross the DST boundary" },
+        nextFireAt: dueAt,
+      });
+
+      await expect(
+        runDueRoutinePoll({ connectionString: connectionString!, tenantId, now: () => new Date(dueAt.getTime() + 1_000) }),
+      ).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+
+      const refetched = await pool.query<{ next_fire_at: Date }>(
+        `SELECT next_fire_at FROM role_routines WHERE routine_id = $1`,
+        [routine.routineId],
+      );
+      expect(refetched.rows[0]?.next_fire_at.toISOString()).toBe("2027-03-14T13:00:00.000Z");
     });
-
-    await expect(
-      runDueRoutinePoll({ connectionString: connectionString!, tenantId, now: () => new Date(dueAt.getTime() + 1_000) }),
-    ).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
-
-    const refetched = await pool.query<{ next_fire_at: Date }>(
-      `SELECT next_fire_at FROM role_routines WHERE routine_id = $1`,
-      [routine.routineId],
-    );
-    expect(refetched.rows[0]?.next_fire_at.toISOString()).toBe("2027-03-14T13:00:00.000Z");
-  });
+  }, 20_000);
 
   it("TASK-258: a due routine fire creates a real run and enqueues a real worker.run-execution job, not just a task row", async () => {
     await withPgBossQueueLock(pool, async () => {
@@ -209,7 +270,7 @@ integration("routine parity poller (TASK-182)", () => {
 
       await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
     });
-  });
+  }, 20_000);
 
   it("TASK-305 / spec §11: a changes_only status routine sends nothing when STATUS.md is unchanged and fires when it changes", async () => {
     await withPgBossQueueLock(pool, async () => {
@@ -255,5 +316,5 @@ integration("routine parity poller (TASK-182)", () => {
 
       await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
     });
-  }, 60_000);
+  }, 20_000);
 });
