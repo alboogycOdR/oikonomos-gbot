@@ -10564,7 +10564,7 @@ Exit status 2
 
 ### TASK-347
 **Title:** Bots keep the avatar colour and shape chosen at creation (backend)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 1 (upload deferred, colour/shape in scope); owner decision 2026-09-24: save it, full 12 colours x 8 shapes
@@ -10584,12 +10584,13 @@ Exit status 2
 - [2026-09-24T20:10:00Z] [ORCH opus-4.8] Status-scan triage. Blocker was a real territory gap, not a spec problem: persisting PATCH avatar fields legitimately flows through the DB port in services/control-api/src/ports.ts. Verified ports.ts is owned by no other active/pending task (all matches are historical done tasks) and control-api is not an adversarial-review protected path. Re-carved: added services/control-api/src/ports.ts to Owned_Paths and unblocked (blocked -> pending). Branch task/TASK-347-cx9 carries zero builder commits, so nothing to rebase. Re-dispatch CX9.
 - [2026-09-24T20:13:00Z] [SV:CX9] TASK-347 requires the public @oikonomos/db barrel to export the single avatar palette; this path is not owned.
 - [2026-09-24T20:30:00Z] [ORCH opus-4.8] Status-scan triage (§7). Valid gap, same class as the 20:10 ports.ts re-carve: the acceptance criterion "exported so clients can mirror it" makes exporting the palette from the public barrel packages/db/src/index.ts inherent to the task. Verified: packages/db is not an adversarial-review protected path; index.ts has no live co-owner (all other owners are done tasks; the only co-dispatchable task, 359, owns worker groupRouting/groupFanout only — disjoint). Added packages/db/src/index.ts to Owned_Paths and unblocked (blocked -> pending). Branch task/TASK-347-cx9 carries only a dossier note, nothing to rebase. Re-dispatch CX9. NOTE: this is the second re-carve on 347; the barrel is the last export surface the criteria need (roles.ts + control-api app/ports/openapi already owned) — no third gap expected.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T20:38:01Z] [SV:CX9] Avatar colour/shape persistence, validation, API serialization, migrations, and route coverage are complete on commits baf4965 and 0be28c0.
+**Artifacts:** infra/postgres/migrations/037_role_avatar.up.sql, infra/postgres/migrations/037_role_avatar.down.sql, packages/db/src/roles.ts, packages/db/src/roles.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/roleAvatar.routes.test.ts
+**Test_Evidence:** scripts/test-isolated.ps1 -Init -Filter @oikonomos/db: 46 files, 300 passed, 2 skipped; scripts/test-isolated.ps1 -Filter @oikonomos/control-api: passed; full foreground scripts/test-isolated.ps1: passed; pnpm -r build and pnpm -r typecheck: exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T20:16:04Z
+**Updated_At:** 2026-09-24T20:38:01Z
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
