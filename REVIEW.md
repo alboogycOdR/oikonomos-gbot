@@ -1929,3 +1929,4 @@ that drives the real production recording path.
 | TASK-327 | CX9 | rework | stale base (pre-342); poison-row + worker-level cap/notice tests missing; failure-path isolation hole | first-pass: no | 2026-09-24T15:09:09Z |
 | TASK-327 | CX9 | approved (after rework) | F1-F6 fixed; db 293/0, worker 368/0 x2 | first-pass: no | 2026-09-24T15:27:00Z |
 | TASK-328 | CX9 | approved (after rework) | feature clean; F1 fixed master build break (fixtures from 327); build+typecheck exit 0 | first-pass: no | 2026-09-24T15:59:18Z |
+| TASK-329 | CX9 | rework | logic correct; routineJob.test.ts regressions: pg-boss race in DST test (2/3), afterAll messages_run_id FK (1/3) | first-pass: no | 2026-09-24T16:16:19Z |
