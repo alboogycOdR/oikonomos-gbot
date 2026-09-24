@@ -10209,7 +10209,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-338
 **Title:** Claude lane: end a sandbox run that goes silent
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (channels/stall-guard.ts: wire-quiet timer); services/worker/src/chatRunDriver.ts SANDBOX_COMMAND_TIMEOUT_MS; TASK-316 visible failure message; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10232,12 +10232,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T12:00:00Z] [ORCH opus-4-8] Triaged the OWNERSHIP_CONFLICT (§7 re-carve). packages/sandbox-client is currently unowned — its last owners (TASK-142/169/170/185/296) are all done, and no active/pending task contends for client.ts/types.ts. The silence timer is one coherent feature, so rather than split it into a separate integration task I widened Owned_Paths to include packages/sandbox-client/{src/client.ts, src/types.ts, src/index.ts, test/sandboxClient.test.ts}. Add the OPTIONAL onActivity callback + AbortSignal to RunCommandRequest/runCommand (backward-compatible — existing callers unaffected), then wire the silence timer in chatRunDriver.ts. sandbox-client is NOT a protected path, so S5 may author. Dependency TASK-336 is done. Unblocked → pending; re-dispatch will re-launch S5.
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] REASSIGNED S5 -> CX9: S5 was retired from the roster on 2026-09-24. S5's partial work is committed as ff13825 on task/TASK-338-cx9 (sandbox-client client/types/test and chatRunDriver.ts touched, unfinished and untested). CX9: check out that branch, verify S5's partial work against the ACs, and finish it. Don't trust it blindly.
 - [2026-09-24T12:29:39Z] [SV:CX9] Implemented and verified Claude sandbox silence cancellation, visible failure message, audit category, and activity reset coverage.
+- [2026-09-24T13:06:02Z] [ORCH opus-5.5] REVIEW: rework. See Review_Findings F1 (blocking) and F2.
 **Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/sandbox-client/src/client.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/test/sandboxClient.test.ts, dossiers/TASK-338.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/sandbox-client: 26/26 passed; sandbox-client typecheck passed. Isolated worker and full recursive suites completed; non-owned baseline failures were evals/provider environment, worker budget/Gemini/timeout, and control-api TASK-121 400-vs-201.
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH opus-5.5, 2026-09-24). F1 BLOCKING, the silence guard kills healthy long turns in production. claudePrintCommand runs the real CLI with --output-format json (chatRunDriver.ts ~L1408), which writes stdout once at the end of the turn and emits no tool events on the stream. A real turn that spends more than OIK_CLAUDE_SILENCE_TIMEOUT_MS (180s) in tool loops or thinking therefore produces zero execd events and is cancelled as 'silent', which breaks the Description's rule that a quiet but progressing tool is not killed. It also cuts the real limit from 10 min to 3 min for every legitimate long turn. The tests pass only because the fake command emits periodic onActivity. FIX: make the production command produce incremental events, e.g. --output-format stream-json --verbose, so every assistant and tool_use/tool_result line is a stdout chunk. Then parse the final result envelope from the stream-json lines (the type:result line) wherever eventFromSandboxStdout currently expects the single json envelope, keeping cost and usage extraction identical. Add a test that feeds realistic stream-json stdout (several tool events, then a result line) through the driver, and assert it yields the same event, cost and usage as today's json path. F2, verify execd keepalives: onActivity fires on ANY non-comment SSE event. If execd emits periodic non-output events (e.g. a status or heartbeat type) while a command is hung, the guard never fires. Confirm against the execd stream event types and count only stdout, stderr and tool-bearing events as activity, with a test. F3, NOTE, no change required: cancellation is client-side (the stream is aborted), and the in-sandbox process remains bounded by execd's server-side timeout. Say so in the dossier. Everything else is good: territory clean, the audit category is recorded, the SandboxSilenceError visible message is correct, and the ADR-005 liveness test is sound.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T12:29:39Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T13:06:02Z
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
