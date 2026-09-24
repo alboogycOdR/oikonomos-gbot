@@ -10869,7 +10869,7 @@ Exit status 2
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group: runaway protection); groupRouting.ts GROUP_MEMBER_CAP; TASK-328 hop cap covers handoffs only
@@ -10880,16 +10880,16 @@ Exit status 2
 - [ ] Real-Postgres tests: a loop stops at each cap with exactly one visible notice and one audit event; a user message resets; the existing stop reasons still work.
 - [ ] LIVENESS: the cap test fails if the cap check is removed.
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-359-cx9
+**Started_At:** 2026-09-24T23:28:20Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T23:28:20Z
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
