@@ -10515,7 +10515,7 @@ Exit status 2
 
 ### TASK-345
 **Title:** Test isolation: projects.ts real-Postgres suite afterAll FK failure (thread_members)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** ORCH batch review 2026-09-24 (intermittent suite-level failure in packages/db src/projects.ts, TASK-276 block, ~L1588); same class as TASK-342 (f)
@@ -10525,13 +10525,13 @@ Exit status 2
 **Acceptance_Criteria:**
 - [ ] Three consecutive -Filter @oikonomos/db runs via scripts/test-isolated.ps1 (-Init before the first only) with the projects.ts suite green each time; quote the Tests lines.
 - [ ] Only the vitest block's cleanup changed (git diff shows no production-code change).
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-345-cx9
+**Started_At:** 2026-09-24T18:00:55Z
 **Progress_Notes:**
 - [2026-09-24T18:10:00Z] [ORCH opus-5.5] Filed from the batch review under the "master failures become fix tasks" rule.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T18:10:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T18:00:55Z
