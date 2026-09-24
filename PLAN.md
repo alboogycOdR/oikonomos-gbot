@@ -10365,7 +10365,7 @@ Exit status 2
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-333 (read markers and pins API); TASK-332; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10381,12 +10381,13 @@ Exit status 2
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] REASSIGNED S5 -> CX9 (S5 retired 2026-09-24).
 - [2026-09-24T14:38:31Z] [SV:CX9] Implemented unread badges, pin/unpin, pinned-first sorting, and best-effort read marking for roster-opened chats; committed f82403d.
-**Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/roster_screen_test.dart, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-334.md
-**Test_Evidence:** flutter test test/screens/roster_screen_test.dart test/screens/chat_screen_test.dart â€” 64/64 passed; flutter analyze touched lib files â€” no issues; git diff --check clean. Dart/Flutter is outside pnpm -r.
+- [2026-09-24T18:00:37Z] [SV:CX9] Fixed both REWORK findings: roster reloads after returning from chat so unread badges refresh, and pinned rows show a pin indicator. Committed 73c4230.
+**Artifacts:** apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart, dossiers/TASK-334.md
+**Test_Evidence:** flutter test test/screens/roster_screen_test.dart test/screens/chat_screen_test.dart â€” 65/65 passed; flutter analyze lib â€” no issues; full flutter test â€” passed; git diff --check â€” clean. Dart/Flutter is outside pnpm -r.
 **Review_Findings:** REWORK, small (ORCH opus-5.5, batch review). ORCH's independent run on f82403d: full mobile flutter test 208/208, flutter analyze lib clean. The badge, the defensive parse, pin/unpin by long-press, pinned-first sort and best-effort mark-read are all good. F1: the unread badge goes stale. _openChat pushes ChatScreen and never reloads the roster when it pops, so after reading a thread and returning, its badge still shows the old unreadCount until the next manual refresh. Opening a thread and seeing it still unread breaks the feature's main visible promise. FIX: reload on return (await the push, then _load(), or optimistically zero that row's unreadCount), and add a widget test: open a thread with unreadCount 3, pop back, and the badge is gone. F2, minor: when the long-press toggle succeeds, give a brief confirmation (e.g. a 'Pinned' or 'Unpinned' SnackBar) or a pin icon on pinned rows. A pinned row currently looks the same as an unpinned one apart from its position. Add a pin indicator plus a test. Evidence: flutter test (full mobile suite) and flutter analyze lib.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T17:31:49Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T18:00:37Z
 
 ### TASK-MAINT-2026-09-24
 **Title:** Nightly self-audit failure (2026-09-24)
