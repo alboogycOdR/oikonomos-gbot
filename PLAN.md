@@ -10007,11 +10007,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-328
 **Title:** Handoff hop-depth cap and idempotent role-message send
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (agents/handoff.ts: depth carried in a signed run assertion, fan-out counted under an advisory lock, envelope-hash idempotency); specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md section 6.4; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
-**Owned_Paths:** packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/roleMessageDelivery.test.ts, infra/postgres/migrations/036_role_message_depth_dedupe.up.sql, infra/postgres/migrations/036_role_message_depth_dedupe.down.sql, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts
+**Owned_Paths:** packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/roleMessageDelivery.test.ts, infra/postgres/migrations/036_role_message_depth_dedupe.up.sql, infra/postgres/migrations/036_role_message_depth_dedupe.down.sql, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts, services/control-api/src/chat.routes.test.ts
 **Depends_On:** TASK-327, TASK-340
 **Description:** Nothing caps how deep a chain of bot-to-bot handoffs can go: A to B to C to A is bounded only by spend. And an identical resend within one run creates a second message and a second run. Add hop_depth (default 0) and dedupe_key to role_messages (migration 036). sendRoleMessage takes an optional sourceRunId. Depth is the depth of the message that started the source run (runs.requested_by = "role-message:<id>") plus one, else 0. Refuse at depth >= OIK_HANDOFF_MAX_DEPTH (default 4) with a sentence the model can read: isError text in the Claude MCP lanes, tool-result text in the Gemini lane. The dedupe key is a SHA-256 of (from role, to role, handoff kind, body, factRef, sourceRunId), unique among the source run's messages; an identical second send returns "already sent" and creates no row and no run. Audit both refusals with a category only. Every caller in both lanes passes its run id: projectTools.ts, workspaceMcpServer.ts (send_to_role) and geminiToolExecutors.ts (send_to_role).
 **Acceptance_Criteria:**
@@ -10030,10 +10030,85 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T15:43:14Z] [SV:CX9] Implemented and committed hop-depth cap, SHA-256 source-run idempotency, category-only audits, migration 036, and Claude/Gemini run-ID propagation. Targeted isolated DB and worker suites pass; full recursive test-isolated run remains. NEXT: Run the required full recursive scripts/test-isolated.ps1 suite, classify any non-own-package failures, then submit for review.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH opus-5.5). The feature code is good: depth lookup via the source run, a transactional dedupe with ON CONFLICT DO NOTHING, category-only audits, all three callers pass the run id, and the MCP lane returns isError. ORCH's independent runs on 8f17200: db 293/1 (the roles.test backfill failure also fails on master), workspace 33/0, worker 368/1 (budget.platform_exceeded, the known TASK-343 overlap). F1 BLOCKING, MASTER IS BROKEN: since the TASK-327 merge, RoleMessage has five required delivery fields and TASK-328 adds hopDepth. Test fixtures in other packages were never updated, so pnpm -r build fails on master (services/workspace mailbox.ts:147 and mailbox.test.ts:11; your branch fixes mailbox.test.ts) and on your branch (services/control-api/src/chat.routes.test.ts makeRoleMessage, ~L95). ORCH added chat.routes.test.ts to Owned_Paths: add the missing fields to that fixture. Also check mailbox.ts:147's non-test object (the vitest block) on your branch. REQUIRED EVIDENCE: Scope: 19 of 20 workspace projects
+apps/dashboard build$ tsc && vite build
+packages/agent-providers build$ tsc
+packages/db build$ tsc
+packages/memory build$ tsc
+packages/memory build: Done
+packages/policy build$ tsc
+packages/agent-providers build: Done
+packages/sandbox-client build$ tsc
+packages/policy build: Done
+packages/shared build$ tsc
+packages/sandbox-client build: Done
+packages/db build: Done
+packages/shared build: Done
+apps/dashboard build: [36mvite v6.4.3 [32mbuilding for production...[36m[39m
+apps/dashboard build: transforming...
+apps/dashboard build: (node:9872) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+apps/dashboard build: (Use `node --trace-warnings ...` to show where the warning was created)
+apps/dashboard build: [32m✓[39m 83 modules transformed.
+apps/dashboard build: rendering chunks...
+apps/dashboard build: computing gzip size...
+apps/dashboard build: [2mdist/[22m[32mbuild.json                 [39m[1m[2m  0.09 kB[22m[1m[22m[2m │ gzip:   0.10 kB[22m
+apps/dashboard build: [2mdist/[22m[32mindex.html                 [39m[1m[2m  0.63 kB[22m[1m[22m[2m │ gzip:   0.36 kB[22m
+apps/dashboard build: [2mdist/[22m[35massets/index-BO4mYjg_.css  [39m[1m[2m 21.89 kB[22m[1m[22m[2m │ gzip:   5.20 kB[22m
+apps/dashboard build: [2mdist/[22m[36massets/index-vmgTs-PV.js   [39m[1m[2m458.00 kB[22m[1m[22m[2m │ gzip: 124.47 kB[22m
+apps/dashboard build: [32m✓ built in 3.87s[39m
+apps/dashboard build: Done
+packages/approvals build$ tsc
+packages/audit build$ tsc
+packages/connectors build$ tsc
+packages/harness-factory build$ tsc
+packages/audit build: Done
+services/workspace build$ tsc
+packages/approvals build: Done
+packages/connectors build: Done
+packages/harness-factory build: Done
+services/workspace build: src/mailbox.test.ts(11,105): error TS2739: Type '{ messageId: string; tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs: readonly string[]; handoffKind: "research.complete" | "draft.ready_for_review" | "task.assigned" | "task.completed" | "task.blocked" | "status.requested" | null; factRef: HandoffFactReference | null; createdAt: ...' is missing the following properties from type 'RoleMessage': deliveryAttempts, lastDeliveryError, deliveryClaimedAt, deliveryClaimToken, deliveryFailedAt
+services/workspace build: src/mailbox.ts(147,13): error TS2739: Type '{ messageId: string; tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs: readonly string[]; handoffKind: "research.complete" | "draft.ready_for_review" | "task.assigned" | "task.completed" | "task.blocked" | "status.requested" | null; factRef: HandoffFactReference | null; createdAt: ...' is missing the following properties from type 'RoleMessage': deliveryAttempts, lastDeliveryError, deliveryClaimedAt, deliveryClaimToken, deliveryFailedAt
+services/workspace build: Failed
+E:\DELL-PROJECTS\GROKBOT-CLONE\services\workspace:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @oikonomos/workspace@0.0.0 build: `tsc`
+Exit status 2 (all packages except apps/dashboard is acceptable if only vite fails) AND 
+> oikonomos@0.0.0 typecheck E:\DELL-PROJECTS\GROKBOT-CLONE
+> pnpm -r typecheck
+
+Scope: 19 of 20 workspace projects
+apps/dashboard typecheck$ tsc --noEmit
+packages/agent-providers typecheck$ tsc --noEmit
+packages/db typecheck$ tsc --noEmit
+packages/memory typecheck$ tsc --noEmit
+packages/memory typecheck: Done
+packages/policy typecheck$ tsc --noEmit
+packages/agent-providers typecheck: Done
+packages/sandbox-client typecheck$ tsc --noEmit
+packages/policy typecheck: Done
+packages/shared typecheck$ tsc --noEmit
+packages/sandbox-client typecheck: Done
+packages/db typecheck: Done
+packages/shared typecheck: Done
+apps/dashboard typecheck: Done
+packages/approvals typecheck$ tsc --noEmit
+packages/audit typecheck$ tsc --noEmit
+packages/connectors typecheck$ tsc --noEmit
+packages/harness-factory typecheck$ tsc --noEmit
+packages/audit typecheck: Done
+services/workspace typecheck$ tsc --noEmit
+packages/approvals typecheck: Done
+packages/connectors typecheck: Done
+packages/harness-factory typecheck: Done
+services/workspace typecheck: src/mailbox.test.ts(11,105): error TS2739: Type '{ messageId: string; tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs: readonly string[]; handoffKind: "research.complete" | "draft.ready_for_review" | "task.assigned" | "task.completed" | "task.blocked" | "status.requested" | null; factRef: HandoffFactReference | null; createdAt: ...' is missing the following properties from type 'RoleMessage': deliveryAttempts, lastDeliveryError, deliveryClaimedAt, deliveryClaimToken, deliveryFailedAt
+services/workspace typecheck: src/mailbox.ts(147,13): error TS2739: Type '{ messageId: string; tenantId: string; fromRoleId: string; toRoleId: string; body: string; workspaceRefs: readonly string[]; handoffKind: "research.complete" | "draft.ready_for_review" | "task.assigned" | "task.completed" | "task.blocked" | "status.requested" | null; factRef: HandoffFactReference | null; createdAt: ...' is missing the following properties from type 'RoleMessage': deliveryAttempts, lastDeliveryError, deliveryClaimedAt, deliveryClaimToken, deliveryFailedAt
+services/workspace typecheck: Failed
+E:\DELL-PROJECTS\GROKBOT-CLONE\services\workspace:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @oikonomos/workspace@0.0.0 typecheck: `tsc --noEmit`
+Exit status 2
+ ELIFECYCLE  Command failed with exit code 2. both exit 0 on your branch, quoted in Test_Evidence. This is what CI runs. F2: finish in the FOREGROUND; don't exit while a test run is still going.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T15:43:14Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T15:48:01Z
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
