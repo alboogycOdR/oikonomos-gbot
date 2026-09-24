@@ -1581,10 +1581,21 @@ if (import.meta.vitest) {
           [tenantId],
         );
         await pool.query(
+          `DELETE FROM project_task_runs WHERE task_id IN (SELECT task_id FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1))`,
+          [tenantId],
+        );
+        await pool.query(
           `DELETE FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`,
           [tenantId],
         );
+        await pool.query(
+          `DELETE FROM project_roles WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`,
+          [tenantId],
+        );
         await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
+        await pool.query(`DELETE FROM thread_members WHERE thread_id IN (SELECT id FROM threads WHERE role_id LIKE $1)`, [
+          `${rolePrefix}%`,
+        ]);
         await pool.query(`DELETE FROM threads WHERE role_id LIKE $1`, [`${rolePrefix}%`]);
         await pool.query(`DELETE FROM roles WHERE role_id LIKE $1`, [`${rolePrefix}%`]);
       });
