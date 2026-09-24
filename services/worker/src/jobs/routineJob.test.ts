@@ -3,14 +3,17 @@ import {
   createProjectArtifact,
   createRole,
   getOrCreateThreadForRole,
+  getRoutine,
   createRoutine,
   createSkill,
   defaultPoolConfig,
   getRoutineSpendUsd,
+  listMessages,
   listEnabledForRole,
   listTasks,
   setEnabledForRole,
   setRoutinePaused,
+  recordRoutineFire,
 } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -95,6 +98,51 @@ integration("routine parity poller (TASK-182)", () => {
     expect(fires.rows).toContainEqual({ outcome: "skipped_paused" });
     expect((await listTasks({ connectionString: connectionString! }, { tenantId })).tasks).toHaveLength(0);
   });
+
+  it("TASK-329: notifies on a first failure, ignores missed fires, resets on success, then pauses on the tenth failure", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const db = { connectionString: connectionString! };
+      const roleId = `task-329-fatigue-${crypto.randomUUID()}`;
+      await createRole(db, { roleId, tenantId, name: "Fatigue", title: "Fatigue" });
+      const routine = await createRoutine(db, {
+        roleId, tenantId, name: "Watch source", definition: { inputs: ["missing.task-329.source"] },
+        nextFireAt: new Date(Date.now() - 1_000),
+      });
+      const thread = await getOrCreateThreadForRole(db, { roleId });
+      const messages = async () => (await listMessages(db, thread.id)).filter((message) => message.body.includes('Routine "Watch source"'));
+
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(1);
+
+      // Misses are deliberately ignored by the fatigue streak; the second
+      // stop remains a later failure and must not create another notice.
+      await recordRoutineFire(db, routine.routineId, "missed");
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(1);
+
+      // A successful queued fire resets the streak. Reconfigure only this
+      // test fixture, then the next failure is visibly a new first failure.
+      await pool.query(`UPDATE role_routines SET definition = $2::jsonb WHERE routine_id = $1`, [routine.routineId, JSON.stringify({ goal: "recover" })]);
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "queued" });
+      await pool.query(`UPDATE role_routines SET definition = $2::jsonb WHERE routine_id = $1`, [routine.routineId, JSON.stringify({ inputs: ["missing.task-329.source"] })]);
+
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      expect(await messages()).toHaveLength(2);
+      for (let attempt = 2; attempt <= 10; attempt += 1) {
+        await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "stopped" });
+      }
+
+      // This is the liveness assertion: without the pause rule, a tenth
+      // failure leaves the routine live and this persisted state is false.
+      expect((await getRoutine(db, routine.routineId))?.paused).toBe(true);
+      expect(await messages()).toHaveLength(3);
+      expect((await messages()).at(-1)?.body).toContain("paused after 10 consecutive failures");
+      await expect(runDueRoutinePoll({ ...db, tenantId })).resolves.toContainEqual({ routineId: routine.routineId, outcome: "skipped_paused" });
+      expect(await messages()).toHaveLength(3);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+    });
+  }, 60_000);
 
   it("carries a bound skill token into the assembled prompt's skill block", async () => {
     const roleId = `task-182-skill-${crypto.randomUUID()}`;

@@ -9,6 +9,7 @@ import {
   createSkill,
   defaultPoolConfig,
   getRoutine,
+  listRecentRoutineOutcomes,
   listRoutines,
   recordRoutineFire,
   RoutineLimitError,
@@ -185,6 +186,17 @@ integration("packages/db routines — read + CRUD + FK + fire bookkeeping (TASK-
     expect(history.rows.map((row) => row.reason)).not.toContain("reason-0");
     expect((await setRoutinePaused({ connectionString: connectionString! }, routine.routineId, true))?.paused).toBe(true);
   }, 20_000);
+
+  it("lists recent outcomes newest-first with a validated limit", async () => {
+    const routine = await createRoutine({ connectionString: connectionString! }, { roleId, tenantId, name: "outcome-history", definition: {} });
+    await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "queued", undefined, "older");
+    await recordRoutineFire({ connectionString: connectionString! }, routine.routineId, "stopped", undefined, "newer");
+
+    await expect(listRecentRoutineOutcomes({ connectionString: connectionString! }, routine.routineId, 1)).resolves.toEqual([
+      expect.objectContaining({ outcome: "stopped", reason: "newer" }),
+    ]);
+    await expect(listRecentRoutineOutcomes({ connectionString: connectionString! }, routine.routineId, 0)).rejects.toThrow(/limit/);
+  });
 
   it("updates and clears a routine skill binding", async () => {
     const routine = await createRoutine({ connectionString: connectionString! }, { roleId, tenantId, name: "skill-binding", definition: {} });

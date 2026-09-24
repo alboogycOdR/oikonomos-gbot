@@ -66,6 +66,14 @@ export interface Routine {
   timezone?: string;
 }
 
+/** A persisted outcome for one routine fire, newest-first from `listRecentRoutineOutcomes`. */
+export interface RoutineOutcome {
+  routineRunId: string;
+  outcome: RoutineFireOutcome;
+  reason: string | null;
+  createdAt: Date;
+}
+
 interface RoutineRow extends QueryResultRow {
   routine_id: string;
   role_id: string;
@@ -83,6 +91,13 @@ interface RoutineRow extends QueryResultRow {
   notify_threshold: "changes_only";
   paused: boolean;
   timezone: string;
+}
+
+interface RoutineOutcomeRow extends QueryResultRow {
+  routine_run_id: string;
+  outcome: RoutineFireOutcome;
+  reason: string | null;
+  created_at: Date;
 }
 
 const routineColumns = `routine_id, role_id, tenant_id, name, schedule, lane, enabled,
@@ -243,6 +258,39 @@ export async function listRoutines(
       params,
     );
     return result.rows.map(toRoutine);
+  });
+}
+
+/**
+ * Returns the bounded fire history in newest-first order.  The table retains
+ * only 20 rows per routine, but validating the caller's limit here keeps an
+ * accidental unbounded query from turning that implementation detail into an
+ * API contract.
+ */
+export async function listRecentRoutineOutcomes(
+  options: DatabaseOptions,
+  routineId: string,
+  limit: number,
+): Promise<RoutineOutcome[]> {
+  const normalizedRoutineId = requireUuid(routineId, "routineId");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+    throw new Error("limit must be an integer between 1 and 20.");
+  }
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoutineOutcomeRow>(
+      `SELECT routine_run_id, outcome, reason, created_at
+       FROM routine_runs
+       WHERE routine_id = $1
+       ORDER BY created_at DESC, routine_run_id DESC
+       LIMIT $2`,
+      [normalizedRoutineId, limit],
+    );
+    return result.rows.map((row) => ({
+      routineRunId: row.routine_run_id,
+      outcome: row.outcome,
+      reason: row.reason,
+      createdAt: row.created_at,
+    }));
   });
 }
 

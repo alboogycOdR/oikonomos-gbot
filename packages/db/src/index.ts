@@ -120,6 +120,7 @@ export {
 export {
   createRoutine,
   getRoutine,
+  listRecentRoutineOutcomes,
   listRoutines,
   recordRoutineFire,
   routineInputsAvailable,
@@ -134,6 +135,7 @@ export {
   type RoutineFireOutcome,
   type RoutineLane,
   type RoutineListFilter,
+  type RoutineOutcome,
 } from "./routines.js";
 export {
   createSkill,
