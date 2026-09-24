@@ -11,3 +11,18 @@ Today the avatar picked at bot creation is a preview only: POST /roles takes no 
 **Approach:** Read the Description and Acceptance_Criteria in PLAN.md, then the current code in Owned_Paths, before changing anything. Work on the pre-cut branch from master. Run tests in the FOREGROUND and wait for them to finish before emitting the control block. Review requires `pnpm build` and `pnpm typecheck` to exit 0 (Flutter tasks: `flutter test` plus `flutter analyze lib`). A failure already on master is still named and classified, never waved off as "baseline".
 
 ## Work Log
+
+- [2026-09-24T19:57:04Z] [CX9] Preflight completed before implementation:
+  ```text
+  [preflight] TASK-347 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 7 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    infra/postgres/migrations/037_role_avatar.up.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    NEW    infra/postgres/migrations/037_role_avatar.down.sql  -> does not exist; parent infra/postgres/migrations/ exists
+    FILE   packages/db/src/roles.ts  -> exists, 600 line(s), 23352 bytes
+    FILE   packages/db/src/roles.test.ts  -> exists, 569 line(s), 25823 bytes
+    FILE   services/control-api/src/app.ts  -> exists, 2941 line(s), 128344 bytes
+    FILE   services/control-api/src/openapi.ts  -> exists, 795 line(s), 37635 bytes
+    NEW    services/control-api/src/roleAvatar.routes.test.ts  -> does not exist; parent services/control-api/src/ exists
+  ```
+- [2026-09-24T20:00:00Z] [CX9] Blocked before implementation by `OWNERSHIP_CONFLICT`: PATCH `/roles/:roleId` can persist only through `ControlApiDeps.updateRoleInstructions` in `services/control-api/src/ports.ts` and `createDatabaseBackedDeps`'s `dbUpdateRoleInstructions` wiring (ports.ts lines 341 and 797). TASK-347 owns `app.ts` but not `ports.ts`; adding an avatar update DB helper and calling it from `app.ts` directly would violate the explicit no-direct-SQL/DB port boundary. Please grant `services/control-api/src/ports.ts` ownership (and `packages/db/src/index.ts` if the closed palette must be exported from the public `@oikonomos/db` barrel rather than `roles.ts` alone). No production files were changed.
+- [2026-09-24T20:23:00Z] [CX9] Re-read live PLAN.md after the supervisor added `services/control-api/src/ports.ts`; no REWORK findings are present. Re-ran `python scripts/preflight_paths.py TASK-347` (the script reports the former seven paths and omits the newly granted `ports.ts`, but the live TASK-347 block lists it). Implementation remains blocked by `OWNERSHIP_CONFLICT`: the task requires one closed palette exported from `@oikonomos/db` so the control API and clients can mirror it. `packages/db/package.json` exposes only the `.` entry point, implemented by `packages/db/src/index.ts`; a palette exported only from owned `roles.ts` is unreachable to consumers, while duplicating it in `app.ts` violates the single-palette requirement. Please add `packages/db/src/index.ts` to Owned_Paths. No production files were changed.
