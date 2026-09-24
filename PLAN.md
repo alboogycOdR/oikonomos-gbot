@@ -10311,3 +10311,28 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-24T02:18:01Z
+
+### TASK-341
+**Title:** Make master CI green: build before typecheck, full schema and seed for canaries
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** critical
+**Spec_References:** ORCH CI diagnosis 2026-09-24 (fresh-clone reproduction of master d783765); TASK-023 (8d0e05e added pnpm build to the test job); scripts/test-isolated.ps1 lines 132-146 (baseline seed)
+**Depends_On:** —
+**Owned_Paths:** .github/workflows/ci.yml
+**Description:** GitHub CI on master fails two jobs on every push, and the owner gets a failure email per push. (1) typecheck: every workspace package exports its types from dist/, but the typecheck job runs install then `pnpm typecheck` with no build, so packages/audit and approvals fail TS2307 on @oikonomos/db and @oikonomos/shared. This has been latent since TASK-011. Fix: add `pnpm build` between install and typecheck, mirroring TASK-023. (2) canaries: the job applies only migration 001. CAN-06 and CAN-07 need 002 (approvals.control_plane_generation) and the inbox-triage role; the ome-two-role-handoff tests need 004 (roles) and the fs.read capability registration. Fix: apply every infra/postgres/migrations/*.up.sql in sorted name order with ON_ERROR_STOP; insert role inbox-triage (tenant basileia) ON CONFLICT DO NOTHING; run `node packages/db/dist/seedInboxTriage.js`; run `node dist/registerCapabilities.js` with working-directory services/worker. This is the same seed scripts/test-isolated.ps1 uses. Change nothing outside ci.yml. Do not weaken or remove any job or step, and do not add continue-on-error.
+**Acceptance_Criteria:**
+- [ ] The typecheck job builds before it type-checks; in a fresh clone, `pnpm install --frozen-lockfile && pnpm build && pnpm typecheck` exits 0.
+- [ ] The canaries job applies every migration plus the baseline seed; in a fresh clone against a fresh pgvector:pg16 Postgres, the job's exact steps give evals-harness 13/13 files passing. Unset OIK_DEFAULT_ROLE_PROVIDER and GEMINI_API_KEY locally, since CI doesn't set them.
+- [ ] No job, step or check is removed, skipped, or made continue-on-error (liveness: the canaries still fail if a canary assertion is broken).
+- [ ] Test_Evidence quotes the fresh-clone command outputs.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T13:30:00Z] [ORCH opus-5.5] Filed after the owner asked why they get so many identical CI failure emails. Critical: take it immediately after TASK-338.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T13:30:00Z
