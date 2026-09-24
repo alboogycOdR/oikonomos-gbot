@@ -1941,19 +1941,20 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // (C5) cannot silently paper over a mismatch. T3_external is >=
       // APPROVAL_TIER (packages/broker), so a granted call to it issues a
       // real pending approval instead of an outright deny or a bare allow.
-      const database = new Database(options);
       try {
-        await database.upsertCapability({
+        const database = new Database(options);
+        try {
+          await database.upsertCapability({
           capabilityId: "email.send",
           description: "Send a Gmail message.",
           defaultTier: "T3_external",
           adapter: "mcp:gmail",
           enabled: true,
         });
-        await database.upsertRoleGrant({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
-      } finally {
-        await database.close();
-      }
+          await database.upsertRoleGrant({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
+        } finally {
+          await database.close();
+        }
 
       const parkTask = await createTask(options, {
         roleId,
@@ -2042,7 +2043,23 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const outcomes = await reconcileInterruptedRuns(options, { taskId: orphanTask.taskId }, async (candidate) => ({ runId: candidate.runId, mode: "resume" }));
       expect(outcomes).toEqual([]);
       const parkedAfterBoot = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
-      expect(parkedAfterBoot.rows[0]?.status).toBe("waiting_approval");
+        expect(parkedAfterBoot.rows[0]?.status).toBe("waiting_approval");
+      } finally {
+        // This shared capability is normally disabled. Leaving it enabled
+        // makes later fixtures see a CapabilityEnabledDriftError (TASK-338 F4).
+        const database = new Database(options);
+        try {
+          await database.upsertCapability({
+            capabilityId: "email.send",
+            description: "Send a Gmail message.",
+            defaultTier: "T3_external",
+            adapter: "mcp:gmail",
+            enabled: false,
+          });
+        } finally {
+          await database.close();
+        }
+      }
     },
     120_000,
   );
