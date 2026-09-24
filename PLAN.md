@@ -10595,7 +10595,7 @@ Exit status 2
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10610,12 +10610,13 @@ Exit status 2
 **Started_At:** 2026-09-24T20:56:19Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-24T21:03:01Z] [SV:CX9] Verified TASK-347 backend contract and all declared paths. Saved-avatar rendering requires unowned roster_screen.dart and chat_screen.dart edits.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: TASK-348 requires saved-avatar rendering in apps/mobile/lib/screens/roster_screen.dart and apps/mobile/lib/screens/chat_screen.dart, neither of which is in Owned_Paths; both must pass saved color/shape to BotAvatar.
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T20:56:19Z
+**Updated_At:** 2026-09-24T21:03:01Z
 
 ### TASK-349
 **Title:** Web: avatar colour and shape picker saved and rendered
