@@ -206,7 +206,7 @@ const REPLAY_CACHE_MAX_ENTRIES = 1_024;
  */
 export class BrokerFailure extends Error {
   public constructor(
-    public readonly reason: "broker.timeout" | "broker.http_500" | "broker.malformed_response",
+    public readonly reason: "broker.timeout" | "broker.http_500" | "broker.malformed_response" | `navigation.denied.${string}`,
   ) {
     super(reason);
     this.name = "BrokerFailure";
