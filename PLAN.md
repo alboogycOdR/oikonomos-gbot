@@ -10892,7 +10892,7 @@ Exit status 2
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-350 OWNERSHIP_CONFLICT (2026-09-25): packages/broker/src/index.ts ~L691-718, where legacy capabilities (enforcementEnabled !== true) never consult Require-Approval rules; Addendum F section 5.4 (F15 rules); ADR-001 (broker enforcement point); owner decision 2026-09-24: Auto-review = UI over the existing require-approval rules
@@ -10904,13 +10904,13 @@ Exit status 2
 - [ ] LIVENESS (ADR-005): the matching-rule test fails if the new check is removed.
 - [ ] No change to builtinTools.ts, capabilityRegistry.ts or packages/connectors/manifests (git diff shows only Owned_Paths).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0; full recursive suite via scripts/test-isolated.ps1 in the foreground, every failure classified.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-360-cx9
+**Started_At:** 2026-09-24T22:51:21Z
 **Progress_Notes:**
 - [2026-09-24T22:21:59Z] [ORCH opus-5.5] Filed from TASK-350's OWNERSHIP_CONFLICT. This tightens the broker only: it adds approvals and never removes them. Protected path, so CX9 builds it and ORCH reviews adversarially as the different model.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T22:21:59Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T22:51:21Z
