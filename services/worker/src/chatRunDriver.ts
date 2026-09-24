@@ -193,6 +193,21 @@ export function sandboxResourceLimitsFor(image: string): { readonly cpu: string;
 }
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_CLAUDE_SILENCE_TIMEOUT_MS = 180_000;
+export const SANDBOX_SILENCE_EVENT_TYPE = "run.sandbox_silence_timeout";
+
+/** TASK-338: thrown when a sandboxed Claude command emits nothing for the silence window. */
+export class SandboxSilenceError extends Error {
+  constructor(readonly silenceMs: number) {
+    super("The bot stopped responding.");
+    this.name = "SandboxSilenceError";
+  }
+}
+
+export function claudeSilenceTimeoutMs(): number {
+  const parsed = Number(process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLAUDE_SILENCE_TIMEOUT_MS;
+}
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 /**
  * TASK-296 — server-side TTL passed to `createSandbox` (OpenSandbox's own
@@ -599,10 +614,25 @@ async function runChatTask(
         return;
       }
       const failureNote = sanitizeFailureReason(error instanceof Error ? error.message : "chat run failed") || "chat run failed";
+      if (error instanceof SandboxSilenceError) {
+        await recordAuditEvent(options, {
+          tenantId: request.task.tenantId,
+          runId,
+          actor: `agent:${effectiveProvider}`,
+          eventType: SANDBOX_SILENCE_EVENT_TYPE,
+          payload: { category: "silence_timeout", silenceMs: error.silenceMs },
+        }).catch((auditError: unknown) => {
+          console.error("failed to record sandbox silence audit event:", auditError);
+        });
+      }
       await failTaskRun(options, runId, failureNote);
       // TASK-316: a terminal failure must not leave the user in silence.
       // Best-effort: a write failure here must not mask the original error.
-      await insertMessage(options, { threadId: request.threadId, role: "system", body: failureThreadMessage(failureNote) }).catch((insertError: unknown) => {
+      await insertMessage(options, {
+        threadId: request.threadId,
+        role: "system",
+        body: error instanceof SandboxSilenceError ? silenceThreadMessage(error.silenceMs) : failureThreadMessage(failureNote),
+      }).catch((insertError: unknown) => {
         console.error("failed to post chat run failure message:", insertError);
       });
     }
@@ -635,6 +665,10 @@ export function sanitizeFailureReason(raw: string | undefined): string {
     .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]")
     .trim();
   return cleaned.length > FAILURE_REASON_MAX ? `${cleaned.slice(0, FAILURE_REASON_MAX)}…` : cleaned;
+}
+
+function silenceThreadMessage(silenceMs: number): string {
+  return `I couldn't finish that message: the bot stopped responding (no output for ${Math.round(silenceMs / 1000)} seconds), so I ended the run. You can retry.`;
 }
 
 function failureThreadMessage(reason: string): string {
@@ -999,10 +1033,10 @@ async function executeSandboxChatRun(
   const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
   const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
-  // JSON so the CLI emits the same SDK result envelope `withBudgetTap` already
-  // parses (`total_cost_usd` + `modelUsage`). The 3-arg `claudePrintCommand`
-  // helper keeps `--output-format text` for its existing unit test.
-  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json", connector);
+  // Stream JSON makes each assistant/tool event a stdout chunk, which is the
+  // actual liveness signal for TASK-338. The terminal result line retains the
+  // SDK envelope (`total_cost_usd` + `modelUsage`) used for budget accounting.
+  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "stream-json", connector);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
   await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
@@ -1015,10 +1049,25 @@ async function executeSandboxChatRun(
   // `runCommand` settles; the exit-code check still runs afterward and can
   // still throw for a non-zero exit — that throw now happens AFTER release
   // rather than before it.
-  const response = await withSandboxRelease(client, options, request.task.roleId, resolvedSandbox.sandboxId, () =>
+  // TASK-338: silence guard. Every stream event re-arms the timer; if it ever
+  // fires the command is cancelled and the run fails with a distinct error.
+  const silenceMs = claudeSilenceTimeoutMs();
+  const silence = new AbortController();
+  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  let silenced = false;
+  const armSilence = (): void => {
+    if (silenceTimer !== undefined) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => { silenced = true; silence.abort(); }, silenceMs);
+  };
+  armSilence();
+  let response: Awaited<ReturnType<SandboxClient["runCommand"]>>;
+  try {
+    response = await withSandboxRelease(client, options, request.task.roleId, resolvedSandbox.sandboxId, () =>
     client.runCommand(resolvedSandbox.endpoint, {
       command,
       cwd: workspace,
+      onActivity: armSilence,
+      signal: silence.signal,
       // This is the whole child environment. Never spread process.env here:
       // only the per-turn broker identity and model credential cross the
       // worker/sandbox boundary — the image itself carries neither (TASK-154).
@@ -1052,7 +1101,13 @@ async function executeSandboxChatRun(
       },
       timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
     }),
-  );
+    );
+  } catch (error) {
+    if (silenced) throw new SandboxSilenceError(silenceMs);
+    throw error;
+  } finally {
+    if (silenceTimer !== undefined) clearTimeout(silenceTimer);
+  }
   if (response.exitCode !== 0) throw new Error(`Sandboxed Claude command failed with exit code ${response.exitCode}.`);
 
   const event = eventFromSandboxStdout(response.stdout);
@@ -1337,11 +1392,11 @@ export function claudePrintCommand(
   prompt: string,
   systemPrompt: string,
   resume?: string,
-  outputFormat: "text" | "json" = "text",
+  outputFormat: "text" | "json" | "stream-json" = "text",
   connector?: { readonly allowedTools: readonly string[]; readonly mcpServers: McpServers },
 ): string {
   const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
-  const format = outputFormat === "json" ? "json" : "text";
+  const format = outputFormat;
   const allowedTools = ["Bash", "Read", ...(connector?.allowedTools ?? [])].join(" ");
   const mcpConfigFlag = connector === undefined || Object.keys(connector.mcpServers).length === 0
     ? []
@@ -1350,7 +1405,8 @@ export function claudePrintCommand(
     ? systemPrompt
     : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly: steel_session_create first to open a session, then steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page, and steel_session_release when you are done.\n\nOnly your FINAL message is delivered to the person who asked — nothing you write between tool calls reaches them. Put your complete answer in that last message, even if it repeats what you already wrote while working.`;
   return [
-    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
+    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format,
+    ...(format === "stream-json" ? ["--verbose"] : []), "--model", shellQuote(model),
     "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(effectiveSystemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");
@@ -1358,11 +1414,26 @@ export function claudePrintCommand(
 
 /**
  * Map sandbox CLI stdout onto the SDK result envelope `withBudgetTap` reads.
- * Plain text (test fakes, `--output-format text`) is a cost-less result —
- * the tap leaves the sink uncalled, matching TASK-150's cost-less stream.
+ * With `--output-format stream-json`, select the terminal `type: result`
+ * line from the incremental assistant/tool stream. Plain text (test fakes,
+ * `--output-format text`) is a cost-less result — the tap leaves the sink
+ * uncalled, matching TASK-150's cost-less stream.
  */
 export function eventFromSandboxStdout(stdout: string): Record<string, unknown> {
   const trimmed = stdout.trim();
+  // Claude stream-json writes one JSON object per line. Read from the end so
+  // the terminal result envelope wins over earlier assistant/tool events.
+  for (const line of trimmed.split(/\r?\n/).reverse()) {
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        if (record.type === "result") return { ...record, type: "result" };
+      }
+    } catch {
+      // Try the historical single-envelope and plain-text paths below.
+    }
+  }
   try {
     const parsed: unknown = JSON.parse(trimmed);
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
@@ -1831,10 +1902,11 @@ if (import.meta.vitest) {
   const { afterAll, beforeAll, describe, expect, it } = import.meta.vitest;
 
   describe("chat run driver — TASK-163 budget helpers (no DB)", () => {
-    it("keeps the 3-arg CLI helper on text output (existing unit-test contract) and emits json when asked", () => {
+    it("keeps the 3-arg CLI helper on text output and emits verbose stream-json when asked", () => {
       expect(claudePrintCommand("hi", "sp")).toContain("--output-format text");
       expect(claudePrintCommand("hi", "sp", undefined, "json")).toContain("--output-format json");
       expect(claudePrintCommand("hi", "sp", undefined, "json")).not.toContain("--output-format text");
+      expect(claudePrintCommand("hi", "sp", undefined, "stream-json")).toContain("--output-format stream-json --verbose");
     });
 
     it("maps a genuine SDK result envelope from sandbox JSON, and treats plain text as cost-less", () => {
@@ -1857,6 +1929,22 @@ if (import.meta.vitest) {
         type: "result",
         result: "Sandbox turn complete",
       });
+    });
+
+    it("preserves the terminal result cost and usage from realistic Claude stream-json output (TASK-338)", () => {
+      const result = {
+        type: "result",
+        subtype: "success",
+        result: "tool-assisted answer",
+        total_cost_usd: 0.042,
+        modelUsage: { "claude-haiku": { inputTokens: 12, outputTokens: 34, cacheReadInputTokens: 5, cacheCreationInputTokens: 0 } },
+      };
+      const stream = [
+        JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } }),
+        JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }),
+        JSON.stringify(result),
+      ].join("\n");
+      expect(eventFromSandboxStdout(stream)).toEqual(result);
     });
 
     it("extractClaudeSessionId (TASK-269) finds a real CLI/SDK session_id anywhere in the event stream", () => {

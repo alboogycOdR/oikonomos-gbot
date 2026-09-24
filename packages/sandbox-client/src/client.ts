@@ -117,6 +117,7 @@ async function readErrorBody(response: Response): Promise<SandboxApiErrorBody | 
 function appendSseEvent(
   rawEvent: string,
   output: { stdout: string; stderr: string; exitCode: number | undefined },
+  onActivity?: () => void,
 ): void {
   const data = rawEvent
     .split(/\r?\n/)
@@ -135,6 +136,13 @@ function appendSseEvent(
     throw new SandboxClientError("execd command stream event was not the expected shape", "INVALID_RESPONSE");
   }
   const parsed = event as Record<string, unknown>;
+  // execd can send status/heartbeat frames while its child is wedged. Those
+  // prove only that execd is alive, not that the command is making progress.
+  // Claude stream-json tool events arrive in stdout, but accept direct tool
+  // frames too for compatible execd implementations.
+  const isOutput = (parsed.type === "stdout" || parsed.type === "stderr") && typeof parsed.text === "string";
+  const isToolEvent = parsed.type === "tool" || parsed.type === "tool_use" || parsed.type === "tool_result";
+  if (isOutput || isToolEvent) onActivity?.();
   if (parsed.type === "stdout" && typeof parsed.text === "string") output.stdout += parsed.text;
   if (parsed.type === "stderr" && typeof parsed.text === "string") output.stderr += parsed.text;
   if (parsed.type === "execution_complete") output.exitCode = 0;
@@ -145,7 +153,7 @@ function appendSseEvent(
   }
 }
 
-async function readCommandStream(response: Response): Promise<RunCommandResult> {
+async function readCommandStream(response: Response, onActivity?: () => void): Promise<RunCommandResult> {
   if (response.body === null) throw new SandboxClientError("execd command response had no stream body", "INVALID_RESPONSE");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -157,10 +165,10 @@ async function readCommandStream(response: Response): Promise<RunCommandResult> 
       buffer += decoder.decode(value, { stream: !done });
       const events = buffer.split(/\r?\n\r?\n/);
       buffer = events.pop() ?? "";
-      for (const event of events) appendSseEvent(event, output);
+      for (const event of events) appendSseEvent(event, output, onActivity);
       if (done) break;
     }
-    if (buffer.trim().length > 0) appendSseEvent(buffer, output);
+    if (buffer.trim().length > 0) appendSseEvent(buffer, output, onActivity);
   } catch (error) {
     if (error instanceof SandboxClientError) throw error;
     throw new SandboxClientError("execd command stream could not be read", "REQUEST_FAILED");
@@ -226,7 +234,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
     }
   }
 
-  async function execdRequest(endpoint: SandboxEndpoint, path: string, init: RequestInit): Promise<Response> {
+  async function execdRequest(endpoint: SandboxEndpoint, path: string, init: RequestInit, externalSignal?: AbortSignal): Promise<Response> {
     const token = await resolveExecdAccessToken(execdAccessTokenRef);
     const headers: Record<string, string> = {
       accept: "application/json",
@@ -236,6 +244,10 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
     };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Caller cancellation must outlive the header-phase timer: the same
+    // controller governs the streamed body, so abort() also ends the read.
+    if (externalSignal?.aborted === true) controller.abort();
+    else externalSignal?.addEventListener("abort", () => controller.abort(), { once: true });
     try {
       try {
         return await fetchImpl(`${stripTrailingSlash(endpoint.endpoint)}${path}`, {
@@ -414,7 +426,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
           ...(command.envs === undefined ? {} : { envs: command.envs }),
           ...(command.timeoutMs === undefined ? {} : { timeout: command.timeoutMs }),
         }),
-      });
+      }, command.signal);
       if (!response.ok) {
         const body = await readErrorBody(response);
         throw new SandboxClientError(`execd command returned unexpected status ${response.status}`, "UNEXPECTED_STATUS", {
@@ -422,7 +434,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
           apiErrorCode: body?.code,
         });
       }
-      return readCommandStream(response);
+      return readCommandStream(response, command.onActivity);
     },
   };
 

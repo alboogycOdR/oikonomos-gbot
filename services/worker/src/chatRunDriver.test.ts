@@ -38,6 +38,7 @@ import {
   LOCAL_LANE_MODEL,
   resolveChatRunExecution,
   SANDBOX_MANAGED_SETTINGS_SHA256,
+  SANDBOX_SILENCE_EVENT_TYPE,
   sandboxEntrypointFor,
   SPEND_UNRECORDED_EVENT_TYPE,
 } from "./chatRunDriver.js";
@@ -62,7 +63,7 @@ const task128Manifest: ConnectorManifest = {
   tools: [
     { tool_name: "mcp__gmail__list_messages", capability_id: "email.list", default_tier: "T0_observe" },
     { tool_name: "mcp__gmail__create_draft", capability_id: "email.create_draft", default_tier: "T1_draft" },
-    { tool_name: "mcp__gmail__send_message", capability_id: "email.send", default_tier: "T3_external" },
+    { tool_name: "mcp__gmail__send_message", capability_id: "email.send", default_tier: "T3_external", enabled: false },
   ],
   role_grants: [],
   evals: { suite: "evals/golden/suites/task-128", min_pass_rate: 0.9 },
@@ -648,6 +649,143 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
     }
   });
+
+  it("cancels a silent Claude sandbox command, records its category, and gives the user a visible failure (TASK-338)", async () => {
+    const ANTHROPIC_API_KEY_VAR = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+    const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+    const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    const previousAnthropicApiKey = process.env[ANTHROPIC_API_KEY_VAR];
+    const previousSilenceTimeout = process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS;
+    process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+    process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-338-test-signing-key";
+    process.env[ANTHROPIC_API_KEY_VAR] = "task-338-test-anthropic-credential";
+    process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS = "40";
+    const silentRoleId = `task-338-silent-${crypto.randomUUID()}`;
+    let cancelled = false;
+    let pauses = 0;
+    const cleanupSilentFixture = async (): Promise<void> => {
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [silentRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [silentRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [silentRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [silentRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [silentRoleId]);
+      await deleteFixtureThreads(pool, [silentRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [silentRoleId]);
+    };
+    const silentSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: `task-338-office-${silentRoleId}`, createdAt: "2026-09-24T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: `task-338-office-${silentRoleId}`, createdAt: "2026-09-24T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => { pauses += 1; },
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-338-silent" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command.startsWith("/usr/bin/sha256sum")) return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command.startsWith("mkdir -p --")) return { stdout: "", stderr: "", exitCode: 0 };
+        return new Promise((_, reject) => command.signal?.addEventListener("abort", () => {
+          cancelled = true;
+          reject(new Error("cancelled by TASK-338 fixture"));
+        }, { once: true }));
+      },
+    };
+
+    try {
+      await createRole(options, { roleId: silentRoleId, name: silentRoleId, title: "TASK-338 silence fixture", description: "" });
+      const silentTask = await createTask(options, { roleId: silentRoleId, title: "silent", goal: "Wait silently.", requestedBy: "task-338-suite" });
+      const silentThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [silentRoleId])).rows[0]!.id;
+
+      await expect(createChatRunDriver({ ...options, sandboxClient: silentSandbox }).run({ task: silentTask, threadId: silentThreadId }))
+        .rejects.toThrow("The bot stopped responding.");
+      expect(cancelled).toBe(true);
+      expect(pauses).toBe(1);
+      const run = (await listRuns(options, { taskId: silentTask.taskId })).runs[0]!;
+      expect(run.status).toBe("failed");
+      expect(run.failureNote).toContain("bot stopped responding");
+      expect((await getAuditEventsForRun(options, run.runId)).find((event) => event.eventType === SANDBOX_SILENCE_EVENT_TYPE))
+        .toMatchObject({ payload: { category: "silence_timeout", silenceMs: 40 } });
+      const messages = await listMessages(options, silentThreadId);
+      expect(messages.find((message) => message.role === "system")?.body).toContain("bot stopped responding");
+    } finally {
+      await cleanupSilentFixture();
+      if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL; else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+      if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY; else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+      if (previousAnthropicApiKey === undefined) delete process.env[ANTHROPIC_API_KEY_VAR]; else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
+      if (previousSilenceTimeout === undefined) delete process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS; else process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS = previousSilenceTimeout;
+    }
+  }, 20_000);
+
+  it("keeps a Claude sandbox command alive when output activity continues past the silence window (TASK-338)", async () => {
+    const ANTHROPIC_API_KEY_VAR = ["OIK_SECRET_ANTHROPIC", "API_KEY"].join("_");
+    const previousBrokerUrl = process.env.OIK_SANDBOX_BROKER_URL;
+    const previousSigningKey = process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY;
+    const previousAnthropicApiKey = process.env[ANTHROPIC_API_KEY_VAR];
+    const previousSilenceTimeout = process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS;
+    process.env.OIK_SANDBOX_BROKER_URL = "http://broker.test:3001";
+    process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = "task-338-activity-signing-key";
+    process.env[ANTHROPIC_API_KEY_VAR] = "task-338-activity-anthropic-credential";
+    process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS = "60";
+    const activeRoleId = `task-338-active-${crypto.randomUUID()}`;
+    let cancelled = false;
+    let claudeCommand = "";
+    const cleanupActiveFixture = async (): Promise<void> => {
+      await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [activeRoleId]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [activeRoleId]);
+      await pool.query("DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1)", [activeRoleId]);
+      await pool.query("DELETE FROM role_sandboxes WHERE role_id = $1", [activeRoleId]);
+      await pool.query("DELETE FROM tasks WHERE role_id = $1", [activeRoleId]);
+      await deleteFixtureThreads(pool, [activeRoleId]);
+      await pool.query("DELETE FROM roles WHERE role_id = $1", [activeRoleId]);
+    };
+    const activeSandbox: SandboxClient = {
+      health: async () => ({ status: "ok" }),
+      createSandbox: async () => ({ id: `task-338-office-${activeRoleId}`, createdAt: "2026-09-24T00:00:00Z", status: { state: "Running" } }),
+      getSandbox: async () => ({ id: `task-338-office-${activeRoleId}`, createdAt: "2026-09-24T00:00:00Z", status: { state: "Running" } }),
+      destroySandbox: async () => undefined,
+      pauseSandbox: async () => undefined,
+      resumeSandbox: async () => undefined,
+      getEndpoint: async () => ({ endpoint: "http://execd.test/task-338-active" }),
+      ping: async () => undefined,
+      runCommand: async (_endpoint, command) => {
+        if (command.command.startsWith("/usr/bin/sha256sum")) return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
+        if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.command.startsWith("mkdir -p --")) return { stdout: "", stderr: "", exitCode: 0 };
+        claudeCommand = command.command;
+        return new Promise((resolve, reject) => {
+          const activity = (): void => command.onActivity?.();
+          setTimeout(activity, 20);
+          setTimeout(activity, 45);
+          setTimeout(activity, 70);
+          setTimeout(() => resolve({ stdout: [
+            JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } }),
+            JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }),
+            JSON.stringify({ type: "result", subtype: "success", result: "Sandbox turn complete", total_cost_usd: 0.042, modelUsage: { "claude-haiku": { inputTokens: 12, outputTokens: 34, cacheReadInputTokens: 5, cacheCreationInputTokens: 0 } } }),
+          ].join("\n"), stderr: "", exitCode: 0 }), 95);
+          command.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("unexpected TASK-338 cancellation")); }, { once: true });
+        });
+      },
+    };
+
+    try {
+      await createRole(options, { roleId: activeRoleId, name: activeRoleId, title: "TASK-338 activity fixture", description: "" });
+      const activeTask = await createTask(options, { roleId: activeRoleId, title: "active", goal: "Keep producing output.", requestedBy: "task-338-suite" });
+      const activeThreadId = (await pool.query<{ id: string }>("INSERT INTO threads (role_id) VALUES ($1) RETURNING id", [activeRoleId])).rows[0]!.id;
+
+      await createChatRunDriver({ ...options, sandboxClient: activeSandbox }).run({ task: activeTask, threadId: activeThreadId });
+      expect(cancelled).toBe(false);
+      expect(claudeCommand).toContain("--output-format stream-json --verbose");
+      expect((await listRuns(options, { taskId: activeTask.taskId })).runs[0]?.status).toBe("completed");
+      expect((await listMessages(options, activeThreadId)).find((message) => message.role === "bot")?.body).toContain("Sandbox turn complete");
+    } finally {
+      await cleanupActiveFixture();
+      if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL; else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;
+      if (previousSigningKey === undefined) delete process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY; else process.env.OIK_SECRET_BROKER_TOKEN_SIGNING_KEY = previousSigningKey;
+      if (previousAnthropicApiKey === undefined) delete process.env[ANTHROPIC_API_KEY_VAR]; else process.env[ANTHROPIC_API_KEY_VAR] = previousAnthropicApiKey;
+      if (previousSilenceTimeout === undefined) delete process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS; else process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS = previousSilenceTimeout;
+    }
+  }, 20_000);
 
   // TASK-222 — the DB's cached sandbox state can drift from the sandbox's own
   // reality (manual operator intervention was the real-world trigger this
@@ -1803,19 +1941,20 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       // (C5) cannot silently paper over a mismatch. T3_external is >=
       // APPROVAL_TIER (packages/broker), so a granted call to it issues a
       // real pending approval instead of an outright deny or a bare allow.
-      const database = new Database(options);
       try {
-        await database.upsertCapability({
+        const database = new Database(options);
+        try {
+          await database.upsertCapability({
           capabilityId: "email.send",
           description: "Send a Gmail message.",
           defaultTier: "T3_external",
           adapter: "mcp:gmail",
           enabled: true,
         });
-        await database.upsertRoleGrant({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
-      } finally {
-        await database.close();
-      }
+          await database.upsertRoleGrant({ roleId, capabilityId: "email.send", maxTier: "T3_external", constraints: {} });
+        } finally {
+          await database.close();
+        }
 
       const parkTask = await createTask(options, {
         roleId,
@@ -1848,9 +1987,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         yield { type: "tool_result", result: "mail send is pending human approval" };
       };
 
+      const task136Manifest: ConnectorManifest = {
+        ...task128Manifest,
+        tools: task128Manifest.tools.map((tool) => tool.capability_id === "email.send" ? { ...tool, enabled: true } : tool),
+      };
       await createChatRunDriver({
         ...options,
-        manifests: [task128Manifest],
+        manifests: [task136Manifest],
         queryFn,
         gmailSessionMinter: {
           resolveUrl: async () => "http://gmail.fixture.invalid/mcp",
@@ -1904,7 +2047,23 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
       const outcomes = await reconcileInterruptedRuns(options, { taskId: orphanTask.taskId }, async (candidate) => ({ runId: candidate.runId, mode: "resume" }));
       expect(outcomes).toEqual([]);
       const parkedAfterBoot = await pool.query<{ status: string }>("SELECT status FROM runs WHERE run_id = $1", [orphanRun.runId]);
-      expect(parkedAfterBoot.rows[0]?.status).toBe("waiting_approval");
+        expect(parkedAfterBoot.rows[0]?.status).toBe("waiting_approval");
+      } finally {
+        // This shared capability is normally disabled. Leaving it enabled
+        // makes later fixtures see a CapabilityEnabledDriftError (TASK-338 F4).
+        const database = new Database(options);
+        try {
+          await database.upsertCapability({
+            capabilityId: "email.send",
+            description: "Send a Gmail message.",
+            defaultTier: "T3_external",
+            adapter: "mcp:gmail",
+            enabled: false,
+          });
+        } finally {
+          await database.close();
+        }
+      }
     },
     120_000,
   );
