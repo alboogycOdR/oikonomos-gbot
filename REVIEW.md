@@ -1924,3 +1924,4 @@ that drives the real production recording path.
 | TASK-332 | S5 | approved | clean; defensive parsing + fallback verified; ORCH independent flutter 203/203 | first-pass: yes | 2026-09-24T13:08:12Z |
 | TASK-341 | CX9 | approved | ci.yml build-before-typecheck + full schema/seed for canaries; matches independent fresh-clone repro | first-pass: yes | 2026-09-24T13:38:00Z |
 | TASK-333 | CX9 | approved | clean; tenant-keyed viewer state; independent run no new failures | first-pass: yes | 2026-09-24T13:40:44Z |
+| TASK-338 | CX9 | approved (after rework) | F1 json-format false-silence, F2 keepalive activity, F4 fixture leak — all fixed; independent worker 364/366, remaining are TASK-342/master | first-pass: no | 2026-09-24T14:15:11Z |
