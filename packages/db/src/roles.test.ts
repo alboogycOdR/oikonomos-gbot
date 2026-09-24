@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createProjectWithRoster, createRole, defaultPoolConfig, getRole, listRoles, updateRoleInstructions, updateRoleName } from "./index.js";
+import { createProjectWithRoster, createRole, defaultPoolConfig, getRole, listRoles, updateRoleAvatar, updateRoleInstructions, updateRoleName } from "./index.js";
 import {
   createRoleWithDefaultCapabilities,
   getRoleBudgetUsd,
@@ -176,6 +176,42 @@ integration("packages/db roles — read + CRUD + FK/backfill (TASK-084)", () => 
           "INSERT INTO role_grants (role_id, capability_id, max_tier) VALUES ('still-orphaned', 'task-084-cap-2', 'T0_observe')",
         ),
       ).rejects.toThrow(/foreign key/i);
+    } finally {
+      await client.query("RESET search_path");
+      await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      client.release();
+    }
+  });
+
+  it("round-trips selected avatar tokens while legacy roles remain null", async () => {
+    const legacy = await createRole({ connectionString: connectionString! }, { roleId: "task-347-legacy", tenantId, name: "Legacy", title: "Legacy" });
+    expect(legacy.avatarColor).toBeNull();
+    expect(legacy.avatarShape).toBeNull();
+    const updated = await updateRoleAvatar({ connectionString: connectionString! }, {
+      roleId: legacy.roleId, tenantId, avatarColor: "violet", avatarShape: "hexagon",
+    });
+    expect(updated).toMatchObject({ avatarColor: "violet", avatarShape: "hexagon" });
+    await expect(updateRoleAvatar({ connectionString: connectionString! }, {
+      roleId: legacy.roleId, tenantId, avatarColor: "invalid" as "violet",
+    })).rejects.toThrow(/avatarColor/);
+  });
+
+  it("migration 037 is idempotent across up, down, up in an isolated schema", async () => {
+    const schema = `task_347_migration_${process.pid}_${Date.now()}`;
+    const up = readFileSync(fileURLToPath(new URL("../../../infra/postgres/migrations/037_role_avatar.up.sql", import.meta.url)), "utf8");
+    const down = readFileSync(fileURLToPath(new URL("../../../infra/postgres/migrations/037_role_avatar.down.sql", import.meta.url)), "utf8");
+    const client = await pool.connect();
+    try {
+      await client.query(`CREATE SCHEMA "${schema}"`);
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query("CREATE TABLE roles (role_id text PRIMARY KEY)");
+      await client.query(up);
+      await client.query(up);
+      await client.query(down);
+      await client.query(down);
+      await client.query(up);
+      const columns = await client.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'roles'", [schema]);
+      expect(columns.rows.map((row) => row.column_name)).toEqual(expect.arrayContaining(["avatar_color", "avatar_shape"]));
     } finally {
       await client.query("RESET search_path");
       await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

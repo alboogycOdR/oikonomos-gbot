@@ -16,6 +16,12 @@ import type { RiskTier } from "./types.js";
  */
 export const roleStatuses = ["active", "hidden", "deleted"] as const;
 
+/** Stable rendering tokens. Consumers render tokens; hex values are never persisted. */
+export const avatarColors = ["red", "orange", "amber", "yellow", "lime", "green", "teal", "cyan", "blue", "indigo", "violet", "pink"] as const;
+export const avatarShapes = ["circle", "square", "rounded", "hexagon", "diamond", "star", "triangle", "teardrop"] as const;
+export type AvatarColor = (typeof avatarColors)[number];
+export type AvatarShape = (typeof avatarShapes)[number];
+
 export type RoleStatus = (typeof roleStatuses)[number];
 
 /** Human-readable bot names stay concise across the API and MCP surfaces. */
@@ -28,6 +34,8 @@ export interface NewRole {
   title: string;
   description?: string;
   status?: RoleStatus;
+  avatarColor?: AvatarColor;
+  avatarShape?: AvatarShape;
 }
 
 export interface Role {
@@ -49,6 +57,8 @@ export interface Role {
   /** Model within that provider; NULL follows the provider's own default. */
   model: string | null;
   status: RoleStatus;
+  avatarColor?: AvatarColor | null;
+  avatarShape?: AvatarShape | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,11 +73,13 @@ interface RoleRow extends QueryResultRow {
   provider: string | null;
   model: string | null;
   status: RoleStatus;
+  avatar_color: AvatarColor | null;
+  avatar_shape: AvatarShape | null;
   created_at: Date;
   updated_at: Date;
 }
 
-const roleColumns = `role_id, tenant_id, name, title, description, instructions, provider, model, status, created_at, updated_at`;
+const roleColumns = `role_id, tenant_id, name, title, description, instructions, provider, model, status, avatar_color, avatar_shape, created_at, updated_at`;
 
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
@@ -84,6 +96,11 @@ function requireRoleStatus(value: RoleStatus, field: string): RoleStatus {
   return value;
 }
 
+function requireAvatarToken<T extends string>(value: T, allowed: readonly T[], field: string): T {
+  if (!allowed.includes(value)) throw new Error(`${field} must be one of: ${allowed.join(", ")}.`);
+  return value;
+}
+
 function toRole(row: RoleRow): Role {
   return {
     roleId: row.role_id,
@@ -95,6 +112,8 @@ function toRole(row: RoleRow): Role {
     provider: row.provider ?? null,
     model: row.model ?? null,
     status: row.status,
+    avatarColor: row.avatar_color ?? null,
+    avatarShape: row.avatar_shape ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -114,11 +133,13 @@ export async function createRole(
   const title = requireNonEmpty(input.title, "title");
   const description = input.description ?? "";
   const status = requireRoleStatus(input.status ?? "active", "status");
+  const avatarColor = input.avatarColor === undefined ? null : requireAvatarToken(input.avatarColor, avatarColors, "avatarColor");
+  const avatarShape = input.avatarShape === undefined ? null : requireAvatarToken(input.avatarShape, avatarShapes, "avatarShape");
 
   return withPool(options, async (pool) => {
     const result = await pool.query<RoleRow>(
-      `INSERT INTO roles (role_id, tenant_id, name, title, description, status)
-       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6)
+      `INSERT INTO roles (role_id, tenant_id, name, title, description, status, avatar_color, avatar_shape)
+       VALUES ($1, COALESCE($2, 'basileia'), $3, $4, $5, $6, $7, $8)
        ON CONFLICT (role_id) DO UPDATE SET
          name = EXCLUDED.name,
          title = EXCLUDED.title,
@@ -126,7 +147,7 @@ export async function createRole(
          status = EXCLUDED.status,
          updated_at = now()
        RETURNING ${roleColumns}`,
-      [roleId, input.tenantId ?? null, name, title, description, status],
+      [roleId, input.tenantId ?? null, name, title, description, status, avatarColor, avatarShape],
     );
 
     const row = result.rows[0];
@@ -134,6 +155,26 @@ export async function createRole(
       throw new Error("createRole did not return a persisted row.");
     }
     return toRole(row);
+  });
+}
+
+/** Updates selected avatar fields within a tenant; omitted fields are retained. */
+export async function updateRoleAvatar(
+  options: DatabaseOptions,
+  input: { roleId: string; tenantId: string; avatarColor?: AvatarColor; avatarShape?: AvatarShape },
+): Promise<Role | null> {
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  if (input.avatarColor !== undefined) requireAvatarToken(input.avatarColor, avatarColors, "avatarColor");
+  if (input.avatarShape !== undefined) requireAvatarToken(input.avatarShape, avatarShapes, "avatarShape");
+  if (input.avatarColor === undefined && input.avatarShape === undefined) throw new Error("At least one avatar field must be supplied.");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleRow>(
+      `UPDATE roles SET avatar_color = COALESCE($3::text, avatar_color), avatar_shape = COALESCE($4::text, avatar_shape), updated_at = now()
+       WHERE role_id = $1 AND tenant_id = $2 RETURNING ${roleColumns}`,
+      [roleId, tenantId, input.avatarColor ?? null, input.avatarShape ?? null],
+    );
+    return result.rows[0] === undefined ? null : toRole(result.rows[0]);
   });
 }
 

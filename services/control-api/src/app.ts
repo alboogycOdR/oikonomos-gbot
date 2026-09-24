@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, RoutineLimitError, type Approval, type DevicePlatform, type GroupThread, type Message, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
+import { avatarColors, avatarShapes, devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, RoutineLimitError, type Approval, type DevicePlatform, type GroupThread, type Message, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -323,14 +323,14 @@ const CREATE_ROLE_SCHEMA = {
   type: "object",
   required: ["name", "description"],
   additionalProperties: false,
-  properties: { name: { type: "string" }, description: { type: "string" } },
+  properties: { name: { type: "string" }, description: { type: "string" }, avatarColor: { type: "string", enum: avatarColors }, avatarShape: { type: "string", enum: avatarShapes } },
 } as const;
 
 const UPDATE_ROLE_INSTRUCTIONS_SCHEMA = {
   type: "object",
-  required: ["instructions"],
   additionalProperties: false,
-  properties: { instructions: { type: "string" } },
+  minProperties: 1,
+  properties: { instructions: { type: "string" }, avatarColor: { type: "string", enum: avatarColors }, avatarShape: { type: "string", enum: avatarShapes } },
 } as const;
 
 const CREATE_THREAD_SCHEMA = {
@@ -724,6 +724,8 @@ function serializeRole(role: {
   provider: string | null;
   model: string | null;
   instructions: string | null;
+  avatarColor?: string | null;
+  avatarShape?: string | null;
 }): {
   id: string;
   name: string;
@@ -733,6 +735,8 @@ function serializeRole(role: {
   instructions: string | null;
   provider: string | null;
   model: string | null;
+  avatarColor: string | null;
+  avatarShape: string | null;
 } {
   return {
     id: role.roleId,
@@ -747,6 +751,8 @@ function serializeRole(role: {
     // over the API yet — that lands with the per-bot override UI.
     provider: role.provider,
     model: role.model,
+    avatarColor: role.avatarColor ?? null,
+    avatarShape: role.avatarShape ?? null,
   };
 }
 
@@ -1180,7 +1186,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     }
   });
 
-  app.post<{ Body: { name: string; description: string } }>(
+  app.post<{ Body: { name: string; description: string; avatarColor?: (typeof avatarColors)[number]; avatarShape?: (typeof avatarShapes)[number] } }>(
     "/roles",
     { schema: { body: CREATE_ROLE_SCHEMA } },
     async (request, reply) => {
@@ -1197,20 +1203,40 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
           title: name,
           description,
         });
-        await reply.code(201).send(serializeRole(role));
+        if ((request.body.avatarColor !== undefined || request.body.avatarShape !== undefined) && deps.updateRoleAvatar === undefined) {
+          await reply.code(501).send({ error: "avatar persistence is not configured" });
+          return;
+        }
+        const avatarRole = request.body.avatarColor === undefined && request.body.avatarShape === undefined
+          ? role
+          : await deps.updateRoleAvatar!({ roleId: role.roleId, tenantId: request.tenantId, avatarColor: request.body.avatarColor, avatarShape: request.body.avatarShape });
+        await reply.code(201).send(serializeRole(avatarRole ?? role));
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
       }
     },
   );
 
-  app.patch<{ Params: { roleId: string }; Body: { instructions: string } }>(
+  app.patch<{ Params: { roleId: string }; Body: { instructions?: string; avatarColor?: (typeof avatarColors)[number]; avatarShape?: (typeof avatarShapes)[number] } }>(
     "/roles/:roleId",
     { schema: { body: UPDATE_ROLE_INSTRUCTIONS_SCHEMA } },
     async (request, reply) => {
       try {
-        const role = await deps.updateRoleInstructions(request.params.roleId, request.body.instructions);
-        if (role === null) {
+        const instructionRole = request.body.instructions === undefined
+          ? undefined
+          : await deps.updateRoleInstructions(request.params.roleId, request.body.instructions);
+        if (instructionRole === null) {
+          await reply.code(404).send({ error: "role not found" });
+          return;
+        }
+        if ((request.body.avatarColor !== undefined || request.body.avatarShape !== undefined) && deps.updateRoleAvatar === undefined) {
+          await reply.code(501).send({ error: "avatar persistence is not configured" });
+          return;
+        }
+        const role = request.body.avatarColor === undefined && request.body.avatarShape === undefined
+          ? instructionRole
+          : await deps.updateRoleAvatar!({ roleId: request.params.roleId, tenantId: request.tenantId, avatarColor: request.body.avatarColor, avatarShape: request.body.avatarShape });
+        if (role === null || role === undefined) {
           await reply.code(404).send({ error: "role not found" });
           return;
         }
@@ -1536,6 +1562,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             botName: role?.name ?? thread.roleId,
             botDescription: role?.description ?? "",
             avatarSeed: thread.roleId,
+            avatarColor: role?.avatarColor ?? null,
+            avatarShape: role?.avatarShape ?? null,
             title: thread.title,
             preview,
             lastMessageAt,

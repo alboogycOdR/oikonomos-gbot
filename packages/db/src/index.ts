@@ -106,6 +106,7 @@ export {
   retireRole,
   RoleRetirementError,
   updateRoleInstructions,
+  updateRoleAvatar,
   updateRoleName,
   updateRoleStatus,
   MAX_ROLE_NAME_LENGTH,
@@ -118,6 +119,10 @@ export {
   type RoleListFilter,
   type RoleRetirementErrorCode,
   type RoleStatus,
+  avatarColors,
+  avatarShapes,
+  type AvatarColor,
+  type AvatarShape,
 } from "./roles.js";
 export {
   createRoutine,
