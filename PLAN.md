@@ -10275,7 +10275,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-333 (read markers and pins API); TASK-332; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10285,8 +10285,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Acceptance_Criteria:**
 - [ ] Widget tests cover the badge, mark-read on open, pin and unpin, pinned-first ordering, and a failed mark-read still opening the chat.
 - [ ] flutter test passes for the touched files; Dart is outside pnpm -r, so say so in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-334-cx9
+**Started_At:** 2026-09-24T14:27:10Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] REASSIGNED S5 -> CX9 (S5 retired 2026-09-24).
@@ -10294,8 +10294,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T11:38:38Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T14:27:10Z
 
 ### TASK-MAINT-2026-09-24
 **Title:** Nightly self-audit failure (2026-09-24)
