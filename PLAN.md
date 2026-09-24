@@ -10142,7 +10142,7 @@ Exit status 2
 
 ### TASK-330
 **Title:** Routine sweep liveness: prove the routine poller is alive
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; OpenBot comparison (routine_sweeps row per sweep, UI warns after 15 minutes without one); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10153,16 +10153,16 @@ Exit status 2
 - [ ] Every poll emits exactly one routine.sweep event with counts only.
 - [ ] ADR-005 liveness: with the poll disabled the helper reports stale, and with the poll running it does not; the test fails if the event is removed.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; every non-own-package failure classified against the master baseline in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-330-cx9
+**Started_At:** 2026-09-24T16:30:18Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T16:30:18Z
 
 ### TASK-335
 **Title:** Group routing: named fallback reasons and the only-holder rule
