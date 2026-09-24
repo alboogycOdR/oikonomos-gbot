@@ -10118,7 +10118,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-336
 **Title:** Guard Claude-lane Steel navigation (the Gemini lane was TASK-325)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-325 (services/worker/src/navigationGuard.ts); services/worker/src/chatRunDriver.ts DESTINATION_EXTRACTORS; CLAUDE.md non-negotiables 3 and 5; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10135,12 +10135,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-23T22:42:32Z] [ORCH] Reassigned S5 -> CX9: the fix needs packages/broker (protected), which a Claude author may not change without a non-Claude reviewer; CX9 authoring lets the Opus reviewer serve as the different model. Territory widened to packages/broker/src/index.ts and index.test.ts. S5's dossier findings stand; S5's branch task/TASK-336-s5 holds only the dossier note.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T00:28:01Z] [SV:CX9] Claude Steel navigation is guarded through the real broker/Fastify path; category-only denial reasons are audited without URLs. Commit 712688f.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, services/control-api/src/brokerHttpRoute.test.ts, packages/broker/src/index.ts, packages/broker/src/index.test.ts, dossiers/TASK-336.md
+**Test_Evidence:** pnpm --filter @oikonomos/broker typecheck PASS; pnpm --filter @oikonomos/control-api typecheck PASS; scripts/test-isolated.ps1 -Filter @oikonomos/broker: 189/189 PASS; scripts/test-isolated.ps1 -Filter @oikonomos/control-api: brokerHttpRoute.test.ts 14/14 PASS (only pre-existing TASK-121 FreeLLMAPI 400 vs 201 remains); scripts/test-isolated.ps1 full recursive run: TASK-336 assertions pass; remaining failures classified in dossier as pre-existing DB deadlock/project suite, budget.platform_exceeded, Gemini 402, email.send enabled-state drift, pg-boss, and TASK-121 classes.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T00:08:19Z
+**Updated_At:** 2026-09-24T00:28:01Z
 
 ### TASK-339
 **Title:** Provenance block in every chat run's system prompt (both lanes)
