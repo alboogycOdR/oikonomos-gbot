@@ -12,6 +12,7 @@ export {
 } from "./seedInboxTriage.js";
 export { riskTiers, type Capability, type RiskTier, type RoleGrant } from "./types.js";
 export {
+  claimRoleSandboxForReap,
   getRoleSandbox,
   listRoleSandboxes,
   roleSandboxStates,

@@ -34,6 +34,7 @@
  * ownership boundary for persistent offices.
  */
 import {
+  claimRoleSandboxForReap,
   getRole,
   listRoleSandboxes,
   updateRoleSandboxState,
@@ -67,6 +68,7 @@ export const DEFAULT_SANDBOX_REAP_INTERVAL_MS = 15 * 60_000; // 15 minutes
 const TERMINAL_SANDBOX_STATES: ReadonlySet<SandboxState> = new Set(["Terminated", "Failed"]);
 /** `role_sandboxes.state` uses the same vocabulary as `SandboxState` (`roleSandboxStates`, packages/db). */
 const TERMINAL_ROLE_SANDBOX_STATES: ReadonlySet<string> = TERMINAL_SANDBOX_STATES;
+const MAX_REAP_RELEASE_ATTEMPTS = 3;
 
 export interface SandboxSweepSummary {
   /** ISO-8601 timestamp the sweep completed — the liveness evidence a test/operator reads, never a bare mtime (ADR-005 §5). */
@@ -83,6 +85,12 @@ export interface SandboxSweepSummary {
 
 export interface SandboxReaperSweepConfig {
   readonly idleThresholdMs?: number;
+  /**
+   * Invoked after selection but before the atomic re-check. This is an
+   * observability seam for callers that want to trace a candidate; it also
+   * makes the selection-to-reap race reproducible in integration coverage.
+   */
+  readonly onCandidateSelected?: (record: RoleSandboxWithRole) => void | Promise<void>;
 }
 
 function reapReasonFor(record: RoleSandboxWithRole, idleBeforeMs: number): "idle" | "deleted" | undefined {
@@ -99,6 +107,23 @@ async function destroySandboxIfLive(client: SandboxClient, sandboxId: string): P
     if (error instanceof SandboxClientError && error.status === 404) return;
     throw error;
   }
+}
+
+async function destroySandboxForReap(client: SandboxClient, sandboxId: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_REAP_RELEASE_ATTEMPTS; attempt += 1) {
+    try {
+      await destroySandboxIfLive(client, sandboxId);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function sandboxErrorCategory(error: unknown): string {
+  return error instanceof SandboxClientError ? error.code : "unknown";
 }
 
 /**
@@ -159,8 +184,29 @@ export async function runSandboxReaperSweep(
       if (TERMINAL_ROLE_SANDBOX_STATES.has(record.state)) continue;
       const reason = reapReasonFor(record, idleBeforeMs);
       if (reason === undefined) continue;
-      await destroySandboxIfLive(client, record.sandboxId);
+      await config.onCandidateSelected?.(record);
+      // Re-check and claim in the database immediately before destruction.
+      // An intervening turn changes either its sandbox/state or last-use
+      // timestamp, making the UPDATE match zero rows rather than destroying
+      // an office that was used again after this sweep selected it.
+      const claimed = await claimRoleSandboxForReap(options, {
+        roleId: record.roleId,
+        sandboxId: record.sandboxId,
+        state: record.state,
+        idleBefore: reason === "idle" ? new Date(idleBeforeMs) : undefined,
+      });
+      if (claimed === null) {
+        if (reason === "idle") {
+          console.info(`sandbox reaper: skipped idle sandbox ${record.sandboxId} for role ${record.roleId} in tenant ${record.tenantId}: used again`);
+        }
+        continue;
+      }
+      // Reconciliation below sees the provider's inventory too. Mark this
+      // sandbox handled before the bounded release sequence so one failed
+      // pass-one release cannot be retried (and logged) again as an orphan
+      // in the same sweep.
       handledSandboxIds.add(record.sandboxId);
+      await destroySandboxForReap(client, record.sandboxId);
       // Reflect reality immediately: the next resolveRoleSandbox call for
       // an idle-reaped (still-active) role sees a Terminated record and
       // must recreate rather than trust a live-looking stale row.
@@ -168,7 +214,9 @@ export async function runSandboxReaperSweep(
       if (reason === "idle") reapedIdle += 1; else reapedDeletedRole += 1;
     } catch (error) {
       errors += 1;
-      console.error(`sandbox reaper: failed reaping role ${record.roleId} in tenant ${record.tenantId}:`, error);
+      console.error(
+        `sandbox reaper: gave up reaping role ${record.roleId} in tenant ${record.tenantId} after ${MAX_REAP_RELEASE_ATTEMPTS} attempts: category=${sandboxErrorCategory(error)}`,
+      );
     }
   }
 

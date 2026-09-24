@@ -12,12 +12,13 @@
  * touching the live clawsrv deployment.
  */
 import { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createRole,
   defaultPoolConfig,
   getRoleSandbox,
+  updateRoleSandboxState,
   updateRoleStatus,
   upsertRoleSandbox,
   type DatabaseOptions,
@@ -138,6 +139,34 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     expect((await getRoleSandbox(db, roleId))?.state).toBe("Paused");
   });
 
+  it("re-checks idleness after selection, preserving an office used again and logging the skip", async () => {
+    const tenantId = freshTenant("used-again");
+    const roleId = "task-296-used-again-role";
+    await createRole(db, { roleId, tenantId, name: "Used again", title: "Used again role" });
+    await upsertRoleSandbox(db, { roleId, sandboxId: "sandbox-used-again", state: "Paused", execdTokenRef: "secret://x" });
+    await backdateLastUsed(roleId, 10 * 24 * 60 * 60_000);
+    const client = fakeClient();
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      const summary = await runSandboxReaperSweep(db, client, {
+        idleThresholdMs: 3 * 24 * 60 * 60_000,
+        onCandidateSelected: async (record) => {
+          if (record.roleId === roleId) await updateRoleSandboxState(db, roleId, "Running");
+        },
+      });
+
+      expect(client.destroyed).toEqual([]);
+      expect(summary.reapedIdle).toBe(0);
+      expect(summary.errors).toBe(0);
+      expect((await getRoleSandbox(db, roleId))?.state).toBe("Running");
+      expect(info).toHaveBeenCalledTimes(1);
+      expect(info.mock.calls[0]?.[0]).toContain("used again");
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it("reaps a soft-deleted role's office regardless of last_used_at", async () => {
     const tenantId = freshTenant("deleted");
     const roleId = "task-296-deleted-role";
@@ -218,8 +247,10 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
     expect(summary.errors).toBe(1);
     expect(summary.reapedDeletedRole).toBe(1); // the good one still got reaped
     expect((await getRoleSandbox(db, goodRoleId))?.state).toBe("Terminated");
-    // The bad one is untouched (destroy threw before updateRoleSandboxState ran) — proves the error was isolated, not swallowed silently into a false "reaped" count.
-    expect((await getRoleSandbox(db, badRoleId))?.state).toBe("Paused");
+    // The failed office remains claimed as Stopping rather than appearing
+    // Paused while its provider release is unresolved; the next sweep may
+    // retry it without reporting a false successful reap.
+    expect((await getRoleSandbox(db, badRoleId))?.state).toBe("Stopping");
   });
 
   it("a 404 from destroySandbox (already gone) still counts as a successful reap, not an error", async () => {
@@ -237,6 +268,41 @@ integration("sandboxReaper — real DB, fake SandboxClient (TASK-296)", () => {
 
     expect(summary.errors).toBe(0);
     expect(summary.reapedDeletedRole).toBe(1);
+  });
+
+  it("gives up once per sweep after bounded failed release attempts, with an error category", async () => {
+    const tenantId = freshTenant("give-up");
+    const roleId = "task-296-give-up-role";
+    await createRole(db, { roleId, tenantId, name: "Give up", title: "Give up role" });
+    await upsertRoleSandbox(db, { roleId, sandboxId: "sandbox-give-up", state: "Paused", execdTokenRef: "secret://x" });
+    await updateRoleStatus(db, roleId, "deleted");
+    let attempts = 0;
+    const client = fakeClient({
+      destroySandbox: async () => {
+        attempts += 1;
+        throw new SandboxClientError("unavailable", "REQUEST_FAILED");
+      },
+      // The provider also reports this sandbox in the reconciliation pass.
+      // The first-pass give-up must still be the only release/log sequence.
+      listSandboxes: async () => ({
+        items: [{ id: "sandbox-give-up", createdAt: new Date().toISOString(), status: { state: "Running" }, metadata: { roleId } }],
+        pagination: { page: 1, pageSize: 200, totalItems: 1, totalPages: 1, hasNextPage: false },
+      }),
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const summary = await runSandboxReaperSweep(db, client, { idleThresholdMs: 3 * 24 * 60 * 60_000 });
+
+      expect(attempts).toBe(3);
+      expect(summary.errors).toBe(1);
+      expect(summary.reapedDeletedRole).toBe(0);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error.mock.calls[0]?.[0]).toContain("gave up reaping");
+      expect(error.mock.calls[0]?.[0]).toContain("category=REQUEST_FAILED");
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it("withSandboxRelease releases the office in a finally even when the wrapped turn throws, against the real DB", async () => {

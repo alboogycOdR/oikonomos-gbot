@@ -124,3 +124,38 @@ export async function updateRoleSandboxState(options: DatabaseOptions, roleId: s
     return result.rows[0] === undefined ? null : toRoleSandbox(result.rows[0]);
   });
 }
+
+/**
+ * Atomically claims the exact office observed by a maintenance sweep before
+ * it performs an irreversible provider action. An idle claim succeeds only
+ * while the row is still idle; a concurrent turn refreshes `last_used_at`
+ * and makes this return null instead.
+ *
+ * The claim deliberately does not refresh `last_used_at`: that timestamp is
+ * the predicate being protected, while `Stopping` prevents a stale sweep
+ * from looking like a live office after it has begun release.
+ */
+export async function claimRoleSandboxForReap(
+  options: DatabaseOptions,
+  input: { readonly roleId: string; readonly sandboxId: string; readonly state: RoleSandboxState; readonly idleBefore?: Date },
+): Promise<RoleSandbox | null> {
+  const roleId = requireText(input.roleId, "roleId");
+  const sandboxId = requireText(input.sandboxId, "sandboxId");
+  const state = requireState(input.state);
+  if (input.idleBefore !== undefined && Number.isNaN(input.idleBefore.getTime())) {
+    throw new Error("idleBefore must be a valid date.");
+  }
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleSandboxRow>(
+      `UPDATE role_sandboxes
+       SET state = 'Stopping'
+       WHERE role_id = $1
+         AND sandbox_id = $2
+         AND state = $3
+         AND ($4::timestamptz IS NULL OR last_used_at < $4)
+       RETURNING ${columns}`,
+      [roleId, sandboxId, state, input.idleBefore ?? null],
+    );
+    return result.rows[0] === undefined ? null : toRoleSandbox(result.rows[0]);
+  });
+}
