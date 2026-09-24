@@ -208,6 +208,62 @@ export async function getWorkspaceSummary(): Promise<WorkspaceSummaryEntry[]> {
   return request<WorkspaceSummaryEntry[]>("/workspace/summary");
 }
 
+/** TASK-309 — project workspace rows as serialized by the project API. */
+export interface Project {
+  projectId: string;
+  threadId: string;
+  name: string;
+  goal: string;
+  doneCriterion: string;
+  status: "active" | "paused" | "done" | "archived";
+  budgetUsd: number | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProjectTaskState = "todo" | "doing" | "blocked" | "review" | "done" | "cancelled";
+
+export interface ProjectTask {
+  taskId: string;
+  projectId: string;
+  title: string;
+  description: string;
+  ownerRoleId: string | null;
+  state: ProjectTaskState;
+  blockedReason: string | null;
+  doneCriterion: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectArtifact {
+  artifactId: string;
+  projectId: string;
+  taskId: string | null;
+  kind: "workspace_file" | "attachment" | "run_receipt";
+  ref: string;
+  sha256: string | null;
+  byteSize: number | null;
+  producedByRoleId: string | null;
+  producedByRunId: string | null;
+  label: string;
+  createdAt: string;
+}
+
+export async function listProjects(): Promise<Project[]> {
+  return request<Project[]>("/projects");
+}
+
+export async function listProjectTasks(projectId: string): Promise<ProjectTask[]> {
+  return request<ProjectTask[]>(`/projects/${encodeURIComponent(projectId)}/tasks`);
+}
+
+export async function listProjectArtifacts(projectId: string): Promise<ProjectArtifact[]> {
+  return request<ProjectArtifact[]>(`/projects/${encodeURIComponent(projectId)}/artifacts`);
+}
+
 export type ApprovalStatus =
   | "pending"
   | "granted"

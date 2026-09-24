@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TemplateExportRefusedError, exportRoleTemplate, installTemplate, listTemplates } from "./api";
+import {
+  TemplateExportRefusedError,
+  exportRoleTemplate,
+  installTemplate,
+  listProjectArtifacts,
+  listProjectTasks,
+  listProjects,
+  listTemplates,
+} from "./api";
 
 describe("template API client", () => {
   const originalFetch = global.fetch;
@@ -40,5 +48,20 @@ describe("template API client", () => {
     }) as unknown as typeof fetch;
 
     await expect(installTemplate("template-1", 2)).resolves.toEqual(expect.objectContaining({ role: { roleId: "new-role", name: "New", title: "New", description: "" } }));
+  });
+
+  it("lists project state from the project API with encoded identifiers", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/projects")) return new Response(JSON.stringify([{ projectId: "project-1", threadId: "thread-1" }]), { status: 200 });
+      if (url.endsWith("/projects/project%2Fone/tasks")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/projects/project%2Fone/artifacts")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(listProjects()).resolves.toEqual([{ projectId: "project-1", threadId: "thread-1" }]);
+    await expect(listProjectTasks("project/one")).resolves.toEqual([]);
+    await expect(listProjectArtifacts("project/one")).resolves.toEqual([]);
   });
 });
