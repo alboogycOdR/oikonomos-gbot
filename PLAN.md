@@ -10007,7 +10007,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-328
 **Title:** Handoff hop-depth cap and idempotent role-message send
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (agents/handoff.ts: depth carried in a signed run assertion, fan-out counted under an advisory lock, envelope-hash idempotency); specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md section 6.4; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10031,7 +10031,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T15:56:46Z] [SV:CX9] Fixed the blocking control-api RoleMessage fixture gap; workspace mailbox fixture was already complete. Rework is committed and verified.
 **Artifacts:** services/control-api/src/chat.routes.test.ts, dossiers/TASK-328.md
 **Test_Evidence:** pnpm build â€” passed; pnpm typecheck â€” passed; powershell -ExecutionPolicy Bypass -File E:\DELL-PROJECTS\GROKBOT-CLONE\scripts\test-isolated.ps1 -Root E:\DELL-PROJECTS\wt-codex9-GROKBOT-CLONE -Init, followed by the same command without -Init â€” full isolated recursive run completed with no failure output observed; git diff --check passed.
-**Review_Findings:** REWORK (ORCH opus-5.5). The feature code is good: depth lookup via the source run, a transactional dedupe with ON CONFLICT DO NOTHING, category-only audits, all three callers pass the run id, and the MCP lane returns isError. ORCH's independent runs on 8f17200: db 293/1 (the roles.test backfill failure also fails on master), workspace 33/0, worker 368/1 (budget.platform_exceeded, the known TASK-343 overlap). F1 BLOCKING, MASTER IS BROKEN: since the TASK-327 merge, RoleMessage has five required delivery fields and TASK-328 adds hopDepth. Test fixtures in other packages were never updated, so pnpm -r build fails on master (services/workspace mailbox.ts:147 and mailbox.test.ts:11; your branch fixes mailbox.test.ts) and on your branch (services/control-api/src/chat.routes.test.ts makeRoleMessage, ~L95). ORCH added chat.routes.test.ts to Owned_Paths: add the missing fields to that fixture. Also check mailbox.ts:147's non-test object (the vitest block) on your branch. REQUIRED EVIDENCE: Scope: 19 of 20 workspace projects
+**Review_Findings:** APPROVED after rework (ORCH opus-5.5). The feature was sound on first pass. REWORK F1 was a master build break: TASK-327 made RoleMessage fields required, which broke the control-api and workspace fixtures, and ORCH's 327 review missed it. It's now fixed on this branch. ORCH's independent checks on c9e6d56: pnpm build exit 0 (all packages), pnpm typecheck exit 0; isolated db 293/1 (roles backfill, also fails on master), workspace 33/0, worker 368/1 (budget overlap, TASK-343), control-api 370/1 (TASK-121 FreeLLMAPI 400 vs 201, also fails on master, now filed as TASK-344).
 apps/dashboard build$ tsc && vite build
 packages/agent-providers build$ tsc
 packages/db build$ tsc
@@ -10110,8 +10110,8 @@ E:\DELL-PROJECTS\GROKBOT-CLONE\services\workspace:
 Exit status 2
  ELIFECYCLE  Command failed with exit code 2. both exit 0 on your branch, quoted in Test_Evidence. This is what CI runs. F2: finish in the FOREGROUND; don't exit while a test run is still going.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T15:56:46Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T15:59:18Z
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
@@ -10479,3 +10479,27 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-24T14:55:00Z
+
+### TASK-344
+**Title:** Fix the TASK-121 group-route test that fails on master (FreeLLMAPI routing returns 400)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** TASK-121 (group threads, FreeLLMAPI routing of unaddressed messages); ORCH review runs 2026-09-24 (it fails on master and every branch)
+**Depends_On:** —
+**Owned_Paths:** services/control-api/src/chat.routes.test.ts
+**Description:** control-api chat.routes.test.ts "routes an unaddressed three-bot message through FreeLLMAPI and durably queues the selected chat run" gets 400 where it expects 201, on master and on every branch today. Builders have labelled it "baseline" for days. Find the real cause. It is most likely a test-fixture or environment dependency (FreeLLMAPI config or env now scrubbed by scripts/test-isolated.ps1, a missing fixture role or thread member, or drift from a later route change). Fix it at the test fixture if the route behaves correctly. If the ROUTE is wrong, stop with OWNERSHIP_CONFLICT naming the source file and the evidence. Never delete or skip the test.
+**Acceptance_Criteria:**
+- [ ] The test passes via scripts/test-isolated.ps1 -Filter @oikonomos/control-api (after -Init), twice in a row.
+- [ ] Test_Evidence names the root cause in one sentence, with the file and line.
+- [ ] The test still fails if the FreeLLMAPI routing step is removed (liveness).
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T16:05:00Z] [ORCH opus-5.5] Filed under the "master failures become fix tasks, never baseline" rule adopted today.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T16:05:00Z
