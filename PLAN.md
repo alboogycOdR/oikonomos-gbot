@@ -9922,7 +9922,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-331
 **Title:** Thread roster: title and one-line preview on GET /threads
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (channels summary/titler); mobile roster is built from GET /threads; TASK-191 tenant scoping; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9938,12 +9938,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-24T06:58:19Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T07:13:00Z] [SV:CX9] Implemented and committed DB-derived roster metadata, tenant filtering, route/OpenAPI coverage; dossier contains preflight and test details.
+**Artifacts:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/threadRoster.routes.test.ts, dossiers/TASK-331.md
+**Test_Evidence:** pnpm --filter @oikonomos/db build/typecheck PASS; pnpm --filter @oikonomos/control-api typecheck PASS. Isolated control-api: TASK-331 route/OpenAPI 2/2 PASS; 367/369 total, with only baseline TASK-264 capability seed and TASK-121 FreeLLMAPI failures. Isolated db: TASK-331 coverage passed; 291 pass/2 skipped plus unrelated database fixture-cleanup deadlock. Full isolated recursive suite was run; no TASK-331-owned failures observed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T06:58:19Z
+**Updated_At:** 2026-09-24T07:13:00Z
 
 ### TASK-333
 **Title:** Read markers and pins for threads (backend)
