@@ -10595,7 +10595,7 @@ Exit status 2
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10615,6 +10615,7 @@ Exit status 2
 - [2026-09-24T21:18:01Z] [SV:CX9] Implemented persisted 12x8 avatar selection, defensive token fallback, and saved-avatar rendering across mobile surfaces; committed as 8850eb2.
 - [2026-09-24T21:40:00Z] [ORCH opus-4.8] REWORK. Territory clean (all Owned_Paths; dossier note ok), analyze clean, but `flutter test` is RED: +210 -1. Test_Evidence "full mobile suite passed" is false — discrepancy → rework per review standard §5. See Review_Findings.
 - [2026-09-24T21:28:01Z] [SV:CX9] Fixed the roster create-flow test after the 12x8 picker made its submit control off-screen; committed rework fix c6a4991.
+- [2026-09-24T22:00:00Z] [ORCH opus-4.8] APPROVED + MERGED (--no-ff) to master. Second pass. Territory clean (all Owned_Paths; dossiers/TASK-348.md note ok). CX9-authored (non-Claude); no protected paths touched (apps/mobile/** only). Independent full-suite re-run in the cx9 worktree: `flutter test` 211 passing / 0 failing — the prior 1 failure now fixed; `flutter analyze lib` No issues found. Test_Evidence matches. All 3 ACs verified against diff+tests: 12 colours/8 shapes selectable & asserted present, pair sent on create (POST body asserted), saved avatar renders with colour+shape, null/unknown token falls back (Role+SingleThread parsing tests). Branch deleted. Dep TASK-352 (Depends_On 348+350) now needs 350 only; TASK-349 unblocked (dep 347 done). NOTE (non-blocking, for TASK-349): avatarPalette widened 6→12 on mobile, so the null-fallback derived colour will differ from web until TASK-349 aligns web's palette — expected within this serialized CX9 wave.
 **Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/widgets/avatar.dart, apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/screens/roster_screen_test.dart, apps/mobile/test/widgets/avatar_test.dart, dossiers/TASK-348.md
 **Test_Evidence:** apps/mobile: flutter test test/screens/roster_screen_test.dart â€” 20/20 passed; flutter analyze lib â€” No issues found; full flutter test â€” 211 passing, 0 failing (run twice). Dart is outside pnpm -r, so no pnpm invocation applies.
 **Review_Findings:**
