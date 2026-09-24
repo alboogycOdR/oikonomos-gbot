@@ -10892,7 +10892,7 @@ Exit status 2
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-350 OWNERSHIP_CONFLICT (2026-09-25): packages/broker/src/index.ts ~L691-718, where legacy capabilities (enforcementEnabled !== true) never consult Require-Approval rules; Addendum F section 5.4 (F15 rules); ADR-001 (broker enforcement point); owner decision 2026-09-24: Auto-review = UI over the existing require-approval rules
@@ -10908,9 +10908,10 @@ Exit status 2
 **Started_At:** 2026-09-24T22:51:21Z
 **Progress_Notes:**
 - [2026-09-24T22:21:59Z] [ORCH opus-5.5] Filed from TASK-350's OWNERSHIP_CONFLICT. This tightens the broker only: it adds approvals and never removes them. Protected path, so CX9 builds it and ORCH reviews adversarially as the different model.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T23:03:01Z] [SV:CX9] Legacy capabilities now apply matching Require-Approval rules before the below-T3 allow; ceilings and T4 denials remain first, and rule-read failures fail closed.
+**Artifacts:** packages/broker/src/index.ts, packages/broker/src/legacyRequireApproval.test.ts
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/broker: 195/195 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0; scripts/test-isolated.ps1 -Init succeeded; foreground scripts/test-isolated.ps1: exit 0 (only non-fatal pre-existing React act() warnings observed, no failures).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T22:51:21Z
+**Updated_At:** 2026-09-24T23:03:01Z
