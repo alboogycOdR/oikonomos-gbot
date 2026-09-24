@@ -10167,7 +10167,7 @@ Exit status 2
 
 ### TASK-335
 **Title:** Group routing: named fallback reasons and the only-holder rule
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (routing/classify.ts: five named fallback reasons, a system named in the message that exactly one bot can reach wins); services/control-api/src/ports.ts groupRoutingPrompt; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10182,12 +10182,13 @@ Exit status 2
 **Started_At:** 2026-09-24T16:41:28Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T16:54:43Z] [SV:CX9] Added audited named group-routing fallbacks and the single connected-system grant-holder shortcut; committed 7a6bee2.
+**Artifacts:** services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, dossiers/TASK-335.md
+**Test_Evidence:** control-api typecheck passed; ports.test.ts 15/15 passed. Required isolated recursive suite: 18 packages passed, with one pre-existing TASK-121/TASK-344 FreeLLMAPI routing failure outside owned paths; follow-up isolated control-api run: 377/378 passed, including TASK-335 tests. git diff --check passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T16:41:28Z
+**Updated_At:** 2026-09-24T16:54:43Z
 
 ### TASK-337
 **Title:** Sandbox reaper re-checks idleness before reaping and logs give-ups
