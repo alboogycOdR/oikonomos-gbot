@@ -1932,3 +1932,4 @@ that drives the real production recording path.
 | TASK-329 | CX9 | rework | logic correct; routineJob.test.ts regressions: pg-boss race in DST test (2/3), afterAll messages_run_id FK (1/3) | first-pass: no | 2026-09-24T16:16:19Z |
 | TASK-329 | CX9 | approved (after rework) | logic correct; F1 pg-boss race + F2 afterAll FK fixed; worker 370/0 x3; noted 60s->20s timeout risk on TASK-305 test | first-pass: no | 2026-09-24T16:30:08Z |
 | TASK-330 | CX9 | approved | counts-only sweep + stale helper; build/typecheck 0, db 297/0, worker 371/0 x2 | first-pass: yes | 2026-09-24T16:41:19Z |
+| TASK-335 | CX9 | rework | shortcuts run before explicit @mention/@everyone (override); email addresses trip off_roster | first-pass: no | 2026-09-24T17:30:42Z |
