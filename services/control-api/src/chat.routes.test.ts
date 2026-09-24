@@ -1453,10 +1453,10 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
           "SELECT provider, status FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1) ORDER BY started_at ASC",
           [`chat:thread:${group.id}`],
         )).rows;
-        if (runs.filter((run) => run.provider === "gemini" && run.status === "started").length === 1) break;
+        if (runs.filter((run) => run.provider === "claude" && run.status === "started").length === 1) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(runs.filter((run) => run.provider === "gemini")).toEqual([{ provider: "gemini", status: "started" }]);
+      expect(runs.filter((run) => run.provider === "claude")).toEqual([{ provider: "claude", status: "started" }]);
       expect(runs.filter((run) => run.provider === "free-llm-api")).toEqual([{ provider: "free-llm-api", status: "completed" }]);
       expect(observedPrompts).toHaveLength(3);
       const spend = await pool.query<{ provider: string; cost_usd: string }>(
@@ -1479,7 +1479,7 @@ integration("Group-thread control-api routes — real Postgres (TASK-121)", () =
         directRunRoleIds = (await pool.query<{ role_id: string }>(
           `SELECT tasks.role_id FROM runs
            JOIN tasks ON tasks.task_id = runs.task_id
-           WHERE tasks.requested_by = $1 AND runs.provider = 'gemini' AND runs.status = 'started'
+           WHERE tasks.requested_by = $1 AND runs.provider = 'claude' AND runs.status = 'started'
            ORDER BY runs.started_at ASC`,
           [`chat:thread:${group.id}`],
         )).rows.map((row) => row.role_id);
