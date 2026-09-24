@@ -10167,7 +10167,7 @@ Exit status 2
 
 ### TASK-335
 **Title:** Group routing: named fallback reasons and the only-holder rule
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (routing/classify.ts: five named fallback reasons, a system named in the message that exactly one bot can reach wins); services/control-api/src/ports.ts groupRoutingPrompt; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10183,12 +10183,13 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T16:54:43Z] [SV:CX9] Added audited named group-routing fallbacks and the single connected-system grant-holder shortcut; committed 7a6bee2.
+- [2026-09-24T17:47:35Z] [SV:CX9] Fixed all REWORK findings: explicit mentions now precede fallback shortcuts, email addresses no longer create off-roster mentions, and single-candidate fallback is audited once.
 **Artifacts:** services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, dossiers/TASK-335.md
-**Test_Evidence:** control-api typecheck passed; ports.test.ts 15/15 passed. Required isolated recursive suite: 18 packages passed, with one pre-existing TASK-121/TASK-344 FreeLLMAPI routing failure outside owned paths; follow-up isolated control-api run: 377/378 passed, including TASK-335 tests. git diff --check passed.
+**Test_Evidence:** scripts/test-isolated.ps1 -Init -Filter @oikonomos/control-api passed; scripts/test-isolated.ps1 full recursive suite passed with no non-own-package failures; pnpm build and pnpm typecheck passed; git diff --check passed.
 **Review_Findings:** REWORK (ORCH opus-5.5, batch review). F1 BLOCKING, explicit mentions are overridden. services/worker/src/groupRouting.ts route() resolves @everyone and explicit @member mentions deterministically before any scoring, but routeGroupMessageWithFallback runs single_candidate, onlySystemHolder and hasOffRosterMention BEFORE calling route(). So '@Alice please check my gmail' routes to Bob when Bob is the only gmail holder, '@everyone ...gmail...' goes to one member, and '@Alice @Mallory' (Mallory off-roster) falls back to members[0] instead of Alice. FIX: apply the only-holder shortcut and all fallback classification ONLY to an unaddressed message, i.e. when there is no @everyone and no on-roster mention. Add tests: an explicit on-roster mention beats the only-holder rule; @everyone beats it; a mix of on- and off-roster mentions routes to the on-roster member with no fallback. F2 BLOCKING, email addresses trip off_roster. The hasOffRosterMention regex /@([\p{L}\p{N}_-]+)/ has no left boundary, so 'send it to jane@example.com' counts as an off-roster mention and falls back to the default bot. Require a start-of-string or non-word character before @ (match how groupRouting.ts mentionsIn parses mentions, and reuse its normalization rather than a second parser if you can), with a test. F3, minor: single_candidate audits on every message in a one-member group, including the deterministic first pass. Fine per spec, but confirm it's audited once per message, not twice (the deterministic pass plus the Tier-0 pass). The rest is good: named categories, UnparsedGroupRoutingScoreError, the word-boundary system-name match, the unconfident rule when every score is 0, and FREE_LLM_API-missing behaviour unchanged. Evidence required: ports.test.ts plus isolated control-api via scripts/test-isolated.ps1, pnpm build and pnpm typecheck exit 0.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T17:30:42Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T17:47:35Z
 
 ### TASK-337
 **Title:** Sandbox reaper re-checks idleness before reaping and logs give-ups
