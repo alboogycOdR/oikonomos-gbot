@@ -9980,7 +9980,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Priority:** high
 **Spec_References:** OpenBot comparison (agents/handoff-delivery.ts: per-hop lease, attempt cap, in-voice notice to the asker); services/worker/src/roleMessageDelivery.ts; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
 **Owned_Paths:** services/worker/src/roleMessageDelivery.ts, services/worker/src/roleMessageDelivery.test.ts, packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts, infra/postgres/migrations/035_role_message_delivery_attempts.up.sql, infra/postgres/migrations/035_role_message_delivery_attempts.down.sql
-**Depends_On:** TASK-333
+**Depends_On:** TASK-333, TASK-342
 **Description:** REPORTED by the OpenBot pass, verify each point against the code first: deliverPendingRoleMessages (roleMessageDelivery.ts, about lines 171-173) has no per-row error handling, so one throwing row aborts the rest of the tick; it enqueues the run first and marks the message read last, so a crash between the two delivers twice (documented around lines 34-41); a message to an inactive recipient stays unread and is retried every minute forever; and the sender is never told. Fix: isolate each row; add delivery_attempts and last_delivery_error (a category, never message content or secrets) in migration 035; claim each row atomically before enqueueing, so a second tick or worker cannot deliver it twice; after five failed attempts, or immediately when the recipient role is not active, mark the message terminally failed and insert exactly one visible system message into the SENDER's thread naming the recipient and the reason. Keep the existing no-same-turn-reply semantics.
 **Acceptance_Criteria:**
 - [ ] A poison row (a recipient whose delivery throws) does not stop the other rows in the same tick.
@@ -10236,12 +10236,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T13:23:32Z] [SV:CX9] Rework F1/F2 fixed and committed (953bebb); worker isolated suite is still running after acquiring the shared DB lock. NEXT: Collect the active isolated worker-suite result (or rerun after the mutex frees), append evidence to dossier, then request review.
 - [2026-09-24T13:24:30Z] [ORCH opus-5.5] Parked as pending (branch kept, rework committed 953bebb) so critical TASK-341 goes first. Resume by checking out task/TASK-338-cx9. Remaining: the worker isolated suite result and needs_review.
 - [2026-09-24T13:49:45Z] [SV:CX9] Rework F1/F2 is implemented and committed; isolated worker test harness remains active under the shared mutex, so its outcome has not been inferred. NEXT: Wait for the active isolated worker suite to finish, collect and classify its result, then run the required full recursive isolated suite and request review.
+- [2026-09-24T13:52:26Z] [ORCH opus-5.5] ADDED FINDING F4 (ORCH, same review cycle, in your Owned_Paths): the TASK-136 test in chatRunDriver.test.ts (~L1808) sets the shared email.send capability to enabled:true and never restores it. That causes 7 CapabilityEnabledDriftError failures in later tests. Restore enabled:false in a finally, or better, use a dedicated fixture capability. Also: scripts/test-isolated.ps1 now scrubs operator env (ORCH fix), so the Gemini 402s and budget-gate timeouts are gone. Your two TASK-338 DB tests were masked by budget.platform_exceeded, which is leaked spend that TASK-342 fixes. If you still hit that error, delete leaked spend_records rows in oikonomos_test only, before your run, and say so.
 **Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/sandbox-client/src/client.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/test/sandboxClient.test.ts, dossiers/TASK-338.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/sandbox-client: 26/26 passed; sandbox-client typecheck passed. Isolated worker and full recursive suites completed; non-owned baseline failures were evals/provider environment, worker budget/Gemini/timeout, and control-api TASK-121 400-vs-201.
 **Review_Findings:** REWORK (ORCH opus-5.5, 2026-09-24). F1 BLOCKING, the silence guard kills healthy long turns in production. claudePrintCommand runs the real CLI with --output-format json (chatRunDriver.ts ~L1408), which writes stdout once at the end of the turn and emits no tool events on the stream. A real turn that spends more than OIK_CLAUDE_SILENCE_TIMEOUT_MS (180s) in tool loops or thinking therefore produces zero execd events and is cancelled as 'silent', which breaks the Description's rule that a quiet but progressing tool is not killed. It also cuts the real limit from 10 min to 3 min for every legitimate long turn. The tests pass only because the fake command emits periodic onActivity. FIX: make the production command produce incremental events, e.g. --output-format stream-json --verbose, so every assistant and tool_use/tool_result line is a stdout chunk. Then parse the final result envelope from the stream-json lines (the type:result line) wherever eventFromSandboxStdout currently expects the single json envelope, keeping cost and usage extraction identical. Add a test that feeds realistic stream-json stdout (several tool events, then a result line) through the driver, and assert it yields the same event, cost and usage as today's json path. F2, verify execd keepalives: onActivity fires on ANY non-comment SSE event. If execd emits periodic non-output events (e.g. a status or heartbeat type) while a command is hung, the guard never fires. Confirm against the execd stream event types and count only stdout, stderr and tool-bearing events as activity, with a test. F3, NOTE, no change required: cancellation is client-side (the stream is aborted), and the in-sandbox process remains bounded by execd's server-side timeout. Say so in the dossier. Everything else is good: territory clean, the audit category is recorded, the SandboxSilenceError visible message is correct, and the ADR-005 liveness test is sound.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T13:49:45Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T13:52:26Z
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
@@ -10339,3 +10340,27 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-24T13:38:00Z
+
+### TASK-342
+**Title:** Test isolation: stop leaked spend and pg-boss races from failing the worker suite
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** ORCH worker-suite diagnosis 2026-09-24 (master 2ac38a4, isolated DB); ADR-005 (liveness)
+**Depends_On:** —
+**Owned_Paths:** packages/db/src/spendReservations.test.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/workspaceTools.test.ts
+**Description:** These test bugs have been labelled "baseline" in every review. Fix them at the source. (a) The last test in packages/db/src/spendReservations.test.ts (~L248) records $100 of spend under a bare randomUUID() runId that its cleanup never deletes. Every run leaks $100 into spend_records, and the platform budget (R350, about $18.92) then fails every later budget check in a full `pnpm -r` run with budget.platform_exceeded. Track that runId in spendRunIds, or use the file's run() helper. (e) Three real-pg-boss tests in services/worker/src/roleMessageDelivery.ts (~L414, 442, 469) call deliverPendingRoleMessages without withPgBossQueueLock. A parallel purge of worker.run-execution in routineJob.test.ts or workerJobQueue.test.ts can delete the queue between its create and send, giving "Queue worker.run-execution does not exist". Wrap them in withPgBossQueueLock. (f) The same file's afterAll (~L337) deletes threads before thread_members, which violates thread_members_thread_id_fkey; delete thread_members first. (g) Classify and fix workspaceTools.test.ts "requires real approvals for T3 create_bot and E6-gated retire_bot" (TASK-285), which gets deny where it expects allow. It may be downstream of the email.send drift that TASK-338 F4 fixes; if so, say so and don't change it. Change nothing outside Owned_Paths.
+**Acceptance_Criteria:**
+- [ ] Running spendReservations.test.ts leaves zero new spend_records rows (proved by a count before and after, in Test_Evidence).
+- [ ] Full recursive suite via scripts/test-isolated.ps1 twice in a row with -Init only before the first run: zero budget.platform_exceeded, zero "Queue worker.run-execution does not exist" and zero thread_members FK errors.
+- [ ] Every remaining failure is classified in Test_Evidence, with no bare "baseline" label: each gets a named cause.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T14:20:00Z
