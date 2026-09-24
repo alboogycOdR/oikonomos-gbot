@@ -10207,7 +10207,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-338
 **Title:** Claude lane: end a sandbox run that goes silent
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (channels/stall-guard.ts: wire-quiet timer); services/worker/src/chatRunDriver.ts SANDBOX_COMMAND_TIMEOUT_MS; TASK-316 visible failure message; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10229,12 +10229,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T11:18:01Z] [SV:S5] Branch task/TASK-338-s5 created, no code changes. runCommand in packages/sandbox-client aggregates the whole SSE stream and has no per-chunk activity callback or AbortSignal, so a silence timer and cancellation cannot be built from chatRunDriver.ts alone.
 - [2026-09-24T12:00:00Z] [ORCH opus-4-8] Triaged the OWNERSHIP_CONFLICT (§7 re-carve). packages/sandbox-client is currently unowned — its last owners (TASK-142/169/170/185/296) are all done, and no active/pending task contends for client.ts/types.ts. The silence timer is one coherent feature, so rather than split it into a separate integration task I widened Owned_Paths to include packages/sandbox-client/{src/client.ts, src/types.ts, src/index.ts, test/sandboxClient.test.ts}. Add the OPTIONAL onActivity callback + AbortSignal to RunCommandRequest/runCommand (backward-compatible — existing callers unaffected), then wire the silence timer in chatRunDriver.ts. sandbox-client is NOT a protected path, so S5 may author. Dependency TASK-336 is done. Unblocked → pending; re-dispatch will re-launch S5.
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] REASSIGNED S5 -> CX9: S5 was retired from the roster on 2026-09-24. S5's partial work is committed as ff13825 on task/TASK-338-cx9 (sandbox-client client/types/test and chatRunDriver.ts touched, unfinished and untested). CX9: check out that branch, verify S5's partial work against the ACs, and finish it. Don't trust it blindly.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T12:29:39Z] [SV:CX9] Implemented and verified Claude sandbox silence cancellation, visible failure message, audit category, and activity reset coverage.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, packages/sandbox-client/src/client.ts, packages/sandbox-client/src/types.ts, packages/sandbox-client/test/sandboxClient.test.ts, dossiers/TASK-338.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/sandbox-client: 26/26 passed; sandbox-client typecheck passed. Isolated worker and full recursive suites completed; non-owned baseline failures were evals/provider environment, worker budget/Gemini/timeout, and control-api TASK-121 400-vs-201.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T12:06:44Z
+**Updated_At:** 2026-09-24T12:29:39Z
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
