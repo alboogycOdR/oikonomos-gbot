@@ -1033,10 +1033,10 @@ async function executeSandboxChatRun(
   const resolvedSandbox = await resolveRoleSandbox(options, database, client, request.task.roleId, manifests);
   const agentRef = { provider: "claude", sessionRef: run.sessionRef ?? run.runId, isSubagent: false };
   const token = mintBrokerToken({ runId: run.runId, roleId: request.task.roleId, tenantId: request.task.tenantId, agentRef }, SANDBOX_COMMAND_TIMEOUT_MS);
-  // JSON so the CLI emits the same SDK result envelope `withBudgetTap` already
-  // parses (`total_cost_usd` + `modelUsage`). The 3-arg `claudePrintCommand`
-  // helper keeps `--output-format text` for its existing unit test.
-  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "json", connector);
+  // Stream JSON makes each assistant/tool event a stdout chunk, which is the
+  // actual liveness signal for TASK-338. The terminal result line retains the
+  // SDK envelope (`total_cost_usd` + `modelUsage`) used for budget accounting.
+  const command = claudePrintCommand(request.task.goal, systemPrompt, request.resume?.sessionRef, "stream-json", connector);
   await assertManagedSettingsIntegrity(client, resolvedSandbox.endpoint);
   await assertEgressPolicyApplied(client, resolvedSandbox.endpoint, egressMarkerWaitMsFor(resolvedSandbox.image));
   const workspace = `/workspace/${safePathSegment(request.task.roleId)}`;
@@ -1392,11 +1392,11 @@ export function claudePrintCommand(
   prompt: string,
   systemPrompt: string,
   resume?: string,
-  outputFormat: "text" | "json" = "text",
+  outputFormat: "text" | "json" | "stream-json" = "text",
   connector?: { readonly allowedTools: readonly string[]; readonly mcpServers: McpServers },
 ): string {
   const model = process.env.OIKONOMOS_SANDBOX_MODEL?.trim() || DEFAULT_SANDBOX_MODEL;
-  const format = outputFormat === "json" ? "json" : "text";
+  const format = outputFormat;
   const allowedTools = ["Bash", "Read", ...(connector?.allowedTools ?? [])].join(" ");
   const mcpConfigFlag = connector === undefined || Object.keys(connector.mcpServers).length === 0
     ? []
@@ -1405,7 +1405,8 @@ export function claudePrintCommand(
     ? systemPrompt
     : `${systemPrompt}\n\n# Tools available to you right now\nYou have exactly these tools: ${allowedTools}. There is no separate "WebSearch" tool and none can be added — do not call ToolSearch or ask the operator to enable one. To browse, call the mcp__steel__ tools directly: steel_session_create first to open a session, then steel_navigate to load a URL, then steel_snapshot or steel_screenshot to read what's on the page, and steel_session_release when you are done.\n\nOnly your FINAL message is delivered to the person who asked — nothing you write between tool calls reaches them. Put your complete answer in that last message, even if it repeats what you already wrote while working.`;
   return [
-    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format, "--model", shellQuote(model),
+    "claude", "-p", "--permission-mode", "dontAsk", "--output-format", format,
+    ...(format === "stream-json" ? ["--verbose"] : []), "--model", shellQuote(model),
     "--allowedTools", shellQuote(allowedTools), ...mcpConfigFlag, "--system-prompt", shellQuote(effectiveSystemPrompt),
     ...(resume === undefined ? [] : ["--resume", shellQuote(resume)]), shellQuote(prompt),
   ].join(" ");
@@ -1413,11 +1414,26 @@ export function claudePrintCommand(
 
 /**
  * Map sandbox CLI stdout onto the SDK result envelope `withBudgetTap` reads.
- * Plain text (test fakes, `--output-format text`) is a cost-less result —
- * the tap leaves the sink uncalled, matching TASK-150's cost-less stream.
+ * With `--output-format stream-json`, select the terminal `type: result`
+ * line from the incremental assistant/tool stream. Plain text (test fakes,
+ * `--output-format text`) is a cost-less result — the tap leaves the sink
+ * uncalled, matching TASK-150's cost-less stream.
  */
 export function eventFromSandboxStdout(stdout: string): Record<string, unknown> {
   const trimmed = stdout.trim();
+  // Claude stream-json writes one JSON object per line. Read from the end so
+  // the terminal result envelope wins over earlier assistant/tool events.
+  for (const line of trimmed.split(/\r?\n/).reverse()) {
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        if (record.type === "result") return { ...record, type: "result" };
+      }
+    } catch {
+      // Try the historical single-envelope and plain-text paths below.
+    }
+  }
   try {
     const parsed: unknown = JSON.parse(trimmed);
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
@@ -1886,10 +1902,11 @@ if (import.meta.vitest) {
   const { afterAll, beforeAll, describe, expect, it } = import.meta.vitest;
 
   describe("chat run driver — TASK-163 budget helpers (no DB)", () => {
-    it("keeps the 3-arg CLI helper on text output (existing unit-test contract) and emits json when asked", () => {
+    it("keeps the 3-arg CLI helper on text output and emits verbose stream-json when asked", () => {
       expect(claudePrintCommand("hi", "sp")).toContain("--output-format text");
       expect(claudePrintCommand("hi", "sp", undefined, "json")).toContain("--output-format json");
       expect(claudePrintCommand("hi", "sp", undefined, "json")).not.toContain("--output-format text");
+      expect(claudePrintCommand("hi", "sp", undefined, "stream-json")).toContain("--output-format stream-json --verbose");
     });
 
     it("maps a genuine SDK result envelope from sandbox JSON, and treats plain text as cost-less", () => {
@@ -1912,6 +1929,22 @@ if (import.meta.vitest) {
         type: "result",
         result: "Sandbox turn complete",
       });
+    });
+
+    it("preserves the terminal result cost and usage from realistic Claude stream-json output (TASK-338)", () => {
+      const result = {
+        type: "result",
+        subtype: "success",
+        result: "tool-assisted answer",
+        total_cost_usd: 0.042,
+        modelUsage: { "claude-haiku": { inputTokens: 12, outputTokens: 34, cacheReadInputTokens: 5, cacheCreationInputTokens: 0 } },
+      };
+      const stream = [
+        JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } }),
+        JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }),
+        JSON.stringify(result),
+      ].join("\n");
+      expect(eventFromSandboxStdout(stream)).toEqual(result);
     });
 
     it("extractClaudeSessionId (TASK-269) finds a real CLI/SDK session_id anywhere in the event stream", () => {

@@ -264,7 +264,7 @@ describe("createSandboxClient", () => {
         new Response(
           new ReadableStream<Uint8Array>({
             start(controller) {
-              controller.enqueue(encoder.encode('{"type":"stdout","text":"a"}' + "\n\n: keepalive\n\n"));
+              controller.enqueue(encoder.encode('{"type":"status","state":"running"}\n\n{"type":"stdout","text":"a"}' + "\n\n: keepalive\n\n"));
               init.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
             },
           }),
@@ -281,7 +281,7 @@ describe("createSandboxClient", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       abort.abort();
       await expect(pending).rejects.toMatchObject({ code: "REQUEST_FAILED" });
-      expect(activity).toBe(1); // the comment keepalive is not an event
+      expect(activity).toBe(1); // status and comment keepalives do not imply command progress
     });
   });
 

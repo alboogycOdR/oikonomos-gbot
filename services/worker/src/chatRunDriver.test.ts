@@ -729,6 +729,7 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
     process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS = "60";
     const activeRoleId = `task-338-active-${crypto.randomUUID()}`;
     let cancelled = false;
+    let claudeCommand = "";
     const cleanupActiveFixture = async (): Promise<void> => {
       await pool.query("DELETE FROM audit_events WHERE run_id IN (SELECT run_id FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE role_id = $1))", [activeRoleId]);
       await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [activeRoleId]);
@@ -751,12 +752,17 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         if (command.command.startsWith("/usr/bin/sha256sum")) return { stdout: `${SANDBOX_MANAGED_SETTINGS_SHA256}  /etc/claude-code/managed-settings.json\n`, stderr: "", exitCode: 0 };
         if (command.command === "test -f /run/oikonomos/egress-policy-applied") return { stdout: "", stderr: "", exitCode: 0 };
         if (command.command.startsWith("mkdir -p --")) return { stdout: "", stderr: "", exitCode: 0 };
+        claudeCommand = command.command;
         return new Promise((resolve, reject) => {
           const activity = (): void => command.onActivity?.();
           setTimeout(activity, 20);
           setTimeout(activity, 45);
           setTimeout(activity, 70);
-          setTimeout(() => resolve({ stdout: "Sandbox turn complete", stderr: "", exitCode: 0 }), 95);
+          setTimeout(() => resolve({ stdout: [
+            JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } }),
+            JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }),
+            JSON.stringify({ type: "result", subtype: "success", result: "Sandbox turn complete", total_cost_usd: 0.042, modelUsage: { "claude-haiku": { inputTokens: 12, outputTokens: 34, cacheReadInputTokens: 5, cacheCreationInputTokens: 0 } } }),
+          ].join("\n"), stderr: "", exitCode: 0 }), 95);
           command.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("unexpected TASK-338 cancellation")); }, { once: true });
         });
       },
@@ -769,7 +775,9 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
 
       await createChatRunDriver({ ...options, sandboxClient: activeSandbox }).run({ task: activeTask, threadId: activeThreadId });
       expect(cancelled).toBe(false);
+      expect(claudeCommand).toContain("--output-format stream-json --verbose");
       expect((await listRuns(options, { taskId: activeTask.taskId })).runs[0]?.status).toBe("completed");
+      expect((await listMessages(options, activeThreadId)).find((message) => message.role === "bot")?.body).toContain("Sandbox turn complete");
     } finally {
       await cleanupActiveFixture();
       if (previousBrokerUrl === undefined) delete process.env.OIK_SANDBOX_BROKER_URL; else process.env.OIK_SANDBOX_BROKER_URL = previousBrokerUrl;

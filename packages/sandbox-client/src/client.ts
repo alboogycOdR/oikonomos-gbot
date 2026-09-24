@@ -125,7 +125,6 @@ function appendSseEvent(
     .map((line) => line.slice(5).trimStart())
     .join("\n") || rawEvent.trim();
   if (data.length === 0 || data.startsWith(":")) return;
-  onActivity?.();
 
   let event: unknown;
   try {
@@ -137,6 +136,13 @@ function appendSseEvent(
     throw new SandboxClientError("execd command stream event was not the expected shape", "INVALID_RESPONSE");
   }
   const parsed = event as Record<string, unknown>;
+  // execd can send status/heartbeat frames while its child is wedged. Those
+  // prove only that execd is alive, not that the command is making progress.
+  // Claude stream-json tool events arrive in stdout, but accept direct tool
+  // frames too for compatible execd implementations.
+  const isOutput = (parsed.type === "stdout" || parsed.type === "stderr") && typeof parsed.text === "string";
+  const isToolEvent = parsed.type === "tool" || parsed.type === "tool_use" || parsed.type === "tool_result";
+  if (isOutput || isToolEvent) onActivity?.();
   if (parsed.type === "stdout" && typeof parsed.text === "string") output.stdout += parsed.text;
   if (parsed.type === "stderr" && typeof parsed.text === "string") output.stderr += parsed.text;
   if (parsed.type === "execution_complete") output.exitCode = 0;
