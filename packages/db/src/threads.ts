@@ -25,6 +25,9 @@ export interface Thread {
   preview?: ThreadPreview | null;
   /** Timestamp of the message represented by `preview`, or null when empty. */
   lastMessageAt?: Date | null;
+  /** Per authenticated tenant state, present in roster queries (TASK-333). */
+  unreadCount?: number;
+  pinnedAt?: Date | null;
 }
 
 export interface ThreadPreview {
@@ -48,6 +51,8 @@ export interface GroupThread {
   preview?: ThreadPreview | null;
   /** Timestamp of the message represented by `preview`, or null when empty. */
   lastMessageAt?: Date | null;
+  unreadCount?: number;
+  pinnedAt?: Date | null;
 }
 
 export interface ThreadMember {
@@ -65,6 +70,8 @@ interface ThreadRow extends QueryResultRow {
   preview_text?: string | null;
   preview_author_kind?: ThreadPreview["authorKind"] | null;
   last_message_at?: Date | null;
+  unread_count?: number;
+  pinned_at?: Date | null;
 }
 
 interface ThreadMemberRow extends QueryResultRow {
@@ -82,6 +89,11 @@ function requireNonEmpty(value: string, field: string): string {
     throw new Error(`${field} must not be empty.`);
   }
   return trimmed;
+}
+
+function requireDate(value: Date, field: string): Date {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new Error(`${field} must be a valid Date.`);
+  return value;
 }
 
 function toThread(row: ThreadRow): Thread {
@@ -105,6 +117,8 @@ function toThread(row: ThreadRow): Thread {
     updatedAt: row.updated_at,
     ...(preview === undefined ? {} : { preview }),
     ...(row.last_message_at === undefined ? {} : { lastMessageAt: row.last_message_at }),
+    ...(row.unread_count === undefined ? {} : { unreadCount: Number(row.unread_count) }),
+    ...(row.pinned_at === undefined ? {} : { pinnedAt: row.pinned_at }),
   };
 }
 
@@ -126,6 +140,8 @@ function toGroupThread(row: ThreadRow, memberRoleIds: string[]): GroupThread {
     memberRoleIds,
     ...(preview === undefined ? {} : { preview }),
     ...(row.last_message_at === undefined ? {} : { lastMessageAt: row.last_message_at }),
+    ...(row.unread_count === undefined ? {} : { unreadCount: Number(row.unread_count) }),
+    ...(row.pinned_at === undefined ? {} : { pinnedAt: row.pinned_at }),
   };
 }
 
@@ -207,7 +223,8 @@ export async function listThreads(options: DatabaseOptions): Promise<Thread[]> {
 }
 
 /** Lists 1:1 and group conversations in one discriminated result set. */
-export async function listAllThreadsWithMembers(options: DatabaseOptions): Promise<Array<Thread | GroupThread>> {
+export async function listAllThreadsWithMembers(options: DatabaseOptions, viewerTenantId?: string): Promise<Array<Thread | GroupThread>> {
+  const tenantId = viewerTenantId === undefined ? null : requireNonEmpty(viewerTenantId, "viewerTenantId");
   return withPool(options, async (pool) => {
     const result = await pool.query<ThreadRow & { member_role_ids: string[] | null }>(
       `SELECT threads.id, threads.role_id,
@@ -216,8 +233,11 @@ export async function listAllThreadsWithMembers(options: DatabaseOptions): Promi
               threads.created_at, threads.updated_at,
               latest.preview_text,
               latest.preview_author_kind,
-              latest.last_message_at
+              latest.last_message_at,
+              state.pinned_at,
+              COALESCE(unread.unread_count, 0)::integer AS unread_count
        FROM threads
+       LEFT JOIN thread_viewer_states state ON state.thread_id = threads.id AND state.tenant_id = $1
        LEFT JOIN LATERAL (
          SELECT array_agg(thread_members.role_id ORDER BY thread_members.created_at ASC, thread_members.role_id ASC) AS member_role_ids
          FROM thread_members
@@ -239,12 +259,53 @@ export async function listAllThreadsWithMembers(options: DatabaseOptions): Promi
          ORDER BY messages.created_at DESC, messages.id DESC
          LIMIT 1
        ) latest ON true
-       ORDER BY threads.updated_at DESC, threads.id DESC`,
+       LEFT JOIN LATERAL (
+         SELECT count(*)::integer AS unread_count
+         FROM messages
+         WHERE messages.thread_id = threads.id
+           AND messages.role <> 'user'
+           AND (state.last_read_at IS NULL OR messages.created_at > state.last_read_at)
+       ) unread ON true
+       ORDER BY state.pinned_at DESC NULLS LAST, threads.updated_at DESC, threads.id DESC`,
+      [tenantId],
     );
     return result.rows.map((row) => row.role_id === null
       ? toGroupThread(row, row.member_role_ids ?? [])
       : toThread(row));
   });
+}
+
+/** Records the tenant viewer's cursor, defaulting to the instant of the call. */
+export async function markThreadRead(options: DatabaseOptions, input: { threadId: string; tenantId: string; readAt?: Date }): Promise<Date> {
+  const threadId = requireNonEmpty(input.threadId, "threadId");
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const readAt = input.readAt === undefined ? new Date() : requireDate(input.readAt, "readAt");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ last_read_at: Date }>(
+      `INSERT INTO thread_viewer_states (thread_id, tenant_id, last_read_at) VALUES ($1, $2, $3)
+       ON CONFLICT (thread_id, tenant_id) DO UPDATE SET last_read_at = EXCLUDED.last_read_at RETURNING last_read_at`,
+      [threadId, tenantId, readAt],
+    );
+    return result.rows[0]!.last_read_at;
+  });
+}
+
+export async function pinThread(options: DatabaseOptions, input: { threadId: string; tenantId: string }): Promise<Date> {
+  const threadId = requireNonEmpty(input.threadId, "threadId");
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ pinned_at: Date }>(
+      `INSERT INTO thread_viewer_states (thread_id, tenant_id, pinned_at) VALUES ($1, $2, now())
+       ON CONFLICT (thread_id, tenant_id) DO UPDATE SET pinned_at = EXCLUDED.pinned_at RETURNING pinned_at`, [threadId, tenantId],
+    );
+    return result.rows[0]!.pinned_at;
+  });
+}
+
+export async function unpinThread(options: DatabaseOptions, input: { threadId: string; tenantId: string }): Promise<void> {
+  const threadId = requireNonEmpty(input.threadId, "threadId");
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  await withPool(options, async (pool) => { await pool.query("UPDATE thread_viewer_states SET pinned_at = NULL WHERE thread_id = $1 AND tenant_id = $2", [threadId, tenantId]); });
 }
 
 /** Returns the (at most one) v1 conversation for a bot role. */

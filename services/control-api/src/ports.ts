@@ -77,6 +77,9 @@ import {
   listTasks as dbListTasks,
   listThreads as dbListThreads,
   listAllThreadsWithMembers as dbListAllThreadsWithMembers,
+  markThreadRead as dbMarkThreadRead,
+  pinThread as dbPinThread,
+  unpinThread as dbUnpinThread,
   listDeviceTokens as dbListDeviceTokens,
   registerDeviceToken as dbRegisterDeviceToken,
   createSkill as dbCreateSkill,
@@ -265,7 +268,10 @@ export interface ControlApiDeps {
   getOrCreateThreadForRole(input: NewThread): Promise<Thread>;
   listThreads(): Promise<Thread[]>;
   createGroupThread(input: NewGroupThread): Promise<GroupThread>;
-  listAllThreadsWithMembers(): Promise<Array<Thread | GroupThread>>;
+  listAllThreadsWithMembers(viewerTenantId?: string): Promise<Array<Thread | GroupThread>>;
+  markThreadRead?(input: { threadId: string; tenantId: string; readAt?: Date }): Promise<Date>;
+  pinThread?(input: { threadId: string; tenantId: string }): Promise<Date>;
+  unpinThread?(input: { threadId: string; tenantId: string }): Promise<void>;
   listWorkspaceSummary?(tenantId: string): Promise<WorkspaceSummary[]>;
   insertMessage(input: NewMessage): Promise<Message>;
   listMessages(threadId: string, options?: MessageListOptions): Promise<Message[]>;
@@ -737,7 +743,10 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
     getOrCreateThreadForRole: (input) => dbGetOrCreateThreadForRole(options, input),
     listThreads: () => dbListThreads(options),
     createGroupThread: (input) => dbCreateGroupThread(options, input),
-    listAllThreadsWithMembers: () => dbListAllThreadsWithMembers(options),
+    listAllThreadsWithMembers: (viewerTenantId) => dbListAllThreadsWithMembers(options, viewerTenantId),
+    markThreadRead: (input) => dbMarkThreadRead(options, input),
+    pinThread: (input) => dbPinThread(options, input),
+    unpinThread: (input) => dbUnpinThread(options, input),
     listWorkspaceSummary: (tenantId) => dbListWorkspaceSummary(options, tenantId),
     projects: {
       createProject: (input) => dbCreateProjectWithRoster(options, input),

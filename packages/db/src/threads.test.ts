@@ -16,6 +16,9 @@ import {
   listThreadMembers,
   listAllThreadsWithMembers,
   listThreads,
+  markThreadRead,
+  pinThread,
+  unpinThread,
 } from "./index.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -28,6 +31,7 @@ integration("packages/db threads — migration + CRUD (TASK-105)", () => {
   const roleId = "task-105-threads-suite-role";
 
   async function cleanup(): Promise<void> {
+    await pool.query("DELETE FROM thread_viewer_states WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = $1)", [roleId]);
     await pool.query("DELETE FROM thread_members WHERE role_id = $1", [roleId]);
     await pool.query("DELETE FROM threads WHERE role_id = $1", [roleId]);
@@ -40,6 +44,12 @@ integration("packages/db threads — migration + CRUD (TASK-105)", () => {
     await pool.query(up);
     const groupThreadsUp = await readFile(`${migrationDirectory}009_group_threads.up.sql`, "utf8");
     await pool.query(groupThreadsUp);
+    const readMarkersUp = await readFile(`${migrationDirectory}034_thread_read_markers.up.sql`, "utf8");
+    const readMarkersDown = await readFile(`${migrationDirectory}034_thread_read_markers.down.sql`, "utf8");
+    // The deployment runner can safely retry both directions.
+    await pool.query(readMarkersUp);
+    await pool.query(readMarkersDown);
+    await pool.query(readMarkersUp);
     await cleanup();
     await createRole(
       { connectionString: connectionString! },
@@ -178,6 +188,45 @@ integration("packages/db threads — migration + CRUD (TASK-105)", () => {
     const second = await getOrCreateThreadForRole({ connectionString: connectionString! }, { roleId, title: "ignored" });
     expect(second.id).toBe(first.id);
     expect(second.title).toBe(first.title);
+  });
+
+  it("stores tenant read markers and pins, excludes viewer messages from unread counts, and sorts pins first (TASK-333)", async () => {
+    const firstRoleId = "task-333-first-role";
+    const secondRoleId = "task-333-second-role";
+    const viewerTenantId = "task-333-viewer";
+    const cleanupIds = [firstRoleId, secondRoleId];
+    await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [cleanupIds]);
+    try {
+      await createRole({ connectionString: connectionString! }, { roleId: firstRoleId, tenantId: viewerTenantId, name: "First", title: "First" });
+      await createRole({ connectionString: connectionString! }, { roleId: secondRoleId, tenantId: viewerTenantId, name: "Second", title: "Second" });
+      const first = await createThread({ connectionString: connectionString! }, { roleId: firstRoleId });
+      const second = await createThread({ connectionString: connectionString! }, { roleId: secondRoleId });
+      await insertMessage({ connectionString: connectionString! }, { threadId: first.id, role: "user", body: "viewer authored this" });
+      const firstBot = await insertMessage({ connectionString: connectionString! }, { threadId: first.id, role: "bot", body: "first bot reply" });
+      const readAt = new Date("2026-01-02T03:04:05.000Z");
+      await pool.query("UPDATE messages SET created_at = $1 WHERE id = $2", [readAt, firstBot.id]);
+      await markThreadRead({ connectionString: connectionString! }, { threadId: first.id, tenantId: viewerTenantId, readAt });
+      await insertMessage({ connectionString: connectionString! }, { threadId: first.id, role: "user", body: "viewer authored this too" });
+      const unreadBot = await insertMessage({ connectionString: connectionString! }, { threadId: first.id, role: "bot", body: "unread bot reply" });
+      await pool.query("UPDATE messages SET created_at = $1 WHERE id = $2", [new Date("2026-01-02T03:04:06.000Z"), unreadBot.id]);
+      await pinThread({ connectionString: connectionString! }, { threadId: second.id, tenantId: viewerTenantId });
+
+      const roster = await listAllThreadsWithMembers({ connectionString: connectionString! }, viewerTenantId);
+      const firstState = roster.find((thread) => thread.id === first.id)!;
+      expect(firstState.unreadCount).toBe(1);
+      expect(roster.findIndex((thread) => thread.id === second.id)).toBeLessThan(roster.findIndex((thread) => thread.id === first.id));
+      expect(roster.find((thread) => thread.id === second.id)?.pinnedAt).toEqual(expect.any(Date));
+
+      await unpinThread({ connectionString: connectionString! }, { threadId: second.id, tenantId: viewerTenantId });
+      const unpinned = await listAllThreadsWithMembers({ connectionString: connectionString! }, viewerTenantId);
+      expect(unpinned.find((thread) => thread.id === second.id)?.pinnedAt).toBeNull();
+    } finally {
+      await pool.query("DELETE FROM thread_viewer_states WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1))", [cleanupIds]);
+      await pool.query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE role_id = ANY($1))", [cleanupIds]);
+      await pool.query("DELETE FROM thread_members WHERE role_id = ANY($1)", [cleanupIds]);
+      await pool.query("DELETE FROM threads WHERE role_id = ANY($1)", [cleanupIds]);
+      await pool.query("DELETE FROM roles WHERE role_id = ANY($1)", [cleanupIds]);
+    }
   });
 
   it("derives roster titles and latest-message previews in the listing query (TASK-331)", async () => {

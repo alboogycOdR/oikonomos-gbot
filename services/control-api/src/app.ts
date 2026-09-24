@@ -1493,7 +1493,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   app.get("/threads", async (request, reply) => {
     try {
       const [threads, roles] = await Promise.all([
-        deps.listAllThreadsWithMembers(),
+        deps.listAllThreadsWithMembers(request.tenantId),
         deps.listRoles({ tenantId: request.tenantId, status: "active" }),
       ]);
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
@@ -1524,6 +1524,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
               preview,
               lastMessageAt,
               lastMessagePreview: preview?.text ?? "",
+              unreadCount: thread.unreadCount ?? 0,
+              pinnedAt: thread.pinnedAt ?? null,
               updatedAt: thread.updatedAt,
             };
           }
@@ -1538,12 +1540,53 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             preview,
             lastMessageAt,
             lastMessagePreview: preview?.text ?? "",
+            unreadCount: thread.unreadCount ?? 0,
+            pinnedAt: thread.pinnedAt ?? null,
             updatedAt: thread.updatedAt,
           };
         }));
       await reply.code(200).send(result);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { messageAt?: string } }>("/threads/:id/read", async (request, reply) => {
+    try {
+      const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+      if (thread === undefined) return reply.code(404).send({ error: "thread not found" });
+      if (deps.markThreadRead === undefined) return reply.code(501).send({ error: "thread read markers are not configured" });
+      const messageAt = request.body?.messageAt;
+      const readAt = messageAt === undefined ? undefined : new Date(messageAt);
+      if (readAt !== undefined && Number.isNaN(readAt.getTime())) return reply.code(400).send({ error: "messageAt must be a valid date-time." });
+      const lastReadAt = await deps.markThreadRead({ threadId: thread.id, tenantId: request.tenantId, ...(readAt === undefined ? {} : { readAt }) });
+      return reply.code(200).send({ id: thread.id, lastReadAt });
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.put<{ Params: { id: string } }>("/threads/:id/pin", async (request, reply) => {
+    try {
+      const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+      if (thread === undefined) return reply.code(404).send({ error: "thread not found" });
+      if (deps.pinThread === undefined) return reply.code(501).send({ error: "thread pins are not configured" });
+      const pinnedAt = await deps.pinThread({ threadId: thread.id, tenantId: request.tenantId });
+      return reply.code(200).send({ id: thread.id, pinnedAt });
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/threads/:id/pin", async (request, reply) => {
+    try {
+      const thread = await findTenantOwnedThread(deps, request.tenantId, request.params.id);
+      if (thread === undefined) return reply.code(404).send({ error: "thread not found" });
+      if (deps.unpinThread === undefined) return reply.code(501).send({ error: "thread pins are not configured" });
+      await deps.unpinThread({ threadId: thread.id, tenantId: request.tenantId });
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
     }
   });
 
