@@ -203,6 +203,80 @@ export type GroupRoutingDecision =
   | { route: GroupRoute; routingRunId: string | null }
   | { route: null; routingRunId: null; stopReason: "consecutive_bot_cap" | "quiet_room" };
 
+export const GROUP_ROUTING_FALLBACK_REASONS = [
+  "unreachable",
+  "unparsed",
+  "off_roster",
+  "unconfident",
+  "single_candidate",
+] as const;
+
+export type GroupRoutingFallbackReason = (typeof GROUP_ROUTING_FALLBACK_REASONS)[number];
+export const GROUP_ROUTING_FALLBACK_EVENT_TYPE = "group_routing.fallback";
+
+export class UnparsedGroupRoutingScoreError extends Error {}
+
+interface RouteGroupMessageWithFallbackOptions {
+  readonly message: string;
+  readonly members: readonly GroupRoute["recipients"][number][];
+  readonly mostRecentResponderRoleId: string | null;
+  readonly grantsByRoleId: ReadonlyMap<string, readonly RoleGrant[]>;
+  readonly scorer: (candidate: { member: GroupRoute["recipients"][number]; message: string }) => Promise<number>;
+  readonly recordFallback: (reason: GroupRoutingFallbackReason) => Promise<void>;
+  /** The initial deterministic pass deliberately throws to request Tier-0. */
+  readonly fallbackOnScorerFailure?: boolean;
+}
+
+/**
+ * Resolves deterministic group-routing shortcuts and makes every fallback to
+ * the roster default observable.  This lives in the control-api composition
+ * layer because grants and audit persistence are both infrastructure facts,
+ * not worker routing-policy concerns.
+ */
+export async function routeGroupMessageWithFallback(
+  options: RouteGroupMessageWithFallbackOptions,
+): Promise<GroupRoute> {
+  const message = options.message.trim();
+  if (message.length === 0) throw new Error("group routing requires a non-empty message.");
+  if (options.members.length === 0) throw new Error("group routing requires at least one member.");
+
+  const defaultRoute = async (reason: GroupRoutingFallbackReason): Promise<GroupRoute> => {
+    await options.recordFallback(reason);
+    return { recipients: [options.members[0]!], reason: "scored" };
+  };
+
+  if (options.members.length === 1) return defaultRoute("single_candidate");
+
+  const systemHolder = onlySystemHolder(message, options.members, options.grantsByRoleId);
+  if (systemHolder !== null) return { recipients: [systemHolder], reason: "mentioned" };
+
+  if (hasOffRosterMention(message, options.members)) return defaultRoute("off_roster");
+
+  const scores: number[] = [];
+  try {
+    const resolved = await route({
+      message,
+      members: options.members,
+      mostRecentResponderRoleId: options.mostRecentResponderRoleId,
+      scorer: async (candidate) => {
+        const score = await options.scorer(candidate);
+        scores.push(score);
+        return score;
+      },
+    });
+    // A field of zero confidence contains no positive routing signal. The
+    // worker would choose the first tied member; retain that choice and make
+    // its fallback nature durable instead of silently claiming a score.
+    if (scores.length > 0 && scores.every((score) => score === 0)) {
+      return defaultRoute("unconfident");
+    }
+    return resolved;
+  } catch (error) {
+    if (options.fallbackOnScorerFailure === false) throw error;
+    return defaultRoute(error instanceof UnparsedGroupRoutingScoreError ? "unparsed" : "unreachable");
+  }
+}
+
 /**
  * TASK-304 (P-5) — the project workspace port (spec §9.1). Optional on
  * `ControlApiDeps` (like the template ports) so the many route-test
@@ -828,17 +902,34 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
         if (role === undefined) throw new Error(`group routing member ${roleId} is unavailable to this tenant.`);
         return { roleId: role.roleId, name: role.name, title: role.title, description: role.description };
       });
+      const grantsByRoleId = new Map(await Promise.all(members.map(async (member) => [
+        member.roleId,
+        await withDatabase(options, (database) => database.listRoleGrants(member.roleId)),
+      ] as const)));
       const mostRecentResponderRoleId = [...messages].reverse().find(
         (message) => message.role === "bot" && message.senderRoleId !== null && message.senderRoleId !== undefined,
       )?.senderRoleId ?? null;
 
+      const recordFallback = async (reason: GroupRoutingFallbackReason, runId: string | null = null): Promise<void> => {
+        await dbInsertAuditEvent(options, {
+          tenantId,
+          runId,
+          actor: "system:group-routing",
+          eventType: GROUP_ROUTING_FALLBACK_EVENT_TYPE,
+          payload: { reason },
+        });
+      };
+
       const scoreRequired = new Error("group routing requires Tier-0 scoring");
       try {
-        const resolved = await route({
+        const resolved = await routeGroupMessageWithFallback({
           message: body,
           members,
           mostRecentResponderRoleId,
+          grantsByRoleId,
           scorer: async () => { throw scoreRequired; },
+          recordFallback,
+          fallbackOnScorerFailure: false,
         });
         return { route: resolved, routingRunId: null };
       } catch (error) {
@@ -865,11 +956,13 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
           runId: routingRun.runId,
           ...resolveTierZeroProviderOptions(options),
         });
-        const resolved = await route({
+        const resolved = await routeGroupMessageWithFallback({
           message: body,
           members,
           mostRecentResponderRoleId,
+          grantsByRoleId,
           scorer: async ({ member, message }) => parseTierZeroScore(await tierZero(groupRoutingPrompt(member, message, routingHistory))),
+          recordFallback: async (reason) => recordFallback(reason, routingRun.runId),
         });
         await completeTaskRun(options, routingRun.runId);
         return { route: resolved, routingRunId: routingRun.runId };
@@ -1003,7 +1096,39 @@ function parseTierZeroScore(response: string): number {
   } catch {
     // Reject non-JSON model prose; selection must remain deterministic.
   }
-  throw new Error("Tier-0 scorer must return JSON {\"score\": number between 0 and 1}.");
+  throw new UnparsedGroupRoutingScoreError("Tier-0 scorer must return JSON {\"score\": number between 0 and 1}.");
+}
+
+function onlySystemHolder(
+  message: string,
+  members: readonly GroupRoute["recipients"][number][],
+  grantsByRoleId: ReadonlyMap<string, readonly RoleGrant[]>,
+): GroupRoute["recipients"][number] | null {
+  const holders = members.filter((member) => (grantsByRoleId.get(member.roleId) ?? []).some((grant) =>
+    systemNamesForCapability(grant.capabilityId).some((name) => containsSystemName(message, name)),
+  ));
+  return holders.length === 1 ? holders[0]! : null;
+}
+
+function hasOffRosterMention(message: string, members: readonly GroupRoute["recipients"][number][]): boolean {
+  const mentions = [...message.matchAll(/@([\p{L}\p{N}_-]+)/gu)].map((match) => normalizeRoutingName(match[1]!));
+  return mentions.some((mention) => mention !== "everyone" && !members.some((member) => normalizeRoutingName(member.name) === mention));
+}
+
+function systemNamesForCapability(capabilityId: string): readonly string[] {
+  const connector = capabilityId.split(".")[0]?.trim();
+  return connector === undefined || connector.length === 0 || connector === capabilityId
+    ? [capabilityId]
+    : [capabilityId, connector];
+}
+
+function containsSystemName(message: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "iu").test(message);
+}
+
+function normalizeRoutingName(value: string): string {
+  return value.trim().normalize("NFKC").toLocaleLowerCase();
 }
 
 async function withDatabase<T>(options: DatabaseOptions, operation: (database: Database) => Promise<T>): Promise<T> {
