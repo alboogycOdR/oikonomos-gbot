@@ -117,6 +117,7 @@ async function readErrorBody(response: Response): Promise<SandboxApiErrorBody | 
 function appendSseEvent(
   rawEvent: string,
   output: { stdout: string; stderr: string; exitCode: number | undefined },
+  onActivity?: () => void,
 ): void {
   const data = rawEvent
     .split(/\r?\n/)
@@ -124,6 +125,7 @@ function appendSseEvent(
     .map((line) => line.slice(5).trimStart())
     .join("\n") || rawEvent.trim();
   if (data.length === 0 || data.startsWith(":")) return;
+  onActivity?.();
 
   let event: unknown;
   try {
@@ -145,7 +147,7 @@ function appendSseEvent(
   }
 }
 
-async function readCommandStream(response: Response): Promise<RunCommandResult> {
+async function readCommandStream(response: Response, onActivity?: () => void): Promise<RunCommandResult> {
   if (response.body === null) throw new SandboxClientError("execd command response had no stream body", "INVALID_RESPONSE");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -157,10 +159,10 @@ async function readCommandStream(response: Response): Promise<RunCommandResult> 
       buffer += decoder.decode(value, { stream: !done });
       const events = buffer.split(/\r?\n\r?\n/);
       buffer = events.pop() ?? "";
-      for (const event of events) appendSseEvent(event, output);
+      for (const event of events) appendSseEvent(event, output, onActivity);
       if (done) break;
     }
-    if (buffer.trim().length > 0) appendSseEvent(buffer, output);
+    if (buffer.trim().length > 0) appendSseEvent(buffer, output, onActivity);
   } catch (error) {
     if (error instanceof SandboxClientError) throw error;
     throw new SandboxClientError("execd command stream could not be read", "REQUEST_FAILED");
@@ -226,7 +228,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
     }
   }
 
-  async function execdRequest(endpoint: SandboxEndpoint, path: string, init: RequestInit): Promise<Response> {
+  async function execdRequest(endpoint: SandboxEndpoint, path: string, init: RequestInit, externalSignal?: AbortSignal): Promise<Response> {
     const token = await resolveExecdAccessToken(execdAccessTokenRef);
     const headers: Record<string, string> = {
       accept: "application/json",
@@ -236,6 +238,10 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
     };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Caller cancellation must outlive the header-phase timer: the same
+    // controller governs the streamed body, so abort() also ends the read.
+    if (externalSignal?.aborted === true) controller.abort();
+    else externalSignal?.addEventListener("abort", () => controller.abort(), { once: true });
     try {
       try {
         return await fetchImpl(`${stripTrailingSlash(endpoint.endpoint)}${path}`, {
@@ -414,7 +420,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
           ...(command.envs === undefined ? {} : { envs: command.envs }),
           ...(command.timeoutMs === undefined ? {} : { timeout: command.timeoutMs }),
         }),
-      });
+      }, command.signal);
       if (!response.ok) {
         const body = await readErrorBody(response);
         throw new SandboxClientError(`execd command returned unexpected status ${response.status}`, "UNEXPECTED_STATUS", {
@@ -422,7 +428,7 @@ export function createSandboxClient(options: CreateSandboxClientOptions): Sandbo
           apiErrorCode: body?.code,
         });
       }
-      return readCommandStream(response);
+      return readCommandStream(response, command.onActivity);
     },
   };
 

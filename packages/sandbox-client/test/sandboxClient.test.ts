@@ -257,6 +257,32 @@ describe("createSandboxClient", () => {
       await expect(client.runCommand({ endpoint: "http://proxy.example.invalid/execd" }, { command: "echo hello" }))
         .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     });
+
+    it("reports stream activity per event and honours an abort signal mid-stream (TASK-338)", async () => {
+      const encoder = new TextEncoder();
+      const fetchImpl: FetchLike = async (_input, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode('{"type":"stdout","text":"a"}' + "\n\n: keepalive\n\n"));
+              init.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+            },
+          }),
+          { status: 200 },
+        );
+      const client = createSandboxClient({ baseUrl: BASE_URL, fetchImpl, resolveExecdAccessToken: async () => FAKE_API_KEY });
+      const abort = new AbortController();
+      let activity = 0;
+      const pending = client.runCommand({ endpoint: "http://proxy.example.invalid/execd" }, {
+        command: "sleep 999",
+        onActivity: () => { activity += 1; },
+        signal: abort.signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      abort.abort();
+      await expect(pending).rejects.toMatchObject({ code: "REQUEST_FAILED" });
+      expect(activity).toBe(1); // the comment keepalive is not an event
+    });
   });
 
   describe("destroySandbox", () => {

@@ -193,6 +193,21 @@ export function sandboxResourceLimitsFor(image: string): { readonly cpu: string;
 }
 const SANDBOX_EXECD_TOKEN_REF = "secret://opensandbox/execd_access_token";
 const SANDBOX_COMMAND_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_CLAUDE_SILENCE_TIMEOUT_MS = 180_000;
+export const SANDBOX_SILENCE_EVENT_TYPE = "run.sandbox_silence_timeout";
+
+/** TASK-338: thrown when a sandboxed Claude command emits nothing for the silence window. */
+export class SandboxSilenceError extends Error {
+  constructor(readonly silenceMs: number) {
+    super("The bot stopped responding.");
+    this.name = "SandboxSilenceError";
+  }
+}
+
+export function claudeSilenceTimeoutMs(): number {
+  const parsed = Number(process.env.OIK_CLAUDE_SILENCE_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLAUDE_SILENCE_TIMEOUT_MS;
+}
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 /**
  * TASK-296 — server-side TTL passed to `createSandbox` (OpenSandbox's own
@@ -599,10 +614,25 @@ async function runChatTask(
         return;
       }
       const failureNote = sanitizeFailureReason(error instanceof Error ? error.message : "chat run failed") || "chat run failed";
+      if (error instanceof SandboxSilenceError) {
+        await recordAuditEvent(options, {
+          tenantId: request.task.tenantId,
+          runId,
+          actor: `agent:${effectiveProvider}`,
+          eventType: SANDBOX_SILENCE_EVENT_TYPE,
+          payload: { category: "silence_timeout", silenceMs: error.silenceMs },
+        }).catch((auditError: unknown) => {
+          console.error("failed to record sandbox silence audit event:", auditError);
+        });
+      }
       await failTaskRun(options, runId, failureNote);
       // TASK-316: a terminal failure must not leave the user in silence.
       // Best-effort: a write failure here must not mask the original error.
-      await insertMessage(options, { threadId: request.threadId, role: "system", body: failureThreadMessage(failureNote) }).catch((insertError: unknown) => {
+      await insertMessage(options, {
+        threadId: request.threadId,
+        role: "system",
+        body: error instanceof SandboxSilenceError ? silenceThreadMessage(error.silenceMs) : failureThreadMessage(failureNote),
+      }).catch((insertError: unknown) => {
         console.error("failed to post chat run failure message:", insertError);
       });
     }
@@ -635,6 +665,10 @@ export function sanitizeFailureReason(raw: string | undefined): string {
     .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]")
     .trim();
   return cleaned.length > FAILURE_REASON_MAX ? `${cleaned.slice(0, FAILURE_REASON_MAX)}…` : cleaned;
+}
+
+function silenceThreadMessage(silenceMs: number): string {
+  return `I couldn't finish that message: the bot stopped responding (no output for ${Math.round(silenceMs / 1000)} seconds), so I ended the run. You can retry.`;
 }
 
 function failureThreadMessage(reason: string): string {
@@ -1015,10 +1049,25 @@ async function executeSandboxChatRun(
   // `runCommand` settles; the exit-code check still runs afterward and can
   // still throw for a non-zero exit — that throw now happens AFTER release
   // rather than before it.
-  const response = await withSandboxRelease(client, options, request.task.roleId, resolvedSandbox.sandboxId, () =>
+  // TASK-338: silence guard. Every stream event re-arms the timer; if it ever
+  // fires the command is cancelled and the run fails with a distinct error.
+  const silenceMs = claudeSilenceTimeoutMs();
+  const silence = new AbortController();
+  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  let silenced = false;
+  const armSilence = (): void => {
+    if (silenceTimer !== undefined) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => { silenced = true; silence.abort(); }, silenceMs);
+  };
+  armSilence();
+  let response: Awaited<ReturnType<SandboxClient["runCommand"]>>;
+  try {
+    response = await withSandboxRelease(client, options, request.task.roleId, resolvedSandbox.sandboxId, () =>
     client.runCommand(resolvedSandbox.endpoint, {
       command,
       cwd: workspace,
+      onActivity: armSilence,
+      signal: silence.signal,
       // This is the whole child environment. Never spread process.env here:
       // only the per-turn broker identity and model credential cross the
       // worker/sandbox boundary — the image itself carries neither (TASK-154).
@@ -1052,7 +1101,13 @@ async function executeSandboxChatRun(
       },
       timeoutMs: SANDBOX_COMMAND_TIMEOUT_MS,
     }),
-  );
+    );
+  } catch (error) {
+    if (silenced) throw new SandboxSilenceError(silenceMs);
+    throw error;
+  } finally {
+    if (silenceTimer !== undefined) clearTimeout(silenceTimer);
+  }
   if (response.exitCode !== 0) throw new Error(`Sandboxed Claude command failed with exit code ${response.exitCode}.`);
 
   const event = eventFromSandboxStdout(response.stdout);
