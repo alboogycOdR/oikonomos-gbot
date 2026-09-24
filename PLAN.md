@@ -10626,7 +10626,7 @@ Exit status 2
 
 ### TASK-349
 **Title:** Web: avatar colour and shape picker saved and rendered
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10640,12 +10640,13 @@ Exit status 2
 **Started_At:** 2026-09-24T22:20:22Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-24T22:28:01Z] [SV:CX9] Verified the 12x8 token contract and recorded the exact rendering-path ownership gap in the task dossier.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Rendering saved avatar fields requires apps/dashboard/src/pages/ChatPage.tsx, BotSidebar.tsx, ConversationPane.tsx, and GroupThreadDialog.tsx, which are outside TASK-349 Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T22:20:22Z
+**Updated_At:** 2026-09-24T22:28:01Z
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
