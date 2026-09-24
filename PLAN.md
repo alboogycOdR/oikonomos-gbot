@@ -9266,7 +9266,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-309
 **Title:** Dashboard: project board on the Work view, artifact register on the Results view, blocked items in the attention inbox (P-7c)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.2 (Work view becomes the board for a project thread; Results view lists the register; attention inbox lists blocked items with reasons).
@@ -9282,12 +9282,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-23T22:36:43Z] [ORCH] Assigned to CX9 (roster is CX9 + S5 only, CX9 weighted about 2:1). Its dependency TASK-304 is done.
+- [2026-09-24T00:33:01Z] [SV:CX9] Preflight passed; the views lack the active thread/project context, which only ChatPage.tsx owns.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: require apps/dashboard/src/pages/ChatPage.tsx (and likely ChatPage.test.tsx) to pass active thread/project context and blockedTasks into WorkView and ResultsView.
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T00:28:27Z
+**Updated_At:** 2026-09-24T00:33:01Z
 
 ### TASK-310
 **Title:** Adversarial review of ADR-019 Amendment 2026-09-19 (managers create and retire bots through workspace.create_bot / retire_bot) by a non-Anthropic model
