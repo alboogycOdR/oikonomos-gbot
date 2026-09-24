@@ -93,7 +93,7 @@ export interface RunCommandRequest {
   readonly cwd?: string;
   readonly envs?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
-  /** Called for every event read from the command stream (stdout, stderr, keepalive, ...). */
+  /** Called when execd reports a non-comment event from the command stream (such as stdout, stderr, or a tool event). */
   readonly onActivity?: () => void;
   /** Aborting cancels the in-flight request and stream; runCommand then rejects with REQUEST_FAILED. */
   readonly signal?: AbortSignal;
