@@ -9975,7 +9975,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-327
 **Title:** Harden role-message delivery: isolate failures, cap attempts, tell the sender
-**Status:** claimed
+**Status:** pending
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (agents/handoff-delivery.ts: per-hop lease, attempt cap, in-voice notice to the asker); services/worker/src/roleMessageDelivery.ts; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9989,17 +9989,18 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] ADR-005 liveness: a test keyed on the terminal-failure audit event or notice fails if the cap or the notice is removed.
 - [ ] Migration 035 is idempotent (up, down, up).
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; every non-own-package failure classified against the master baseline in Test_Evidence.
-**Branch:** task/TASK-327-cx9
-**Started_At:** 2026-09-24T12:29:52Z
+**Branch:** —
+**Started_At:** —
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T12:29:52Z] [ORCH opus-5.5] STACKED: task/TASK-327-cx9 is cut from task/TASK-333-cx9 (0972e54), not master, because TASK-333 is built but held for the batch review. Check out that existing branch and build on it. Don't rebase it onto master, and don't modify TASK-333's files.
+- [2026-09-24T12:30:15Z] [ORCH opus-5.5] Claim reverted: validate_plan counts TASK-333 (needs_review) as active, and 327 and 333 share packages/db/src/index.ts, so the stacked dispatch was refused as an isolation violation. Waiting for an owner decision.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-24T12:29:52Z
+**Updated_At:** 2026-09-24T12:30:15Z
 
 ### TASK-328
 **Title:** Handoff hop-depth cap and idempotent role-message send
