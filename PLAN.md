@@ -9975,7 +9975,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-327
 **Title:** Harden role-message delivery: isolate failures, cap attempts, tell the sender
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (agents/handoff-delivery.ts: per-hop lease, attempt cap, in-voice notice to the asker); services/worker/src/roleMessageDelivery.ts; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9996,12 +9996,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T12:29:52Z] [ORCH opus-5.5] STACKED: task/TASK-327-cx9 is cut from task/TASK-333-cx9 (0972e54), not master, because TASK-333 is built but held for the batch review. Check out that existing branch and build on it. Don't rebase it onto master, and don't modify TASK-333's files.
 - [2026-09-24T12:30:15Z] [ORCH opus-5.5] Claim reverted: validate_plan counts TASK-333 (needs_review) as active, and 327 and 333 share packages/db/src/index.ts, so the stacked dispatch was refused as an isolation violation. Waiting for an owner decision.
 - [2026-09-24T15:08:24Z] [SV:CX9] Implemented and committed tokenized delivery leases, five-attempt terminal failures, sender notices, migration 035, and real-Postgres coverage. DB suite and TypeScript checks pass; final recursive isolated harness is still running. NEXT: Collect the running recursive harness summary, classify any non-owned failures, then submit needs_review.
+- [2026-09-24T15:09:09Z] [ORCH opus-5.5] REVIEW: rework (F1 rebase, F2-F4 tests and isolation). See Review_Findings.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH opus-5.5, first pass). The design is sound: a tokenized 5-minute lease claimed atomically before enqueue; category-only errors; the cap enforced by a CHECK constraint; the inactive recipient goes terminal immediately with one notice (tested); the concurrent-ticks test runs on real PG; the db-level cap liveness test is good. Findings: F1 BLOCKING, stale base. The branch's merge-base is 0972e54 (the TASK-333 tip), so it lacks TASK-338, 341 and 342. TASK-342 changed services/worker/src/roleMessageDelivery.ts: it wrapped the gemini-lane, soft-deleted and TASK-301 tests in withPgBossQueueLock with 20_000 ms timeouts, and fixed the afterAll thread_members delete order. Rebase onto current master (git rebase master on task/TASK-327-cx9) and keep ALL of 342's changes. Your rewritten soft-deleted test must also be inside withPgBossQueueLock with a 20_000 ms timeout. F2 BLOCKING, AC1 is untested. Add a real-PG worker test: two pending messages in one tick, where delivering the first throws (e.g. its sender role missing or deleted so getOrCreateThreadForRole throws, or an injected failing dependency). The second message must still be delivered in the same tick, and the first must get delivery_attempts 1 with last_delivery_error 'delivery_error' and stay retryable. F3 BLOCKING, AC2 and AC4 at the worker level. The cap is tested only in packages/db. Add a worker test that drives a message through deliverPendingRoleMessages to its fifth failure and asserts exactly ONE system notice in the SENDER's thread naming the recipient. Keep the liveness property: that test must fail if the cap or the notice is removed. F4, isolation hole. In the loop's catch, terminalFailure itself can throw (e.g. insertMessage or getOrCreateThreadForRole for the sender thread), which aborts the rest of the tick and defeats AC1. Wrap it so a failure while recording a failure is logged (category only) and the loop continues. The lease then expires and the row is retried. F5, minor. Migration 035 up/down/up idempotency holds by construction (IF [NOT] EXISTS, DROP CONSTRAINT IF EXISTS), but AC5 asks for it to be shown. Paste in Test_Evidence a psql up, down, up run against oikonomos_test, or add a test. F6. Full recursive suite evidence is missing (the run was cut off). After the rebase, run the MAIN checkout's script: E:\DELL-PROJECTS\GROKBOT-CLONE\scripts\test-isolated.ps1 -Root E:\DELL-PROJECTS\wt-codex9-GROKBOT-CLONE (-Init first). Wait for it to finish in the foreground, not in the background, and classify every failure.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T15:08:24Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T15:09:09Z
 
 ### TASK-328
 **Title:** Handoff hop-depth cap and idempotent role-message send
