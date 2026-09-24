@@ -10242,7 +10242,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-332
 **Title:** Mobile roster: show each thread's title and preview
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** TASK-331 (GET /threads title, preview, lastMessageAt); memory: mobile is the primary client; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10261,10 +10261,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] Author S5 (now retired). Review is still held for the end-of-wave batch. If it needs rework, CX9 does it.
 **Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart
 **Test_Evidence:** S5 claim: flutter test test/screens/roster_screen_test.dart 15/15; flutter analyze clean on touched lib files. Dart is outside pnpm -r.
-**Review_Findings:** —
+**Review_Findings:** APPROVED (ORCH opus-5.5). Territory clean. The ACs were checked against the spec: defensive parsing (absent/null/present), title/preview/relative-time rendering, legacy fallback. ORCH's independent run: roster_screen_test 15/15, full mobile suite 203/203, analyze clean. Protocol note: the commit was made by ORCH, because S5's own commit was blocked by the claim race (5668c19 no-op).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-24T11:38:38Z
+**Updated_At:** 2026-09-24T13:08:12Z
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
