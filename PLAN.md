@@ -10626,7 +10626,7 @@ Exit status 2
 
 ### TASK-349
 **Title:** Web: avatar colour and shape picker saved and rendered
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10642,12 +10642,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T22:28:01Z] [SV:CX9] Verified the 12x8 token contract and recorded the exact rendering-path ownership gap in the task dossier.
 - [2026-09-25T02:00:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve). Blocker VERIFIED, not rubber-stamped: rendering the saved avatar in the sidebar, conversation header and group dialog genuinely needs ChatPage.tsx, BotSidebar.tsx, ConversationPane.tsx and GroupThreadDialog.tsx. Confirmed all four (plus their .test.tsx) are (a) not a protected path, (b) not the territory firewall, (c) owned by NO active task — the wave is idle, and the pending web tasks that share them (TASK-354 owns none of these four; TASK-358 shares only BotSidebar.tsx/types.ts/api.ts) sit strictly DOWNSTREAM of 349 in the dependency chain (358→354→349), so they can never be co-active with it. Re-carved all four + tests into Owned_Paths, same precedent as TASK-350 (index.ts/brokerHttpRoute.ts) and TASK-309 (ChatPage.tsx). Branch task/TASK-349-cx9 (bd9582f, dossier only) stands — resume, do NOT re-branch. Plan re-validated legal after the change.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T23:28:01Z] [SV:CX9] Committed bf0bf7a: web 12x8 avatar picker, persisted tokens, and rendering in sidebar, conversation header, and group dialog.
+**Artifacts:** apps/dashboard/src/components/chat/Avatar.tsx, apps/dashboard/src/components/chat/CreateBotDialog.tsx, apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/ConversationPane.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/components/chat/Avatar.test.tsx, apps/dashboard/src/components/chat/CreateBotDialog.test.tsx, apps/dashboard/src/components/chat/BotSidebar.test.tsx, apps/dashboard/src/components/chat/ConversationPane.test.tsx, apps/dashboard/src/components/chat/GroupThreadDialog.test.tsx, dossiers/TASK-349.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter @oikonomos/dashboard: 25 files / 166 tests passed; pnpm typecheck: exit 0; pnpm build: exit 0; dashboard has no lint script. Full isolated suite was initialized then run foreground; dashboard passed, while unrelated worker real-Claude tests hit the provider session limit and an initial control-api group-routing failure was flaky on rerun.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T23:11:31Z
+**Updated_At:** 2026-09-24T23:28:01Z
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
