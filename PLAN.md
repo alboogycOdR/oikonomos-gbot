@@ -10315,7 +10315,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-341
 **Title:** Make master CI green: build before typecheck, full schema and seed for canaries
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** critical
 **Spec_References:** ORCH CI diagnosis 2026-09-24 (fresh-clone reproduction of master d783765); TASK-023 (8d0e05e added pnpm build to the test job); scripts/test-isolated.ps1 lines 132-146 (baseline seed)
@@ -10331,9 +10331,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** 2026-09-24T13:24:33Z
 **Progress_Notes:**
 - [2026-09-24T13:30:00Z] [ORCH opus-5.5] Filed after the owner asked why they get so many identical CI failure emails. Critical: take it immediately after TASK-338.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T13:37:42Z] [SV:CX9] CI typecheck now builds first; canaries apply all sorted migrations and run the required role, inbox, and capability seeds.
+**Artifacts:** .github/workflows/ci.yml, dossiers/TASK-341.md
+**Test_Evidence:** Fresh clone: pnpm install --frozen-lockfile, pnpm build, and pnpm typecheck completed without errors. Disposable pgvector PostgreSQL: migrations 001-033 + inbox-triage seed + seedInboxTriage.js + registerCapabilities.js; pnpm canaries passed 13/13 files, 19/19 tests. Bash migration-loop syntax and git diff --check passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T13:24:33Z
+**Updated_At:** 2026-09-24T13:37:42Z
