@@ -9266,7 +9266,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-309
 **Title:** Dashboard: project board on the Work view, artifact register on the Results view, blocked items in the attention inbox (P-7c)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.2 (Work view becomes the board for a project thread; Results view lists the register; attention inbox lists blocked items with reasons).
@@ -9277,8 +9277,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] For a project's thread, the Work view shows the board and the Results view shows the artifact register. (spec §9.2)
 - [ ] Blocked items appear in the attention inbox with their reasons. (spec §9.2)
 - [ ] Dashboard typecheck, tests and build clean.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-309-cx9
+**Started_At:** 2026-09-24T00:28:27Z
 **Progress_Notes:**
 - [2026-09-19T02:35:00Z] [ORCH] Filed from the manager-bot epic decomposition (ADR-019 / Project Workspace spec v1.1), grounded against master af6f221.
 - [2026-09-23T22:36:43Z] [ORCH] Assigned to CX9 (roster is CX9 + S5 only, CX9 weighted about 2:1). Its dependency TASK-304 is done.
@@ -9286,8 +9286,8 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T00:28:27Z
 
 ### TASK-310
 **Title:** Adversarial review of ADR-019 Amendment 2026-09-19 (managers create and retire bots through workspace.create_bot / retire_bot) by a non-Anthropic model
