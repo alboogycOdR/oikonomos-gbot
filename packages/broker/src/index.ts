@@ -7,6 +7,7 @@ import {
 import { type DecisionAuditEvent } from "@oikonomos/audit";
 import {
   evaluateRateLimitConstraint,
+  matchesRequireApprovalRule,
   resolveCapabilityTier,
   riskTiers,
   type EnforcedActionClass,
@@ -703,6 +704,18 @@ async function decidePreToolUse(
     }
     if (tier === "T4_irreversible") {
       return deny(dependencies, request, "tier.irreversible", capability.capabilityId, tier);
+    }
+    // Legacy declarations have not migrated to the full Addendum F gate, but
+    // Require-Approval rules still promote matching actions before the old
+    // below-T3 autonomous allow. Rule read failures reach the enclosing
+    // fail-closed handler; without a rule reader this remains byte-identical.
+    const requireApprovalRules = await dependencies.getRequireApprovalRules?.(request) ?? [];
+    if (requireApprovalRules.some((rule) => matchesRequireApprovalRule(
+      rule,
+      capability.capabilityId,
+      request.input as Readonly<Record<string, TargetValue>>,
+    ))) {
+      return await resolveApprovalRequired(request, dependencies, destination, capability, tier);
     }
     if (tierRank(tier) < tierRank(APPROVAL_TIER)) {
       return {
