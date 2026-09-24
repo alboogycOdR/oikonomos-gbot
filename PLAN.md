@@ -9922,7 +9922,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-331
 **Title:** Thread roster: title and one-line preview on GET /threads
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (channels summary/titler); mobile roster is built from GET /threads; TASK-191 tenant scoping; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9939,6 +9939,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T07:13:00Z] [SV:CX9] Implemented and committed DB-derived roster metadata, tenant filtering, route/OpenAPI coverage; dossier contains preflight and test details.
+- [2026-09-24T11:20:00Z] [ORCH opus-4-8] APPROVED + merged (--no-ff), branch deleted. Territory clean (7 files, all in Owned_Paths incl. dossier); no PLAN.md edits; commit [TASK-331]-tagged. Isolated suite via test-isolated.ps1 -Init from review worktree: threads.test.ts (10) and threadRoster.routes.test.ts (2) PASS. Tenant ACL is real-path (buildApp+DB-backed deps): the isolation test would fail if the ownedRoleIds filter were removed — other-tenant thread asserted absent. All other failures classified as baseline/env (worker Gemini-402/budget/capability-drift, control-api chat.routes group-thread 400↔201 present on master baseline, db roles/spend/routines known-flaky pollution TASK-162). No owned-path failures.
 **Artifacts:** packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/threadRoster.routes.test.ts, dossiers/TASK-331.md
 **Test_Evidence:** pnpm --filter @oikonomos/db build/typecheck PASS; pnpm --filter @oikonomos/control-api typecheck PASS. Isolated control-api: TASK-331 route/OpenAPI 2/2 PASS; 367/369 total, with only baseline TASK-264 capability seed and TASK-121 FreeLLMAPI failures. Isolated db: TASK-331 coverage passed; 291 pass/2 skipped plus unrelated database fixture-cleanup deadlock. Full isolated recursive suite was run; no TASK-331-owned failures observed.
 **Review_Findings:** —
@@ -10179,7 +10180,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-340
 **Title:** Gemini Steel lane: actionable element refs from snapshots
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** OpenBot comparison (agent-computer/src/aria-snapshot.ts: 16-role allow-list, refs, 200-element cap); TASK-325 navigation guard; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10195,6 +10196,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-23T23:38:01Z] [SV:S5] Actionable element refs (allow-list, e1.., cap 200) in steel_snapshot; steel_act accepts ref via DOM.resolveNode+callFunctionOn; stale/unknown refs refused with readable sentence; refs invalidated on navigate/release; TASK-325 guard untouched.
+- [2026-09-24T11:20:00Z] [ORCH opus-4-8] APPROVED + merged (--no-ff), branch deleted. S5-authored but touches NO protected path (services/worker only), so normal review, no cross-model gate. Territory clean (2 owned files + dossier); no PLAN.md edits; commits [TASK-340]-tagged. Isolated suite via test-isolated.ps1 -Init from review worktree: geminiToolExecutors.test.ts 30/30 PASS. Stale-ref guard is real-path (createSteelGeminiTools execute()): the ref/stale/unknown tests drive the actual tool and would fail if the guard were inert (unknown ref refused before touching browser; CDP "No node" → STALE + ref dropped; nav invalidates refs). All other failures classified baseline/env (same worker Gemini/budget/timeout set + control-api group-thread + evals as master baseline); db clean this run. No owned-path failures.
 **Artifacts:** services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, dossiers/TASK-340.md
 **Test_Evidence:** geminiToolExecutors.test.ts 30/30 pass (3 new TASK-340 tests; TASK-325 nav-guard tests unchanged and passing). Full isolated suite via scripts/test-isolated.ps1: failures only outside own files - db 1, evals-harness 1, control-api chat.routes 1 (400 vs 201), worker chatRunDriver/main/workerJobQueue/roleMessageDelivery (sandbox/env). Worker chatRunDriver/main/workerJobQueue match runMaster-worker-baseline.log. db, evals-harness and control-api failures and worker roleMessageDelivery were NOT baseline-verified. No failing file touches geminiToolExecutors. tsc on services/worker errors only on @oikonomos/db exports, none in owned files.
 **Review_Findings:** —
