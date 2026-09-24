@@ -10007,11 +10007,11 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-328
 **Title:** Handoff hop-depth cap and idempotent role-message send
-**Status:** blocked
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (agents/handoff.ts: depth carried in a signed run assertion, fan-out counted under an advisory lock, envelope-hash idempotency); specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md section 6.4; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
-**Owned_Paths:** packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/roleMessageDelivery.test.ts, infra/postgres/migrations/036_role_message_depth_dedupe.up.sql, infra/postgres/migrations/036_role_message_depth_dedupe.down.sql, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts
+**Owned_Paths:** packages/db/src/roleMessages.ts, packages/db/src/roleMessages.test.ts, packages/db/src/index.ts, services/worker/src/roleMessageDelivery.ts, services/worker/src/roleMessageDelivery.test.ts, infra/postgres/migrations/036_role_message_depth_dedupe.up.sql, infra/postgres/migrations/036_role_message_depth_dedupe.down.sql, services/worker/src/projectTools.ts, services/worker/src/projectTools.test.ts, services/worker/src/workspaceMcpServer.ts, services/worker/src/workspaceMcpServer.test.ts, services/worker/src/geminiToolExecutors.ts, services/worker/src/geminiToolExecutors.test.ts, services/workspace/src/mailbox.ts, services/workspace/src/mailbox.test.ts
 **Depends_On:** TASK-327, TASK-340
 **Description:** Nothing caps how deep a chain of bot-to-bot handoffs can go: A to B to C to A is bounded only by spend. And an identical resend within one run creates a second message and a second run. Add hop_depth (default 0) and dedupe_key to role_messages (migration 036). sendRoleMessage takes an optional sourceRunId. Depth is the depth of the message that started the source run (runs.requested_by = "role-message:<id>") plus one, else 0. Refuse at depth >= OIK_HANDOFF_MAX_DEPTH (default 4) with a sentence the model can read: isError text in the Claude MCP lanes, tool-result text in the Gemini lane. The dedupe key is a SHA-256 of (from role, to role, handoff kind, body, factRef, sourceRunId), unique among the source run's messages; an identical second send returns "already sent" and creates no row and no run. Audit both refusals with a category only. Every caller in both lanes passes its run id: projectTools.ts, workspaceMcpServer.ts (send_to_role) and geminiToolExecutors.ts (send_to_role).
 **Acceptance_Criteria:**
@@ -10026,12 +10026,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T15:31:20Z] [SV:CX9] Preflight complete; implementation blocked before edits by an unowned sendToRole propagation layer.
+- [2026-09-24T15:31:41Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved by ORCH: added services/workspace/src/mailbox.ts and mailbox.test.ts to Owned_Paths. No other active or pending task owns them. Extend SendToRoleInput with an optional sourceRunId and forward it to sendRoleMessage; keep existing callers working.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: services/workspace/src/mailbox.ts must accept and forward sourceRunId for the required Claude/Gemini caller propagation.
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T15:31:20Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T15:31:41Z
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
