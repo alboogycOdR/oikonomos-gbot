@@ -1497,17 +1497,33 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
         deps.listRoles({ tenantId: request.tenantId, status: "active" }),
       ]);
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
-      const result = await Promise.all(
-        threads.map(async (thread) => {
-          const messages = await deps.listMessages(thread.id);
-          const lastMessage = messages.at(-1);
+      const ownedRoleIds = new Set(rolesById.keys());
+      const result = await Promise.all(threads
+        .filter((thread) => "memberRoleIds" in thread
+          ? thread.memberRoleIds.every((roleId) => ownedRoleIds.has(roleId))
+          : ownedRoleIds.has(thread.roleId))
+        .map(async (thread) => {
+          // Database-backed roster reads always include these fields. The
+          // fallback keeps older injected ports backward compatible during a
+          // rolling deployment, without reintroducing N+1 reads in production.
+          const fallbackMessage = thread.preview === undefined
+            ? (await deps.listMessages(thread.id)).at(-1)
+            : undefined;
+          const preview = thread.preview === undefined
+            ? (fallbackMessage === undefined ? null : { text: fallbackMessage.body.replace(/\s+/g, " ").trim().slice(0, 120), authorKind: fallbackMessage.role })
+            : thread.preview;
+          const lastMessageAt = thread.lastMessageAt === undefined
+            ? (fallbackMessage?.createdAt ?? null)
+            : thread.lastMessageAt;
           if ("memberRoleIds" in thread) {
             return {
               id: thread.id,
               memberRoleIds: thread.memberRoleIds,
               memberNames: thread.memberRoleIds.map((memberRoleId) => rolesById.get(memberRoleId)?.name ?? memberRoleId),
               title: thread.title,
-              lastMessagePreview: lastMessage?.body ?? "",
+              preview,
+              lastMessageAt,
+              lastMessagePreview: preview?.text ?? "",
               updatedAt: thread.updatedAt,
             };
           }
@@ -1519,11 +1535,12 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             botDescription: role?.description ?? "",
             avatarSeed: thread.roleId,
             title: thread.title,
-            lastMessagePreview: lastMessage?.body ?? "",
+            preview,
+            lastMessageAt,
+            lastMessagePreview: preview?.text ?? "",
             updatedAt: thread.updatedAt,
           };
-        }),
-      );
+        }));
       await reply.code(200).send(result);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });

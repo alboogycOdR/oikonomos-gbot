@@ -184,6 +184,7 @@ export {
   type NewThread,
   type Thread,
   type ThreadMember,
+  type ThreadPreview,
 } from "./threads.js";
 export {
   insertMessage,

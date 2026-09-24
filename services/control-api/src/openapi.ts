@@ -26,6 +26,23 @@ export function getOpenApiDocument(): Record<string, unknown> {
           },
         },
       },
+      "/threads": {
+        get: {
+          summary: "List tenant-owned chat threads with roster title and latest-message preview",
+          operationId: "listThreads",
+          responses: {
+            "200": {
+              description: "Chat threads",
+              content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/ThreadRoster" } } } },
+            },
+          },
+        },
+        post: {
+          summary: "Create or return a chat thread",
+          operationId: "createThread",
+          responses: { "201": { description: "Chat thread" } },
+        },
+      },
       "/projects": {
         post: {
           summary: "Create a project: one group thread, a roster of at most 6, at most one manager, and the charter, in one transaction (TASK-304, spec §9.1)",
@@ -492,6 +509,25 @@ export function getOpenApiDocument(): Record<string, unknown> {
     },
     components: {
       schemas: {
+        ThreadRoster: {
+          type: "object",
+          required: ["id", "title", "preview", "lastMessageAt", "updatedAt"],
+          properties: {
+            id: { type: "string", format: "uuid" },
+            title: { type: "string", nullable: true, description: "Stored title, or the first user message shortened to about six words." },
+            preview: {
+              nullable: true,
+              type: "object",
+              required: ["text", "authorKind"],
+              properties: {
+                text: { type: "string", maxLength: 120, description: "Latest message with whitespace collapsed." },
+                authorKind: { type: "string", enum: ["user", "bot", "system"] },
+              },
+            },
+            lastMessageAt: { type: "string", format: "date-time", nullable: true },
+            updatedAt: { type: "string", format: "date-time" },
+          },
+        },
         SecretRequest: {
           type: "object",
           required: ["requestId", "runId", "roleId", "label", "purpose", "createdAt"],
