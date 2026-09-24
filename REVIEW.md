@@ -1939,3 +1939,4 @@ that drives the real production recording path.
 | TASK-337 | CX9 | approved | atomic claim-before-reap, bounded give-up; db 298/0 worker 373/0; follow-up: turn starting after claim | first-pass: yes | 2026-09-24T18:00:44Z |
 | TASK-335 | CX9 | approved (after rework) | mention precedence + email boundary fixed; control-api 382/1 (TASK-121, fixed) | first-pass: no | 2026-09-24T18:00:44Z |
 | TASK-334 | CX9 | approved (after rework) | reload on return + pin indicator; flutter 209/209, analyze clean | first-pass: no | 2026-09-24T18:03:57Z |
+| TASK-345 | CX9 | approved | cleanup-only FK order; projects.ts green x2 | first-pass: yes | 2026-09-24T18:08:23Z |
