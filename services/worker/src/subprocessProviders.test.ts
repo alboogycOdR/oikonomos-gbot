@@ -138,26 +138,31 @@ integration("services/worker subprocessProviders — live budget enforcement (TA
 
   it("allows a routine with no configured budgetUsd regardless of its spend", async () => {
     const { recordSpend } = await import("@oikonomos/db");
-    await recordSpend(db, {
-      runId: "task-143-sp-run-3",
-      routineId: routineIdNoBudget,
-      provider: "codex",
-      model: "gpt-5.4",
-      costUsd: 1_000,
-    });
-    // Isolate this test's own claim (no ROUTINE budget means no routine-level
-    // cap) from the separately-tested PLATFORM ceiling below — $1,000 in
-    // spend would otherwise legitimately trip DEFAULT_PLATFORM_CEILING_ZAR's
-    // real, much smaller value (R350/month, ~$18.92 at the default rate).
-    const budget: GatedSubprocessBudgetOptions = {
-      db,
-      runId: "task-143-sp-run-3",
-      routineId: routineIdNoBudget,
-      platformCeilingZar: 1_000_000,
-    };
-    const gated = wrapGateWithBudget(allowAll, budget);
-    const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
-    expect(result.allow).toBe(true);
+    const runId = "task-143-sp-run-3";
+    try {
+      await recordSpend(db, {
+        runId,
+        routineId: routineIdNoBudget,
+        provider: "codex",
+        model: "gpt-5.4",
+        costUsd: 1_000,
+      });
+      // Isolate this test's own claim (no ROUTINE budget means no routine-level
+      // cap) from the separately-tested PLATFORM ceiling below — $1,000 in
+      // spend would otherwise legitimately trip DEFAULT_PLATFORM_CEILING_ZAR's
+      // real, much smaller value (R350/month, ~$18.92 at the default rate).
+      const budget: GatedSubprocessBudgetOptions = {
+        db,
+        runId,
+        routineId: routineIdNoBudget,
+        platformCeilingZar: 1_000_000,
+      };
+      const gated = wrapGateWithBudget(allowAll, budget);
+      const result = await gated({ provider: "codex", command: "codex", args: [], cwd: "/tmp" });
+      expect(result.allow).toBe(true);
+    } finally {
+      await pool.query("DELETE FROM spend_records WHERE run_id = $1", [runId]);
+    }
   });
 
   it("denies budget.platform_exceeded once platform-wide spend exceeds the ZAR ceiling converted at the configured rate", async () => {
