@@ -10649,7 +10649,7 @@ Exit status 2
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 7 (the L2 reviewer MODEL is deferred; this is NOT that); owner decision 2026-09-24: Auto-review = UI over existing approvals; packages/db/src/requireApprovalRules.ts (TASK-084, Addendum F 5.4; enforced by the broker via TASK-086)
@@ -10670,12 +10670,13 @@ Exit status 2
 - [2026-09-24T22:05:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve). Valid gap: the LIVENESS AC needs the routes live in production, which requires services/control-api/src/index.ts#start() to construct createDatabaseAutoReviewPort(dbOptions) and pass it into buildApp — same wiring pattern already used for TASK-193 (threadContext), TASK-203 (liveAgent), TASK-250 (secretRequests). index.ts is not protected, not firewalled, and owned by no active task (all prior owners done). Added it to Owned_Paths. Branch diff clean (all files in scope, [TASK-350] suffixes present). Resume on task/TASK-350-cx9 from the dossier stopping point — do NOT re-branch; c4e3264 stands. NEXT after wiring: add the real-Postgres broker-enforcement test, then pnpm build + root typecheck + full isolated recursive suite in the FOREGROUND.
 - [2026-09-24T22:08:01Z] [SV:CX9] Committed production Auto-review port wiring in 134bd13; dossier records the remaining live-broker composition gap.
 - [2026-09-25T00:00:00Z] [ORCH opus-4.8] Unblocked (§7 re-carve), blocker VERIFIED not rubber-stamped. Confirmed directly: `getRequireApprovalRules` is an OPTIONAL BrokerDependency port (packages/broker/src/index.ts:164) that defaults to `[]` at index.ts:739 when unsupplied, and `registry.brokerPorts()` (capabilityRegistry.ts:172) returns only getCapability|getRoleGrant|isCapabilityDeclaredDisabled — it does NOT include getRequireApprovalRules. Neither production broker construction site (brokerHttpRoute.ts:176, chatRunDriver.ts:1733) supplies the port, so require-approval rules — including Auto-review rules — currently do NOT affect any live broker decision. CX9's blocker is correct and correctly localized: the LIVENESS AC needs the port supplied at brokerHttpRoute.ts (the ADR-001 PreToolUse enforcement path). No packages/broker edit required — the optional port already exists; 350 only supplies it, reading the existing DB rules. brokerHttpRoute.ts + .test.ts are referenced only by done/merged tasks (TASK-197 and the brokerToken relocation), unowned by any active task, not a protected path, not firewalled. Re-carved both into Owned_Paths. Resume on task/TASK-350-cx9 from 134bd13 — do NOT re-branch. NEXT: supply getRequireApprovalRules into BrokerDependencies at brokerHttpRoute.ts reading the role's rules from DB; add/complete the real-Postgres LIVENESS test that flips a real T1 enforcement decision with Auto-review ON vs OFF; then pnpm build + root typecheck + full isolated recursive suite in the FOREGROUND.
+- [2026-09-24T22:18:01Z] [SV:CX9] Wired production broker rule reads in a971fbc; the required T1 liveness proof is blocked by protected broker enforcement configuration.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T00:00:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: T1 capabilities do not opt into broker enforcement, so persisted Auto-review rules are never evaluated; packages/broker/src/builtinTools.ts is protected/outside TASK-350.
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T22:18:01Z
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
