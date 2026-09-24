@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { QueryResultRow } from "pg";
 
 import { withPool, type DatabaseOptions } from "./database.js";
@@ -60,6 +62,8 @@ export interface NewRoleMessage {
   workspaceRefs?: readonly string[];
   handoffKind?: HandoffKind;
   factRef?: HandoffFactReference;
+  /** Worker-bound run that issued the handoff; never supplied by model input. */
+  sourceRunId?: string;
 }
 
 export interface RoleMessage {
@@ -78,6 +82,9 @@ export interface RoleMessage {
   deliveryClaimedAt: Date | null;
   deliveryClaimToken: string | null;
   deliveryFailedAt: Date | null;
+  /** The message was already persisted by this source run's identical send. */
+  alreadySent?: boolean;
+  hopDepth: number;
 }
 
 interface RoleMessageRow extends QueryResultRow {
@@ -96,11 +103,12 @@ interface RoleMessageRow extends QueryResultRow {
   delivery_claimed_at: Date | null;
   delivery_claim_token: string | null;
   delivery_failed_at: Date | null;
+  hop_depth: number;
 }
 
 const messageColumns = `message_id, tenant_id, from_role_id, to_role_id, body,
        workspace_refs, handoff_kind, fact_ref, created_at, read_at,
-       delivery_attempts, last_delivery_error, delivery_claimed_at, delivery_claim_token, delivery_failed_at`;
+       delivery_attempts, last_delivery_error, delivery_claimed_at, delivery_claim_token, delivery_failed_at, hop_depth`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,6 +127,28 @@ function requireUuid(value: string, field: string): string {
     throw new Error(`${field} must be a UUID.`);
   }
   return trimmed;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function handoffDedupeKey(input: { fromRoleId: string; toRoleId: string; body: string; handoffKind: HandoffKind | null; factRef: HandoffFactReference | null; sourceRunId: string }): string {
+  return createHash("sha256").update(canonicalJson({
+    fromRoleId: input.fromRoleId, toRoleId: input.toRoleId, handoffKind: input.handoffKind,
+    body: input.body, factRef: input.factRef, sourceRunId: input.sourceRunId,
+  })).digest("hex");
+}
+
+function handoffMaxDepth(): number {
+  const configured = process.env.OIK_HANDOFF_MAX_DEPTH;
+  if (configured === undefined || configured.trim() === "") return 4;
+  const parsed = Number(configured);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 4;
 }
 
 function validateMemoryFactRef(value: MemoryHandoffFactReference): MemoryHandoffFactReference {
@@ -239,6 +269,7 @@ function toRoleMessage(row: RoleMessageRow): RoleMessage {
     deliveryClaimedAt: row.delivery_claimed_at,
     deliveryClaimToken: row.delivery_claim_token,
     deliveryFailedAt: row.delivery_failed_at,
+    hopDepth: row.hop_depth,
   };
 }
 
@@ -257,33 +288,59 @@ export async function sendRoleMessage(
   const workspaceRefs = input.workspaceRefs ?? [];
   const { handoffKind, factRef } = validateTypedHandoff(input);
   const tenantId = input.tenantId ?? "basileia";
+  const sourceRunId = input.sourceRunId === undefined ? undefined : requireUuid(input.sourceRunId, "sourceRunId");
   if (factRef !== null && !projectHandoffKinds.has(handoffKind as HandoffKind)
     && (factRef as MemoryHandoffFactReference).tenantId !== tenantId) {
     throw new Error("factRef.tenantId must match the handoff tenantId.");
   }
 
   return withPool(options, async (pool) => {
-    await validateProjectHandoff(pool, handoffKind, factRef, fromRoleId, toRoleId);
-    const result = await pool.query<RoleMessageRow>(
-      `INSERT INTO role_messages (tenant_id, from_role_id, to_role_id, body, workspace_refs, handoff_kind, fact_ref)
-       VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5::jsonb, $6, $7::jsonb)
-       RETURNING ${messageColumns}`,
-      [
-        input.tenantId ?? null,
-        fromRoleId,
-        toRoleId,
-        body,
-        JSON.stringify(workspaceRefs),
-        handoffKind,
-        factRef === null ? null : JSON.stringify(factRef),
-      ],
-    );
-
-    const row = result.rows[0];
-    if (row === undefined) {
-      throw new Error("sendRoleMessage did not return a persisted row.");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await validateProjectHandoff(client, handoffKind, factRef, fromRoleId, toRoleId);
+      let hopDepth = 0;
+      if (sourceRunId !== undefined) {
+        const source = await client.query<{ hop_depth: number }>(
+          `SELECT role_messages.hop_depth
+           FROM runs JOIN tasks ON tasks.task_id = runs.task_id
+           JOIN role_messages ON tasks.requested_by = CONCAT('role-message:', role_messages.message_id)
+           WHERE runs.run_id = $1`, [sourceRunId],
+        );
+        hopDepth = (source.rows[0]?.hop_depth ?? -1) + 1;
+      }
+      if (hopDepth >= handoffMaxDepth()) {
+        await client.query(`INSERT INTO audit_events (tenant_id, run_id, actor, event_type, payload)
+          VALUES ($1, $2, $3, 'role_message.depth_capped', '{"category":"depth_capped"}'::jsonb)`, [tenantId, sourceRunId ?? null, `role:${fromRoleId}`]);
+        await client.query("COMMIT");
+        throw new Error(`Handoff depth cap reached (maximum ${handoffMaxDepth()}).`);
+      }
+      const dedupeKey = sourceRunId === undefined ? null : handoffDedupeKey({ fromRoleId, toRoleId, body, handoffKind, factRef, sourceRunId });
+      const result = await client.query<RoleMessageRow>(
+        `INSERT INTO role_messages (tenant_id, from_role_id, to_role_id, body, workspace_refs, handoff_kind, fact_ref, hop_depth, dedupe_key)
+         VALUES (COALESCE($1, 'basileia'), $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
+         RETURNING ${messageColumns}`,
+        [input.tenantId ?? null, fromRoleId, toRoleId, body, JSON.stringify(workspaceRefs), handoffKind, factRef === null ? null : JSON.stringify(factRef), hopDepth, dedupeKey],
+      );
+      const row = result.rows[0];
+      if (row !== undefined) {
+        await client.query("COMMIT");
+        return toRoleMessage(row);
+      }
+      const existing = await client.query<RoleMessageRow>(`SELECT ${messageColumns} FROM role_messages WHERE dedupe_key = $1`, [dedupeKey]);
+      const duplicate = existing.rows[0];
+      if (duplicate === undefined) throw new Error("sendRoleMessage could not find the duplicate handoff.");
+      await client.query(`INSERT INTO audit_events (tenant_id, run_id, actor, event_type, payload)
+        VALUES ($1, $2, $3, 'role_message.duplicate', '{"category":"duplicate"}'::jsonb)`, [tenantId, sourceRunId, `role:${fromRoleId}`]);
+      await client.query("COMMIT");
+      return { ...toRoleMessage(duplicate), alreadySent: true };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
-    return toRoleMessage(row);
   });
 }
 

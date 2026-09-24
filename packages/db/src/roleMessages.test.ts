@@ -35,6 +35,8 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
 
   async function cleanup(): Promise<void> {
     await pool.query(`DELETE FROM role_messages WHERE tenant_id = $1`, [tenantId]);
+    await pool.query(`DELETE FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE tenant_id = $1)`, [tenantId]);
+    await pool.query(`DELETE FROM tasks WHERE tenant_id = $1`, [tenantId]);
     await pool.query(`DELETE FROM project_artifacts WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM project_tasks WHERE project_id IN (SELECT project_id FROM projects WHERE tenant_id = $1)`, [tenantId]);
     await pool.query(`DELETE FROM projects WHERE tenant_id = $1`, [tenantId]);
@@ -195,6 +197,58 @@ integration("packages/db roleMessages — read + CRUD + FK (TASK-084)", () => {
 
     const secondMark = await markRoleMessageRead({ connectionString: connectionString! }, sent.messageId);
     expect(secondMark.readAt).toEqual(firstMark.readAt);
+  });
+
+  it("TASK-328: caps a real-Postgres A→B→C→A chain and makes a source run resend idempotent", async () => {
+    async function runFor(roleId: string, requestedBy: string): Promise<string> {
+      const task = await pool.query<{ task_id: string }>(
+        `INSERT INTO tasks (tenant_id, role_id, title, goal, requested_by)
+         VALUES ($1, $2, 'handoff test', 'handoff test', $3) RETURNING task_id`,
+        [tenantId, roleId, requestedBy],
+      );
+      const run = await pool.query<{ run_id: string }>(
+        `INSERT INTO runs (task_id, tenant_id, provider) VALUES ($1, $2, 'test') RETURNING run_id`,
+        [task.rows[0]!.task_id, tenantId],
+      );
+      return run.rows[0]!.run_id;
+    }
+
+    const rootRun = await runFor(fromRoleId, "human:test");
+    const first = await sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId, body: "A to B", sourceRunId: rootRun,
+    });
+    const duplicate = await sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId, body: "A to B", sourceRunId: rootRun,
+    });
+    expect(first.hopDepth).toBe(0);
+    expect(duplicate).toMatchObject({ messageId: first.messageId, alreadySent: true });
+    expect((await pool.query("SELECT 1 FROM role_messages WHERE tenant_id = $1 AND body = 'A to B'", [tenantId])).rowCount).toBe(1);
+
+    const bRun = await runFor(toRoleId, `role-message:${first.messageId}`);
+    const second = await sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId: toRoleId, toRoleId: outsiderRoleId, body: "B to C", sourceRunId: bRun,
+    });
+    const cRun = await runFor(outsiderRoleId, `role-message:${second.messageId}`);
+    const third = await sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId: outsiderRoleId, toRoleId: fromRoleId, body: "C to A", sourceRunId: cRun,
+    });
+    const aRun = await runFor(fromRoleId, `role-message:${third.messageId}`);
+    const fourth = await sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId, toRoleId, body: "A to B again", sourceRunId: aRun,
+    });
+    const bAgainRun = await runFor(toRoleId, `role-message:${fourth.messageId}`);
+    expect([second.hopDepth, third.hopDepth, fourth.hopDepth]).toEqual([1, 2, 3]);
+    await expect(sendRoleMessage({ connectionString: connectionString! }, {
+      tenantId, fromRoleId: toRoleId, toRoleId: outsiderRoleId, body: "must stop", sourceRunId: bAgainRun,
+    })).rejects.toThrow(/depth cap/i);
+    const audits = await pool.query<{ event_type: string; payload: { category: string } }>(
+      "SELECT event_type, payload FROM audit_events WHERE run_id = $1 OR run_id = $2 ORDER BY event_id",
+      [rootRun, bAgainRun],
+    );
+    expect(audits.rows).toEqual(expect.arrayContaining([
+      { event_type: "role_message.duplicate", payload: { category: "duplicate" } },
+      { event_type: "role_message.depth_capped", payload: { category: "depth_capped" } },
+    ]));
   });
 
   it("atomically counts five failed delivery leases, then makes the fifth terminal (TASK-327 liveness)", async () => {

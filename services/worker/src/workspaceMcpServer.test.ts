@@ -58,6 +58,7 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
   });
 
   it("persists a typed handoff using the worker-bound sender identity", async () => {
+    const runId = crypto.randomUUID();
     const response = await handleWorkspaceMcpRequest(JSON.stringify({
       jsonrpc: "2.0",
       id: "typed-handoff",
@@ -72,7 +73,7 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
           factRef: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "research.findings" },
         },
       },
-    }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId });
+    }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId, runId });
 
     expect(response).toMatchObject({ jsonrpc: "2.0", id: "typed-handoff" });
     const row = await pool.query<{ from_role_id: string; to_role_id: string; handoff_kind: string; fact_ref: unknown }>(
@@ -88,6 +89,13 @@ integration("workspace MCP server — real mailbox bridge (TASK-131)", () => {
         fact_ref: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "research.findings" },
       },
     ]);
+    const duplicate = await handleWorkspaceMcpRequest(JSON.stringify({
+      jsonrpc: "2.0", id: "typed-handoff-duplicate", method: "tools/call", params: { name: "send_to_role", arguments: {
+        toRoleId: receiverRoleId, body: "Research is ready for review.", handoffKind: "research.complete",
+        factRef: { tenantId: "basileia", scope: "agent", roleId: senderRoleId, key: "research.findings" },
+      } },
+    }), { connectionString: connectionString!, tenantId: "basileia", fromRoleId: senderRoleId, runId });
+    expect(duplicate).toMatchObject({ result: { content: [{ text: expect.stringContaining("already sent") }] } });
   });
 
   it("advertises all project handoff kinds through the Claude MCP schema", async () => {

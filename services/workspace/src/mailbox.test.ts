@@ -19,6 +19,12 @@ function fakeDeps(): { deps: SendToRoleDeps; send: ReturnType<typeof vi.fn> } {
     factRef: input.factRef ?? null,
     createdAt: new Date("2026-09-02T00:00:00Z"),
     readAt: null,
+    deliveryAttempts: 0,
+    lastDeliveryError: null,
+    deliveryClaimedAt: null,
+    deliveryClaimToken: null,
+    deliveryFailedAt: null,
+    hopDepth: 0,
   }));
   return { deps: { send }, send };
 }

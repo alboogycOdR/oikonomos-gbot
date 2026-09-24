@@ -43,6 +43,7 @@ export interface SendToRoleInput {
   /** Typed handoffs carry a reference, never a memory value snapshot. */
   handoffKind?: HandoffKind;
   factRef?: HandoffFactReference;
+  sourceRunId?: string;
 }
 
 /**
@@ -54,6 +55,8 @@ export interface SendToRoleAcknowledgement {
   messageId: string;
   toRoleId: string;
   createdAt: Date;
+  /** Human-readable idempotency outcome for a model tool result. */
+  message: "sent" | "already sent";
 }
 
 /**
@@ -104,6 +107,7 @@ export async function sendToRole(
     workspaceRefs: resolvedRefs,
     handoffKind: input.handoffKind,
     factRef: input.factRef,
+    sourceRunId: input.sourceRunId,
   });
 
   // Acknowledgement carries only what the SENDER needs to know the handoff
@@ -112,6 +116,7 @@ export async function sendToRole(
     messageId: persisted.messageId,
     toRoleId: persisted.toRoleId,
     createdAt: persisted.createdAt,
+    message: persisted.alreadySent === true ? "already sent" : "sent",
   };
 }
 
@@ -155,6 +160,12 @@ if (import.meta.vitest) {
         factRef: input.factRef ?? null,
         createdAt: new Date("2026-09-01T00:00:00Z"),
         readAt: null,
+        deliveryAttempts: 0,
+        lastDeliveryError: null,
+        deliveryClaimedAt: null,
+        deliveryClaimToken: null,
+        deliveryFailedAt: null,
+        hopDepth: 0,
       };
       return message;
     });

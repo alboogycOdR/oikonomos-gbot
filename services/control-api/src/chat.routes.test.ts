@@ -94,7 +94,9 @@ function makeRoutine(overrides: Partial<Routine> = {}): Routine {
 function makeRoleMessage(overrides: Partial<RoleMessage> = {}): RoleMessage {
   return {
     messageId: randomUUID(), tenantId: "basileia", fromRoleId: roleId, toRoleId: "second-bot", body: "Real handoff body",
-    workspaceRefs: [], handoffKind: null, factRef: null, createdAt: new Date(), readAt: null, ...overrides,
+    workspaceRefs: [], handoffKind: null, factRef: null, createdAt: new Date(), readAt: null,
+    deliveryAttempts: 0, lastDeliveryError: null, deliveryClaimedAt: null, deliveryClaimToken: null,
+    deliveryFailedAt: null, hopDepth: 0, ...overrides,
   };
 }
 

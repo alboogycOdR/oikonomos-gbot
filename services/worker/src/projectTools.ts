@@ -38,7 +38,7 @@ export function createProjectTools(identity: ProjectToolIdentity, overrides: Par
     members: (projectId) => listProjectRoleMembers(db, projectId),
     createArtifact: (input) => createProjectArtifact(db, input),
     createDecision: (input) => createProjectDecision(db, input),
-    sendAssignment: ({ toRoleId, body, projectId, taskId }) => sendToRole(db, { tenantId: identity.tenantId, fromRoleId: identity.fromRoleId, toRoleId, body, handoffKind: "task.assigned", factRef: { project_id: projectId, task_id: taskId, artifact_ids: [] } }),
+    sendAssignment: ({ toRoleId, body, projectId, taskId }) => sendToRole(db, { tenantId: identity.tenantId, fromRoleId: identity.fromRoleId, toRoleId, body, handoffKind: "task.assigned", factRef: { project_id: projectId, task_id: taskId, artifact_ids: [] }, ...(identity.runId === undefined ? {} : { sourceRunId: identity.runId }) }),
     audit: async (eventType, payload) => { await recordAuditEvent(db, { tenantId: identity.tenantId, runId: identity.runId, actor: `agent:${identity.fromRoleId}`, eventType, payload }); },
     admitFanout: createProjectFanoutAdmission(identity),
     resolvePath: projectWorkspacePath,

@@ -97,7 +97,7 @@ export async function handleWorkspaceMcpRequest(
       // The model knows a recipient only by its human-facing name, never its
       // real role_id (TASK-214 Gemini-parity finding, applies equally here).
       const resolvedToRoleId = await resolveRoleIdentifier({ connectionString: identity.connectionString }, identity.fromRoleId, input.toRoleId);
-      const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, { ...input, toRoleId: resolvedToRoleId });
+      const acknowledgement = await sendToRole({ connectionString: identity.connectionString }, { ...input, toRoleId: resolvedToRoleId, ...(identity.runId === undefined ? {} : { sourceRunId: identity.runId }) });
       return resultResponse(request.id, { content: [{ type: "text", text: JSON.stringify(acknowledgement) }] });
     }
     if (call.name === REQUEST_SECRET_TOOL_NAME) {
