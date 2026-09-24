@@ -245,7 +245,9 @@ integration("packages/db spendReservations — atomic admission (TASK-300)", () 
     const other = await newRole(50);
     await recordSpend(options, { runId: await newRun(other), routineId: null, provider: "codex", model: "m", costUsd: 100 });
     await recordSpend(options, { runId: run("not-a-uuid"), routineId: roleId, provider: "codex", model: "m", costUsd: 100 });
-    await recordSpend(options, { runId: randomUUID(), routineId: null, provider: "codex", model: "m", costUsd: 100 });
+    const tasklessRunId = randomUUID();
+    spendRunIds.push(tasklessRunId);
+    await recordSpend(options, { runId: tasklessRunId, routineId: null, provider: "codex", model: "m", costUsd: 100 });
     expect((await admitRunReservation(options, { tenantId, runId: run("t3"), projectId: null, roleId, reserveUsd: 5, month })).admitted).toBe(true);
   });
 });
