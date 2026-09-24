@@ -10347,7 +10347,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-342
 **Title:** Test isolation: stop leaked spend and pg-boss races from failing the worker suite
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** ORCH worker-suite diagnosis 2026-09-24 (master 2ac38a4, isolated DB); ADR-005 (liveness)
@@ -10367,7 +10367,31 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T14:45:16Z] [SV:CX9] Fixed pg-boss lock timeout regression and classified the remaining intermittent platform-budget overlap.
 **Artifacts:** services/worker/src/roleMessageDelivery.ts, packages/db/src/spendReservations.test.ts, services/worker/src/workspaceTools.test.ts, dossiers/TASK-342.md
 **Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Root E:\DELL-PROJECTS\wt-codex9-GROKBOT-CLONE -Filter @oikonomos/worker passed after rework; pnpm --filter @oikonomos/worker exec tsc --noEmit passed; git diff --check passed. F2 classified: services/worker/src/subprocessProviders.test.ts retains a $1,000 spend fixture until afterAll and can overlap chatRunDriver.
-**Review_Findings:** REWORK (ORCH opus-5.5), from two back-to-back full isolated passes on 140d2c9 (-Init before pass 1 only). Fixed and confirmed: (a) spendReservations no longer leaks; the pg-boss 'queue does not exist' race is gone; the thread_members FK afterAll error is gone. F1 BLOCKING, regression: the three tests newly wrapped in withPgBossQueueLock (gemini-lane, soft-deleted recipient, TASK-301 manager attribution) now wait on the lock and hit Vitest's default 5000ms timeout. The TASK-301 test failed in BOTH passes and the soft-deleted one in pass 2; on master they mostly passed. Give each wrapped test an explicit timeout (close the it() with a 20_000 ms second argument), matching the existing RoleMessageDeliveryPoller test at ~L543. F2, classify: pass 1 still had one budget.platform_exceeded in worker chatRunDriver.test.ts 'drives a real chat run end-to-end' (pass 2 had none). Find which test's spend was live at that moment, e.g. a worker test that records large spend and cleans up only in afterAll while files run in parallel. Fix it if it's in your Owned_Paths; otherwise name the file, and ORCH will file it. Not in scope: control-api chat.routes TASK-121 FreeLLMAPI and db roles.test backfill both also fail on master and are separate.
+**Review_Findings:** APPROVED after rework (ORCH opus-5.5). First pass: REWORK F1 (the lock-wrapped tests timed out at 5s) and F2 (unclassified budget overlap). Fixed: 20s timeouts; F2 classified as subprocessProviders.test.ts holding a $1,000 spend fixture until afterAll, filed as TASK-343. ORCH's independent runs: two full recursive passes on 140d2c9 confirmed the spend leak, the queue race and the FK error are gone. Two worker passes on 7b96cf3 after -Init: 365 passed, 0 failed, 1 skipped, both times (was ~41 failures this morning).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T14:45:16Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T14:48:03Z
+
+### TASK-343
+**Title:** Test isolation: subprocessProviders spend fixture must not overlap other suites
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** TASK-342 F2 classification (CX9, verified by ORCH 2026-09-24)
+**Depends_On:** —
+**Owned_Paths:** services/worker/src/subprocessProviders.test.ts
+**Description:** services/worker/src/subprocessProviders.test.ts records a $1,000 spend fixture and removes it only in afterAll. While it is live, any parallel test file that runs a platform budget check (e.g. chatRunDriver.test.ts 'drives a real chat run end-to-end') fails with budget.platform_exceeded, intermittently. Scope the fixture to the test that needs it: record it inside that test, delete it in its own finally, or tag it with a tenant or month the platform check doesn't count. Keep the assertion it exists for intact.
+**Acceptance_Criteria:**
+- [ ] The $1,000 fixture exists only for the duration of the test that asserts on it; cleanup runs in that test's finally.
+- [ ] Three consecutive full worker passes via scripts/test-isolated.ps1 (-Init before the first only) show zero budget.platform_exceeded.
+- [ ] The original subprocessProviders assertion still fails if its guarded behaviour is removed (ADR-005 liveness).
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-24T14:55:00Z] [ORCH opus-5.5] Filed from TASK-342 F2.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T14:55:00Z
