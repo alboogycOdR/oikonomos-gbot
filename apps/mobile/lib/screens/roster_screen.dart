@@ -282,15 +282,21 @@ class _RosterScreenState extends State<RosterScreen> {
         return ListTile(
           key: Key('bot-tile-${bot.id}'),
           leading: BotAvatar(seed: bot.avatarSeed, name: bot.botName),
-          title: Text(bot.botName),
-          subtitle: bot.lastMessagePreview.isEmpty
+          title: Text(
+            (bot.title != null && bot.title!.trim().isNotEmpty)
+                ? bot.title!
+                : bot.botName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: bot.displayPreview.isEmpty
               ? null
               : Text(
-                  bot.lastMessagePreview,
+                  bot.displayPreview,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-          trailing: Text(_formatRelative(bot.updatedAt)),
+          trailing: Text(_formatRelative(bot.displayTime)),
           onTap: () => _openChat(bot),
         );
       },

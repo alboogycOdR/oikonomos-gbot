@@ -84,12 +84,43 @@ sealed class ThreadSummary {
     required this.title,
     required this.lastMessagePreview,
     required this.updatedAt,
+    this.previewText,
+    this.previewAuthorKind,
+    this.lastMessageAt,
   });
 
   final String id;
   final String? title;
   final String lastMessagePreview;
   final String updatedAt;
+
+  /// TASK-331/332 — additive roster fields; all null when an older server
+  /// omits them (or sends null for a thread with no messages).
+  final String? previewText;
+  final String? previewAuthorKind;
+  final String? lastMessageAt;
+
+  /// Preview to show: the new `preview.text`, else the legacy string.
+  String get displayPreview {
+    final text = previewText;
+    if (text != null && text.trim().isNotEmpty) return text;
+    return lastMessagePreview;
+  }
+
+  /// Timestamp for the relative time: `lastMessageAt`, else `updatedAt`.
+  String get displayTime => lastMessageAt ?? updatedAt;
+
+  static ({String? text, String? authorKind}) _parsePreview(Object? raw) {
+    if (raw is! Map) return (text: null, authorKind: null);
+    final text = raw['text'];
+    final kind = raw['authorKind'];
+    return (
+      text: text is String ? text : null,
+      authorKind: kind is String ? kind : null,
+    );
+  }
+
+  static String? _optString(Object? raw) => raw is String ? raw : null;
 
   static ThreadSummary fromJson(Map<String, dynamic> json) {
     if (json.containsKey('memberRoleIds')) {
@@ -109,6 +140,9 @@ class SingleThread extends ThreadSummary {
     required super.title,
     required super.lastMessagePreview,
     required super.updatedAt,
+    super.previewText,
+    super.previewAuthorKind,
+    super.lastMessageAt,
   });
 
   final String roleId;
@@ -124,8 +158,12 @@ class SingleThread extends ThreadSummary {
       botDescription: json['botDescription'] as String,
       avatarSeed: json['avatarSeed'] as String,
       title: json['title'] as String?,
-      lastMessagePreview: json['lastMessagePreview'] as String,
+      lastMessagePreview: json['lastMessagePreview'] as String? ?? '',
       updatedAt: json['updatedAt'] as String,
+      previewText: ThreadSummary._parsePreview(json['preview']).text,
+      previewAuthorKind:
+          ThreadSummary._parsePreview(json['preview']).authorKind,
+      lastMessageAt: ThreadSummary._optString(json['lastMessageAt']),
     );
   }
 }
@@ -138,6 +176,9 @@ class GroupThread extends ThreadSummary {
     required super.title,
     required super.lastMessagePreview,
     required super.updatedAt,
+    super.previewText,
+    super.previewAuthorKind,
+    super.lastMessageAt,
   });
 
   final List<String> memberRoleIds;
@@ -149,8 +190,12 @@ class GroupThread extends ThreadSummary {
       memberRoleIds: (json['memberRoleIds'] as List<dynamic>).cast<String>(),
       memberNames: (json['memberNames'] as List<dynamic>).cast<String>(),
       title: json['title'] as String?,
-      lastMessagePreview: json['lastMessagePreview'] as String,
+      lastMessagePreview: json['lastMessagePreview'] as String? ?? '',
       updatedAt: json['updatedAt'] as String,
+      previewText: ThreadSummary._parsePreview(json['preview']).text,
+      previewAuthorKind:
+          ThreadSummary._parsePreview(json['preview']).authorKind,
+      lastMessageAt: ThreadSummary._optString(json['lastMessageAt']),
     );
   }
 }
