@@ -9266,7 +9266,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-309
 **Title:** Dashboard: project board on the Work view, artifact register on the Results view, blocked items in the attention inbox (P-7c)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_PROJECT_WORKSPACE_v1.0.md §9.2 (Work view becomes the board for a project thread; Results view lists the register; attention inbox lists blocked items with reasons).
@@ -9284,12 +9284,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-23T22:36:43Z] [ORCH] Assigned to CX9 (roster is CX9 + S5 only, CX9 weighted about 2:1). Its dependency TASK-304 is done.
 - [2026-09-24T00:33:01Z] [SV:CX9] Preflight passed; the views lack the active thread/project context, which only ChatPage.tsx owns.
 - [2026-09-24T01:12:53Z] [ORCH] OWNERSHIP_CONFLICT resolved: territory widened to apps/dashboard/src/pages/ChatPage.tsx and ChatPage.test.tsx (no active task owns them).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T02:28:01Z] [SV:CX9] Implemented project-thread board, artifact register, and blocked-item attention inbox; committed as d822018.
+**Artifacts:** apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, apps/dashboard/src/components/workspace/project/ProjectBoard.tsx, apps/dashboard/src/components/workspace/project/ProjectArtifactRegister.tsx, dossiers/TASK-309.md
+**Test_Evidence:** pnpm --filter @oikonomos/dashboard typecheck PASS; pnpm --filter @oikonomos/dashboard build PASS; scripts/test-isolated.ps1 -Filter @oikonomos/dashboard PASS: 25 test files, 160 tests.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T01:12:53Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T02:28:01Z
 
 ### TASK-310
 **Title:** Adversarial review of ADR-019 Amendment 2026-09-19 (managers create and retire bots through workspace.create_bot / retire_bot) by a non-Anthropic model
