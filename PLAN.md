@@ -10595,7 +10595,7 @@ Exit status 2
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10606,16 +10606,16 @@ Exit status 2
 - [ ] Widget tests: all 12 colours and 8 shapes selectable; the chosen pair is sent on create; a saved avatar renders with its colour and shape; null falls back.
 - [ ] Model parsing handles present, absent and unknown tokens (an unknown token falls back).
 - [ ] `flutter test` (full mobile suite) and `flutter analyze lib` pass; Dart is outside pnpm -r, so say so in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-348-cx9
+**Started_At:** 2026-09-24T20:56:19Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T20:56:19Z
 
 ### TASK-349
 **Title:** Web: avatar colour and shape picker saved and rendered
