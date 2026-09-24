@@ -9949,7 +9949,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-333
 **Title:** Read markers and pins for threads (backend)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (channel_memberships last_read_at / pinned_at, migrations 0016 and 0019); mobile roster; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9968,10 +9968,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T12:06:32Z] [SV:CX9] Implemented tenant-keyed thread read markers and pins, roster unreadCount/pinnedAt projection and ordering, protected routes, migration 034, OpenAPI, and focused tests; committed as 0972e54.
 **Artifacts:** infra/postgres/migrations/034_thread_read_markers.up.sql, infra/postgres/migrations/034_thread_read_markers.down.sql, packages/db/src/threads.ts, packages/db/src/threads.test.ts, packages/db/src/index.ts, services/control-api/src/app.ts, services/control-api/src/ports.ts, services/control-api/src/openapi.ts, services/control-api/src/threadReadMarkers.routes.test.ts, dossiers/TASK-333.md
 **Test_Evidence:** PASS: pnpm --filter @oikonomos/db typecheck; pnpm --filter @oikonomos/db build; pnpm --filter @oikonomos/control-api typecheck. PASS: scripts/test-isolated.ps1 -Filter @oikonomos/db (46 files, 292 passed, 2 skipped). PASS: isolated control-api suite including threadReadMarkers.routes.test.ts. Full scripts/test-isolated.ps1: only baseline external failures in evals-harness, worker, and control-api TASK-121 FreeLLMAPI group-route assertion (400 vs 201); no TASK-333-owned failure.
-**Review_Findings:** —
+**Review_Findings:** APPROVED (ORCH opus-5.5). Territory clean. ACs checked: real-PG tests cover mark-read, pin/unpin, unreadCount excluding the viewer's own (role=user) messages, and pinned-first ordering. Every route refuses another tenant's thread with 404 via findTenantOwnedThread and never calls the state op (tested). openapi documents the routes. ORCH's independent isolated run: db 292/0/2, control-api 371/0 on re-run after re-Init. Every other failure also fails on master or cleared on re-run. Minor, not blocking: migration 034 up/down/up idempotency holds by construction (IF [NOT] EXISTS) but has no automated test. Viewer is keyed on tenant, since auth has no finer principal, as documented in the dossier.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T12:06:32Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T13:40:44Z
 
 ### TASK-327
 **Title:** Harden role-message delivery: isolate failures, cap attempts, tell the sender
