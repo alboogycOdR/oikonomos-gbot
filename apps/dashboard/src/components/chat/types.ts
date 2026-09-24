@@ -27,6 +27,9 @@ export interface BotSummary {
   description?: string;
   /** Deterministic seed for the initials-on-color avatar (spec §2). */
   avatarSeed: string;
+  /** Optional persisted selections; older servers omit these and retain the seed-derived avatar. */
+  avatarColor?: import("./Avatar").AvatarColorToken | null;
+  avatarShape?: import("./Avatar").AvatarShapeToken | null;
   lastMessagePreview?: string;
   updatedAt: string;
   /** TASK-239 (spec §4.2) — background-workspace status badge; absent for the active thread and for a thread with nothing to report. */

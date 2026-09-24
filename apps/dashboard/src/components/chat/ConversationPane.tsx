@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 import type { BotSummary, ChatMessage } from "./types";
 import { MessageBubble } from "./MessageBubble";
 import { ApprovalCard } from "./ApprovalCard";
+import { Avatar } from "./Avatar";
 
 /**
  * TASK-122 (Chat-2c) — `ChatMessage`/`BotSummary` (components/chat/types.ts)
@@ -55,11 +56,12 @@ export function ConversationPane({
       aria-label={`Conversation with ${bot.name}`}
       className="flex min-w-0 flex-1 flex-col bg-surface"
     >
-      <header className="border-b border-chrome-border px-5 py-3">
-        <h2 className="text-sm font-semibold text-slate-100">{bot.name}</h2>
-        {bot.description ? (
-          <p className="text-xs text-slate-500">{bot.description}</p>
-        ) : null}
+      <header className="flex items-center gap-3 border-b border-chrome-border px-5 py-3">
+        <Avatar seed={bot.avatarSeed} name={bot.name} avatarColor={bot.avatarColor} avatarShape={bot.avatarShape} />
+        <div>
+          <h2 className="text-sm font-semibold text-slate-100">{bot.name}</h2>
+          {bot.description ? <p className="text-xs text-slate-500">{bot.description}</p> : null}
+        </div>
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">

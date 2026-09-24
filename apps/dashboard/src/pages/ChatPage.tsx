@@ -146,6 +146,8 @@ function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
     name: thread.botName,
     description: thread.botDescription,
     avatarSeed: thread.avatarSeed,
+    avatarColor: thread.avatarColor,
+    avatarShape: thread.avatarShape,
     lastMessagePreview: thread.lastMessagePreview,
     updatedAt: thread.updatedAt,
   };

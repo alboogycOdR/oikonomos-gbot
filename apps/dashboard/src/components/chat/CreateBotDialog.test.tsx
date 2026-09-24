@@ -84,6 +84,8 @@ describe("CreateBotDialog", () => {
     render(<CreateBotDialog isOpen onClose={vi.fn()} onCreated={onCreated} />);
 
     await user.type(screen.getByLabelText("Name"), "Research Bot");
+    await user.click(screen.getByRole("button", { name: "Avatar color violet" }));
+    await user.click(screen.getByRole("button", { name: "hexagon" }));
     await user.click(screen.getByRole("button", { name: "Create bot" }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -94,7 +96,7 @@ describe("CreateBotDialog", () => {
     expect(rolesCall![0]).toBe("/roles");
     const rolesInit = rolesCall![1] as RequestInit;
     const rolesBody = JSON.parse(rolesInit.body as string) as Record<string, unknown>;
-    expect(rolesBody).toEqual({ name: "Research Bot", description: "" });
+    expect(rolesBody).toEqual({ name: "Research Bot", description: "", avatarColor: "violet", avatarShape: "hexagon" });
     // No tier/capability field is ever sent — the server assigns zero
     // role_grants unconditionally (spec §6 correction).
     expect(rolesBody).not.toHaveProperty("tier");
@@ -109,6 +111,12 @@ describe("CreateBotDialog", () => {
       role: { id: "role-1", name: "Research Bot", description: "", avatarSeed: "role-1" },
       threadId: "thread-1",
     });
+  });
+
+  it("offers all twelve colors and eight shapes", () => {
+    render(<CreateBotDialog isOpen onClose={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: /^Avatar color / })).toHaveLength(12);
+    expect(screen.getAllByRole("button", { name: /^(circle|square|rounded|hexagon|diamond|star|triangle|teardrop)$/ })).toHaveLength(8);
   });
 
   it("shows a server error and does not reload when POST /roles fails", async () => {
