@@ -10275,7 +10275,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-334
 **Title:** Mobile: unread badges and pinning in the roster
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-333 (read markers and pins API); TASK-332; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10290,12 +10290,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-24T11:38:38Z] [ORCH opus-5.5] REASSIGNED S5 -> CX9 (S5 retired 2026-09-24).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T14:38:31Z] [SV:CX9] Implemented unread badges, pin/unpin, pinned-first sorting, and best-effort read marking for roster-opened chats; committed f82403d.
+**Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/roster_screen_test.dart, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-334.md
+**Test_Evidence:** flutter test test/screens/roster_screen_test.dart test/screens/chat_screen_test.dart â€” 64/64 passed; flutter analyze touched lib files â€” no issues; git diff --check clean. Dart/Flutter is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T14:27:10Z
+**Updated_At:** 2026-09-24T14:38:31Z
 
 ### TASK-MAINT-2026-09-24
 **Title:** Nightly self-audit failure (2026-09-24)
