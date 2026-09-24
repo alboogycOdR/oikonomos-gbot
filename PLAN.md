@@ -10564,7 +10564,7 @@ Exit status 2
 
 ### TASK-347
 **Title:** Bots keep the avatar colour and shape chosen at creation (backend)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 1 (upload deferred, colour/shape in scope); owner decision 2026-09-24: save it, full 12 colours x 8 shapes
@@ -10580,12 +10580,13 @@ Exit status 2
 **Started_At:** 2026-09-24T19:54:04Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-24T20:03:00Z] [SV:CX9] Preflight completed; implementation stopped at the API persistence ownership boundary.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/ports.ts must be widened to persist PATCH avatar fields through the mandated DB port, but it is outside TASK-347 Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T19:54:04Z
+**Updated_At:** 2026-09-24T20:03:00Z
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
