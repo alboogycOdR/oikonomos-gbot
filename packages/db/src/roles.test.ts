@@ -120,48 +120,66 @@ integration("packages/db roles — read + CRUD + FK/backfill (TASK-084)", () => 
   });
 
   it("backfill guard: a role_grants row referencing an unknown role_id, present BEFORE migration 004 runs, is backfilled rather than erroring", async () => {
-    // Migration 004 already ran once against this dev DB (it is not
-    // reapplied per-test — CREATE TABLE IF NOT EXISTS makes it idempotent).
-    // This test instead re-proves the exact backfill statement migration
-    // 004.up.sql runs, against a fixture row constructed to be orphaned at
-    // the moment the statement executes: temporarily drop the FK, insert an
-    // orphaned grant, run the migration's own backfill INSERT verbatim, and
-    // assert the missing role now exists with the documented placeholder
-    // shape (status active, description empty) before restoring the FK.
+    // Replay the migration verbatim in a schema owned by this test. The old
+    // version dropped and restored the real table's FK, taking an exclusive
+    // lock that deadlocked with concurrently running DB test files.
     const orphanRoleId = "task-084-roles-suite-orphan";
-    await pool.query(`ALTER TABLE role_grants DROP CONSTRAINT role_grants_role_id_fkey`);
+    const schema = `task_084_migration_${process.pid}_${Date.now()}`;
+    const migrationPath = fileURLToPath(
+      new URL("../../../infra/postgres/migrations/004_roles_routines_rules.up.sql", import.meta.url),
+    );
+    const migration = readFileSync(migrationPath, "utf8");
+    const client = await pool.connect();
     try {
-      await pool.query(
-        `INSERT INTO capabilities (capability_id, description, default_tier, adapter, enabled)
-         VALUES ('task-084-cap-2', 'd', 'T0_observe', 'x', true)
-         ON CONFLICT (capability_id) DO NOTHING`,
+      await client.query(`CREATE SCHEMA "${schema}"`);
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query(
+        `CREATE TABLE capabilities (
+           capability_id text PRIMARY KEY,
+           description text NOT NULL,
+           default_tier risk_tier NOT NULL,
+           adapter text NOT NULL,
+           enabled boolean NOT NULL DEFAULT true
+         );
+         CREATE TABLE role_grants (
+           role_id text NOT NULL,
+           capability_id text NOT NULL REFERENCES capabilities(capability_id),
+           max_tier risk_tier NOT NULL,
+           constraints jsonb NOT NULL DEFAULT '{}',
+           PRIMARY KEY (role_id, capability_id)
+         );
+         CREATE TABLE tasks (
+           role_id text NOT NULL,
+           tenant_id text NOT NULL DEFAULT 'basileia',
+           routine_id uuid,
+           created_at timestamptz NOT NULL DEFAULT now()
+         );`,
       );
-      await pool.query(
+      await client.query(
+        `INSERT INTO capabilities (capability_id, description, default_tier, adapter, enabled)
+         VALUES ('task-084-cap-2', 'd', 'T0_observe', 'x', true)`,
+      );
+      await client.query(
         `INSERT INTO role_grants (role_id, capability_id, max_tier) VALUES ($1, 'task-084-cap-2', 'T0_observe')`,
         [orphanRoleId],
       );
-      await expect(getRole({ connectionString: connectionString! }, orphanRoleId)).resolves.toBeNull();
+      await client.query(migration);
 
-      await pool.query(
-        `INSERT INTO roles (role_id, tenant_id, name, title, description, status)
-         SELECT DISTINCT rg.role_id, 'basileia', rg.role_id, rg.role_id, '', 'active'
-         FROM role_grants rg
-         WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.role_id = rg.role_id)
-         ON CONFLICT (role_id) DO NOTHING`,
-      );
-
-      const backfilled = await getRole({ connectionString: connectionString! }, orphanRoleId);
-      expect(backfilled).not.toBeNull();
-      expect(backfilled?.status).toBe("active");
-      expect(backfilled?.description).toBe("");
-
-      await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [orphanRoleId]);
-      await pool.query(`DELETE FROM roles WHERE role_id = $1`, [orphanRoleId]);
-      await pool.query(`DELETE FROM capabilities WHERE capability_id = 'task-084-cap-2'`);
+      await expect(
+        client.query<{ status: string; description: string }>(
+          "SELECT status, description FROM roles WHERE role_id = $1",
+          [orphanRoleId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ status: "active", description: "" }] });
+      await expect(
+        client.query(
+          "INSERT INTO role_grants (role_id, capability_id, max_tier) VALUES ('still-orphaned', 'task-084-cap-2', 'T0_observe')",
+        ),
+      ).rejects.toThrow(/foreign key/i);
     } finally {
-      await pool.query(
-        `ALTER TABLE role_grants ADD CONSTRAINT role_grants_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(role_id)`,
-      );
+      await client.query("RESET search_path");
+      await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      client.release();
     }
   });
 });
