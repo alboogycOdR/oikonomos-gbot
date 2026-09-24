@@ -10192,7 +10192,7 @@ Exit status 2
 
 ### TASK-337
 **Title:** Sandbox reaper re-checks idleness before reaping and logs give-ups
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** OpenBot comparison (work/culler.ts: re-checks "used again" before acting, logs when it gives up); services/worker/src/sandboxReaper.ts; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10207,12 +10207,13 @@ Exit status 2
 **Started_At:** 2026-09-24T17:13:56Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T17:40:21Z] [SV:CX9] Atomic reaper claim, used-again skip logging, bounded categorized give-up logging, and same-sweep retry prevention committed as 7634019.
+**Artifacts:** packages/db/src/index.ts, packages/db/src/roleSandboxes.ts, packages/db/src/roleSandboxes.test.ts, services/worker/src/sandboxReaper.ts, services/worker/src/sandboxReaper.test.ts, dossiers/TASK-337.md
+**Test_Evidence:** pnpm db/worker typecheck passed; git diff --check passed; isolated worker suite passed 39 files, 373 tests, 1 skipped. Required isolated full recursive run: 18 packages passed; sole non-owned failure is master-baseline TASK-121 at control-api chat.routes.test.ts:1459, fixed on unmerged TASK-344 branch f581bed (Gemini expectation must be Claude after environment scrub).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T17:13:56Z
+**Updated_At:** 2026-09-24T17:40:21Z
 
 ### TASK-336
 **Title:** Guard Claude-lane Steel navigation (the Gemini lane was TASK-325)
