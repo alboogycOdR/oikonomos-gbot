@@ -10347,7 +10347,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-342
 **Title:** Test isolation: stop leaked spend and pg-boss races from failing the worker suite
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** ORCH worker-suite diagnosis 2026-09-24 (master 2ac38a4, isolated DB); ADR-005 (liveness)
@@ -10364,9 +10364,10 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [2026-09-24T14:20:00Z] [ORCH opus-5.5] Filed from ORCH's worker-suite diagnosis. The env-leak half (Gemini 402s, budget-gate timeouts) is already fixed by ORCH's scrub in scripts/test-isolated.ps1.
 - [2026-09-24T14:26:24Z] [SV:CX9] Committed verified spend-cleanup and pg-boss fixture isolation fixes (140d2c9); two required recursive isolated suites are still serialized behind the harness mutex. NEXT: Wait for the already-running recursive isolated suites to exit, collect/classify final results, then request review.
 - [2026-09-24T14:26:54Z] [ORCH opus-5.5] ORCH moved this to needs_review. CX9's fixes are committed (140d2c9) with targeted evidence; its two recursive passes were cut short by the harness mutex, so ORCH is running the AC's two back-to-back full passes as the review.
-**Artifacts:** packages/db/src/spendReservations.test.ts, services/worker/src/roleMessageDelivery.ts
-**Test_Evidence:** CX9 claim: isolated db suite 46 files, 292 passed, 2 skipped; spendReservations 8/8; post-run task-300 spend_records count 0; worker-owned suites pass, workspaceTools 7/7 (so (g) was downstream of the email.send drift that TASK-338 F4 fixed); worker tsc passes. Recursive passes are pending, and ORCH is running them.
+- [2026-09-24T14:45:16Z] [SV:CX9] Fixed pg-boss lock timeout regression and classified the remaining intermittent platform-budget overlap.
+**Artifacts:** services/worker/src/roleMessageDelivery.ts, packages/db/src/spendReservations.test.ts, services/worker/src/workspaceTools.test.ts, dossiers/TASK-342.md
+**Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Root E:\DELL-PROJECTS\wt-codex9-GROKBOT-CLONE -Filter @oikonomos/worker passed after rework; pnpm --filter @oikonomos/worker exec tsc --noEmit passed; git diff --check passed. F2 classified: services/worker/src/subprocessProviders.test.ts retains a $1,000 spend fixture until afterAll and can overlap chatRunDriver.
 **Review_Findings:** REWORK (ORCH opus-5.5), from two back-to-back full isolated passes on 140d2c9 (-Init before pass 1 only). Fixed and confirmed: (a) spendReservations no longer leaks; the pg-boss 'queue does not exist' race is gone; the thread_members FK afterAll error is gone. F1 BLOCKING, regression: the three tests newly wrapped in withPgBossQueueLock (gemini-lane, soft-deleted recipient, TASK-301 manager attribution) now wait on the lock and hit Vitest's default 5000ms timeout. The TASK-301 test failed in BOTH passes and the soft-deleted one in pass 2; on master they mostly passed. Give each wrapped test an explicit timeout (close the it() with a 20_000 ms second argument), matching the existing RoleMessageDeliveryPoller test at ~L543. F2, classify: pass 1 still had one budget.platform_exceeded in worker chatRunDriver.test.ts 'drives a real chat run end-to-end' (pass 2 had none). Find which test's spend was live at that moment, e.g. a worker test that records large spend and cleans up only in afterAll while files run in parallel. Fix it if it's in your Owned_Paths; otherwise name the file, and ORCH will file it. Not in scope: control-api chat.routes TASK-121 FreeLLMAPI and db roles.test backfill both also fail on master and are separate.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T14:33:55Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T14:45:16Z
