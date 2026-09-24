@@ -10539,7 +10539,7 @@ Exit status 2
 
 ### TASK-346
 **Title:** Test isolation: roles.test backfill-guard test is intermittent (migration deadlock)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** ORCH review runs 2026-09-24: packages/db src/roles.test.ts 'backfill guard: a role_grants row referencing an unknown role_id, present BEFORE migration 004 runs, is backfilled rather than erroring' (TASK-084) failed in roughly 1 of 3 db runs on master and branches; CX9 observed a migration-backfill deadlock
@@ -10554,9 +10554,10 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-24T18:20:00Z] [ORCH opus-5.5] Filed under the "master failures become fix tasks" rule.
 - [2026-09-24T18:23:01Z] [SV:CX9] Isolated migration-004 backfill replay in a per-test schema, eliminating shared FK DDL deadlocks; committed as 686b28d.
+- [2026-09-24T19:05:00Z] [ORCH opus-4.8] APPROVED + merged (--no-ff). Territory clean (roles.test.ts + own dossier). Full review: change runs the REAL migration 004 verbatim from disk in a private schema, so ADR-005 liveness is genuine (removing the migration's backfill INSERT makes its ADD CONSTRAINT throw an FK violation, not caught by the duplicate_object handler) — strictly stronger than the old hand-copied-SQL version. Independent runs: roles.test.ts green 10/10 (5 branch -Init+4, 5 master). All other db-suite failures classified as PRE-EXISTING flakes vs master baseline (database.test.ts capability-flip ~1/5 both sides; runs.test.ts TASK-270 5/5 master 0/5 branch; spend.test.ts toBeCloseTo tolerance) — none introduced by this diff; tracked under TASK-162.
 **Artifacts:** packages/db/src/roles.test.ts, dossiers/TASK-346.md
 **Test_Evidence:** pnpm --filter @oikonomos/db exec tsc --noEmit and git diff --check passed. scripts/test-isolated.ps1 -Init -Filter @oikonomos/db plus four consecutive non-init DB runs all exited 0; each showed roles.test.ts 27 tests green and 298 passed, 2 skipped.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T18:23:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T19:05:00Z
