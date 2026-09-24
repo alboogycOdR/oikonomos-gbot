@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { admitProjectFanout, getAuditEventsForRun } from "./auditEvents.js";
+import { admitProjectFanout, getLatestAuditEvent, getAuditEventsForRun, insertAuditEvent } from "./auditEvents.js";
 
 const connectionString = process.env.DATABASE_URL;
 const integration = connectionString === undefined ? describe.skip : describe;
@@ -30,5 +30,16 @@ integration("project fanout audit admission (TASK-321)", () => {
       "project.fanout_capped", "project.task_assigned", "project.task_assigned", "project.task_assigned",
     ]);
     await expect(admitProjectFanout(options, { ...inputs[0]!, runId: otherRunId, taskId: randomUUID() })).resolves.toMatchObject({ admitted: true, assignmentCount: 0 });
+  });
+
+  it("returns the latest event for a type, optionally scoped to its tenant", async () => {
+    const eventType = `task-330-liveness-${randomUUID()}`;
+    const tenantId = `task-330-${randomUUID()}`;
+    await insertAuditEvent(options, { tenantId, actor: "system:test", eventType, at: new Date("2026-01-01T00:00:00.000Z") });
+    await insertAuditEvent(options, { tenantId, actor: "system:test", eventType, at: new Date("2026-01-01T00:01:00.000Z") });
+    await insertAuditEvent(options, { tenantId: `task-330-other-${randomUUID()}`, actor: "system:test", eventType, at: new Date("2026-01-01T00:02:00.000Z") });
+
+    await expect(getLatestAuditEvent(options, eventType, tenantId)).resolves.toMatchObject({ tenantId, at: new Date("2026-01-01T00:01:00.000Z") });
+    await expect(getLatestAuditEvent(options, eventType)).resolves.toMatchObject({ at: new Date("2026-01-01T00:02:00.000Z") });
   });
 });

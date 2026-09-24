@@ -1,5 +1,6 @@
 import {
   createTaskExecutionRun,
+  getLatestAuditEvent,
   getOrCreateThreadForRole,
   getRole,
   getSkill,
@@ -7,6 +8,7 @@ import {
   listRecentRoutineOutcomes,
   listRoutines,
   insertMessage,
+  insertAuditEvent,
   recordRoutineFire,
   resolveRoleRuntime,
   routineInputsAvailable,
@@ -59,6 +61,26 @@ async function routineGoal(options: DatabaseOptions, routine: Routine): Promise<
 function computeNextFireAt(routine: Routine, now: Date): Date | null {
   if (routine.schedule === null) return null;
   return nextFireAtFromCron(routine.schedule, routine.timezone, routine.nextFireAt ?? now);
+}
+
+const ROUTINE_SWEEP_EVENT_TYPE = "routine.sweep";
+
+/**
+ * ADR-005 liveness check for this tenant's routine poller. A durable sweep
+ * event is the evidence: a configured queue or a live-looking process is not.
+ */
+export async function routineSweepIsStale(
+  options: RoutinePollingOptions,
+  now: Date,
+  maxAgeMinutes = 15,
+): Promise<boolean> {
+  const tenantId = requireNonEmpty(options.tenantId, "tenantId");
+  if (Number.isNaN(now.getTime())) throw new Error("now must be a valid Date.");
+  if (!Number.isFinite(maxAgeMinutes) || maxAgeMinutes < 0) {
+    throw new Error("maxAgeMinutes must be a non-negative finite number.");
+  }
+  const latestSweep = await getLatestAuditEvent(options, ROUTINE_SWEEP_EVENT_TYPE, tenantId);
+  return latestSweep === null || now.getTime() - latestSweep.at.getTime() > maxAgeMinutes * 60_000;
 }
 
 /**
@@ -223,7 +245,7 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
     audit: () => undefined,
   });
 
-  return Promise.all(
+  const results = await Promise.all(
     dueRoutines.map(async (routine) => {
       if (routine.paused) {
         await recordRoutineFire(options, routine.routineId, "skipped_paused", routine.nextFireAt, "routine is paused");
@@ -258,4 +280,18 @@ export async function runDueRoutinePoll(options: RoutinePollingOptions): Promise
       return { routineId: routine.routineId, outcome };
     }),
   );
+  const counts = { due: dueRoutines.length, fired: 0, missed: 0, failed: 0 };
+  for (const result of results) {
+    if (result.outcome === "queued") counts.fired += 1;
+    if (result.outcome === "missed") counts.missed += 1;
+    if (result.outcome === "stopped") counts.failed += 1;
+  }
+  await insertAuditEvent(options, {
+    tenantId,
+    at: now,
+    actor: "system:routine-poller",
+    eventType: ROUTINE_SWEEP_EVENT_TYPE,
+    payload: counts,
+  });
+  return results;
 }

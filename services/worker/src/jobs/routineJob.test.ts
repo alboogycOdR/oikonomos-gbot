@@ -14,13 +14,14 @@ import {
   setEnabledForRole,
   setRoutinePaused,
   recordRoutineFire,
+  getLatestAuditEvent,
 } from "@oikonomos/db";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assembleSystemPrompt } from "../promptAssembly.js";
 import { purgePgBossQueue, withPgBossQueueLock } from "./pgBossTestCleanup.js";
-import { runDueRoutinePoll } from "./routineJob.js";
+import { routineSweepIsStale, runDueRoutinePoll } from "./routineJob.js";
 import { WORKER_RUN_EXECUTION_JOB } from "./workerJobQueue.js";
 
 const connectionString = process.env.DATABASE_URL;
@@ -107,6 +108,35 @@ integration("routine parity poller (TASK-182)", () => {
     expect(fires.rows).toContainEqual({ outcome: "skipped_paused" });
     expect((await listTasks({ connectionString: connectionString! }, { tenantId })).tasks).toHaveLength(0);
   });
+
+  it("TASK-330: persists one counts-only sweep per poll and uses it as the poller's liveness evidence", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const db = { connectionString: connectionString! };
+      const livenessTenantId = `task-330-routine-poller-${crypto.randomUUID()}`;
+      const now = new Date("2026-09-24T16:40:00.000Z");
+      const roleId = `task-330-role-${crypto.randomUUID()}`;
+      await createRole(db, { roleId, tenantId: livenessTenantId, name: "Sweep", title: "Sweep" });
+      await createRoutine(db, {
+        roleId, tenantId: livenessTenantId, name: "Swept", definition: { goal: "Record liveness" },
+        nextFireAt: new Date(now.getTime() - 1_000),
+      });
+
+      // Disabled poller: no persisted evidence means stale. This assertion
+      // fails if the poll's audit insert below is removed or silently no-ops.
+      await expect(routineSweepIsStale({ ...db, tenantId: livenessTenantId }, now)).resolves.toBe(true);
+      await expect(runDueRoutinePoll({ ...db, tenantId: livenessTenantId, now: () => now })).resolves.toHaveLength(1);
+      const sweeps = await pool.query<{ payload: Record<string, unknown>; actor: string }>(
+        `SELECT payload, actor FROM audit_events WHERE tenant_id = $1 AND event_type = 'routine.sweep'`,
+        [livenessTenantId],
+      );
+      expect(sweeps.rows).toEqual([{ actor: "system:routine-poller", payload: { due: 1, fired: 1, missed: 0, failed: 0 } }]);
+      await expect(getLatestAuditEvent(db, "routine.sweep", livenessTenantId)).resolves.toMatchObject({ payload: { due: 1, fired: 1, missed: 0, failed: 0 } });
+      await expect(routineSweepIsStale({ ...db, tenantId: livenessTenantId }, now)).resolves.toBe(false);
+      await expect(routineSweepIsStale({ ...db, tenantId: livenessTenantId }, new Date(now.getTime() + 15 * 60_000 + 1))).resolves.toBe(true);
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+    });
+  }, 20_000);
 
   it("TASK-329: notifies on a first failure, ignores missed fires, resets on success, then pauses on the tenth failure", async () => {
     await withPgBossQueueLock(pool, async () => {

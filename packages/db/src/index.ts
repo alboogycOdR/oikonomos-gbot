@@ -34,6 +34,7 @@ export {
 export {
   admitProjectFanout,
   getAuditEventsForRun,
+  getLatestAuditEvent,
   insertAuditEvent,
   type AuditEvent,
   type NewAuditEvent,
