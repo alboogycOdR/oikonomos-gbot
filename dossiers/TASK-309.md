@@ -18,3 +18,5 @@ Follow TemplatesPage.tsx / WorkView.tsx conventions.
 - Dashboard typecheck, tests and build clean.
 
 ## Work Log
+
+- [2026-09-24T00:31:59Z] [CX9] Preflight passed: the project component glob is new territory and the four explicitly listed dashboard files exist. TASK-309 cannot satisfy §9.2 within its Owned_Paths: `apps/dashboard/src/pages/ChatPage.tsx` is the only caller of `WorkView` and `ResultsView` (lines 691-701) and owns `activeThreadId` plus `activeSummary` (including TASK-304's `blockedTasks`). The views receive only routines/run IDs, so they cannot identify the selected project thread, call `/projects/:id/tasks` or `/projects/:id/artifacts`, or show the selected thread's blocked items. Need ownership expanded to `apps/dashboard/src/pages/ChatPage.tsx` (and its existing test if behavioral coverage is required) before implementation can proceed.
