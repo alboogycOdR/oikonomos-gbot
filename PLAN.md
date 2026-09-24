@@ -10564,7 +10564,7 @@ Exit status 2
 
 ### TASK-347
 **Title:** Bots keep the avatar colour and shape chosen at creation (backend)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 1 (upload deferred, colour/shape in scope); owner decision 2026-09-24: save it, full 12 colours x 8 shapes
@@ -10576,16 +10576,16 @@ Exit status 2
 - [ ] Create and patch with a valid colour and shape persist and round-trip via GET /roles and GET /threads; an unknown token is 400 (real-Postgres route tests).
 - [ ] Tenant ownership on PATCH is unchanged (a cross-tenant test).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-347-cx9
+**Started_At:** 2026-09-24T19:54:04Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T19:54:04Z
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
