@@ -86,7 +86,7 @@ export interface RoleMessageDeliveryResult {
 }
 
 /** Mirrors `routineJob.ts`'s own `environmentIsUp` check for the same reason. */
-function roleIsDeliverable<T extends { status: string }>(role: T | null): role is T {
+function roleIsDeliverable(role: { status: string } | null): boolean {
   return role !== null && role.status === "active";
 }
 
@@ -110,8 +110,8 @@ async function deliverRoleMessage(
   message: RoleMessage,
 ): Promise<RoleMessageDeliveryResult> {
   const recipient = await getRole(options, message.toRoleId);
-  if (!roleIsDeliverable(recipient)) {
-    return terminalFailure(options, message, message.toRoleId, "recipient is not active", "recipient_inactive");
+  if (recipient === null || !roleIsDeliverable(recipient)) {
+    return terminalFailure(options, message, recipient?.name ?? message.toRoleId, "recipient is not active", "recipient_inactive");
   }
 
   const sender = await getRole(options, message.fromRoleId);
@@ -160,6 +160,11 @@ async function terminalFailure(
   return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "retry_scheduled" };
 }
 
+interface RoleMessageDeliveryDependencies {
+  deliver: typeof deliverRoleMessage;
+  terminalFailure: typeof terminalFailure;
+}
+
 async function attributedProjectIdForHandoff(options: DatabaseOptions, message: RoleMessage): Promise<string | null> {
   if (message.handoffKind !== "task.assigned" || message.factRef === null) return null;
   const ref = message.factRef as { project_id?: unknown };
@@ -178,6 +183,7 @@ async function attributedProjectIdForHandoff(options: DatabaseOptions, message: 
  */
 export async function deliverPendingRoleMessages(
   options: RoleMessageDeliveryOptions,
+  dependencies: Partial<RoleMessageDeliveryDependencies> = {},
 ): Promise<RoleMessageDeliveryResult[]> {
   const tenantId = requireNonEmpty(options.tenantId, "tenantId");
   const pending = await listRoleMessages(options, { tenantId, unreadOnly: true });
@@ -194,9 +200,20 @@ export async function deliverPendingRoleMessages(
       continue;
     }
     try {
-      results.push(await deliverRoleMessage(options, claimed));
+      results.push(await (dependencies.deliver ?? deliverRoleMessage)(options, claimed));
     } catch {
-      results.push(await terminalFailure(options, claimed, claimed.toRoleId, "delivery could not be completed", "delivery_error"));
+      try {
+        const recipient = await getRole(options, claimed.toRoleId);
+        results.push(await (dependencies.terminalFailure ?? terminalFailure)(
+          options, claimed, recipient?.name ?? claimed.toRoleId, "delivery could not be completed", "delivery_error",
+        ));
+      } catch {
+        // Do not let a second failure (for example, writing the sender's
+        // notice) abort the rest of this poll. Never log exception text:
+        // delivery failures may include provider or secret-bearing details.
+        console.error("Role-message delivery failure recording failed: category=delivery_error");
+        results.push({ messageId: claimed.messageId, toRoleId: claimed.toRoleId, outcome: "retry_scheduled" });
+      }
     }
   }
   return results;
@@ -507,6 +524,76 @@ if (import.meta.vitest) {
        expect((await deliverPendingRoleMessages(options)).find((result) => result.messageId === sent.messageId)).toBeUndefined();
       });
     }, 20_000);
+
+    it("continues one tick after a poison delivery and leaves that message retryable", async () => {
+      await withPgBossQueueLock(pool, async () => {
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+        const senderId = `task-327-poison-sender-${crypto.randomUUID()}`;
+        const poisonRecipientId = `task-327-poison-recipient-${crypto.randomUUID()}`;
+        const healthyRecipientId = `task-327-healthy-recipient-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Poison Sender", title: "Sender" });
+        await createRole({ connectionString: connectionString! }, { roleId: poisonRecipientId, tenantId, name: "Poison Recipient", title: "Recipient" });
+        await createRole({ connectionString: connectionString! }, { roleId: healthyRecipientId, tenantId, name: "Healthy Recipient", title: "Recipient" });
+        const healthy = await sendRoleMessage({ connectionString: connectionString! }, {
+          tenantId, fromRoleId: senderId, toRoleId: healthyRecipientId, body: "must still arrive",
+        });
+        const poison = await sendRoleMessage({ connectionString: connectionString! }, {
+          tenantId, fromRoleId: senderId, toRoleId: poisonRecipientId, body: "must fail once",
+        });
+
+        const results = await deliverPendingRoleMessages(options, {
+          deliver: async (deliveryOptions, message) => {
+            if (message.messageId === poison.messageId) throw new Error("intentional poison delivery");
+            return deliverRoleMessage(deliveryOptions, message);
+          },
+        });
+
+        expect(results).toContainEqual(expect.objectContaining({ messageId: healthy.messageId, outcome: "delivered" }));
+        expect(results).toContainEqual({ messageId: poison.messageId, toRoleId: poisonRecipientId, outcome: "retry_scheduled" });
+        const poisoned = await pool.query<{ delivery_attempts: number; last_delivery_error: string | null; read_at: Date | null }>(
+          `SELECT delivery_attempts, last_delivery_error, read_at FROM role_messages WHERE message_id = $1`, [poison.messageId],
+        );
+        expect(poisoned.rows[0]).toMatchObject({ delivery_attempts: 1, last_delivery_error: "delivery_error", read_at: null });
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      });
+    }, 20_000);
+
+    it("caps five worker delivery failures and writes one sender-visible recipient notice", async () => {
+      const senderId = `task-327-cap-sender-${crypto.randomUUID()}`;
+      const recipientId = `task-327-cap-recipient-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Cap Sender", title: "Sender" });
+      await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Cap Recipient", title: "Recipient" });
+      const sent = await sendRoleMessage({ connectionString: connectionString! }, {
+        tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "eventually fail",
+      });
+      const alwaysFail = {
+        deliver: async () => {
+          throw new Error("intentional terminal-cap failure");
+        },
+      };
+
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const results = await deliverPendingRoleMessages(options, alwaysFail);
+        expect(results).toContainEqual(expect.objectContaining({
+          messageId: sent.messageId,
+          outcome: attempt === 5 ? "failed" : "retry_scheduled",
+        }));
+      }
+
+      const terminal = await pool.query<{ delivery_attempts: number; read_at: Date | null; delivery_failed_at: Date | null }>(
+        `SELECT delivery_attempts, read_at, delivery_failed_at FROM role_messages WHERE message_id = $1`, [sent.messageId],
+      );
+      expect(terminal.rows[0]).toMatchObject({ delivery_attempts: 5 });
+      expect(terminal.rows[0]!.read_at).not.toBeNull();
+      expect(terminal.rows[0]!.delivery_failed_at).not.toBeNull();
+      const senderThread = (await pool.query<{ id: string }>(`SELECT id FROM threads WHERE role_id = $1`, [senderId])).rows[0]!;
+      const notices = (await listMessages({ connectionString: connectionString! }, senderThread.id))
+        .filter((message) => message.role === "system" && message.body.includes("Cap Recipient"));
+      // Liveness: removing either the fifth-attempt cap or sender notice
+      // makes this real worker-path assertion fail.
+      expect(notices).toHaveLength(1);
+      expect((await deliverPendingRoleMessages(options, alwaysFail)).find((result) => result.messageId === sent.messageId)).toBeUndefined();
+    });
 
     it("concurrent delivery ticks atomically claim one message and enqueue exactly one run", async () => {
       await withPgBossQueueLock(pool, async () => {
