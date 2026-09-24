@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oikonomos_mobile/api/api_client.dart';
+import 'package:oikonomos_mobile/api/models.dart';
 import 'package:oikonomos_mobile/push/push_message.dart';
 import 'package:oikonomos_mobile/screens/chat_screen.dart';
 import 'package:oikonomos_mobile/screens/create_bot_screen.dart';
@@ -238,6 +239,99 @@ void main() {
     expect(find.byType(CreateBotScreen), findsNothing);
     expect(find.byKey(const Key('bot-tile-thread-new')), findsOneWidget);
     expect(find.text('Helper'), findsOneWidget);
+  });
+
+  group('TASK-332 title, preview and relative time', () {
+    Map<String, Object?> base() => {
+          'id': 't1',
+          'roleId': 'r1',
+          'botName': 'Concierge',
+          'botDescription': '',
+          'avatarSeed': 's',
+          'title': null,
+          'lastMessagePreview': 'legacy text',
+          'updatedAt': '2026-01-01T00:00:00Z',
+        };
+
+    test('model parses present, absent and null fields', () {
+      final present = ThreadSummary.fromJson({
+        ...base(),
+        'title': 'Plan trip',
+        'preview': {'text': 'new text', 'authorKind': 'bot'},
+        'lastMessageAt': '2026-02-02T00:00:00Z',
+      });
+      expect(present.title, 'Plan trip');
+      expect(present.previewText, 'new text');
+      expect(present.previewAuthorKind, 'bot');
+      expect(present.lastMessageAt, '2026-02-02T00:00:00Z');
+      expect(present.displayPreview, 'new text');
+      expect(present.displayTime, '2026-02-02T00:00:00Z');
+
+      final absent = ThreadSummary.fromJson(base());
+      expect(absent.previewText, isNull);
+      expect(absent.lastMessageAt, isNull);
+      expect(absent.displayPreview, 'legacy text');
+      expect(absent.displayTime, '2026-01-01T00:00:00Z');
+
+      final nulls = ThreadSummary.fromJson({
+        ...base(),
+        'preview': null,
+        'lastMessageAt': null,
+        'lastMessagePreview': null,
+      });
+      expect(nulls.previewText, isNull);
+      expect(nulls.displayPreview, '');
+      expect(nulls.displayTime, '2026-01-01T00:00:00Z');
+    });
+
+    testWidgets('shows title, preview and relative time from lastMessageAt', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          ...base(),
+          'title': 'Plan trip',
+          'preview': {'text': 'See you at noon', 'authorKind': 'user'},
+          'lastMessageAt': DateTime.now()
+              .subtract(const Duration(hours: 3))
+              .toIso8601String(),
+        },
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(home: RosterScreen(apiClient: client)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Plan trip'), findsOneWidget);
+      expect(find.text('See you at noon'), findsOneWidget);
+      expect(find.text('3h'), findsOneWidget);
+      expect(find.text('Concierge'), findsNothing);
+    });
+
+    testWidgets('falls back to the old rendering when fields are absent', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          ...base(),
+          'updatedAt': DateTime.now()
+              .subtract(const Duration(minutes: 5))
+              .toIso8601String(),
+        },
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(home: RosterScreen(apiClient: client)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Concierge'), findsOneWidget);
+      expect(find.text('legacy text'), findsOneWidget);
+      expect(find.text('5m'), findsOneWidget);
+    });
   });
 
   group('TASK-149 push notifications', () {
