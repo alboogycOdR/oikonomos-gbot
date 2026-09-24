@@ -10564,7 +10564,7 @@ Exit status 2
 
 ### TASK-347
 **Title:** Bots keep the avatar colour and shape chosen at creation (backend)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 1 (upload deferred, colour/shape in scope); owner decision 2026-09-24: save it, full 12 colours x 8 shapes
@@ -10582,12 +10582,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T20:03:00Z] [SV:CX9] Preflight completed; implementation stopped at the API persistence ownership boundary.
 - [2026-09-24T20:10:00Z] [ORCH opus-4.8] Status-scan triage. Blocker was a real territory gap, not a spec problem: persisting PATCH avatar fields legitimately flows through the DB port in services/control-api/src/ports.ts. Verified ports.ts is owned by no other active/pending task (all matches are historical done tasks) and control-api is not an adversarial-review protected path. Re-carved: added services/control-api/src/ports.ts to Owned_Paths and unblocked (blocked -> pending). Branch task/TASK-347-cx9 carries zero builder commits, so nothing to rebase. Re-dispatch CX9.
+- [2026-09-24T20:13:00Z] [SV:CX9] TASK-347 requires the public @oikonomos/db barrel to export the single avatar palette; this path is not owned.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: add packages/db/src/index.ts to TASK-347 Owned_Paths so the required palette can be exported to API/client consumers.
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T20:05:25Z
+**Updated_At:** 2026-09-24T20:13:00Z
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
