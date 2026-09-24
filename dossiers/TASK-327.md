@@ -11,3 +11,4 @@
 ## Work Log
 
 - [2026-09-24T15:05:19Z] [CX9] Verified the reported gaps, added migration 035 and tokenized delivery leases/attempt cap/terminal sender notices. Isolated DB package suite passed (46 files, 293 passed, 2 skipped); worker suite has been rerun after raising the real pg-boss concurrency test timeout to 20s, and a full recursive isolated run was allowed to complete. Next: commit the owned changes and hand off with the recorded evidence.
+- [2026-09-24T15:08:00Z] [CX9] Committed 5058163. DB and TypeScript checks are green; a final recursive isolated-harness process is still running serially under the shared test-database lock. NEXT: collect its summary, classify any non-owned baseline failures, then submit for review.
