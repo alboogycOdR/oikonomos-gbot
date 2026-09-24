@@ -10487,7 +10487,7 @@ Exit status 2
 
 ### TASK-344
 **Title:** Fix the TASK-121 group-route test that fails on master (FreeLLMAPI routing returns 400)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** TASK-121 (group threads, FreeLLMAPI routing of unaddressed messages); ORCH review runs 2026-09-24 (it fails on master and every branch)
@@ -10498,13 +10498,13 @@ Exit status 2
 - [ ] The test passes via scripts/test-isolated.ps1 -Filter @oikonomos/control-api (after -Init), twice in a row.
 - [ ] Test_Evidence names the root cause in one sentence, with the file and line.
 - [ ] The test still fails if the FreeLLMAPI routing step is removed (liveness).
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-344-cx9
+**Started_At:** 2026-09-24T17:01:19Z
 **Progress_Notes:**
 - [2026-09-24T16:05:00Z] [ORCH opus-5.5] Filed under the "master failures become fix tasks, never baseline" rule adopted today.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T16:05:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T17:01:19Z
