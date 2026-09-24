@@ -63,7 +63,7 @@ const task128Manifest: ConnectorManifest = {
   tools: [
     { tool_name: "mcp__gmail__list_messages", capability_id: "email.list", default_tier: "T0_observe" },
     { tool_name: "mcp__gmail__create_draft", capability_id: "email.create_draft", default_tier: "T1_draft" },
-    { tool_name: "mcp__gmail__send_message", capability_id: "email.send", default_tier: "T3_external" },
+    { tool_name: "mcp__gmail__send_message", capability_id: "email.send", default_tier: "T3_external", enabled: false },
   ],
   role_grants: [],
   evals: { suite: "evals/golden/suites/task-128", min_pass_rate: 0.9 },
@@ -1987,9 +1987,13 @@ integration("createChatRunDriver — real governed chat run (TASK-116)", () => {
         yield { type: "tool_result", result: "mail send is pending human approval" };
       };
 
+      const task136Manifest: ConnectorManifest = {
+        ...task128Manifest,
+        tools: task128Manifest.tools.map((tool) => tool.capability_id === "email.send" ? { ...tool, enabled: true } : tool),
+      };
       await createChatRunDriver({
         ...options,
-        manifests: [task128Manifest],
+        manifests: [task136Manifest],
         queryFn,
         gmailSessionMinter: {
           resolveUrl: async () => "http://gmail.fixture.invalid/mcp",
