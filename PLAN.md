@@ -10142,7 +10142,7 @@ Exit status 2
 
 ### TASK-330
 **Title:** Routine sweep liveness: prove the routine poller is alive
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** docs/decisions/ADR-005-control-liveness.md; OpenBot comparison (routine_sweeps row per sweep, UI warns after 15 minutes without one); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10157,12 +10157,13 @@ Exit status 2
 **Started_At:** 2026-09-24T16:30:18Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T16:37:49Z] [SV:CX9] Persisted tenant-scoped routine.sweep audit evidence per poll, with counts-only payloads and stale-after-15-minute liveness helper.
+**Artifacts:** services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, packages/db/src/auditEvents.ts, packages/db/src/auditEvents.test.ts, packages/db/src/index.ts, dossiers/TASK-330.md
+**Test_Evidence:** pnpm --filter @oikonomos/db build and pnpm --filter @oikonomos/worker exec tsc --noEmit passed; scripts/test-isolated.ps1 -Filter @oikonomos/worker passed including routineJob 8/8; full scripts/test-isolated.ps1 passed; git diff --check passed. A prior isolated DB-only run had one unrelated roles.test.ts migration-backfill deadlock, while TASK-330 audit tests passed; the subsequent full recursive run passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T16:30:18Z
+**Updated_At:** 2026-09-24T16:37:49Z
 
 ### TASK-335
 **Title:** Group routing: named fallback reasons and the only-holder rule
