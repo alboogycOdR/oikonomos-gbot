@@ -9949,7 +9949,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-333
 **Title:** Read markers and pins for threads (backend)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** OpenBot comparison (channel_memberships last_read_at / pinned_at, migrations 0016 and 0019); mobile roster; OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -9961,16 +9961,16 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 - [ ] A request against another tenant's thread is refused, with a test for each route.
 - [ ] Migration 034 is idempotent (up, down, up), and openapi.ts documents the routes and fields.
 - [ ] Full recursive suite via scripts/test-isolated.ps1 only; every non-own-package failure classified against the master baseline in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-333-cx9
+**Started_At:** 2026-09-24T11:21:16Z
 **Progress_Notes:**
 - [2026-09-23T22:36:43Z] [ORCH opus-5.5] Filed in the OpenBot follow-up wave. Claims marked REPORTED came from a read-only comparison pass: verify them against our code before acting. If you need a file outside Owned_Paths, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-24T11:21:16Z
 
 ### TASK-327
 **Title:** Harden role-message delivery: isolate failures, cap attempts, tell the sender
