@@ -409,6 +409,7 @@ void main() {
             request.method == 'PUT' && request.url.path == '/threads/one/pin'),
         isTrue,
       );
+      expect(find.byKey(const Key('pin-indicator-one')), findsOneWidget);
 
       await tester.longPress(find.byKey(const Key('bot-tile-one')));
       await tester.pumpAndSettle();
@@ -418,6 +419,7 @@ void main() {
             request.url.path == '/threads/one/pin'),
         isTrue,
       );
+      expect(find.byKey(const Key('pin-indicator-one')), findsNothing);
     });
 
     testWidgets('sorts pinned threads ahead of newer unpinned threads', (
@@ -442,6 +444,30 @@ void main() {
       final tiles = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
       expect(tiles.first.key, const Key('bot-tile-pinned'));
       expect(tiles.last.key, const Key('bot-tile-new'));
+    });
+
+    testWidgets('clears an unread badge after returning from chat', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [bot('one', unreadCount: 3)]);
+      fake.queueJsonFor('GET', '/threads/one/messages', 200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [bot('one')]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('unread-badge-one')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('bot-tile-one')));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(ChatScreen))).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RosterScreen), findsOneWidget);
+      expect(find.byKey(const Key('unread-badge-one')), findsNothing);
     });
 
     testWidgets('a failed mark-read still opens the chat', (tester) async {

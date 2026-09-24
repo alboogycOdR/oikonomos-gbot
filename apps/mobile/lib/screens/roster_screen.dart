@@ -208,8 +208,8 @@ class _RosterScreenState extends State<RosterScreen> {
     );
   }
 
-  void _openChat(SingleThread bot) {
-    Navigator.of(context).push(
+  Future<void> _openChat(SingleThread bot) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
           apiClient: widget.apiClient,
@@ -218,6 +218,7 @@ class _RosterScreenState extends State<RosterScreen> {
         ),
       ),
     );
+    if (mounted) await _load();
   }
 
   Future<void> _togglePin(SingleThread bot) async {
@@ -347,6 +348,16 @@ class _RosterScreenState extends State<RosterScreen> {
                       color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.bold,
                     ),
+                  ),
+                ),
+              if (bot.pinnedAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.push_pin,
+                    key: Key('pin-indicator-${bot.id}'),
+                    size: 18,
+                    semanticLabel: 'Pinned',
                   ),
                 ),
               Text(_formatRelative(bot.displayTime)),
