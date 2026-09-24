@@ -267,6 +267,14 @@ void main() {
       expect(present.displayPreview, 'new text');
       expect(present.displayTime, '2026-02-02T00:00:00Z');
 
+      final readAndPinned = ThreadSummary.fromJson({
+        ...base(),
+        'unreadCount': 3,
+        'pinnedAt': '2026-02-03T00:00:00Z',
+      });
+      expect(readAndPinned.unreadCount, 3);
+      expect(readAndPinned.pinnedAt, '2026-02-03T00:00:00Z');
+
       final absent = ThreadSummary.fromJson(base());
       expect(absent.previewText, isNull);
       expect(absent.lastMessageAt, isNull);
@@ -282,6 +290,8 @@ void main() {
       expect(nulls.previewText, isNull);
       expect(nulls.displayPreview, '');
       expect(nulls.displayTime, '2026-01-01T00:00:00Z');
+      expect(nulls.unreadCount, 0);
+      expect(nulls.pinnedAt, isNull);
     });
 
     testWidgets('shows title, preview and relative time from lastMessageAt', (
@@ -331,6 +341,158 @@ void main() {
       expect(find.text('Concierge'), findsOneWidget);
       expect(find.text('legacy text'), findsOneWidget);
       expect(find.text('5m'), findsOneWidget);
+    });
+  });
+
+  group('TASK-334 unread badges and pins', () {
+    Map<String, Object?> bot(
+      String id, {
+      String name = 'Concierge',
+      String? pinnedAt,
+      int unreadCount = 0,
+      String updatedAt = '2026-01-01T00:00:00Z',
+    }) =>
+        {
+          'id': id,
+          'roleId': 'role-$id',
+          'botName': name,
+          'botDescription': '',
+          'avatarSeed': 'seed-$id',
+          'title': null,
+          'lastMessagePreview': '',
+          'updatedAt': updatedAt,
+          'unreadCount': unreadCount,
+          'pinnedAt': pinnedAt,
+        };
+
+    testWidgets('shows a badge only when the thread has unread messages', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        bot('read'),
+        bot('unread', unreadCount: 4),
+      ]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('unread-badge-unread')), findsOneWidget);
+      expect(find.text('4'), findsOneWidget);
+      expect(find.byKey(const Key('unread-badge-read')), findsNothing);
+    });
+
+    testWidgets('long press pins then unpins a thread', (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      final unpinned = bot('one');
+      final pinned = bot('one', pinnedAt: '2026-02-02T00:00:00Z');
+      fake.queueJson(200, [unpinned]);
+      fake.queueJsonFor('PUT', '/threads/one/pin', 200, {
+        'id': 'one',
+        'pinnedAt': '2026-02-02T00:00:00Z',
+      });
+      fake.queueJson(200, [pinned]);
+      fake.queueJsonFor('DELETE', '/threads/one/pin', 204, null);
+      fake.queueJson(200, [unpinned]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(const Key('bot-tile-one')));
+      await tester.pumpAndSettle();
+
+      expect(
+        fake.requests.any((request) =>
+            request.method == 'PUT' && request.url.path == '/threads/one/pin'),
+        isTrue,
+      );
+      expect(find.byKey(const Key('pin-indicator-one')), findsOneWidget);
+
+      await tester.longPress(find.byKey(const Key('bot-tile-one')));
+      await tester.pumpAndSettle();
+      expect(
+        fake.requests.any((request) =>
+            request.method == 'DELETE' &&
+            request.url.path == '/threads/one/pin'),
+        isTrue,
+      );
+      expect(find.byKey(const Key('pin-indicator-one')), findsNothing);
+    });
+
+    testWidgets('sorts pinned threads ahead of newer unpinned threads', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        bot('new', name: 'New', updatedAt: '2026-03-01T00:00:00Z'),
+        bot(
+          'pinned',
+          name: 'Pinned',
+          pinnedAt: '2026-02-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        ),
+      ]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+
+      final tiles = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
+      expect(tiles.first.key, const Key('bot-tile-pinned'));
+      expect(tiles.last.key, const Key('bot-tile-new'));
+    });
+
+    testWidgets('clears an unread badge after returning from chat', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [bot('one', unreadCount: 3)]);
+      fake.queueJsonFor('GET', '/threads/one/messages', 200, <Object?>[]);
+      fake.queueHangingStream(200);
+      fake.queueJson(200, [bot('one')]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('unread-badge-one')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('bot-tile-one')));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(ChatScreen))).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RosterScreen), findsOneWidget);
+      expect(find.byKey(const Key('unread-badge-one')), findsNothing);
+    });
+
+    testWidgets('a failed mark-read still opens the chat', (tester) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [bot('one')]);
+      fake.queueJsonFor('POST', '/threads/one/read', 500, {'error': 'offline'});
+      fake.queueJsonFor('GET', '/threads/one/messages', 200, <Object?>[]);
+      fake.queueHangingStream(200);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bot-tile-one')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ChatScreen), findsOneWidget);
+      expect(
+        fake.requests.any((request) =>
+            request.method == 'POST' &&
+            request.url.path == '/threads/one/read'),
+        isTrue,
+      );
+      Navigator.of(tester.element(find.byType(ChatScreen))).pop();
+      await tester.pumpAndSettle();
     });
   });
 

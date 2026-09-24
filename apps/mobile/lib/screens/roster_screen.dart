@@ -143,7 +143,7 @@ class _RosterScreenState extends State<RosterScreen> {
     try {
       final threads = await widget.apiClient.listThreads();
       final bots = threads.whereType<SingleThread>().toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        ..sort(_compareBots);
       if (!mounted) return;
       setState(() {
         _bots = bots;
@@ -164,6 +164,18 @@ class _RosterScreenState extends State<RosterScreen> {
         _loading = false;
       });
     }
+  }
+
+  int _compareBots(SingleThread a, SingleThread b) {
+    final pinned = (b.pinnedAt != null ? 1 : 0).compareTo(
+      a.pinnedAt != null ? 1 : 0,
+    );
+    if (pinned != 0) return pinned;
+    if (a.pinnedAt != null && b.pinnedAt != null) {
+      final pinTime = b.pinnedAt!.compareTo(a.pinnedAt!);
+      if (pinTime != 0) return pinTime;
+    }
+    return b.updatedAt.compareTo(a.updatedAt);
   }
 
   String _formatRelative(String iso) {
@@ -196,12 +208,33 @@ class _RosterScreenState extends State<RosterScreen> {
     );
   }
 
-  void _openChat(SingleThread bot) {
-    Navigator.of(context).push(
+  Future<void> _openChat(SingleThread bot) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ChatScreen(apiClient: widget.apiClient, bot: bot),
+        builder: (_) => ChatScreen(
+          apiClient: widget.apiClient,
+          bot: bot,
+          markReadOnOpen: true,
+        ),
       ),
     );
+    if (mounted) await _load();
+  }
+
+  Future<void> _togglePin(SingleThread bot) async {
+    try {
+      if (bot.pinnedAt == null) {
+        await widget.apiClient.pinThread(bot.id);
+      } else {
+        await widget.apiClient.unpinThread(bot.id);
+      }
+      await _load();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update thread pin.')),
+      );
+    }
   }
 
   /// Opens the system-wide settings screen (profile, sign out,
@@ -296,8 +329,42 @@ class _RosterScreenState extends State<RosterScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-          trailing: Text(_formatRelative(bot.displayTime)),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (bot.unreadCount > 0)
+                Container(
+                  key: Key('unread-badge-${bot.id}'),
+                  margin: const EdgeInsets.only(right: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${bot.unreadCount}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              if (bot.pinnedAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.push_pin,
+                    key: Key('pin-indicator-${bot.id}'),
+                    size: 18,
+                    semanticLabel: 'Pinned',
+                  ),
+                ),
+              Text(_formatRelative(bot.displayTime)),
+            ],
+          ),
           onTap: () => _openChat(bot),
+          onLongPress: () => _togglePin(bot),
         );
       },
     );

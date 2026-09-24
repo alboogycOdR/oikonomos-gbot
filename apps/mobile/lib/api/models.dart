@@ -87,6 +87,8 @@ sealed class ThreadSummary {
     this.previewText,
     this.previewAuthorKind,
     this.lastMessageAt,
+    this.unreadCount = 0,
+    this.pinnedAt,
   });
 
   final String id;
@@ -99,6 +101,12 @@ sealed class ThreadSummary {
   final String? previewText;
   final String? previewAuthorKind;
   final String? lastMessageAt;
+
+  /// TASK-334 — viewer-specific state added by the read-marker API. Older
+  /// servers omit both fields, which deliberately remains equivalent to an
+  /// unpinned thread with no unread messages.
+  final int unreadCount;
+  final String? pinnedAt;
 
   /// Preview to show: the new `preview.text`, else the legacy string.
   String get displayPreview {
@@ -143,6 +151,8 @@ class SingleThread extends ThreadSummary {
     super.previewText,
     super.previewAuthorKind,
     super.lastMessageAt,
+    super.unreadCount,
+    super.pinnedAt,
   });
 
   final String roleId;
@@ -164,6 +174,10 @@ class SingleThread extends ThreadSummary {
       previewAuthorKind:
           ThreadSummary._parsePreview(json['preview']).authorKind,
       lastMessageAt: ThreadSummary._optString(json['lastMessageAt']),
+      unreadCount: json['unreadCount'] is int && json['unreadCount'] >= 0
+          ? json['unreadCount'] as int
+          : 0,
+      pinnedAt: ThreadSummary._optString(json['pinnedAt']),
     );
   }
 }
@@ -179,6 +193,8 @@ class GroupThread extends ThreadSummary {
     super.previewText,
     super.previewAuthorKind,
     super.lastMessageAt,
+    super.unreadCount,
+    super.pinnedAt,
   });
 
   final List<String> memberRoleIds;
@@ -196,6 +212,10 @@ class GroupThread extends ThreadSummary {
       previewAuthorKind:
           ThreadSummary._parsePreview(json['preview']).authorKind,
       lastMessageAt: ThreadSummary._optString(json['lastMessageAt']),
+      unreadCount: json['unreadCount'] is int && json['unreadCount'] >= 0
+          ? json['unreadCount'] as int
+          : 0,
+      pinnedAt: ThreadSummary._optString(json['pinnedAt']),
     );
   }
 }

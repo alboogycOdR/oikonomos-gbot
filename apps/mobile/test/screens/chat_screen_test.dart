@@ -84,6 +84,33 @@ Map<String, dynamic> _approvalMessage(String id) => {
     };
 
 void main() {
+  testWidgets('opening chat records the thread as read', (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor('POST', '/threads/thread-1/read', 200, {
+      'id': 'thread-1',
+      'lastReadAt': '2026-09-04T00:00:00Z',
+    });
+    fake.queueJsonFor('GET', '/threads/thread-1/messages', 200, <Object?>[]);
+    fake.queueHangingStream(200);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(apiClient: client, bot: _bot, markReadOnOpen: true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      fake.requests.any((request) =>
+          request.method == 'POST' &&
+          request.url.path == '/threads/thread-1/read'),
+      isTrue,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('start fresh keeps earlier messages visible', (tester) async {
     // Note: the context meter this test used to also assert on lived here
     // (a GET /threads/thread-1 fetch feeding a header widget) until it was
