@@ -150,6 +150,9 @@ export {
   type UpdateSkill,
 } from "./skills.js";
 export {
+  claimRoleMessageDelivery,
+  completeRoleMessageDelivery,
+  failRoleMessageDelivery,
   getRoleMessage,
   listRoleMessages,
   markRoleMessageRead,
@@ -158,6 +161,7 @@ export {
   type HandoffFactReference,
   type HandoffKind,
   type RoleMessage,
+  type RoleMessageDeliveryErrorCategory,
   type RoleMessageListFilter,
   handoffKinds,
 } from "./roleMessages.js";

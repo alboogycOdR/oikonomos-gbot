@@ -23,7 +23,7 @@
  *   (exactly mirroring how a routine fire's goal reaches the model) makes
  *   lane parity true by construction. No provider-specific tool-layer code
  *   is needed.
- * - **"Delivered" is the existing `read_at` column, not a new one.**
+ * - **"Delivered" and terminal failure share the existing `read_at` column.**
  *   `markRoleMessageRead` (`@oikonomos/db`) is already exported and
  *   idempotent (`read_at = COALESCE(read_at, now())`), and a delivered
  *   message has no further use for an "unread" state distinct from
@@ -31,18 +31,13 @@
  *   view is unaffected either way. Reusing it avoids a schema migration
  *   this task's `Owned_Paths` cannot reach (`packages/db` is out of
  *   territory here).
- * - **Ordering is enqueue-then-mark-read**, deliberately matching
- *   `routineJob.ts`'s own accepted `createAndEnqueueRoutineRun` (create +
- *   enqueue) BEFORE `recordFire` ordering: a crash between the enqueue and
- *   the `markRoleMessageRead` risks a rare duplicate redelivery on the next
- *   poll, never a silent, permanent drop. Combined with this poller's own
- *   `singleton` pg-boss queue policy (one poll in flight at a time, same as
- *   `WORKER_ROUTINE_POLL_JOB`), that keeps duplicates a crash-window edge
- *   case rather than a routine occurrence.
- * - **A missing or non-active recipient role is skipped, not dropped.** The
- *   row stays unread (never marked delivered) so a later poll retries it if
- *   the role becomes active again — "no silent drop if the recipient's
- *   thread does not exist yet" from the Acceptance Criteria.
+ * - **Each worker acquires a tokenized, five-minute database lease before
+ *   enqueueing.** Only that token can finish or fail the row, so concurrent
+ *   ticks create one run. A crashed lease eventually expires for retry.
+ * - **A non-active recipient is terminal immediately; other errors retry at
+ *   most five times.** Terminal failures write one system message in the
+ *   sender's thread, with a category-only persisted error (never exception
+ *   text or secrets).
  *   `role_messages.to_role_id` has a `REFERENCES roles(role_id)` foreign
  *   key with no `ON DELETE` action (`infra/postgres/migrations/
  *   004_roles_routines_rules.up.sql`), so a role referenced by a pending
@@ -62,12 +57,15 @@
 import { PgBoss } from "pg-boss";
 
 import {
+  claimRoleMessageDelivery,
+  completeRoleMessageDelivery,
   createTaskExecutionRun,
+  failRoleMessageDelivery,
   getOrCreateThreadForRole,
   getRole,
   listProjectRoleMembers,
   listRoleMessages,
-  markRoleMessageRead,
+  insertMessage,
   resolveRoleRuntime,
   type DatabaseOptions,
   type RoleMessage,
@@ -82,13 +80,13 @@ export interface RoleMessageDeliveryOptions extends DatabaseOptions {
 export interface RoleMessageDeliveryResult {
   messageId: string;
   toRoleId: string;
-  outcome: "delivered" | "skipped_no_role";
+  outcome: "delivered" | "retry_scheduled" | "failed" | "claimed_elsewhere";
   /** Only set when `outcome === "delivered"` — the run a test can drive/inspect directly. */
   runId?: string;
 }
 
 /** Mirrors `routineJob.ts`'s own `environmentIsUp` check for the same reason. */
-function roleIsDeliverable<T extends { status: string }>(role: T | null): role is T {
+function roleIsDeliverable(role: { status: string } | null): boolean {
   return role !== null && role.status === "active";
 }
 
@@ -112,9 +110,8 @@ async function deliverRoleMessage(
   message: RoleMessage,
 ): Promise<RoleMessageDeliveryResult> {
   const recipient = await getRole(options, message.toRoleId);
-  if (!roleIsDeliverable(recipient)) {
-    // Left unread on purpose: retried by the next poll rather than dropped.
-    return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "skipped_no_role" };
+  if (recipient === null || !roleIsDeliverable(recipient)) {
+    return terminalFailure(options, message, recipient?.name ?? message.toRoleId, "recipient is not active", "recipient_inactive");
   }
 
   const sender = await getRole(options, message.fromRoleId);
@@ -135,10 +132,37 @@ async function deliverRoleMessage(
     provider,
   });
   await enqueueRunExecution(options.connectionString, runId);
-  // Marked read last, deliberately — see the module docstring's ordering note.
-  await markRoleMessageRead(options, message.messageId);
+  await completeRoleMessageDelivery(options, message.messageId, message.deliveryClaimToken!);
 
   return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "delivered", runId };
+}
+
+async function terminalFailure(
+  options: DatabaseOptions,
+  message: RoleMessage,
+  recipientName: string,
+  reason: string,
+  category: "recipient_inactive" | "delivery_error",
+): Promise<RoleMessageDeliveryResult> {
+  const failed = await failRoleMessageDelivery(
+    options, message.messageId, message.deliveryClaimToken!, category, category === "recipient_inactive",
+  );
+  if (failed?.deliveryFailedAt !== null) {
+    const senderThread = await getOrCreateThreadForRole(options, { roleId: message.fromRoleId });
+    await insertMessage(options, {
+      threadId: senderThread.id,
+      role: "system",
+      body: `Delivery to ${recipientName} failed: ${reason}.`,
+      senderRoleId: message.fromRoleId,
+    });
+    return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "failed" };
+  }
+  return { messageId: message.messageId, toRoleId: message.toRoleId, outcome: "retry_scheduled" };
+}
+
+interface RoleMessageDeliveryDependencies {
+  deliver: typeof deliverRoleMessage;
+  terminalFailure: typeof terminalFailure;
 }
 
 async function attributedProjectIdForHandoff(options: DatabaseOptions, message: RoleMessage): Promise<string | null> {
@@ -159,6 +183,7 @@ async function attributedProjectIdForHandoff(options: DatabaseOptions, message: 
  */
 export async function deliverPendingRoleMessages(
   options: RoleMessageDeliveryOptions,
+  dependencies: Partial<RoleMessageDeliveryDependencies> = {},
 ): Promise<RoleMessageDeliveryResult[]> {
   const tenantId = requireNonEmpty(options.tenantId, "tenantId");
   const pending = await listRoleMessages(options, { tenantId, unreadOnly: true });
@@ -169,7 +194,27 @@ export async function deliverPendingRoleMessages(
   // reason about and keeps one bad row (e.g. a deleted role) from racing a
   // good one for no benefit — a poll tick is not latency-sensitive.
   for (const message of pending) {
-    results.push(await deliverRoleMessage(options, message));
+    const claimed = await claimRoleMessageDelivery(options, message.messageId);
+    if (claimed === null) {
+      results.push({ messageId: message.messageId, toRoleId: message.toRoleId, outcome: "claimed_elsewhere" });
+      continue;
+    }
+    try {
+      results.push(await (dependencies.deliver ?? deliverRoleMessage)(options, claimed));
+    } catch {
+      try {
+        const recipient = await getRole(options, claimed.toRoleId);
+        results.push(await (dependencies.terminalFailure ?? terminalFailure)(
+          options, claimed, recipient?.name ?? claimed.toRoleId, "delivery could not be completed", "delivery_error",
+        ));
+      } catch {
+        // Do not let a second failure (for example, writing the sender's
+        // notice) abort the rest of this poll. Never log exception text:
+        // delivery failures may include provider or secret-bearing details.
+        console.error("Role-message delivery failure recording failed: category=delivery_error");
+        results.push({ messageId: claimed.messageId, toRoleId: claimed.toRoleId, outcome: "retry_scheduled" });
+      }
+    }
   }
   return results;
 }
@@ -442,7 +487,7 @@ if (import.meta.vitest) {
       });
     }, 20_000);
 
-    it("skips (and does not mark read) a message addressed to a non-active (soft-deleted) recipient role", async () => {
+    it("terminally fails an inactive recipient and writes exactly one visible sender notice", async () => {
       await withPgBossQueueLock(pool, async () => {
       // role_messages.to_role_id carries a REFERENCES roles(role_id) FK with
       // no ON DELETE action, so a hard-missing role can never actually be
@@ -461,13 +506,114 @@ if (import.meta.vitest) {
       await createRole({ connectionString: connectionString! }, { roleId: deletedRoleId, tenantId, name: "Deleted Bot", title: "Deleted", status: "deleted" });
 
       const results = await deliverPendingRoleMessages(options);
-      expect(results).toContainEqual({ messageId: sent.messageId, toRoleId: deletedRoleId, outcome: "skipped_no_role" });
+      expect(results).toContainEqual({ messageId: sent.messageId, toRoleId: deletedRoleId, outcome: "failed" });
 
-      const refetched = await pool.query<{ read_at: Date | null }>(
-        `SELECT read_at FROM role_messages WHERE message_id = $1`,
+      const refetched = await pool.query<{ read_at: Date | null; delivery_attempts: number; last_delivery_error: string | null; delivery_failed_at: Date | null }>(
+        `SELECT read_at, delivery_attempts, last_delivery_error, delivery_failed_at FROM role_messages WHERE message_id = $1`,
         [sent.messageId],
       );
-      expect(refetched.rows[0]!.read_at).toBeNull();
+       expect(refetched.rows[0]).toMatchObject({ delivery_attempts: 1, last_delivery_error: "recipient_inactive" });
+      expect(refetched.rows[0]!.read_at).not.toBeNull();
+      expect(refetched.rows[0]!.delivery_failed_at).not.toBeNull();
+
+      // Liveness proof: both the terminal state and the sender-visible
+      // notice are required; removing either cap/notice breaks this test.
+      const senderThread = (await pool.query<{ id: string }>(`SELECT id FROM threads WHERE role_id = $1`, [senderId])).rows[0]!;
+      expect((await listMessages({ connectionString: connectionString! }, senderThread.id)).filter((message) => message.role === "system"))
+        .toHaveLength(1);
+       expect((await deliverPendingRoleMessages(options)).find((result) => result.messageId === sent.messageId)).toBeUndefined();
+      });
+    }, 20_000);
+
+    it("continues one tick after a poison delivery and leaves that message retryable", async () => {
+      await withPgBossQueueLock(pool, async () => {
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+        const senderId = `task-327-poison-sender-${crypto.randomUUID()}`;
+        const poisonRecipientId = `task-327-poison-recipient-${crypto.randomUUID()}`;
+        const healthyRecipientId = `task-327-healthy-recipient-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Poison Sender", title: "Sender" });
+        await createRole({ connectionString: connectionString! }, { roleId: poisonRecipientId, tenantId, name: "Poison Recipient", title: "Recipient" });
+        await createRole({ connectionString: connectionString! }, { roleId: healthyRecipientId, tenantId, name: "Healthy Recipient", title: "Recipient" });
+        const healthy = await sendRoleMessage({ connectionString: connectionString! }, {
+          tenantId, fromRoleId: senderId, toRoleId: healthyRecipientId, body: "must still arrive",
+        });
+        const poison = await sendRoleMessage({ connectionString: connectionString! }, {
+          tenantId, fromRoleId: senderId, toRoleId: poisonRecipientId, body: "must fail once",
+        });
+
+        const results = await deliverPendingRoleMessages(options, {
+          deliver: async (deliveryOptions, message) => {
+            if (message.messageId === poison.messageId) throw new Error("intentional poison delivery");
+            return deliverRoleMessage(deliveryOptions, message);
+          },
+        });
+
+        expect(results).toContainEqual(expect.objectContaining({ messageId: healthy.messageId, outcome: "delivered" }));
+        expect(results).toContainEqual({ messageId: poison.messageId, toRoleId: poisonRecipientId, outcome: "retry_scheduled" });
+        const poisoned = await pool.query<{ delivery_attempts: number; last_delivery_error: string | null; read_at: Date | null }>(
+          `SELECT delivery_attempts, last_delivery_error, read_at FROM role_messages WHERE message_id = $1`, [poison.messageId],
+        );
+        expect(poisoned.rows[0]).toMatchObject({ delivery_attempts: 1, last_delivery_error: "delivery_error", read_at: null });
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      });
+    }, 20_000);
+
+    it("caps five worker delivery failures and writes one sender-visible recipient notice", async () => {
+      const senderId = `task-327-cap-sender-${crypto.randomUUID()}`;
+      const recipientId = `task-327-cap-recipient-${crypto.randomUUID()}`;
+      await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Cap Sender", title: "Sender" });
+      await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Cap Recipient", title: "Recipient" });
+      const sent = await sendRoleMessage({ connectionString: connectionString! }, {
+        tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "eventually fail",
+      });
+      const alwaysFail = {
+        deliver: async () => {
+          throw new Error("intentional terminal-cap failure");
+        },
+      };
+
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const results = await deliverPendingRoleMessages(options, alwaysFail);
+        expect(results).toContainEqual(expect.objectContaining({
+          messageId: sent.messageId,
+          outcome: attempt === 5 ? "failed" : "retry_scheduled",
+        }));
+      }
+
+      const terminal = await pool.query<{ delivery_attempts: number; read_at: Date | null; delivery_failed_at: Date | null }>(
+        `SELECT delivery_attempts, read_at, delivery_failed_at FROM role_messages WHERE message_id = $1`, [sent.messageId],
+      );
+      expect(terminal.rows[0]).toMatchObject({ delivery_attempts: 5 });
+      expect(terminal.rows[0]!.read_at).not.toBeNull();
+      expect(terminal.rows[0]!.delivery_failed_at).not.toBeNull();
+      const senderThread = (await pool.query<{ id: string }>(`SELECT id FROM threads WHERE role_id = $1`, [senderId])).rows[0]!;
+      const notices = (await listMessages({ connectionString: connectionString! }, senderThread.id))
+        .filter((message) => message.role === "system" && message.body.includes("Cap Recipient"));
+      // Liveness: removing either the fifth-attempt cap or sender notice
+      // makes this real worker-path assertion fail.
+      expect(notices).toHaveLength(1);
+      expect((await deliverPendingRoleMessages(options, alwaysFail)).find((result) => result.messageId === sent.messageId)).toBeUndefined();
+    });
+
+    it("concurrent delivery ticks atomically claim one message and enqueue exactly one run", async () => {
+      await withPgBossQueueLock(pool, async () => {
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+        const senderId = `task-327-concurrent-sender-${crypto.randomUUID()}`;
+        const recipientId = `task-327-concurrent-recipient-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: senderId, tenantId, name: "Sender", title: "Sender" });
+        await createRole({ connectionString: connectionString! }, { roleId: recipientId, tenantId, name: "Recipient", title: "Recipient" });
+        const sent = await sendRoleMessage({ connectionString: connectionString! }, {
+          tenantId, fromRoleId: senderId, toRoleId: recipientId, body: "deliver once",
+        });
+
+        const ticks = await Promise.all([deliverPendingRoleMessages(options), deliverPendingRoleMessages(options)]);
+        expect(ticks.flat().filter((result) => result.messageId === sent.messageId && result.outcome === "delivered")).toHaveLength(1);
+        const runs = await pool.query<{ count: string }>(
+          `SELECT count(*) FROM runs WHERE task_id IN (SELECT task_id FROM tasks WHERE requested_by = $1)`,
+          [`role-message:${sent.messageId}`],
+        );
+        expect(Number(runs.rows[0]!.count)).toBe(1);
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
       });
     }, 20_000);
 

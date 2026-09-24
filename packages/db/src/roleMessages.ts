@@ -73,6 +73,11 @@ export interface RoleMessage {
   factRef: HandoffFactReference | null;
   createdAt: Date;
   readAt: Date | null;
+  deliveryAttempts: number;
+  lastDeliveryError: string | null;
+  deliveryClaimedAt: Date | null;
+  deliveryClaimToken: string | null;
+  deliveryFailedAt: Date | null;
 }
 
 interface RoleMessageRow extends QueryResultRow {
@@ -86,10 +91,16 @@ interface RoleMessageRow extends QueryResultRow {
   fact_ref: HandoffFactReference | null;
   created_at: Date;
   read_at: Date | null;
+  delivery_attempts: number;
+  last_delivery_error: string | null;
+  delivery_claimed_at: Date | null;
+  delivery_claim_token: string | null;
+  delivery_failed_at: Date | null;
 }
 
 const messageColumns = `message_id, tenant_id, from_role_id, to_role_id, body,
-       workspace_refs, handoff_kind, fact_ref, created_at, read_at`;
+       workspace_refs, handoff_kind, fact_ref, created_at, read_at,
+       delivery_attempts, last_delivery_error, delivery_claimed_at, delivery_claim_token, delivery_failed_at`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -223,6 +234,11 @@ function toRoleMessage(row: RoleMessageRow): RoleMessage {
     factRef: row.fact_ref,
     createdAt: row.created_at,
     readAt: row.read_at,
+    deliveryAttempts: row.delivery_attempts,
+    lastDeliveryError: row.last_delivery_error,
+    deliveryClaimedAt: row.delivery_claimed_at,
+    deliveryClaimToken: row.delivery_claim_token,
+    deliveryFailedAt: row.delivery_failed_at,
   };
 }
 
@@ -350,6 +366,84 @@ export async function markRoleMessageRead(
       throw new Error(`markRoleMessageRead: no role_messages row for messageId ${normalizedMessageId}.`);
     }
     return toRoleMessage(row);
+  });
+}
+
+/** A lease is five minutes: long enough for a worker turn, finite after a crash. */
+const deliveryLeaseSql = "now() - interval '5 minutes'";
+
+/**
+ * Atomically leases one pending handoff to a worker and counts that attempt.
+ * A concurrent poll receives null rather than creating a second recipient run.
+ */
+export async function claimRoleMessageDelivery(
+  options: DatabaseOptions,
+  messageId: string,
+): Promise<RoleMessage | null> {
+  const normalizedMessageId = requireUuid(messageId, "messageId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleMessageRow>(
+      `UPDATE role_messages
+       SET delivery_attempts = delivery_attempts + 1, delivery_claimed_at = now(), delivery_claim_token = gen_random_uuid()
+       WHERE message_id = $1
+         AND read_at IS NULL
+         AND delivery_attempts < 5
+         AND (delivery_claimed_at IS NULL OR delivery_claimed_at < ${deliveryLeaseSql})
+       RETURNING ${messageColumns}`,
+      [normalizedMessageId],
+    );
+    return result.rows[0] === undefined ? null : toRoleMessage(result.rows[0]);
+  });
+}
+
+/** Completes a previously leased delivery without reopening an already terminal row. */
+export async function completeRoleMessageDelivery(
+  options: DatabaseOptions,
+  messageId: string,
+  claimToken: string,
+): Promise<RoleMessage | null> {
+  const normalizedMessageId = requireUuid(messageId, "messageId");
+  const normalizedClaimToken = requireUuid(claimToken, "claimToken");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleMessageRow>(
+      `UPDATE role_messages
+       SET read_at = now(), delivery_claimed_at = NULL, delivery_claim_token = NULL, last_delivery_error = NULL
+       WHERE message_id = $1 AND read_at IS NULL AND delivery_claim_token = $2
+       RETURNING ${messageColumns}`,
+      [normalizedMessageId, normalizedClaimToken],
+    );
+    return result.rows[0] === undefined ? null : toRoleMessage(result.rows[0]);
+  });
+}
+
+export type RoleMessageDeliveryErrorCategory = "recipient_inactive" | "delivery_error";
+
+/**
+ * Releases a failed lease for retry, or makes it terminal at the fifth attempt.
+ * Error categories are deliberately closed so exception text and secrets never persist.
+ */
+export async function failRoleMessageDelivery(
+  options: DatabaseOptions,
+  messageId: string,
+  claimToken: string,
+  category: RoleMessageDeliveryErrorCategory,
+  terminal = false,
+): Promise<RoleMessage | null> {
+  const normalizedMessageId = requireUuid(messageId, "messageId");
+  const normalizedClaimToken = requireUuid(claimToken, "claimToken");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RoleMessageRow>(
+      `UPDATE role_messages
+       SET last_delivery_error = $2,
+           delivery_claimed_at = NULL,
+           delivery_claim_token = NULL,
+           read_at = CASE WHEN $3 OR delivery_attempts >= 5 THEN now() ELSE read_at END,
+           delivery_failed_at = CASE WHEN $3 OR delivery_attempts >= 5 THEN now() ELSE delivery_failed_at END
+       WHERE message_id = $1 AND read_at IS NULL AND delivery_claim_token = $4
+       RETURNING ${messageColumns}`,
+      [normalizedMessageId, category, terminal, normalizedClaimToken],
+    );
+    return result.rows[0] === undefined ? null : toRoleMessage(result.rows[0]);
   });
 }
 
