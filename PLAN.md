@@ -10115,7 +10115,7 @@ Exit status 2
 
 ### TASK-329
 **Title:** Routine fatigue rule: tell the owner on first failure, pause after ten
-**Status:** in_progress
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** OpenBot comparison (routines: one notice on the first failure, switch-off after ten consecutive failures, separate from queue retries); Addendum F section 3.4 (missed fires); OpenBot (CopilotKit, MIT) comparison of 2026-09-21, five read-only passes; borrow the idea, never the code
@@ -10135,10 +10135,10 @@ Exit status 2
 - [2026-09-24T16:26:59Z] [SV:CX9] Committed F1/F2 repair in f3ec6e5 and checkpoint ebd55d7; queue-enqueuing/purging routine tests are locked with 20s timeouts and cleanup deletes messages before runs. Need three complete isolated worker-suite summaries. NEXT: Run scripts/test-isolated.ps1 -Filter @oikonomos/worker three times in the foreground (-Init only before the first), capture all Tests lines, then request review.
 **Artifacts:** packages/db/src/routines.ts, packages/db/src/routines.test.ts, packages/db/src/index.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, dossiers/TASK-329.md
 **Test_Evidence:** pnpm --filter @oikonomos/db build and pnpm --filter @oikonomos/worker exec tsc --noEmit passed. Isolated DB suite: 45 files/295 tests passed, 2 skipped; only pre-existing out-of-territory projects.ts:1588 thread_members FK cleanup failure. Isolated worker suite: TASK-329 test passed; one unrelated intermittent pg-boss queue-purge race in TASK-247 DST test. Full scripts/test-isolated.ps1 stopped at the same DB baseline cleanup failure; git diff --check passed.
-**Review_Findings:** REWORK (ORCH opus-5.5). The feature logic is correct and matches the spec: stopped counts as a failure, missed is skipped (neither counts nor resets), changes_only stops are excluded, queued resets, a notice on the first failure, pause plus a final notice on the 10th. The TASK-329 test passes, and pnpm build and pnpm typecheck both exit 0. But ORCH's independent worker runs on cdb2508 regress routineJob.test.ts, the file you own; this file had zero failures in every ORCH run earlier today. F1 BLOCKING: 'TASK-247 / §9.3 DST boundary' fails 2 of 3 runs with 'Queue worker.run-execution does not exist'. Your new TASK-329 test queues runs through runDueRoutinePoll inside withPgBossQueueLock, but the DST test (~L183) and any other routineJob test that enqueues are NOT inside the lock, so they race the purge. Wrap every test in routineJob.test.ts that enqueues or purges in withPgBossQueueLock with a 20_000 ms timeout. F2 BLOCKING: 1 of 3 runs failed the suite's afterAll at routineJob.test.ts:41, 'update or delete on table runs violates foreign key constraint messages_run_id_fkey'. The cleanup deletes runs before the messages that reference them. Delete those messages first, scoped to the test tenant. F3, not yours, for the record: db routines.test 'listRoutines is tenant-scoped' failed once in 3 db runs. Check that your new 'lists recent outcomes' test doesn't create a routine visible to that assertion; if it does, fix it; otherwise note it. EVIDENCE REQUIRED: 3 consecutive -Filter @oikonomos/worker runs, -Init before the first only, with routineJob.test.ts fully green in all three. Quote the Tests lines. Run in the FOREGROUND.
+**Review_Findings:** APPROVED after rework (ORCH opus-5.5). The feature logic was correct on first pass. REWORK F1 (DST test pg-boss race) and F2 (afterAll messages_run_id FK) are fixed: every enqueuing test is lock-wrapped, and messages are deleted before runs. ORCH's independent runs on ebd55d7: worker 370 passed, 0 failed, 1 skipped, THREE consecutive runs after one -Init; worker tsc exit 0; the full pnpm build and typecheck exited 0 on the pre-rework commit, and the rework touched one test file only. NOTED RISK: the rework cut the TASK-305 changes_only test's timeout from 60_000 to 20_000 while that test now also waits on the queue lock. It passed 3 of 3, but if it flakes on a timeout, restore 60_000 first. F3 (db routines tenant-scoped) was intermittent 1 of 3 and not reproduced.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T16:26:59Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-24T16:30:08Z
 
 ### TASK-330
 **Title:** Routine sweep liveness: prove the routine poller is alive
