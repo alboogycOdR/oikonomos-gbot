@@ -10595,7 +10595,7 @@ Exit status 2
 
 ### TASK-348
 **Title:** Mobile: full 12x8 avatar picker that is saved and shown everywhere
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-347 palette
@@ -10612,12 +10612,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T21:03:01Z] [SV:CX9] Verified TASK-347 backend contract and all declared paths. Saved-avatar rendering requires unowned roster_screen.dart and chat_screen.dart edits.
 - [2026-09-24T21:20:00Z] [ORCH opus-4.8] Status scan §7 triage: valid ownership gap, confirmed real (AC needs saved avatar rendered in roster + chat header). roster_screen.dart and chat_screen.dart are non-protected apps/mobile paths with no live co-owner — 359 (only other branch) is empty and disjoint; every other wave task sharing these screens is pending in a single-builder (CX9) serialized chain, so no concurrent-active isolation risk. Re-carved: added both screens + their tests to Owned_Paths, unblocked -> pending. Dep TASK-347 is done/merged. Branch carries only a dossier note, no impl, no scope violation. validate_plan legal after edit. NEXT: re-dispatch CX9 on 348.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-24T21:18:01Z] [SV:CX9] Implemented persisted 12x8 avatar selection, defensive token fallback, and saved-avatar rendering across mobile surfaces; committed as 8850eb2.
+**Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/widgets/avatar.dart, apps/mobile/lib/screens/create_bot_screen.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/create_bot_screen_test.dart, apps/mobile/test/widgets/avatar_test.dart, dossiers/TASK-348.md
+**Test_Evidence:** apps/mobile: flutter analyze lib â€” No issues found; flutter test â€” full mobile suite passed. Focused avatar/create-bot widget tests also passed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-24T21:06:00Z
+**Updated_At:** 2026-09-24T21:18:01Z
 
 ### TASK-349
 **Title:** Web: avatar colour and shape picker saved and rendered
