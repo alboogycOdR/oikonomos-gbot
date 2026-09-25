@@ -10866,7 +10866,7 @@ Exit status 2
 
 ### TASK-358
 **Title:** Web: bot-to-bot entries and "Messaged X" previews in the sidebar
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8; TASK-356 API
@@ -10880,12 +10880,13 @@ Exit status 2
 **Started_At:** 2026-09-25T11:17:42Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-25T11:23:01Z] [SV:CX9] Verified TASK-356 API fields are discarded by unowned ChatPage.tsx; recorded evidence in dossier and committed af84e89.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Add apps/dashboard/src/pages/ChatPage.tsx to Owned_Paths so kind and preview.authorKind can reach BotSidebar; read-only pair routing also requires an approved transcript approach.
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T11:17:42Z
+**Updated_At:** 2026-09-25T11:23:01Z
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
