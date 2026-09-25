@@ -10870,12 +10870,12 @@ Exit status 2
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group: runaway protection); groupRouting.ts GROUP_MEMBER_CAP; TASK-328 hop cap covers handoffs only
 **Depends_On:** —
-**Owned_Paths:** services/worker/src/groupRouting.ts, services/worker/src/groupRouting.test.ts, services/worker/src/groupFanout.ts, services/worker/src/groupFanout.test.ts
+**Owned_Paths:** services/worker/src/groupRouting.ts, services/worker/src/groupRouting.test.ts, services/worker/src/groupFanout.ts, services/worker/src/groupFanout.test.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts
 **Description:** A group room can loop bot replies triggered by bot replies, bounded only by spend. Add two caps per user message in a group thread: OIK_GROUP_MAX_BOT_MESSAGES (default 8) and OIK_GROUP_MAX_ROUNDS (default 3 rounds of bot-reacting-to-bot). These are ORCH defaults, not spec numbers; the owner may tune them. On a cap: stop fanout, post ONE visible system message ('Paused: the bots have said a lot. Reply to continue.') and audit the category group.cap_reached. A new user message resets. Keep the existing consecutive_bot_cap and quiet_room behaviour.
 **Acceptance_Criteria:**
 - [ ] Real-Postgres tests: a loop stops at each cap with exactly one visible notice and one audit event; a user message resets; the existing stop reasons still work.
@@ -10886,12 +10886,13 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T23:33:01Z] [SV:CX9] Blocked: live group-room enforcement is in unowned services/control-api/src/ports.ts; worker fanout lacks group thread/turn context.
+- [2026-09-25T01:21:15Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved by ORCH: added services/control-api/src/ports.ts and ports.test.ts (the group-routing composition, TASK-335) to Owned_Paths. No active task owns them (350 owns app.ts and openapi.ts). If you ALSO need chat.routes.test.ts or another control-api test, say exactly which in a new block rather than widening yourself.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: requires services/control-api/src/ports.ts and its routing/integration tests to implement live caps, notice, audit, and reset.
-**Updated_By:** SV
-**Updated_At:** 2026-09-24T23:33:01Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T01:21:15Z
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
