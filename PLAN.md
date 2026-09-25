@@ -10653,7 +10653,7 @@ Exit status 2
 
 ### TASK-350
 **Title:** Auto-review per bot: toggle and rules API over the existing require-approval rules (backend)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 7 (the L2 reviewer MODEL is deferred; this is NOT that); owner decision 2026-09-24: Auto-review = UI over existing approvals; packages/db/src/requireApprovalRules.ts (TASK-084, Addendum F 5.4; enforced by the broker via TASK-086)
@@ -10679,13 +10679,14 @@ Exit status 2
 - [2026-09-25T01:23:01Z] [SV:CX9] Added real Postgres route-to-production-broker liveness coverage; Auto-review now demonstrably parks a granted T1 action when enabled and allows it when disabled.
 - [2026-09-25T04:10:00Z] [ORCH opus-4.8] REWORK. Full-review positives: territory clean (all files in Owned_Paths, no protected-path edits — net diff touches no packages/broker|policy|approvals); tenant ownership enforced on every new route (404 cross-tenant, verified in test + code); the route-to-broker LIVENESS test is genuine — it drives the real buildDatabaseBrokerHttpApp (ADR-001 PreToolUse path) against a real DB and flips a real T1 decision deny→allow via the real PUT route (standing-rule-5 satisfied). build + typecheck exit 0. BLOCKER: the isolated recursive suite FAILS. See Review_Findings — Test_Evidence's "no failures observed" is wrong.
 - [2026-09-25T01:48:01Z] [SV:CX9] Rework fixed: DB cleanup now removes role_grants before deleting the test role; all 8 require-approval tests execute and pass.
+- [2026-09-25T04:40:00Z] [ORCH opus-4.8] APPROVED + MERGED (--no-ff a8acb191 into master). Second-pass verdict. Author CX9 (non-Claude) and no protected path touched (net diff = packages/db + services/control-api only), so eligible for my full review + merge. Rework CONFIRMED fixed: requireApprovalRules.test.ts cleanup now DELETEs role_grants before roles; isolated recursive suite (from wt-codex9, -Init) is fully GREEN — the packages/db file executed 8/8 (NOT skipped), including the AC-1 test "Auto-review creates/re-enables only risky granted rules and preserves manual rules", and autoReview.routes.test.ts ran 3/3 incl. the route-to-broker liveness test (flips a real T1 decision deny→allow via buildDatabaseBrokerHttpApp, the ADR-001 PreToolUse path — standing-rule-5 satisfied). Zero branch failures ⇒ nothing to classify. NOTE (repo hygiene, non-blocking): a from-main-repo master baseline run was red with `... is not a function` db-export errors; the 5 master-only commits vs this branch are all PLAN.md chores (no source), so this is a STALE packages/*/dist in the main checkout, not a source regression — a `pnpm -r build` on master clears it. Unlocks TASK-351 and the line-10720 dependent (their other dep permitting).
 **Artifacts:** packages/db/src/requireApprovalRules.test.ts, dossiers/TASK-350.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init passed; focused isolated DB: requireApprovalRules.test.ts 8/8 passed. Focused isolated control-api suite passed including all 3 TASK-350 route/liveness tests. pnpm build and pnpm typecheck exited 0. Full recursive isolated suite classified one unrelated failure: packages/db/src/database.test.ts TASK-140 capability-count assertion (46 actual vs 47 expected).
 **Review_Findings:**
 - [ORCH 2026-09-25, rework, first-pass: yes] The isolated recursive suite is RED, classified as introduced-by-this-branch (not a pre-existing master failure). `packages/db/src/requireApprovalRules.test.ts` cleanup() hook throws `update or delete on table "roles" violates foreign key constraint "role_grants_role_id_fkey"`, which fails the whole test file and marks all 8 of its tests SKIPPED — never executed. The skipped tests include your own AC-1 DB test "TASK-350 Auto-review creates/re-enables only risky granted rules and preserves manual rules", so AC-1 (toggle-on creates rules for exactly the non-T0 granted caps; toggle-off disables only those; a manual rule survives both) is currently UNVERIFIED. Root cause: your new AC-1 test inserts a `role_grants` row (roleId, riskyCapabilityId) but cleanup() deletes `roles` without first deleting `role_grants`; on master the suite had no grant insert, so cleanup passed. FIX: in cleanup() add `await pool.query('DELETE FROM role_grants WHERE role_id = $1', [roleId]);` BEFORE the `DELETE FROM roles` (your autoReview.routes.test.ts cleanup already does this correctly — mirror it). Then re-run scripts/test-isolated.ps1 -Init from the worktree and confirm the packages/db suite runs green with all 8 tests EXECUTED (not skipped), and correct the Test_Evidence claim to match the actual run.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T01:48:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T04:40:00Z
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
