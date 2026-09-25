@@ -24,6 +24,7 @@ integration("packages/db requireApprovalRules — read + CRUD + FK (TASK-084)", 
 
   async function cleanup(): Promise<void> {
     await pool.query(`DELETE FROM require_approval_rules WHERE tenant_id = $1`, [tenantId]);
+    await pool.query(`DELETE FROM role_grants WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
     await pool.query(`DELETE FROM capabilities WHERE capability_id = $1`, [capabilityId]);
     await pool.query(`DELETE FROM capabilities WHERE capability_id = $1`, [riskyCapabilityId]);
