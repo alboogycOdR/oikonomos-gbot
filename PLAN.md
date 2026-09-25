@@ -10742,7 +10742,7 @@ Exit status 2
 
 ### TASK-353
 **Title:** Mobile: Connectors & tools (Plugins) screen per bot
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-351 API; memory: grok-bot-mobile-reference (Plugins: "Tools and skills")
@@ -10756,12 +10756,13 @@ Exit status 2
 **Started_At:** 2026-09-25T06:28:16Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T06:38:01Z] [SV:CX9] Implemented the per-bot Connectors & tools catalog, grant/revoke refresh flow, locked state, Skills link, and settings entry; committed as 35b9657.
+**Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/bot_tools_screen.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/bot_tools_screen_test.dart, dossiers/TASK-353.md
+**Test_Evidence:** flutter test (full mobile suite): exit 0; flutter analyze lib: No issues found; focused bot_tools_screen_test.dart: 3/3 passed; git diff --check: clean. Dart is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T06:28:16Z
+**Updated_At:** 2026-09-25T06:38:01Z
 
 ### TASK-354
 **Title:** Web: Auto-review toggle, review rules and Connectors & tools in the bot panel
