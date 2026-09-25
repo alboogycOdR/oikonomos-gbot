@@ -11008,7 +11008,7 @@ Exit status 2
 
 ### TASK-362
 **Title:** Mobile and web: show "Not configured" for connectors in Connectors & tools
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-361 API; TASK-353 (mobile screen) and TASK-354 (web panel) both had the not-connected state descoped; memory: grok-bot-mobile-reference (Plugins page)
@@ -11024,6 +11024,7 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-25T19:28:02Z] [SV:CX9] Implemented and committed connector configuration state UI on task/TASK-362-cx9 (0f00e10). Literal configured=false shows Not configured, disables switches, and explains the workspace-owner action; true, unknown, and absent remain unchanged.
+- [2026-09-25T21:55:00Z] [ORCH opus-4.8] APPROVED, MERGED --no-ff. CX9-authored; Owned_Paths are apps/mobile + apps/dashboard (non-protected) → normal full review, no cross-model gate. Territory clean (dossiers/TASK-362.md is builder's own dossier); no PLAN.md edits on branch. Spec verified: consumes TASK-361's real system-level `configured` field (connectorStatus.ts + openapi.ts); web uses strict `=== false`, mobile parses bool-only so unknown/absent/older-server → unchanged. Tests re-run in worktree: dashboard 27 files/178 tests pass (exit 0); flutter 222/222 + analyze clean. Initial dashboard -Init failure was a missing build artifact in the fresh worktree (pnpm -r build fixed), not a test failure — classified, not on this diff.
 **Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/bot_tools_screen.dart, apps/mobile/test/screens/bot_tools_screen_test.dart, apps/dashboard/src/components/chat/BotToolsPanel.tsx, apps/dashboard/src/components/chat/BotToolsPanel.test.tsx, dossiers/TASK-362.md
 **Test_Evidence:** flutter test passed full mobile suite; flutter analyze lib passed. pnpm lint passed with 3 pre-existing unused-disable warnings and zero errors; pnpm typecheck and pnpm build exited 0. Fresh foreground scripts/test-isolated.ps1 -Init -Filter @oikonomos/dashboard passed: 27 files, 178 tests.
 **Review_Findings:** —
