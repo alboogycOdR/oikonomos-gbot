@@ -4,10 +4,15 @@ import {
   TemplateExportRefusedError,
   exportRoleTemplate,
   installTemplate,
+  createReviewRule,
+  getAutoReview,
   listProjectArtifacts,
   listProjectTasks,
   listProjects,
+  listRoleTools,
   listTemplates,
+  removeReviewRule,
+  setAutoReview,
 } from "./api";
 
 describe("template API client", () => {
@@ -63,5 +68,24 @@ describe("template API client", () => {
     await expect(listProjects()).resolves.toEqual([{ projectId: "project-1", threadId: "thread-1" }]);
     await expect(listProjectTasks("project/one")).resolves.toEqual([]);
     await expect(listProjectArtifacts("project/one")).resolves.toEqual([]);
+  });
+
+  it("uses the server's auto-review, rule, and tool catalog contracts", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/auto-review") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify({ enabled: false, rules: [] }), { status: 200 });
+      if (url.endsWith("/auto-review")) return new Response(JSON.stringify({ enabled: true, rules: [] }), { status: 200 });
+      if (url.endsWith("/tools")) return new Response(JSON.stringify({ systems: [] }), { status: 200 });
+      if (url.endsWith("/review-rules") && init?.method === "POST") return new Response(JSON.stringify({ ruleId: "rule-1", capabilityId: "email.send", enabled: true }), { status: 201 });
+      if (url.endsWith("/review-rules/rule%2Fone")) return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+
+    await expect(getAutoReview("role/one")).resolves.toEqual({ enabled: false, rules: [] });
+    await expect(setAutoReview("role/one", true)).resolves.toEqual({ enabled: true, rules: [] });
+    await expect(listRoleTools("role/one")).resolves.toEqual({ systems: [] });
+    await expect(createReviewRule("role/one", "email.send")).resolves.toMatchObject({ ruleId: "rule-1" });
+    await expect(removeReviewRule("role/one", "rule/one")).resolves.toBeUndefined();
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/roles/role%2Fone/auto-review"), expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true }) }));
   });
 });

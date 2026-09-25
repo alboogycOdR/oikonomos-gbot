@@ -45,6 +45,29 @@ describe("RightPanel", () => {
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 
+  it("loads and saves the Auto-review switch from the Tools tab", async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/auto-review")) return new Response(JSON.stringify({ enabled: init?.method === "PUT", rules: [] }), { status: 200 });
+      if (url.endsWith("/review-rules") || url.endsWith("/grants")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/tools")) return new Response(JSON.stringify({ systems: [] }), { status: 200 });
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+
+    render(<RightPanel members={fixtureMembers} routines={fixtureRoutines} activeRoleId={ROLE_ID} />);
+    await user.click(screen.getByRole("tab", { name: "Tools" }));
+    const toggle = await screen.findByRole("switch", { name: "Auto-review" });
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/roles/${ROLE_ID}/auto-review`),
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true }) }),
+    );
+  });
+
   describe("permissions (TASK-119)", () => {
     const originalFetch = global.fetch;
 

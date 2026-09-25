@@ -593,6 +593,89 @@ export async function createRoleGrant(
   });
 }
 
+export async function listRoleGrants(roleId: string): Promise<RoleGrant[]> {
+  return request<RoleGrant[]>(`/roles/${encodeURIComponent(roleId)}/grants`);
+}
+
+export async function revokeRoleGrant(roleId: string, capabilityId: string): Promise<void> {
+  await request<void>(`/roles/${encodeURIComponent(roleId)}/grants/${encodeURIComponent(capabilityId)}`, {
+    method: "DELETE",
+  });
+}
+
+/** TASK-354 — connector-grouped capability catalog used by the bot panel. */
+export interface RoleTool {
+  id: string;
+  label: string;
+  description: string;
+  defaultTier: string;
+  granted: boolean;
+  maxTier: string | null;
+  grantable: boolean;
+}
+
+export interface RoleToolSystem {
+  id: string;
+  label: string;
+  tools: RoleTool[];
+}
+
+export interface RoleToolCatalog {
+  systems: RoleToolSystem[];
+}
+
+export async function listRoleTools(roleId: string): Promise<RoleToolCatalog> {
+  return request<RoleToolCatalog>(`/roles/${encodeURIComponent(roleId)}/tools`);
+}
+
+export async function grantRoleTool(roleId: string, tool: RoleTool): Promise<RoleGrant> {
+  return createRoleGrant(roleId, tool.id, tool.defaultTier);
+}
+
+export async function revokeRoleTool(roleId: string, capabilityId: string): Promise<void> {
+  await revokeRoleGrant(roleId, capabilityId);
+}
+
+export interface ReviewRule {
+  ruleId: string;
+  capabilityId: string;
+  enabled: boolean;
+  createdBy?: string | null;
+}
+
+export interface AutoReviewSettings {
+  enabled: boolean;
+  rules: ReviewRule[];
+}
+
+export async function getAutoReview(roleId: string): Promise<AutoReviewSettings> {
+  return request<AutoReviewSettings>(`/roles/${encodeURIComponent(roleId)}/auto-review`);
+}
+
+export async function setAutoReview(roleId: string, enabled: boolean): Promise<AutoReviewSettings> {
+  return request<AutoReviewSettings>(`/roles/${encodeURIComponent(roleId)}/auto-review`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function listReviewRules(roleId: string): Promise<ReviewRule[]> {
+  return request<ReviewRule[]>(`/roles/${encodeURIComponent(roleId)}/review-rules`);
+}
+
+export async function createReviewRule(roleId: string, capabilityId: string): Promise<ReviewRule> {
+  return request<ReviewRule>(`/roles/${encodeURIComponent(roleId)}/review-rules`, {
+    method: "POST",
+    body: JSON.stringify({ capabilityId }),
+  });
+}
+
+export async function removeReviewRule(roleId: string, ruleId: string): Promise<void> {
+  await request<void>(`/roles/${encodeURIComponent(roleId)}/review-rules/${encodeURIComponent(ruleId)}`, {
+    method: "DELETE",
+  });
+}
+
 /**
  * TASK-243 (spec §7.1/§7.2) — mirrors `GET /runs/:id/receipt`'s real,
  * serialized shape exactly (TASK-242, `packages/db/src/runReceipt.ts` /

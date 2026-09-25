@@ -19,10 +19,13 @@
 // visible in the live app.
 import { useEffect, useState } from "react";
 
+import { getAutoReview, setAutoReview } from "../../lib/api";
+import { BotToolsPanel } from "./BotToolsPanel";
+import { ReviewRulesPanel } from "./ReviewRulesPanel";
 import type { MemberSummary, RoutineSummary } from "./types";
 import { Avatar } from "./Avatar";
 
-type Tab = "members" | "routines";
+type Tab = "members" | "routines" | "tools";
 
 interface RoleGrantSummary {
   capabilityId: string;
@@ -50,6 +53,9 @@ export function RightPanel({
   const [grants, setGrants] = useState<RoleGrantSummary[]>([]);
   const [grantsError, setGrantsError] = useState<string | null>(null);
   const [revokingCapabilityId, setRevokingCapabilityId] = useState<string | null>(null);
+  const [autoReviewEnabled, setAutoReviewEnabled] = useState<boolean | null>(null);
+  const [autoReviewError, setAutoReviewError] = useState<string | null>(null);
+  const [savingAutoReview, setSavingAutoReview] = useState(false);
 
   useEffect(() => {
     if (activeRoleId === undefined) {
@@ -83,6 +89,22 @@ export function RightPanel({
     };
   }, [activeRoleId]);
 
+  useEffect(() => {
+    if (tab !== "tools" || activeRoleId === undefined) return;
+    let cancelled = false;
+    getAutoReview(activeRoleId)
+      .then((settings) => {
+        if (!cancelled) {
+          setAutoReviewEnabled(settings.enabled);
+          setAutoReviewError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setAutoReviewError(error instanceof Error ? error.message : "Could not load Auto-review.");
+      });
+    return () => { cancelled = true; };
+  }, [activeRoleId, tab]);
+
   const handleRevoke = async (capabilityId: string) => {
     if (activeRoleId === undefined) {
       return;
@@ -102,6 +124,23 @@ export function RightPanel({
       setGrantsError(error instanceof Error ? error.message : "failed to revoke grant");
     } finally {
       setRevokingCapabilityId(null);
+    }
+  };
+
+  const handleAutoReview = async (enabled: boolean) => {
+    if (activeRoleId === undefined || savingAutoReview) return;
+    const previous = autoReviewEnabled;
+    setAutoReviewEnabled(enabled);
+    setSavingAutoReview(true);
+    try {
+      const saved = await setAutoReview(activeRoleId, enabled);
+      setAutoReviewEnabled(saved.enabled);
+      setAutoReviewError(null);
+    } catch (error) {
+      setAutoReviewEnabled(previous);
+      setAutoReviewError(error instanceof Error ? error.message : "Could not update Auto-review.");
+    } finally {
+      setSavingAutoReview(false);
     }
   };
 
@@ -145,6 +184,19 @@ export function RightPanel({
           }`}
         >
           Routines
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "tools"}
+          onClick={() => setTab("tools")}
+          className={`flex-1 px-3 py-2 text-xs font-medium ${
+            tab === "tools"
+              ? "border-b-2 border-bubble-user text-slate-100"
+              : "text-slate-500 hover:text-slate-300"
+          }`}
+        >
+          Tools
         </button>
       </div>
 
@@ -197,7 +249,7 @@ export function RightPanel({
               </div>
             ) : null}
           </>
-        ) : (
+        ) : tab === "routines" ? (
           <ul aria-label="Routines" className="space-y-3">
             {routines.map((routine) => (
               <li key={routine.id} className="rounded-lg bg-surface-raised p-2">
@@ -215,6 +267,30 @@ export function RightPanel({
               <li className="text-xs text-slate-500">No routines yet.</li>
             ) : null}
           </ul>
+        ) : activeRoleId === undefined ? (
+          <p className="text-xs text-slate-500">Select a bot to configure its tools.</p>
+        ) : (
+          <div className="space-y-4">
+            <section aria-labelledby="auto-review-heading">
+              <div className="flex items-center gap-2">
+                <label id="auto-review-heading" className="flex flex-1 items-center gap-2 text-sm font-medium text-slate-100">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label="Auto-review"
+                    checked={autoReviewEnabled ?? false}
+                    disabled={autoReviewEnabled === null || savingAutoReview}
+                    onChange={(event) => void handleAutoReview(event.currentTarget.checked)}
+                  />
+                  Auto-review
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Require approval for risky shell, MCP, and computer actions.</p>
+              {autoReviewError !== null ? <p role="alert" className="mt-1 text-xs text-red-400">{autoReviewError}</p> : null}
+            </section>
+            <ReviewRulesPanel roleId={activeRoleId} />
+            <BotToolsPanel roleId={activeRoleId} />
+          </div>
         )}
       </div>
     </aside>
