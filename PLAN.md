@@ -10866,7 +10866,7 @@ Exit status 2
 
 ### TASK-358
 **Title:** Web: bot-to-bot entries and "Messaged X" previews in the sidebar
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8; TASK-356 API
@@ -10882,12 +10882,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-25T11:23:01Z] [SV:CX9] Verified TASK-356 API fields are discarded by unowned ChatPage.tsx; recorded evidence in dossier and committed af84e89.
 - [2026-09-25T12:00:00Z] [ORCH opus-4.8] UNBLOCKED (§7 re-carve + architectural steer). Blocker VERIFIED, not rubber-stamped. (1) OWNERSHIP: granted apps/dashboard/src/pages/ChatPage.tsx + ChatPage.test.tsx into Owned_Paths so the message-mapping there can thread `kind` and `preview.authorKind` from TASK-356 through to BotSidebar. Confirmed both are (a) non-protected, (b) not the territory firewall, (c) owned by NO active task — the wave is idle and every task that shares these paths (349, 354, 356, 357) is DONE, so there is no possible co-active collision. Same precedent as TASK-309/349/350 re-carves; plan re-validated legal after the change. (2) ARCHITECTURE — read-only pair transcript: mirror the just-merged mobile twin TASK-357, do NOT invent a new approach or a new backend route. 357 opened the pair transcript as a read-only reuse of the existing message rendering with NO composer, driven entirely by TASK-356's already-merged fields (kind='bot_pair', preview.authorKind, the handoff rows listRoleHandoffs already returns). Web parity = render bot_pair entries in BotSidebar (pair avatar, read-only transcript reusing ConversationPane/message rendering with the ComposeBox suppressed), bot_outbound previews with an arrow icon, and legacy servers (no `kind`) render exactly as today. No new secret/transport work; the transcript data already exists on master. Branch task/TASK-358-cx9 (af84e89, dossier only) stands — resume, do NOT re-branch.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T11:48:01Z] [SV:CX9] Implemented bot-pair sidebar entries, read-only ConversationPane transcript modal, TASK-356 API mapping, and outbound preview arrow; committed as 9f59866.
+**Artifacts:** apps/dashboard/src/components/chat/BotSidebar.tsx, apps/dashboard/src/components/chat/BotSidebar.test.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/pages/ChatPage.tsx, apps/dashboard/src/pages/ChatPage.test.tsx, dossiers/TASK-358.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Filter dashboard: 27 files / 174 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0; scripts/test-isolated.ps1 -Init passed; foreground scripts/test-isolated.ps1 passed (only existing React act() warnings, no failures). Dashboard has no lint script.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T11:28:04Z
+**Updated_At:** 2026-09-25T11:48:01Z
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
