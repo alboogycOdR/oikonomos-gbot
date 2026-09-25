@@ -10767,7 +10767,7 @@ Exit status 2
 
 ### TASK-354
 **Title:** Web: Auto-review toggle, review rules and Connectors & tools in the bot panel
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-350 and TASK-351 APIs
@@ -10777,16 +10777,16 @@ Exit status 2
 **Acceptance_Criteria:**
 - [ ] Component tests: toggle, rules list, add and remove, grant and revoke, locked state.
 - [ ] apps/dashboard tests, lint and build pass; `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-354-cx9
+**Started_At:** 2026-09-25T06:42:53Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T06:42:53Z
 
 ### TASK-355
 **Title:** Mobile: handoff chips inline in the chat timeline
