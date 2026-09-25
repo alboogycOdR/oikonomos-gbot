@@ -123,15 +123,23 @@ class RoleToolSystem {
     required this.id,
     required this.label,
     required this.tools,
+    this.configured,
   });
 
   final String id;
   final String label;
   final List<RoleTool> tools;
 
+  /// Connector configuration reported by newer servers. A missing, malformed,
+  /// or `"unknown"` value deliberately remains null so older servers retain
+  /// their existing UI behavior.
+  final bool? configured;
+
   factory RoleToolSystem.fromJson(Map<String, dynamic> json) => RoleToolSystem(
         id: json['id'] as String,
         label: json['label'] as String,
+        configured:
+            json['configured'] is bool ? json['configured'] as bool : null,
         tools: (json['tools'] as List<dynamic>? ?? const [])
             .whereType<Map<String, dynamic>>()
             .map(RoleTool.fromJson)
