@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { avatarColors, avatarShapes, devicePlatforms, riskTiers, runStatuses, skillStatuses, taskStatuses, RoutineLimitError, type Approval, type DevicePlatform, type GroupThread, type Message, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
+import { avatarColors, avatarShapes, createRequireApprovalRule, devicePlatforms, listRequireApprovalRules, riskTiers, runStatuses, setAutoReviewEnabled, setRequireApprovalRuleEnabled, skillStatuses, syncAutoReviewForGrant, taskStatuses, RoutineLimitError, type Approval, type DatabaseOptions, type DevicePlatform, type GroupThread, type Message, type RequireApprovalRule, type Role, type RoleMessage, type Run, type RunStatus, type Skill, type TaskStatus, type Thread } from "@oikonomos/db";
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
@@ -59,6 +59,8 @@ declare module "fastify" {
 export interface BuildAppOptions {
   /** `false` disables logging entirely (route tests default to this). */
   logger?: boolean;
+  /** TASK-350 persistence port; deployments without it refuse the routes. */
+  autoReview?: AutoReviewPort;
   /**
    * Test-only hook: capture the real pino output stream instead of
    * stdout, so a test can assert on emitted log lines directly (N4
@@ -199,6 +201,28 @@ export interface BuildAppOptions {
    * `revokedSessionTokens` port — rather than the production interval.
    */
   sessionRevalidationIntervalMs?: number;
+}
+
+/** Narrow persistence boundary for the per-bot approval-rule controls. */
+export interface AutoReviewPort {
+  listRules(input: { tenantId: string; roleId: string }): Promise<RequireApprovalRule[]>;
+  setEnabled(input: { tenantId: string; roleId: string; enabled: boolean }): Promise<RequireApprovalRule[]>;
+  createRule(input: { tenantId: string; roleId: string; capabilityId: string }): Promise<RequireApprovalRule>;
+  disableRule(input: { tenantId: string; roleId: string; ruleId: string }): Promise<RequireApprovalRule | null>;
+  syncGrant?(input: { tenantId: string; roleId: string; capabilityId: string }): Promise<void>;
+}
+
+/** Real Postgres adapter, kept injectable because ControlApiDeps predates this route port. */
+export function createDatabaseAutoReviewPort(options: DatabaseOptions): AutoReviewPort {
+  return {
+    listRules: ({ tenantId, roleId }) => listRequireApprovalRules(options, { tenantId, roleId }),
+    setEnabled: (input) => setAutoReviewEnabled(options, input),
+    createRule: ({ tenantId, roleId, capabilityId }) => createRequireApprovalRule(options, {
+      tenantId, roleId, capabilityId, createdBy: "manual",
+    }),
+    disableRule: ({ tenantId, roleId, ruleId }) => setRequireApprovalRuleEnabled(options, { tenantId, roleId, ruleId, enabled: false }),
+    syncGrant: (input) => syncAutoReviewForGrant(options, input),
+  };
 }
 
 /** One secret request awaiting a human's decision — the `GET /secret-requests` list shape. */
@@ -374,6 +398,20 @@ const CREATE_ROLE_GRANT_SCHEMA = {
     maxTier: { type: "string", enum: riskTiers },
     ratePerHour: { type: "integer", minimum: 1 },
   },
+} as const;
+
+const SET_AUTO_REVIEW_SCHEMA = {
+  type: "object",
+  required: ["enabled"],
+  additionalProperties: false,
+  properties: { enabled: { type: "boolean" } },
+} as const;
+
+const CREATE_REVIEW_RULE_SCHEMA = {
+  type: "object",
+  required: ["capabilityId"],
+  additionalProperties: false,
+  properties: { capabilityId: { type: "string", minLength: 1 } },
 } as const;
 
 const CREATE_ROUTINE_SCHEMA = {
@@ -876,6 +914,8 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
     );
   }
   const authToken = resolvedAuthToken;
+  const tenantOwnsRole = async (tenantId: string, roleId: string): Promise<boolean> =>
+    (await deps.listRoles({ tenantId })).some((role) => role.roleId === roleId);
   const firebaseProjectId = options.firebaseProjectId ?? process.env.FIREBASE_PROJECT_ID ?? "basileia-oikonomos-gmail";
   const verifyFirebaseIdToken = options.verifyFirebaseIdToken ?? createFirebaseIdTokenVerifier(firebaseProjectId);
   const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
@@ -1281,6 +1321,11 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
               ? {}
               : { rate_per_hour: request.body.ratePerHour },
         });
+        await options.autoReview?.syncGrant?.({
+          tenantId: request.tenantId,
+          roleId: request.params.roleId,
+          capabilityId: request.body.capabilityId,
+        });
         await reply.code(201).send(grant);
       } catch (error) {
         await reply.code(400).send({ error: (error as Error).message });
@@ -1299,6 +1344,77 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       await reply.code(200).send(grants);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/auto-review", async (request, reply) => {
+    if (options.autoReview === undefined) return reply.code(501).send({ error: "auto-review is not configured" });
+    try {
+      if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) {
+        return reply.code(404).send({ error: "role not found" });
+      }
+      const rules = await options.autoReview.listRules({ tenantId: request.tenantId, roleId: request.params.roleId });
+      return reply.code(200).send({
+        enabled: rules.some((rule) => rule.createdBy === "auto-review" && rule.enabled),
+        rules,
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  app.put<{ Params: { roleId: string }; Body: { enabled: boolean } }>(
+    "/roles/:roleId/auto-review",
+    { schema: { body: SET_AUTO_REVIEW_SCHEMA } },
+    async (request, reply) => {
+      if (options.autoReview === undefined) return reply.code(501).send({ error: "auto-review is not configured" });
+      try {
+        if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) {
+          return reply.code(404).send({ error: "role not found" });
+        }
+        await options.autoReview.setEnabled({ tenantId: request.tenantId, roleId: request.params.roleId, enabled: request.body.enabled });
+        return reply.code(200).send({
+          enabled: request.body.enabled,
+          rules: await options.autoReview.listRules({ tenantId: request.tenantId, roleId: request.params.roleId }),
+        });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/review-rules", async (request, reply) => {
+    if (options.autoReview === undefined) return reply.code(501).send({ error: "auto-review is not configured" });
+    if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) return reply.code(404).send({ error: "role not found" });
+    return reply.code(200).send(await options.autoReview.listRules({ tenantId: request.tenantId, roleId: request.params.roleId }));
+  });
+
+  app.post<{ Params: { roleId: string }; Body: { capabilityId: string } }>(
+    "/roles/:roleId/review-rules",
+    { schema: { body: CREATE_REVIEW_RULE_SCHEMA } },
+    async (request, reply) => {
+      if (options.autoReview === undefined) return reply.code(501).send({ error: "auto-review is not configured" });
+      try {
+        if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) return reply.code(404).send({ error: "role not found" });
+        const grants = await deps.listRoleGrants(request.params.roleId);
+        if (!grants.some((grant) => grant.capabilityId === request.body.capabilityId)) {
+          return reply.code(400).send({ error: "capability must be granted to this role" });
+        }
+        return reply.code(201).send(await options.autoReview.createRule({ tenantId: request.tenantId, roleId: request.params.roleId, capabilityId: request.body.capabilityId }));
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    },
+  );
+
+  app.delete<{ Params: { roleId: string; ruleId: string } }>("/roles/:roleId/review-rules/:ruleId", async (request, reply) => {
+    if (options.autoReview === undefined) return reply.code(501).send({ error: "auto-review is not configured" });
+    try {
+      if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) return reply.code(404).send({ error: "role not found" });
+      const rule = await options.autoReview.disableRule({ tenantId: request.tenantId, roleId: request.params.roleId, ruleId: request.params.ruleId });
+      return rule === null ? reply.code(404).send({ error: "review rule not found" }) : reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
     }
   });
 

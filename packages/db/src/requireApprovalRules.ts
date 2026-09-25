@@ -172,6 +172,95 @@ export async function listRequireApprovalRules(
   });
 }
 
+/** Enables or disables one role-scoped rule, refusing a tenant mismatch. */
+export async function setRequireApprovalRuleEnabled(
+  options: DatabaseOptions,
+  input: { tenantId: string; roleId: string; ruleId: string; enabled: boolean },
+): Promise<RequireApprovalRule | null> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  const ruleId = requireUuid(input.ruleId, "ruleId");
+  return withPool(options, async (pool) => {
+    const result = await pool.query<RequireApprovalRuleRow>(
+      `UPDATE require_approval_rules SET enabled = $4
+       WHERE rule_id = $1 AND tenant_id = $2 AND role_id = $3
+       RETURNING ${ruleColumns}`,
+      [ruleId, tenantId, roleId, input.enabled],
+    );
+    return result.rows[0] === undefined ? null : toRule(result.rows[0]);
+  });
+}
+
+/**
+ * Materialises the Auto-review switch against role grants. Enabling adds or
+ * re-enables only rules this feature owns; disabling changes only those rows.
+ */
+export async function setAutoReviewEnabled(
+  options: DatabaseOptions,
+  input: { tenantId: string; roleId: string; enabled: boolean },
+): Promise<RequireApprovalRule[]> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  return withPool(options, async (pool) => {
+    if (!input.enabled) {
+      const disabled = await pool.query<RequireApprovalRuleRow>(
+        `UPDATE require_approval_rules SET enabled = false
+         WHERE tenant_id = $1 AND role_id = $2 AND created_by = 'auto-review'
+         RETURNING ${ruleColumns}`,
+        [tenantId, roleId],
+      );
+      return disabled.rows.map(toRule);
+    }
+    await pool.query(
+      `UPDATE require_approval_rules r SET enabled = true
+       FROM role_grants g JOIN capabilities c ON c.capability_id = g.capability_id
+       WHERE r.tenant_id = $1 AND r.role_id = $2 AND r.created_by = 'auto-review'
+         AND g.role_id = $2 AND g.capability_id = r.capability_id
+         AND c.default_tier <> 'T0_observe'`,
+      [tenantId, roleId],
+    );
+    await pool.query(
+      `INSERT INTO require_approval_rules (tenant_id, role_id, capability_id, target_predicate, enabled, created_by)
+       SELECT $1, $2, g.capability_id, '{}'::jsonb, true, 'auto-review'
+       FROM role_grants g JOIN capabilities c ON c.capability_id = g.capability_id
+       WHERE g.role_id = $2 AND c.default_tier <> 'T0_observe'
+         AND NOT EXISTS (
+           SELECT 1 FROM require_approval_rules r
+           WHERE r.tenant_id = $1 AND r.role_id = $2 AND r.capability_id = g.capability_id
+             AND r.created_by = 'auto-review'
+         )`,
+      [tenantId, roleId],
+    );
+    return listRequireApprovalRules(options, { tenantId, roleId });
+  });
+}
+
+/** Adds a newly-granted risky capability when Auto-review is already active. */
+export async function syncAutoReviewForGrant(
+  options: DatabaseOptions,
+  input: { tenantId: string; roleId: string; capabilityId: string },
+): Promise<void> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  const roleId = requireNonEmpty(input.roleId, "roleId");
+  const capabilityId = requireNonEmpty(input.capabilityId, "capabilityId");
+  return withPool(options, async (pool) => {
+    const active = await pool.query<{ exists: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM require_approval_rules
+        WHERE tenant_id = $1 AND role_id = $2 AND created_by = 'auto-review' AND enabled) AS exists`,
+      [tenantId, roleId],
+    );
+    if (!active.rows[0]?.exists) return;
+    await pool.query(
+      `INSERT INTO require_approval_rules (tenant_id, role_id, capability_id, target_predicate, enabled, created_by)
+       SELECT $1, $2, g.capability_id, '{}'::jsonb, true, 'auto-review'
+       FROM role_grants g JOIN capabilities c ON c.capability_id = g.capability_id
+       WHERE g.role_id = $2 AND g.capability_id = $3 AND c.default_tier <> 'T0_observe'
+         AND NOT EXISTS (SELECT 1 FROM require_approval_rules r WHERE r.tenant_id = $1 AND r.role_id = $2 AND r.capability_id = $3 AND r.created_by = 'auto-review')`,
+      [tenantId, roleId, capabilityId],
+    );
+  });
+}
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 

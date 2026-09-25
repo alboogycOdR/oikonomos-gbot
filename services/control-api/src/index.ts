@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-export { buildApp, type BuildAppOptions } from "./app.js";
+export { buildApp, createDatabaseAutoReviewPort, type BuildAppOptions } from "./app.js";
 export {
   createDatabaseBackedDeps,
   createDatabaseBackedThreadContext,
@@ -17,7 +17,7 @@ export {
   type BuildBrokerHttpAppOptions,
 } from "./brokerHttpRoute.js";
 
-import { buildApp } from "./app.js";
+import { buildApp, createDatabaseAutoReviewPort } from "./app.js";
 import { buildDatabaseBrokerHttpApp } from "./brokerHttpRoute.js";
 import { createSecretVault, resolveSecretVaultKey } from "@oikonomos/db";
 
@@ -45,6 +45,7 @@ export async function start(): Promise<void> {
     threadContext: createDatabaseBackedThreadContext(dbOptions),
     liveAgent: createDatabaseBackedLiveAgent(dbOptions),
     secretRequests: createDatabaseBackedSecretRequests(dbOptions, secretVault),
+    autoReview: createDatabaseAutoReviewPort(dbOptions),
   });
   const brokerApp = await buildDatabaseBrokerHttpApp({ connectionString });
   try {

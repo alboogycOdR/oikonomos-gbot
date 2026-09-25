@@ -18,7 +18,7 @@ import {
   type BrokerTokenBinding,
 } from "@oikonomos/broker";
 import { defaultManifestsDir, loadManifests } from "@oikonomos/connectors";
-import { Database, type DatabaseOptions } from "@oikonomos/db";
+import { Database, listRequireApprovalRules, type DatabaseOptions } from "@oikonomos/db";
 import { destinationFor } from "@oikonomos/worker";
 
 
@@ -42,6 +42,12 @@ export interface BuildBrokerHttpAppOptions {
 }
 
 interface RateWindow { readonly startedAt: number; count: number; }
+
+// `require_approval_rules.target_predicate` is JSONB. The DB access layer
+// deliberately exposes JSON values as `unknown`, whereas the broker's policy
+// boundary carries a recursively JSON-shaped target. This is safe at this
+// composition boundary because Postgres JSONB cannot contain another value.
+type PolicyTarget = null | boolean | number | string | readonly PolicyTarget[] | { readonly [key: string]: PolicyTarget };
 
 function deny(reason: string, toolUseId = "unavailable"): BrokerHttpResponse {
   return { decision: "deny", reason, auditEventId: "unavailable", toolUseId };
@@ -174,6 +180,17 @@ export async function buildDatabaseBrokerHttpApp(
       dependencies: {
         isCapabilitiesEnabled: () => process.env.OIKONOMOS_CAPABILITIES_ENABLED === "true",
         ...registry.brokerPorts(database),
+        // Require-approval rules are deliberately queried for each tool use:
+        // the Auto-review switch must take effect on the next action rather
+        // than after a broker process restart.
+        getRequireApprovalRules: async ({ tenantId, roleId }) => (await listRequireApprovalRules(
+          databaseOptions,
+          { tenantId, roleId, enabledOnly: true },
+        )).map((rule) => ({
+          capabilityId: rule.capabilityId,
+          enabled: rule.enabled,
+          targetPredicate: rule.targetPredicate as Readonly<Record<string, PolicyTarget>>,
+        })),
         destinationFor,
         issueApproval,
         verifyAndConsume,
