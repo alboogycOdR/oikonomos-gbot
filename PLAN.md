@@ -10690,7 +10690,7 @@ Exit status 2
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 15 (third-party plugin loading REJECTED); owner decision 2026-09-24: Plugins = connectors and tools per bot, grant on/off where allowed
@@ -10707,12 +10707,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-25T02:03:01Z] [SV:CX9] Catalog/grant data is available, but the required account-link connection state is not exposed or persisted for control-api.
 - [2026-09-25T02:21:25Z] [ORCH opus-5.5] MISSING_DEPENDENCY resolved by descoping the connected flag. Don't read OAuth session state. Build the catalog with grant state only.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T02:48:01Z] [SV:CX9] Added tenant-scoped connector/tool catalog route, OpenAPI contract, grant-state projection, and real-Postgres lifecycle/isolation tests.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/roleTools.routes.test.ts, dossiers/TASK-351.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Init passed; scripts/test-isolated.ps1 -Filter @oikonomos/control-api passed (including TASK-351 2/2); full foreground scripts/test-isolated.ps1 completed successfully; pnpm build and pnpm typecheck exited 0; git diff --check clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T02:27:39Z
+**Updated_At:** 2026-09-25T02:48:01Z
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
