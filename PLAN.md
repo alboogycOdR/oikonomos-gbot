@@ -10879,7 +10879,7 @@ Exit status 2
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group: runaway protection); groupRouting.ts GROUP_MEMBER_CAP; TASK-328 hop cap covers handoffs only
@@ -10896,12 +10896,13 @@ Exit status 2
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T23:33:01Z] [SV:CX9] Blocked: live group-room enforcement is in unowned services/control-api/src/ports.ts; worker fanout lacks group thread/turn context.
 - [2026-09-25T01:21:15Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved by ORCH: added services/control-api/src/ports.ts and ports.test.ts (the group-routing composition, TASK-335) to Owned_Paths. No active task owns them (350 owns app.ts and openapi.ts). If you ALSO need chat.routes.test.ts or another control-api test, say exactly which in a new block rather than widening yourself.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T02:58:02Z] [SV:CX9] Implemented and committed group-room caps with visible pause notice, audit evidence, idempotence, and user-turn reset.
+**Artifacts:** services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, dossiers/TASK-359.md
+**Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Filter @oikonomos/control-api: 29 files / 387 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T02:48:19Z
+**Updated_At:** 2026-09-25T02:58:02Z
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
