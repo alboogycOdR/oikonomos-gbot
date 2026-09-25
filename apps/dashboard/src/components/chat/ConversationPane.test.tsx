@@ -34,6 +34,13 @@ describe("ConversationPane", () => {
     expect(screen.getByTestId("typing-indicator")).toBeInTheDocument();
   });
 
+  it("renders the saved avatar in the conversation header", () => {
+    const bot = { ...fixtureBots[0]!, avatarColor: "teal" as const, avatarShape: "diamond" as const };
+    render(<ConversationPane bot={bot} messages={[]} />);
+    expect(screen.getByLabelText(`${bot.name} avatar`)).toHaveAttribute("data-avatar-color", "teal");
+    expect(screen.getByLabelText(`${bot.name} avatar`)).toHaveAttribute("data-avatar-shape", "diamond");
+  });
+
   it("renders Always Allow for a pending approval with the active bot's grant data", () => {
     const bot = { ...fixtureBots[0]!, roleId: "role-research" };
     render(

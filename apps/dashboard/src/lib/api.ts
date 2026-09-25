@@ -366,6 +366,8 @@ export interface Role {
   name: string;
   description: string;
   avatarSeed: string;
+  avatarColor?: import("../components/chat/Avatar").AvatarColorToken | null;
+  avatarShape?: import("../components/chat/Avatar").AvatarShapeToken | null;
 }
 
 export async function listRoles(): Promise<Role[]> {
@@ -453,6 +455,8 @@ export interface Thread {
   botName: string;
   botDescription: string;
   avatarSeed: string;
+  avatarColor?: import("../components/chat/Avatar").AvatarColorToken | null;
+  avatarShape?: import("../components/chat/Avatar").AvatarShapeToken | null;
   title: string | null;
   lastMessagePreview: string;
   updatedAt: string;

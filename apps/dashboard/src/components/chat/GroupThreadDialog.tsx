@@ -148,7 +148,7 @@ export function GroupThreadDialog({
                     }`}
                   >
                     <input type="checkbox" checked={isSelected} readOnly className="pointer-events-none" />
-                    <Avatar seed={bot.avatarSeed} name={bot.name} size="sm" />
+                    <Avatar seed={bot.avatarSeed} name={bot.name} size="sm" avatarColor={bot.avatarColor} avatarShape={bot.avatarShape} />
                     <span className="truncate text-slate-100">{bot.name}</span>
                   </button>
                 </li>

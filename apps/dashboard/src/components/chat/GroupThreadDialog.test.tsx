@@ -12,7 +12,7 @@ import { GroupThreadDialog } from "./GroupThreadDialog";
 import type { BotSummary } from "./types";
 
 const bots: BotSummary[] = [
-  { id: "thread-a", roleId: "role-a", name: "Alpha", avatarSeed: "role-a", updatedAt: "2026-01-01T00:00:00Z" },
+  { id: "thread-a", roleId: "role-a", name: "Alpha", avatarSeed: "role-a", avatarColor: "orange", avatarShape: "triangle", updatedAt: "2026-01-01T00:00:00Z" },
   { id: "thread-b", roleId: "role-b", name: "Beta", avatarSeed: "role-b", updatedAt: "2026-01-01T00:00:00Z" },
   { id: "thread-c", roleId: "role-c", name: "Gamma", avatarSeed: "role-c", updatedAt: "2026-01-01T00:00:00Z" },
 ];
@@ -51,6 +51,11 @@ describe("GroupThreadDialog", () => {
   it("renders nothing when isOpen is false", () => {
     render(<GroupThreadDialog isOpen={false} bots={bots} onClose={vi.fn()} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renders saved avatar tokens for selectable group members", () => {
+    render(<GroupThreadDialog isOpen bots={bots} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("Alpha avatar")).toHaveAttribute("data-avatar-shape", "triangle");
   });
 
   it("rejects fewer than two selected bots client-side without sending a request", async () => {
