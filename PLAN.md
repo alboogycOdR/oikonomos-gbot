@@ -10716,7 +10716,7 @@ Exit status 2
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-350 API; memory: grok-bot-mobile-reference (Auto-review toggle, "Auto-review Rules" sub-page)
@@ -10730,12 +10730,13 @@ Exit status 2
 **Started_At:** 2026-09-25T02:10:38Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T02:23:01Z] [SV:CX9] Added mobile Auto-review switch with rollback SnackBar and Review Rules screen with granted-capability selection, auto-created labels, add, and remove.
+**Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/screens/review_rules_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/test/screens/review_rules_screen_test.dart, dossiers/TASK-352.md
+**Test_Evidence:** flutter analyze lib: passed with no issues; flutter test (full mobile suite, foreground): passed. Dart is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T02:10:38Z
+**Updated_At:** 2026-09-25T02:23:01Z
 
 ### TASK-353
 **Title:** Mobile: Connectors & tools (Plugins) screen per bot
