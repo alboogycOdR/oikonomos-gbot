@@ -28,6 +28,14 @@ export interface AuditEvent {
   evidenceUri: string | null;
 }
 
+export interface WorkforceEventCount {
+  /** The durable category that crossed (or contributes to) a workforce threshold. */
+  category: "group.cap_reached" | "role_message.depth_capped" | "role_message.duplicate" | "role_message.delivery_failed" | "group.message_count";
+  /** A group thread id for group categories, or the originating role id for handoffs. */
+  sourceId: string;
+  count: number;
+}
+
 export interface ProjectFanoutAdmissionInput {
   tenantId: string;
   runId: string;
@@ -187,9 +195,11 @@ export async function getLatestAuditEvent(
   options: DatabaseOptions,
   eventType: string,
   tenantId?: string,
+  actor?: string,
 ): Promise<AuditEvent | null> {
   const normalizedEventType = requireNonEmpty(eventType, "eventType");
   const normalizedTenantId = tenantId === undefined ? undefined : requireNonEmpty(tenantId, "tenantId");
+  const normalizedActor = actor === undefined ? undefined : requireNonEmpty(actor, "actor");
 
   return withPool(options, async (pool) => {
     const result = await pool.query<AuditEventRow>(
@@ -197,12 +207,71 @@ export async function getLatestAuditEvent(
        FROM audit_events
        WHERE event_type = $1
          AND ($2::text IS NULL OR tenant_id = $2)
+         AND ($3::text IS NULL OR actor = $3)
        ORDER BY at DESC, event_id DESC
        LIMIT 1`,
-      [normalizedEventType, normalizedTenantId ?? null],
+      [normalizedEventType, normalizedTenantId ?? null, normalizedActor ?? null],
     );
     const row = result.rows[0];
     return row === undefined ? null : toAuditEvent(row);
+  });
+}
+
+/**
+ * Counts the bounded, category-only signals used by the deterministic
+ * workforce checker. Every arm is tenant-scoped in SQL: callers never need
+ * to infer ownership from a cross-tenant transcript or audit stream.
+ */
+export async function getWorkforceEventCounts(
+  options: DatabaseOptions,
+  input: { tenantId: string; since: Date },
+): Promise<WorkforceEventCount[]> {
+  const tenantId = requireNonEmpty(input.tenantId, "tenantId");
+  if (!(input.since instanceof Date) || Number.isNaN(input.since.getTime())) {
+    throw new Error("since must be a valid Date.");
+  }
+
+  return withPool(options, async (pool) => {
+    const result = await pool.query<{ category: WorkforceEventCount["category"]; source_id: string; count: string }>(
+      `SELECT event_type AS category,
+              CASE WHEN event_type = 'group.cap_reached' THEN payload ->> 'threadId'
+                   ELSE substring(actor FROM '^role:(.+)$') END AS source_id,
+              count(*)::text AS count
+         FROM audit_events
+        WHERE tenant_id = $1
+          AND at >= $2
+          AND event_type IN ('group.cap_reached', 'role_message.depth_capped', 'role_message.duplicate')
+        GROUP BY event_type, source_id
+       UNION ALL
+       SELECT 'role_message.delivery_failed' AS category,
+              from_role_id AS source_id,
+              count(*)::text AS count
+         FROM role_messages
+        WHERE tenant_id = $1
+          AND delivery_failed_at >= $2
+        GROUP BY from_role_id
+       UNION ALL
+       SELECT 'group.message_count' AS category,
+              threads.id::text AS source_id,
+              count(messages.id)::text AS count
+         FROM threads
+         LEFT JOIN messages ON messages.thread_id = threads.id AND messages.created_at >= $2
+        WHERE threads.role_id IS NULL
+          AND EXISTS (
+            SELECT 1
+              FROM thread_members
+              JOIN roles ON roles.role_id = thread_members.role_id
+             WHERE thread_members.thread_id = threads.id
+               AND roles.tenant_id = $1
+          )
+        GROUP BY threads.id`,
+      [tenantId, input.since],
+    );
+    return result.rows
+      // Old group-cap events predate TASK-363's persisted thread id and are
+      // intentionally not guessed into a room.
+      .filter((row) => row.source_id.trim().length > 0)
+      .map((row) => ({ category: row.category, sourceId: row.source_id, count: Number(row.count) }));
   });
 }
 

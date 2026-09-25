@@ -353,8 +353,9 @@ groupCapsIntegration("group-room cap persistence (TASK-359)", () => {
       await expect(deps.routeGroupMessage!(input)).resolves.toMatchObject({ route: null, stopReason: "bot_message_cap" });
       const messages = await listMessages(options, thread.id);
       expect(messages.filter((message) => message.role === "system" && message.body === GROUP_CAP_REACHED_NOTICE)).toHaveLength(1);
-      const audits = await pool.query<{ count: string }>("SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND event_type = 'group.cap_reached'", [tenantId]);
-      expect(audits.rows[0]!.count).toBe("1");
+      const audits = await pool.query<{ payload: { threadId: string } }>("SELECT payload FROM audit_events WHERE tenant_id = $1 AND event_type = 'group.cap_reached'", [tenantId]);
+      expect(audits.rows).toHaveLength(1);
+      expect(audits.rows[0]!.payload.threadId).toBe(thread.id);
       await insertMessage(options, { threadId: thread.id, role: "user", body: "new user turn" });
       await expect(deps.routeGroupMessage!(input)).resolves.toMatchObject({ route: expect.any(Object) });
     } finally { vi.unstubAllEnvs(); }
