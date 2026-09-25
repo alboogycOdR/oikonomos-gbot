@@ -1,8 +1,8 @@
 ---
-plan_version: 41.5
-last_updated: 2026-09-25T12:00:00Z
+plan_version: 42.0
+last_updated: 2026-09-25T18:23:37Z
 overall_status: in_progress
-orchestrator_notes: "2026-09-25T12:00:00Z STATUS SCAN v41.5 (ORCH opus-4.8): plan legal (validate_plan exit 0; 21 warnings all latent-isolation among the 7 inactive MAINT self-audit tasks — never co-active, no live violation). Wave IDLE: 0 in_progress, 0 needs_review. No territory violations: only live task branch with a non-dossier diff is none (358 branch = dossier-only, clean). §7 TRIAGE this scan: TASK-358 (web bot-to-bot sidebar) UNBLOCKED — CX9's OWNERSHIP_CONFLICT verified real; granted ChatPage.tsx+test into Owned_Paths (non-protected, no active owner, all sharers 349/354/356/357 done → no collision), and gave the read-only-transcript architectural steer (mirror merged mobile twin TASK-357: read-only reuse of message rendering, no composer, driven by TASK-356's merged fields; no new backend). 358 now pending+dep-clear, ready to dispatch to CX9. Remaining blocked UNCHANGED (all correctly parked, not stale-heartbeat): 162 (flaky real-PG worker pg-boss lifecycle, low, parked — disproportionate refactor), 234 (android KGP, upstream-blocked), 288 (web Computer nav — remaining AC is an OWNER live-browser check, close manually). Pending non-MAINT: 249 (hosting ADR-017, deferred by owner decision D5). MAINT queue: 7 nightly self-audit tasks pending, pairwise-intersecting Owned_Paths (dispatch one-at-a-time only). NEXT: dispatch TASK-358 to CX9 (last web-parity item), then run the batch review pass. --- prior 2026-09-25T07:00:00Z REVIEW v41.4 (ORCH opus-4.8): TASK-353 (mobile Connectors & tools/Plugins screen per bot) REVIEWED, APPROVED first-pass, MERGED --no-ff. CX9-authored on apps/mobile/** (non-protected) → normal full review, no cross-model gate. Territory clean (all files in Owned_Paths + own dossier), no PLAN.md edits on branch. API contract verified against merged TASK-351 backend (GET /roles/:id/tools shape, POST/DELETE grant routes). ORCH independent run in wt-codex9: flutter analyze clean, flutter test 216/216 incl. 3/3 bot_tools_screen_test (grant/revoke via real ApiClient path, locked=no-request, failure-revert). Branch task/TASK-353-cx9 NOT deleted (checked out in wt-codex9; standing rule 6 — dispatch resets it). UNLOCKS: TASK-355 (dep 353, now READY). Wave now idle: 0 needs_review, 0 in_progress. Remaining blocked unchanged: 162 (parked flaky real-PG), 234 (upstream KGP), 288 (remaining AC = owner live-browser check, close manually). READY chat-product queue: TASK-354 (web parity, dep 349+351 done), TASK-355 (mobile handoff chips, dep 353 done), TASK-356 (dep 351 done). NEXT: dispatch one of 354/355/356 to CX9. --- prior v41.3 (ORCH opus-4.8): TASK-351 (Plugins catalog API, backend) and TASK-359 (group-room runaway caps) both REVIEWED, APPROVED first-pass, and MERGED --no-ff (67d362db, 0d6b2194). Both CX9-authored on non-protected paths → normal full review, no cross-model gate. Classification used a FRESHLY-BUILT master baseline (a fresh worktree, pnpm -r build, then -Init): the from-main-repo baseline was contaminated by stale dist (`... is not a function` db-export errors, missing avatar_color) — same trap as TASK-350's note; the clean baseline had only 2 pre-existing flakes (db runs.test FK-teardown + worker workerJobQueue pg-boss shutdown timeout). TASK-359 branch: fully green. TASK-351 branch: control-api green incl. its 2 new route tests; its only 2 failures were worker pg-boss lifecycle flakes (TASK-162 class) in a package it does not touch — nondeterministic, since TASK-359's green run shares byte-identical worker code. UNLOCKS: TASK-353 (dep 351+352, both done), TASK-354 (dep 349+351, both done), TASK-356 (dep 351) — all now READY. TASK-359 is a leaf. Branches task/TASK-351-cx9 and task/TASK-359-cx9 NOT deleted (checked out in worktrees; standing rule 6 — dispatch resets them). Wave now idle: 0 in_progress. NEXT: dispatch one of 353/354/356 to CX9. --- prior v41.2 (ORCH opus-4.8): plan legal (21 MAINT latent warns only). DELTA since v41.1: wave no longer idle — CX9 self-dispatched TASK-352 (mobile Auto-review toggle + Review rules screen; deps 348+350 both done). Branch task/TASK-352-cx9 live in wt-codex9, HEAD at claim commit 66d0f9be (0 code yet, healthy 3-min-old start). Owned_Paths apps/mobile/** — no collision (only active task). No territory violations anywhere; 351/359 branches carry dossier-only diffs. DRIFT NOTED: TASK-359 branch has a stale blocker dossier (b6b9ccf2, placeholder 00:00:00Z) written when ports.ts collided with 350; that collision is gone (350 merged) and ports.ts+ports.test.ts ARE in 359's Owned_Paths, so 359 is dispatchable — the note is obsolete, resume on next dispatch. Blocked triage unchanged from v41.1: 351 (real critical-path blocker, needs OWNER decision on the split a=catalog+grants now / b=new precursor for account-link state); 288 (remaining AC = USER live-browser check, close manually); 234 (upstream KGP); 162 (parked). NEXT: (1) surface 351 split + precursor to owner; (2) after 352, dispatch 359. --- prior v41.1 (ORCH opus-4.8): plan legal (21 MAINT latent warns only). SINCE v41.0: TASK-350 REVIEWED+APPROVED+MERGED (14c6937a/53a7a0d8) — control-api freed. WAVE NOW IDLE — 0 claimed/in_progress. CX9 claimed TASK-351 then correctly self-blocked it (branch task/TASK-351-cx9 = dossier note only, 0 code, 0 territory violation). CRITICAL-PATH BLOCKER TASK-351 (Plugins catalog API): blocker is REAL and confirmed — grep of packages/db+control-api shows NO persisted account-link/connector connection state exists; capabilities.ts covers grants/tiers only, so the spec's per-system 'connected' flag has no backing store. TASK-351 gates 353/354/356 and transitively 355/357/358 — most of the chat-product wave. §7 TRIAGE (re-sequence, needs owner steer): split TASK-351 into (a) catalog+grant-state+non-grantable — fully buildable NOW from capabilities.ts, unblocks downstream; (b) per-system connected flag — needs a NEW precursor task to persist account-link state (packages/db + ControlApiDeps). NOT silently dropping scope (quality-over-deadline). DISPATCHABLE NOW: TASK-359 (group-room caps, dep=—) — its ports.ts collision with 350 is gone now 350 merged; clean next dispatch to keep CX9 busy while 351 split is decided. Other blocked: 162 (flaky real-PG, low, parked — disproportionate refactor); 234 (android KGP, upstream-blocked); 288 (web Computer nav, remaining AC = USER live-browser check, close manually). MAINT queue: 7 nightly self-audit failures (09-19..09-25) pending, all pri=high, pairwise-intersecting Owned_Paths (dispatch one-at-a-time only). NEXT: (1) surface 351 split + precursor to owner; (2) dispatch TASK-359."
+orchestrator_notes: "2026-09-25T18:23:37Z PLAN v42.0 (ORCH sonnet-5): 6 tasks (361-366), all CX9, from the remaining-specs gap analysis. Order: 361 -> 362 (connector configured status, backend then mobile+web), 363 workforce checker (zero-inference), 364 model routing (cost), 365 group-room scenarios, 366 browser/takeover scenarios. Findings that shaped it: connector credentials are operator env-var secrets, so the descoped 'Not connected' becomes 'Not configured'; the sandbox hardening item is deferred because our sandbox client cannot set container security options (needs a design decision); priority interrupt and event-triggered routines are deferred (need design). AFTER: owner decision on prod deploy (migrations 034-037 not yet applied to the live DB) and a new APK. || 2026-09-25T12:00:00Z STATUS SCAN v41.5 (ORCH opus-4.8): plan legal (validate_plan exit 0; 21 warnings all latent-isolation among the 7 inactive MAINT self-audit tasks — never co-active, no live violation). Wave IDLE: 0 in_progress, 0 needs_review. No territory violations: only live task branch with a non-dossier diff is none (358 branch = dossier-only, clean). §7 TRIAGE this scan: TASK-358 (web bot-to-bot sidebar) UNBLOCKED — CX9's OWNERSHIP_CONFLICT verified real; granted ChatPage.tsx+test into Owned_Paths (non-protected, no active owner, all sharers 349/354/356/357 done → no collision), and gave the read-only-transcript architectural steer (mirror merged mobile twin TASK-357: read-only reuse of message rendering, no composer, driven by TASK-356's merged fields; no new backend). 358 now pending+dep-clear, ready to dispatch to CX9. Remaining blocked UNCHANGED (all correctly parked, not stale-heartbeat): 162 (flaky real-PG worker pg-boss lifecycle, low, parked — disproportionate refactor), 234 (android KGP, upstream-blocked), 288 (web Computer nav — remaining AC is an OWNER live-browser check, close manually). Pending non-MAINT: 249 (hosting ADR-017, deferred by owner decision D5). MAINT queue: 7 nightly self-audit tasks pending, pairwise-intersecting Owned_Paths (dispatch one-at-a-time only). NEXT: dispatch TASK-358 to CX9 (last web-parity item), then run the batch review pass. --- prior 2026-09-25T07:00:00Z REVIEW v41.4 (ORCH opus-4.8): TASK-353 (mobile Connectors & tools/Plugins screen per bot) REVIEWED, APPROVED first-pass, MERGED --no-ff. CX9-authored on apps/mobile/** (non-protected) → normal full review, no cross-model gate. Territory clean (all files in Owned_Paths + own dossier), no PLAN.md edits on branch. API contract verified against merged TASK-351 backend (GET /roles/:id/tools shape, POST/DELETE grant routes). ORCH independent run in wt-codex9: flutter analyze clean, flutter test 216/216 incl. 3/3 bot_tools_screen_test (grant/revoke via real ApiClient path, locked=no-request, failure-revert). Branch task/TASK-353-cx9 NOT deleted (checked out in wt-codex9; standing rule 6 — dispatch resets it). UNLOCKS: TASK-355 (dep 353, now READY). Wave now idle: 0 needs_review, 0 in_progress. Remaining blocked unchanged: 162 (parked flaky real-PG), 234 (upstream KGP), 288 (remaining AC = owner live-browser check, close manually). READY chat-product queue: TASK-354 (web parity, dep 349+351 done), TASK-355 (mobile handoff chips, dep 353 done), TASK-356 (dep 351 done). NEXT: dispatch one of 354/355/356 to CX9. --- prior v41.3 (ORCH opus-4.8): TASK-351 (Plugins catalog API, backend) and TASK-359 (group-room runaway caps) both REVIEWED, APPROVED first-pass, and MERGED --no-ff (67d362db, 0d6b2194). Both CX9-authored on non-protected paths → normal full review, no cross-model gate. Classification used a FRESHLY-BUILT master baseline (a fresh worktree, pnpm -r build, then -Init): the from-main-repo baseline was contaminated by stale dist (`... is not a function` db-export errors, missing avatar_color) — same trap as TASK-350's note; the clean baseline had only 2 pre-existing flakes (db runs.test FK-teardown + worker workerJobQueue pg-boss shutdown timeout). TASK-359 branch: fully green. TASK-351 branch: control-api green incl. its 2 new route tests; its only 2 failures were worker pg-boss lifecycle flakes (TASK-162 class) in a package it does not touch — nondeterministic, since TASK-359's green run shares byte-identical worker code. UNLOCKS: TASK-353 (dep 351+352, both done), TASK-354 (dep 349+351, both done), TASK-356 (dep 351) — all now READY. TASK-359 is a leaf. Branches task/TASK-351-cx9 and task/TASK-359-cx9 NOT deleted (checked out in worktrees; standing rule 6 — dispatch resets them). Wave now idle: 0 in_progress. NEXT: dispatch one of 353/354/356 to CX9. --- prior v41.2 (ORCH opus-4.8): plan legal (21 MAINT latent warns only). DELTA since v41.1: wave no longer idle — CX9 self-dispatched TASK-352 (mobile Auto-review toggle + Review rules screen; deps 348+350 both done). Branch task/TASK-352-cx9 live in wt-codex9, HEAD at claim commit 66d0f9be (0 code yet, healthy 3-min-old start). Owned_Paths apps/mobile/** — no collision (only active task). No territory violations anywhere; 351/359 branches carry dossier-only diffs. DRIFT NOTED: TASK-359 branch has a stale blocker dossier (b6b9ccf2, placeholder 00:00:00Z) written when ports.ts collided with 350; that collision is gone (350 merged) and ports.ts+ports.test.ts ARE in 359's Owned_Paths, so 359 is dispatchable — the note is obsolete, resume on next dispatch. Blocked triage unchanged from v41.1: 351 (real critical-path blocker, needs OWNER decision on the split a=catalog+grants now / b=new precursor for account-link state); 288 (remaining AC = USER live-browser check, close manually); 234 (upstream KGP); 162 (parked). NEXT: (1) surface 351 split + precursor to owner; (2) after 352, dispatch 359. --- prior v41.1 (ORCH opus-4.8): plan legal (21 MAINT latent warns only). SINCE v41.0: TASK-350 REVIEWED+APPROVED+MERGED (14c6937a/53a7a0d8) — control-api freed. WAVE NOW IDLE — 0 claimed/in_progress. CX9 claimed TASK-351 then correctly self-blocked it (branch task/TASK-351-cx9 = dossier note only, 0 code, 0 territory violation). CRITICAL-PATH BLOCKER TASK-351 (Plugins catalog API): blocker is REAL and confirmed — grep of packages/db+control-api shows NO persisted account-link/connector connection state exists; capabilities.ts covers grants/tiers only, so the spec's per-system 'connected' flag has no backing store. TASK-351 gates 353/354/356 and transitively 355/357/358 — most of the chat-product wave. §7 TRIAGE (re-sequence, needs owner steer): split TASK-351 into (a) catalog+grant-state+non-grantable — fully buildable NOW from capabilities.ts, unblocks downstream; (b) per-system connected flag — needs a NEW precursor task to persist account-link state (packages/db + ControlApiDeps). NOT silently dropping scope (quality-over-deadline). DISPATCHABLE NOW: TASK-359 (group-room caps, dep=—) — its ports.ts collision with 350 is gone now 350 merged; clean next dispatch to keep CX9 busy while 351 split is decided. Other blocked: 162 (flaky real-PG, low, parked — disproportionate refactor); 234 (android KGP, upstream-blocked); 288 (web Computer nav, remaining AC = USER live-browser check, close manually). MAINT queue: 7 nightly self-audit failures (09-19..09-25) pending, all pri=high, pairwise-intersecting Owned_Paths (dispatch one-at-a-time only). NEXT: (1) surface 351 split + precursor to owner; (2) dispatch TASK-359."
 ---
 
 # Project Plan
@@ -10978,3 +10978,150 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-25T13:36:15Z
+
+### TASK-361
+**Title:** Connector configuration status in the Connectors & tools catalog (backend)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** TASK-351 (descoped the connected flag: no connector state existed); owner decision 2026-09-24: Plugins = Connectors & tools; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md row 15; CLAUDE.md non-negotiable 5 (Basileia-owned accounts only)
+**Depends_On:** —
+**Owned_Paths:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/connectorStatus.ts, services/control-api/src/connectorStatus.test.ts, services/control-api/src/roleTools.routes.test.ts
+**Description:** GET /roles/:roleId/tools (TASK-351) omits a per-system 'connected' flag because nothing recorded connector state. Finding by ORCH: connector credentials are OPERATOR-level secrets for Basileia-owned accounts (for example secret://gmail/oauth/refresh/token, secret://mcp/gmail/url in packages/connectors/manifests/gmail.yaml), resolved from ENVIRONMENT VARIABLES by packages/connectors/src/mcp/envSecretResolver.ts. They are not per-user links. So 'connected' means 'the operator configured this connector'. Add `configured: true | false | 'unknown'` per system to the tools catalog: true when every secret ref the connector's manifest requires resolves to a NON-EMPTY value through the SAME mapping the worker uses; false when any is missing; 'unknown' when control-api cannot tell (control-api and the worker may run with different environments: find out, and document what you found in the dossier). Check presence only: never read the value into the response, a log or an error message. Do not edit packages/connectors/manifests (protected); read them through the existing loader. A system with no manifest (Workspace, Browser tools that need no account) reports no `configured` field.
+**Acceptance_Criteria:**
+- [ ] Route tests with the environment variables set, unset and empty: configured is true, false, false; a system without manifest secrets omits the field; when control-api cannot know, the value is "unknown".
+- [ ] A test asserts that no secret value, and no secret ref path, appears anywhere in the response body or in any log line the route writes.
+- [ ] Cross-tenant refused (unchanged); the existing /tools tests still pass.
+- [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z
+
+### TASK-362
+**Title:** Mobile and web: show "Not configured" for connectors in Connectors & tools
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** high
+**Spec_References:** TASK-361 API; TASK-353 (mobile screen) and TASK-354 (web panel) both had the not-connected state descoped; memory: grok-bot-mobile-reference (Plugins page)
+**Depends_On:** TASK-361
+**Owned_Paths:** apps/mobile/lib/screens/bot_tools_screen.dart, apps/mobile/lib/api/models.dart, apps/mobile/test/screens/bot_tools_screen_test.dart, apps/dashboard/src/components/chat/BotToolsPanel.tsx, apps/dashboard/src/components/chat/BotToolsPanel.test.tsx, apps/dashboard/src/components/chat/types.ts
+**Description:** Use TASK-361's `configured` field. In the mobile Connectors & tools screen and the web BotToolsPanel, a system with configured=false shows a 'Not configured' badge and its capability switches are disabled with the reason 'Ask the workspace owner to configure this connector'; configured=true shows normally; 'unknown' or absent renders as today (no badge). Parse defensively so an older server without the field still works. The wording says 'configured', never 'connected', because it is an operator setting, not a user link.
+**Acceptance_Criteria:**
+- [ ] Mobile widget tests and web component tests: false shows the badge and disabled switches with the reason; true, unknown and absent render as before; older-server payload without the field works.
+- [ ] `flutter test` (full mobile suite) and `flutter analyze lib` pass; Dart is outside pnpm -r, so say so in Test_Evidence.
+- [ ] apps/dashboard tests, lint and build pass; `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z
+
+### TASK-363
+**Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group interaction: "Workforce checker bot pattern"); DISPOSITION row 18; TASK-359 (group caps) and TASK-328 (depth cap) emit the events it reads; owner cost concern 2026-09-25 (R350/month ceiling)
+**Depends_On:** —
+**Owned_Paths:** services/worker/src/workforceChecker.ts, services/worker/src/workforceChecker.test.ts, services/worker/src/main.ts, packages/db/src/auditEvents.ts, packages/db/src/auditEvents.test.ts, packages/db/src/index.ts
+**Description:** The spec pattern is 'a bot whose job is catching group chatter and loops'. Build it as a DETERMINISTIC worker check with NO model call (an LLM bot would spend the budget it is meant to protect). Every 10 minutes (reuse the worker's existing poll or job mechanism; do not add a new scheduler) run runWorkforceCheck(options, now): count, per tenant and over the last 60 minutes, the audit events group.cap_reached, role_message.depth_capped, role_message.duplicate and terminal role-message delivery failures, plus the number of messages per group thread. When any threshold is exceeded (defaults: 3 cap or depth events, 20 duplicates or 10 delivery failures, 60 messages in one room, all overridable by OIK_WORKFORCE_* env vars; these are ORCH defaults, not spec numbers) insert ONE system message authored as 'Workforce checker' into the affected group thread, or for role-level events into the owner's own thread, naming what was seen and the count, and write a workforce.alert audit event (category and counts only). Send at most one alert per source per hour. Add the audit-query function you need next to the existing audit functions (a count-by-type over a time window), tenant-scoped.
+**Acceptance_Criteria:**
+- [ ] Real-Postgres tests: below the thresholds nothing is posted; above them exactly one system message and one workforce.alert are written; a second run within the hour posts nothing; another tenant's events never count.
+- [ ] LIVENESS (ADR-005): the alert test fails if the threshold check or the once-per-hour guard is removed, and a test proves the check runs on the worker's poll (it fails if the wiring in main.ts is removed).
+- [ ] No model provider is called anywhere in the check (asserted by a test with a provider that throws).
+- [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z
+
+### TASK-364
+**Title:** Model routing: a pure function that picks the cheap provider for background work
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Model routing & cost: pure-function Tier-0 model routing with explicit inputs: routine kind, budget remaining, override, default); CLAUDE.md Budget (hard ceiling R350/month)
+**Depends_On:** —
+**Owned_Paths:** services/worker/src/modelRouting.ts, services/worker/src/modelRouting.test.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts
+**Description:** Today resolveRoleRuntime (packages/db/src/roles.ts) returns the role's provider or OIK_DEFAULT_ROLE_PROVIDER, and a routine run uses it (routineJob.ts ~L204). Add a PURE function routeModel({ kind, budgetRemainingUsd, budgetCeilingUsd, roleProvider, roleModel, defaults, cheap }) -> { provider, model, reason } with no I/O (unit-testable). Rules, in order: (1) an explicit role provider or model always wins (reason 'override'); (2) a background routine run (never a user chat turn) whose role sets no provider uses the configured cheap provider, OIK_BACKGROUND_PROVIDER and OIK_BACKGROUND_MODEL, when set (reason 'background'); (3) when remaining budget is below 20% of the ceiling, background work uses the cheap provider even if a default exists (reason 'budget_low'); (4) otherwise the default (reason 'default'). Wire it into routine runs ONLY; do not change chat turns, group routing, or chatRunDriver.ts. With none of the new env vars set, behaviour is byte-identical to today. Record the routing reason in the run's audit event payload (category only). The 20% threshold is an ORCH default the owner may tune.
+**Acceptance_Criteria:**
+- [ ] Exhaustive unit tests for the four rules and their ordering, including an override beating budget_low, and no-env-var identity with today.
+- [ ] A real-Postgres routineJob test shows a background routine run uses the cheap provider when the env vars are set and the role has no provider, and the default when they are not; a chat turn is untouched.
+- [ ] The routing reason appears in the audit payload with no prompt or secret text.
+- [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z
+
+### TASK-365
+**Title:** Group room end-to-end scenario tests (verifies G-04 group routing, never exercised for real)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** medium
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": live verification of G-04 group routing is an open question); TASK-121 group threads; TASK-335 routing fallbacks; TASK-359 room caps
+**Depends_On:** —
+**Owned_Paths:** services/control-api/test/scenarios/groupRoom.scenario.test.ts, services/control-api/test/scenarios/scenarioHarness.ts
+**Description:** The group routing code (groupRouting.ts, groupFanout.ts, the control-api routes) is wired but has only unit and route tests. Write deterministic end-to-end scenarios against real Postgres with FAKE model providers and a fake Tier-0 scorer (no paid calls, no network): (a) an unaddressed message reaches exactly one bot chosen by the scorer, and its reply lands in the thread; (b) an @mention routes to that bot and skips the scorer; (c) @everyone fans out to every member; (d) a bot reply that triggers other bots loops until the TASK-359 caps stop it, with exactly one visible notice and one group.cap_reached audit event; (e) the fallback reasons of TASK-335 are audited. Put shared setup in scenarioHarness.ts. Place the files where both the control-api routes and the worker fanout are importable; if that is impossible inside these Owned_Paths, stop with OWNERSHIP_CONFLICT naming the exact paths. If a scenario exposes a real wiring defect, do NOT paper over it: mark that scenario with a failing assertion kept as `it.fails` plus a dossier entry with the evidence, and stop with a blocked report naming the source file, so ORCH can file the fix.
+**Acceptance_Criteria:**
+- [ ] All five scenarios pass on a fresh -Init database, three consecutive runs, with no network and no real provider key.
+- [ ] LIVENESS: each scenario fails if its guarded behaviour is removed (say which line you removed to prove it, for two of the five at minimum).
+- [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z
+
+### TASK-366
+**Title:** Browser lane and human takeover end-to-end scenario tests (verifies G-06 and G-07)
+**Status:** pending
+**Assigned_To:** CX9
+**Priority:** low
+**Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": G-06 browser lane and G-07 human takeover are wired but unverified); TASK-336 (navigation guard); TASK-225 (Steel takeover parking); CLAUDE.md non-negotiable 6 (challenges trigger human takeover, never circumvention)
+**Depends_On:** —
+**Owned_Paths:** services/worker/src/scenarios/browserTakeover.scenario.test.ts, services/worker/src/scenarios/scenarioHarness.ts
+**Description:** Write deterministic scenarios with a FIXTURE Steel MCP server (the worker tests already have fixture HTTP MCP servers; reuse the pattern): (a) a granted bot navigates to an allowed page, snapshots it, and acts on an element ref (TASK-340); (b) navigation to a private-network, loopback, metadata or credentialed URL is refused by the navigation guard before any Steel call and audited with a category; (c) a page that presents a CAPTCHA or MFA challenge PARKS the run with a takeover request and never attempts to solve or bypass it; (d) after a simulated human takeover completes, the run resumes from the parked state and finishes; (e) an ungranted bot cannot mount the browser tools. G-08 (Docker egress allowlist) needs a real container, so it is out of scope: say so in the dossier. Same rule as TASK-365 for defects: keep a failing assertion as `it.fails`, record the evidence, and block with the source file named.
+**Acceptance_Criteria:**
+- [ ] All five scenarios pass on a fresh -Init database, three consecutive runs, with no network, no Steel and no real provider key.
+- [ ] LIVENESS: scenarios (b) and (c) fail if the guard or the takeover parking is removed (say which line you removed to prove it).
+- [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T18:23:37Z

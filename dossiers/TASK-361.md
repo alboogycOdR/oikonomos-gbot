@@ -1,0 +1,13 @@
+# TASK-361 dossier
+
+**Brief:** Connector configuration status in the Connectors & tools catalog (backend).
+
+GET /roles/:roleId/tools (TASK-351) omits a per-system 'connected' flag because nothing recorded connector state. Finding by ORCH: connector credentials are OPERATOR-level secrets for Basileia-owned accounts (for example secret://gmail/oauth/refresh/token, secret://mcp/gmail/url in packages/connectors/manifests/gmail.yaml), resolved from ENVIRONMENT VARIABLES by packages/connectors/src/mcp/envSecretResolver.ts. They are not per-user links. So 'connected' means 'the operator configured this connector'. Add `configured: true | false | 'unknown'` per system to the tools catalog: true when every secret ref the connector's manifest requires resolves to a NON-EMPTY value through the SAME mapping the worker uses; false when any is missing; 'unknown' when control-api cannot tell (control-api and the worker may run with different environments: find out, and document what you found in the dossier). Check presence only: never read the value into the response, a log or an error message. Do not edit packages/connectors/manifests (protected); read them through the existing loader. A system with no manifest (Workspace, Browser tools that need no account) reports no `configured` field.
+
+**Assigned:** CX9. **Depends on:** —.
+
+**Spec pointers:** TASK-351 (descoped the connected flag: no connector state existed); owner decision 2026-09-24: Plugins = Connectors & tools; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md row 15; CLAUDE.md non-negotiable 5 (Basileia-owned accounts only)
+
+**Approach:** Read the Description and Acceptance_Criteria in PLAN.md, then the current code in Owned_Paths, before changing anything. Work on the pre-cut branch from master (`git branch --show-current` should be task/TASK-361-cx9). Run tests in the FOREGROUND and wait for them to finish before emitting the control block. Every review requires `pnpm build` and `pnpm typecheck` to exit 0 (Flutter tasks: `flutter test` plus `flutter analyze lib`).
+
+## Work Log
