@@ -10716,7 +10716,7 @@ Exit status 2
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-350 API; memory: grok-bot-mobile-reference (Auto-review toggle, "Auto-review Rules" sub-page)
@@ -10733,10 +10733,10 @@ Exit status 2
 - [2026-09-25T02:23:01Z] [SV:CX9] Added mobile Auto-review switch with rollback SnackBar and Review Rules screen with granted-capability selection, auto-created labels, add, and remove.
 **Artifacts:** apps/mobile/lib/api/api_client.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/screens/review_rules_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/test/screens/review_rules_screen_test.dart, dossiers/TASK-352.md
 **Test_Evidence:** flutter analyze lib: passed with no issues; flutter test (full mobile suite, foreground): passed. Dart is outside pnpm -r.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH opus-4-8, 2026-09-25T03:05Z). Author CX9 (non-Claude); Owned_Paths all under apps/mobile/** — not a protected path, no cross-model gate. Territory clean: git diff master...task/TASK-352-cx9 = 6 code/test files (all in Owned_Paths) + own dossier, single commit 90605aa9, no PLAN.md edits on branch. Preflight c8b9872 evidence present in dossier work log (all four existing files ls'd with line counts; two new files under existing dirs). API alignment verified against the REAL TASK-350 surface (services/control-api/src/app.ts): GET/PUT /roles/:id/auto-review returns {enabled, rules[]}; GET/POST/DELETE /roles/:id/review-rules; rule shape (ruleId/capabilityId/enabled/createdBy) matches packages/db/src/requireApprovalRules.ts row mapping exactly; RoleGrant (roleId/capabilityId/maxTier/constraints) matches database.ts listRoleGrants SELECT + toRoleGrant. isAutoCreated (createdBy=='auto-review') mirrors server's enabled-derivation. Optimistic switch with previous-value revert + SnackBar on failure; rules list/add/remove with auto-created labelling — all present. Widget tests drive the real ApiClient over FakeHttpClient (HTTP layer), asserting actual PUT body {enabled:false}, 500-revert, POST {capabilityId} and DELETE path — production path, not task-written shortcuts. Independent run in wt-codex9 (subagent): flutter analyze lib = No issues found; flutter test = 213/213 passed, 0 failed — matches Test_Evidence. Merged --no-ff into master. Branch NOT deleted: checked out in builder worktree wt-codex9; worktree left intact per standing rule 6 (dispatch resets on reuse).
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T02:23:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T03:05:00Z
 
 ### TASK-353
 **Title:** Mobile: Connectors & tools (Plugins) screen per bot
