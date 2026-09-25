@@ -11034,7 +11034,7 @@ Exit status 2
 
 ### TASK-363
 **Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group interaction: "Workforce checker bot pattern"); DISPOSITION row 18; TASK-359 (group caps) and TASK-328 (depth cap) emit the events it reads; owner cost concern 2026-09-25 (R350/month ceiling)
@@ -11052,12 +11052,13 @@ Exit status 2
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-25T19:48:02Z] [SV:CX9] Pre-flight complete; group.cap_reached events cannot be mapped to an affected group thread.
 - [2026-09-25T20:55:00Z] [ORCH opus-4.8] §7 TRIAGE — OWNERSHIP_CONFLICT verified real: ports.ts:926 writes group.cap_reached with payload `{ reason }` only; `threadId` IS in scope at that call site (routeGroupMessage arg) but not persisted, so the checker cannot route an alert to the affected thread. RESOLUTION = re-scope (not escalate): widened Owned_Paths to add services/control-api/src/ports.ts + ports.test.ts. control-api is NON-protected → normal review, no cross-model gate. Wave idle → no co-owner collision. INSTRUCTION to CX9: add `threadId` to the group.cap_reached payload at ports.ts:926 (and cover it in ports.test.ts), then consume payload.threadId in the workforce checker to post the room-level alert; role-level events (depth_capped/duplicate/delivery failure) still go to the owner's own thread per the task Description. Do NOT invent a source→thread mapping — persist the real thread id. Re-dispatchable.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T20:08:02Z] [SV:CX9] Implemented deterministic tenant-scoped workforce checker, durable source/hour alert guard, group thread audit identity, and existing-maintenance-poll wiring.
+**Artifacts:** services/worker/src/workforceChecker.ts, services/worker/src/workforceChecker.test.ts, services/worker/src/main.ts, packages/db/src/auditEvents.ts, packages/db/src/index.ts, services/control-api/src/ports.ts, services/control-api/src/ports.test.ts
+**Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Init -Filter @oikonomos/worker and subsequent worker run passed, including 3 TASK-363 real-Postgres/liveness tests; isolated control-api suite passed; pnpm typecheck and pnpm build exited 0.
 **Review_Findings:** —
 **Blocked_Reason:** RESOLVED 2026-09-25T20:55Z — ORCH widened Owned_Paths to services/control-api/src/ports.ts(+test) so the checker can persist and read the group thread id on group.cap_reached. Ready to re-dispatch to CX9.
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T19:50:32Z
+**Updated_At:** 2026-09-25T20:08:02Z
 
 ### TASK-364
 **Title:** Model routing: a pure function that picks the cheap provider for background work
