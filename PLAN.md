@@ -10791,7 +10791,7 @@ Exit status 2
 
 ### TASK-355
 **Title:** Mobile: handoff chips inline in the chat timeline
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** memory: grok-bot-mobile-reference item 1 ("2 messages with TREVOR" inline in a bot's own timeline); apps/mobile/lib/screens/chat_screen.dart ~L773-791
@@ -10805,12 +10805,13 @@ Exit status 2
 **Started_At:** 2026-09-25T07:04:18Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T07:13:01Z] [SV:CX9] Handoffs now render chronologically inline with messages, consecutive same-bot handoffs collapse into one count chip, and the original dialog tap behavior remains.
+**Artifacts:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-355.md
+**Test_Evidence:** flutter analyze lib: no issues; flutter test: full mobile suite passed. Dart is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T07:04:18Z
+**Updated_At:** 2026-09-25T07:13:01Z
 
 ### TASK-356
 **Title:** Thread list shows bot-to-bot conversations and "Messaged X" previews (backend)
