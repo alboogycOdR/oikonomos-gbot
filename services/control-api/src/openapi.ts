@@ -160,6 +160,17 @@ export function getOpenApiDocument(): Record<string, unknown> {
       "/roles/{roleId}/review-rules/{ruleId}": {
         delete: { summary: "Disable a bot review rule", operationId: "disableReviewRule", responses: { "204": { description: "Rule disabled" }, "404": { description: "No such rule or bot in this tenant" } } },
       },
+      "/roles/{roleId}/tools": {
+        get: {
+          summary: "List a bot's connector and tool catalog with its current grant state",
+          operationId: "listRoleTools",
+          parameters: [{ name: "roleId", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": { description: "Connector-grouped tool catalog", content: { "application/json": { schema: { $ref: "#/components/schemas/RoleToolCatalog" } } } },
+            "404": { description: "No such bot in this tenant" },
+          },
+        },
+      },
       "/routines/{id}/pause": { post: { summary: "Pause a routine", operationId: "pauseRoutine", responses: { "200": { description: "Routine paused" }, "404": { description: "No routine with that id" } } } },
       "/routines/{id}/resume": { post: { summary: "Resume a routine", operationId: "resumeRoutine", responses: { "200": { description: "Routine resumed" }, "404": { description: "No routine with that id" } } } },
       "/tasks": {
@@ -645,6 +656,39 @@ export function getOpenApiDocument(): Record<string, unknown> {
           required: ["skillId"],
           additionalProperties: false,
           properties: { skillId: { type: "string", format: "uuid", nullable: true } },
+        },
+        RoleToolCatalog: {
+          type: "object",
+          required: ["systems"],
+          properties: {
+            systems: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["id", "label", "tools"],
+                properties: {
+                  id: { type: "string", description: "Registered connector or adapter identifier." },
+                  label: { type: "string" },
+                  tools: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      required: ["id", "label", "description", "defaultTier", "granted", "maxTier", "grantable"],
+                      properties: {
+                        id: { type: "string" },
+                        label: { type: "string" },
+                        description: { type: "string" },
+                        defaultTier: { type: "string", enum: ["T0_observe", "T1_draft", "T2_internal", "T3_external", "T4_irreversible"] },
+                        granted: { type: "boolean" },
+                        maxTier: { type: "string", nullable: true },
+                        grantable: { type: "boolean", description: "False for disabled and T3/T4 capabilities; display-only in the app." },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         ThreadContext: {
           type: "object",
