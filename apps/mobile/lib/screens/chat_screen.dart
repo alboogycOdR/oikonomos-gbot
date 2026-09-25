@@ -20,6 +20,7 @@ import '../widgets/takeover_card.dart';
 import 'browser_takeover_screen.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
+import 'review_rules_screen.dart';
 import 'skills_screen.dart';
 import 'takeover_screen.dart';
 import 'templates_screen.dart';
@@ -1220,6 +1221,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   ThreadContext? _threadContext;
   List<Routine>? _routines;
   String? _routinesError;
+  bool? _autoReviewEnabled;
+  bool _savingAutoReview = false;
 
   @override
   void initState() {
@@ -1228,6 +1231,40 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     _loadSkills();
     _loadThreadContext();
     _loadRoutines();
+    _loadAutoReview();
+  }
+
+  Future<void> _loadAutoReview() async {
+    try {
+      final settings = await widget.apiClient.getAutoReview(widget.bot.roleId);
+      if (mounted) setState(() => _autoReviewEnabled = settings.enabled);
+    } catch (_) {
+      // The control is optional on older deployments. Keep settings usable.
+      if (mounted) setState(() => _autoReviewEnabled = false);
+    }
+  }
+
+  Future<void> _setAutoReview(bool enabled) async {
+    if (_savingAutoReview || _autoReviewEnabled == null) return;
+    final previous = _autoReviewEnabled!;
+    setState(() {
+      _autoReviewEnabled = enabled;
+      _savingAutoReview = true;
+    });
+    try {
+      final saved =
+          await widget.apiClient.setAutoReview(widget.bot.roleId, enabled);
+      if (mounted) setState(() => _autoReviewEnabled = saved.enabled);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _autoReviewEnabled = previous);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update Auto-review.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingAutoReview = false);
+    }
   }
 
   /// Routines moved here from a dedicated tab on the chat screen so they
@@ -1417,15 +1454,34 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             ),
             const SizedBox(height: 20),
           ],
-          const Text(
-            'Auto-review',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          SwitchListTile(
+            key: const Key('auto-review-switch'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Auto-review'),
+            subtitle: const Text(
+              'Require approval for risky shell, MCP, and computer actions.',
+            ),
+            value: _autoReviewEnabled ?? false,
+            onChanged: _autoReviewEnabled == null || _savingAutoReview
+                ? null
+                : _setAutoReview,
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Require approval for risky shell, MCP, and computer actions.',
+          ListTile(
+            key: const Key('auto-review-rules-button'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Auto-review rules'),
+            subtitle: const Text('Choose actions that always need approval.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => ReviewRulesScreen(
+                  apiClient: widget.apiClient,
+                  roleId: widget.bot.roleId,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           const Text(
             'Title (optional)',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

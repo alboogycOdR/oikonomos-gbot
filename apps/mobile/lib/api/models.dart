@@ -79,6 +79,70 @@ class Role {
   }
 }
 
+/// A granted capability returned by `GET /roles/:roleId/grants`.
+class RoleGrant {
+  const RoleGrant({
+    required this.roleId,
+    required this.capabilityId,
+    required this.maxTier,
+    required this.constraints,
+  });
+
+  final String roleId;
+  final String capabilityId;
+  final String maxTier;
+  final Map<String, dynamic> constraints;
+
+  factory RoleGrant.fromJson(Map<String, dynamic> json) => RoleGrant(
+        roleId: json['roleId'] as String,
+        capabilityId: json['capabilityId'] as String,
+        maxTier: json['maxTier'] as String,
+        constraints: json['constraints'] is Map<String, dynamic>
+            ? json['constraints'] as Map<String, dynamic>
+            : const {},
+      );
+}
+
+/// One role-scoped Require-Approval rule exposed by the Auto-review API.
+class ReviewRule {
+  const ReviewRule({
+    required this.ruleId,
+    required this.capabilityId,
+    required this.enabled,
+    this.createdBy,
+  });
+
+  final String ruleId;
+  final String capabilityId;
+  final bool enabled;
+  final String? createdBy;
+
+  bool get isAutoCreated => createdBy == 'auto-review';
+
+  factory ReviewRule.fromJson(Map<String, dynamic> json) => ReviewRule(
+        ruleId: json['ruleId'] as String,
+        capabilityId: json['capabilityId'] as String,
+        enabled: json['enabled'] as bool? ?? false,
+        createdBy: json['createdBy'] as String?,
+      );
+}
+
+/// `GET` and `PUT /roles/:roleId/auto-review` response body.
+class AutoReviewSettings {
+  const AutoReviewSettings({required this.enabled, required this.rules});
+
+  final bool enabled;
+  final List<ReviewRule> rules;
+
+  factory AutoReviewSettings.fromJson(Map<String, dynamic> json) =>
+      AutoReviewSettings(
+        enabled: json['enabled'] as bool? ?? false,
+        rules: (json['rules'] as List<dynamic>? ?? const [])
+            .map((rule) => ReviewRule.fromJson(rule as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 /// A reusable, account-scoped procedure returned by the Skills API.
 class Skill {
   const Skill({

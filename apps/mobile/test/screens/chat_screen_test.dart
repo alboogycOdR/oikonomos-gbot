@@ -26,6 +26,7 @@ const _bot = SingleThread(
 
 Future<ApiClient> _loggedIn(
   FakeHttpClient fake, {
+  bool autoReviewEnabled = false,
   Map<String, dynamic> templateStatus = const {
     'installed_from': null,
     'drift': false,
@@ -54,6 +55,10 @@ Future<ApiClient> _loggedIn(
     200,
     templateStatus,
   );
+  fake.queueJsonFor('GET', '/roles/role-1/auto-review', 200, {
+    'enabled': autoReviewEnabled,
+    'rules': <Object?>[],
+  });
   return client;
 }
 
@@ -1030,14 +1035,18 @@ void main() {
     expect(find.byKey(const Key('routine-history-empty')), findsOneWidget);
   });
 
-  testWidgets('shows auto-review settings without a usage figure', (
+  testWidgets('auto-review switch reflects the server state and writes PUT', (
     tester,
   ) async {
     final fake = FakeHttpClient();
-    final client = await _loggedIn(fake);
+    final client = await _loggedIn(fake, autoReviewEnabled: true);
     fake.queueJson(200, <Object?>[]);
     fake.queueHangingStream(200);
     fake.queueJson(200, <Object?>[]); // GET /roles for the title field fetch
+    fake.queueJsonFor('PUT', '/roles/role-1/auto-review', 200, {
+      'enabled': false,
+      'rules': <Object?>[],
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1048,12 +1057,64 @@ void main() {
     await tester.tap(find.byKey(const Key('bot-settings-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Auto-review'), findsOneWidget);
+    final toggle = tester.widget<SwitchListTile>(
+      find.byKey(const Key('auto-review-switch')),
+    );
+    expect(toggle.value, isTrue);
     expect(
       find.text('Require approval for risky shell, MCP, and computer actions.'),
       findsOneWidget,
     );
     expect(find.textContaining('Usage'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('auto-review-switch')));
+    await tester.pumpAndSettle();
+
+    final request = fake.requests.lastWhere(
+      (request) =>
+          request.url.path == '/roles/role-1/auto-review' &&
+          request.method == 'PUT',
+    ) as http.Request;
+    expect(jsonDecode(request.body), {'enabled': false});
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('auto-review-switch')),
+          )
+          .value,
+      isFalse,
+    );
+  });
+
+  testWidgets('failed auto-review toggle reverts and shows a message', (
+    tester,
+  ) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueHangingStream(200);
+    fake.queueJson(200, <Object?>[]);
+    fake.queueJsonFor('PUT', '/roles/role-1/auto-review', 500, {
+      'error': 'write failed',
+    });
+
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(apiClient: client, bot: _bot),
+    ));
+    await tester.pumpAndSettle();
+    await openSettings(tester);
+    await tester.tap(find.byKey(const Key('auto-review-switch')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('auto-review-switch')),
+          )
+          .value,
+      isFalse,
+    );
+    expect(find.text('Could not update Auto-review.'), findsOneWidget);
   });
 
   testWidgets('composer placeholder is personalized to the bot name', (
@@ -1298,6 +1359,7 @@ void main() {
         'title': 'Front Desk Lead',
         'instructions': 'Answer as a front-desk lead.',
       });
+      await reveal(tester, find.byKey(const Key('instructions-save')));
       await tester.tap(find.byKey(const Key('instructions-save')));
       await tester.pumpAndSettle();
 
@@ -1343,6 +1405,7 @@ void main() {
         'persona',
       );
       fake.queueJson(400, {'error': 'role not found'});
+      await reveal(tester, find.byKey(const Key('instructions-save')));
       await tester.tap(find.byKey(const Key('instructions-save')));
       await tester.pumpAndSettle();
 
@@ -1388,6 +1451,7 @@ void main() {
         'title': 'Front Desk Lead',
         'instructions': '',
       });
+      await reveal(tester, find.byKey(const Key('instructions-save')));
       await tester.tap(find.byKey(const Key('instructions-save')));
       await tester.pumpAndSettle();
 
