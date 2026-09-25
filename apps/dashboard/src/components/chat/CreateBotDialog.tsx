@@ -23,6 +23,7 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { UnauthorizedError } from "../../lib/api";
+import { Avatar, avatarColors, avatarColorTokens, avatarShapeTokens, type AvatarColorToken, type AvatarShapeToken } from "./Avatar";
 
 const BASE_URL: string =
   (import.meta.env.VITE_CONTROL_API_BASE_URL as string | undefined) ?? "";
@@ -32,6 +33,8 @@ interface CreatedRole {
   name: string;
   description: string;
   avatarSeed: string;
+  avatarColor?: AvatarColorToken | null;
+  avatarShape?: AvatarShapeToken | null;
 }
 
 interface CreatedThread {
@@ -83,6 +86,8 @@ export function CreateBotDialog({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [avatarColor, setAvatarColor] = useState<AvatarColorToken>(avatarColorTokens[0]);
+  const [avatarShape, setAvatarShape] = useState<AvatarShapeToken>(avatarShapeTokens[0]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -94,6 +99,8 @@ export function CreateBotDialog({
   function resetAndClose() {
     setName("");
     setDescription("");
+    setAvatarColor(avatarColorTokens[0]);
+    setAvatarShape(avatarShapeTokens[0]);
     setValidationError(null);
     setSubmitError(null);
     setSubmitting(false);
@@ -115,6 +122,8 @@ export function CreateBotDialog({
       const role = await postJson<CreatedRole>("/roles", {
         name: trimmedName,
         description: description.trim(),
+        avatarColor,
+        avatarShape,
       });
       const thread = await postJson<CreatedThread>("/threads", { roleId: role.id });
       onCreated?.({ role, threadId: thread.id });
@@ -123,6 +132,8 @@ export function CreateBotDialog({
       // fresh, exactly as `resetAndClose` does for Cancel.
       setName("");
       setDescription("");
+      setAvatarColor(avatarColorTokens[0]);
+      setAvatarShape(avatarShapeTokens[0]);
       setSubmitting(false);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -185,6 +196,19 @@ export function CreateBotDialog({
             placeholder="What should this bot help with?"
             className="mb-3 w-full resize-none rounded-md border border-chrome-border bg-surface-raised px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-bubble-user disabled:opacity-50"
           />
+
+          <fieldset className="mb-3" disabled={submitting}>
+            <legend className="mb-2 text-xs font-medium text-slate-300">Avatar</legend>
+            <div className="mb-2 flex items-center gap-3">
+              <Avatar seed="preview" name={name.trim() || "?"} avatarColor={avatarColor} avatarShape={avatarShape} />
+              <div className="flex flex-wrap gap-1" aria-label="Avatar color">
+                {avatarColorTokens.map((token) => <button key={token} type="button" aria-label={`Avatar color ${token}`} aria-pressed={avatarColor === token} onClick={() => setAvatarColor(token)} className="h-5 w-5 rounded-full ring-offset-2 ring-offset-chrome-panel aria-pressed:ring-2 aria-pressed:ring-white" style={{ backgroundColor: avatarColors[token] }} />)}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1" aria-label="Avatar shape">
+              {avatarShapeTokens.map((token) => <button key={token} type="button" aria-pressed={avatarShape === token} onClick={() => setAvatarShape(token)} className="rounded border border-chrome-border px-2 py-1 text-xs text-slate-300 aria-pressed:bg-surface-raised">{token}</button>)}
+            </div>
+          </fieldset>
 
           {validationError !== null ? (
             <p role="alert" className="mb-3 text-xs text-red-400">

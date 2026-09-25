@@ -44,4 +44,9 @@ describe("BotSidebar", () => {
     render(<BotSidebar bots={[]} />);
     expect(screen.getByText(/No bots yet/i)).toBeInTheDocument();
   });
+
+  it("passes saved avatar tokens to sidebar avatars", () => {
+    render(<BotSidebar bots={[{ ...fixtureBots[0]!, avatarColor: "pink", avatarShape: "star" }]} />);
+    expect(screen.getByLabelText(`${fixtureBots[0]!.name} avatar`)).toHaveAttribute("data-avatar-shape", "star");
+  });
 });

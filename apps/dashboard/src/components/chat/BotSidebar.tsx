@@ -142,7 +142,7 @@ export function BotSidebar({
                     : "hover:bg-surface-raised/60"
                 }`}
               >
-                <Avatar seed={bot.avatarSeed} name={bot.name} />
+                <Avatar seed={bot.avatarSeed} name={bot.name} avatarColor={bot.avatarColor} avatarShape={bot.avatarShape} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium text-slate-100">
