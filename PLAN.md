@@ -10690,7 +10690,7 @@ Exit status 2
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 15 (third-party plugin loading REJECTED); owner decision 2026-09-24: Plugins = connectors and tools per bot, grant on/off where allowed
@@ -10701,16 +10701,16 @@ Exit status 2
 - [ ] Real-Postgres route test: grouping, grant state after a grant and a revoke, and non-grantable entries marked.
 - [ ] Cross-tenant refused; no secret or credential value appears in the response (asserted).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-351-cx9
+**Started_At:** 2026-09-25T02:00:23Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T02:00:23Z
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
