@@ -10791,7 +10791,7 @@ Exit status 2
 
 ### TASK-355
 **Title:** Mobile: handoff chips inline in the chat timeline
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** memory: grok-bot-mobile-reference item 1 ("2 messages with TREVOR" inline in a bot's own timeline); apps/mobile/lib/screens/chat_screen.dart ~L773-791
@@ -10806,12 +10806,13 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-25T07:13:01Z] [SV:CX9] Handoffs now render chronologically inline with messages, consecutive same-bot handoffs collapse into one count chip, and the original dialog tap behavior remains.
+- [2026-09-25T07:35:00Z] [ORCH opus-4.8] APPROVED first-pass, MERGED --no-ff. CX9-authored on apps/mobile/** (non-protected) → normal full review, no cross-model gate. Territory clean (both Owned_Paths files + own dossier), PLAN edits limited to own block's SV transition. Verified all four acceptance criteria against the widget test: inline chronological position (before.dy < chip.dy < after.dy), consecutive same-bot collapse into "2 messages with Trevor" (handoff-2 findsNothing), tap opens persisted handoff body unchanged, old handoff-chip-list gone. Independent run via subagent in the CX9 worktree: flutter analyze lib = No issues; flutter test = 216 passed / 0 failed. Branch not deletable (still checked out in CX9 worktree); left per standing rule 6.
 **Artifacts:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/test/screens/chat_screen_test.dart, dossiers/TASK-355.md
 **Test_Evidence:** flutter analyze lib: no issues; flutter test: full mobile suite passed. Dart is outside pnpm -r.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T07:13:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T07:35:00Z
 
 ### TASK-356
 **Title:** Thread list shows bot-to-bot conversations and "Messaged X" previews (backend)
