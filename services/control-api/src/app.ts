@@ -9,6 +9,7 @@ import { avatarColors, avatarShapes, createRequireApprovalRule, devicePlatforms,
 import { DEFAULT_APPROVAL_TTL_MS, type JsonValue } from "@oikonomos/approvals";
 
 import { getOpenApiDocument } from "./openapi.js";
+import { createConnectorStatusResolver, type ConnectorStatusResolver } from "./connectorStatus.js";
 import { redactApprovalNonceFromUrl } from "./redact.js";
 import { createRoleWithDefaultCapabilities, registerTemplateRoutes } from "./templates.js";
 import { registerProjectRoutes } from "./projects.js";
@@ -59,6 +60,8 @@ declare module "fastify" {
 export interface BuildAppOptions {
   /** `false` disables logging entirely (route tests default to this). */
   logger?: boolean;
+  /** TASK-361 status source for manifest-backed connector systems. */
+  connectorStatus?: ConnectorStatusResolver;
   /** TASK-350 persistence port; deployments without it refuse the routes. */
   autoReview?: AutoReviewPort;
   /**
@@ -1015,6 +1018,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
   const firebaseProjectId = options.firebaseProjectId ?? process.env.FIREBASE_PROJECT_ID ?? "basileia-oikonomos-gmail";
   const verifyFirebaseIdToken = options.verifyFirebaseIdToken ?? createFirebaseIdTokenVerifier(firebaseProjectId);
   const attachmentStore = options.attachmentStore ?? createFilesystemAttachmentStore();
+  const connectorStatus = options.connectorStatus ?? createConnectorStatusResolver();
   const buildSha = resolveBuildSha();
   const revokedSessionTokens = createSessionRevocationStore(authToken);
 
@@ -1415,6 +1419,7 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       const systems = new Map<string, {
         id: string;
         label: string;
+        configured?: true | false | "unknown";
         tools: Array<{
           id: string;
           label: string;
@@ -1427,7 +1432,15 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       }>();
       for (const capability of capabilities) {
         const system = catalogSystem(capability.adapter);
-        const group = systems.get(system.id) ?? { ...system, tools: [] };
+        let group = systems.get(system.id);
+        if (group === undefined) {
+          const configured = await connectorStatus.getStatus(system.id);
+          group = {
+            ...system,
+            ...(configured === undefined ? {} : { configured }),
+            tools: [],
+          };
+        }
         const grant = grantsByCapabilityId.get(capability.capabilityId);
         group.tools.push({
           id: capability.capabilityId,
