@@ -4,11 +4,11 @@ import userEvent from "@testing-library/user-event";
 
 import { BotToolsPanel } from "./BotToolsPanel";
 
-const catalog = (granted: boolean) => ({
+const catalog = (granted: boolean, configured?: boolean | "unknown") => ({
   systems: [{ id: "email", label: "Email", tools: [
     { id: "email.send", label: "Send email", description: "Send a message.", defaultTier: "T2", granted, maxTier: granted ? "T2" : null, grantable: true },
     { id: "system.audit", label: "Audit log", description: "Read audit events.", defaultTier: "T1", granted: true, maxTier: "T1", grantable: false },
-  ] }],
+  ], ...(configured === undefined ? {} : { configured }) }],
 });
 
 describe("BotToolsPanel", () => {
@@ -43,5 +43,22 @@ describe("BotToolsPanel", () => {
     render(<BotToolsPanel roleId="role-1" />);
     expect(await screen.findByText("Locked — this tool cannot be changed here.")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Audit log" })).toBeDisabled();
+  });
+
+  it("marks an unconfigured connector and disables every capability", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(catalog(false, false)), { status: 200 })) as unknown as typeof fetch;
+    render(<BotToolsPanel roleId="role-1" />);
+    expect(await screen.findByTestId("tool-system-not-configured-email")).toHaveTextContent("Not configured");
+    expect(screen.getByRole("switch", { name: "Send email" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Audit log" })).toBeDisabled();
+    expect(screen.getAllByText("Ask the workspace owner to configure this connector")).toHaveLength(2);
+  });
+
+  it.each<[boolean | "unknown" | undefined]>([[true], ["unknown"], [undefined]])("keeps configured=%s connectors unchanged", async (configured) => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(catalog(false, configured)), { status: 200 })) as unknown as typeof fetch;
+    render(<BotToolsPanel roleId="role-1" />);
+    await screen.findByText("Email");
+    expect(screen.queryByTestId("tool-system-not-configured-email")).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Send email" })).not.toBeDisabled();
   });
 });

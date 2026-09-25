@@ -19,11 +19,12 @@ Future<ApiClient> _loggedIn(FakeHttpClient fake) async {
   return client;
 }
 
-Map<String, dynamic> _catalog({bool granted = false}) => {
+Map<String, dynamic> _catalog({bool granted = false, Object? configured}) => {
       'systems': [
         {
           'id': 'gmail',
           'label': 'Gmail',
+          if (configured != null) 'configured': configured,
           'tools': [
             {
               'id': 'gmail.read',
@@ -139,6 +140,48 @@ void main() {
     await tester.tap(find.byKey(const Key('tool-grant-gmail.send')));
     await tester.pump();
     expect(fake.requests.length, requestCount);
+  });
+
+  testWidgets('marks an unconfigured connector and disables its tools',
+      (tester) async {
+    final fake = FakeHttpClient();
+    final client = await _loggedIn(fake);
+    fake.queueJsonFor(
+        'GET', '/roles/role-1/tools', 200, _catalog(configured: false));
+    await pumpScreen(tester, client);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('tool-system-not-configured-gmail')),
+        findsOneWidget);
+    expect(find.text('Not configured'), findsOneWidget);
+    expect(
+        find.textContaining(
+            'Ask the workspace owner to configure this connector'),
+        findsNWidgets(2));
+    final toggle = tester
+        .widget<SwitchListTile>(find.byKey(const Key('tool-grant-gmail.read')));
+    expect(toggle.onChanged, isNull);
+  });
+
+  testWidgets('keeps configured, unknown, and older connector payloads usable',
+      (tester) async {
+    for (final configured in <Object?>[true, 'unknown', null]) {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJsonFor(
+          'GET', '/roles/role-1/tools', 200, _catalog(configured: configured));
+      await pumpScreen(tester, client);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('tool-system-not-configured-gmail')),
+          findsNothing);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.byKey(const Key('tool-grant-gmail.read')))
+              .onChanged,
+          isNotNull);
+    }
   });
 
   testWidgets(

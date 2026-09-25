@@ -88,13 +88,26 @@ class _BotToolsScreenState extends State<BotToolsScreen> {
                         key: Key('bot-tools-empty'),
                       ),
                     for (final system in catalog.systems) ...[
-                      Text(
-                        system.label,
-                        key: Key('tool-system-${system.id}'),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            system.label,
+                            key: Key('tool-system-${system.id}'),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (system.configured == false) ...[
+                            const SizedBox(width: 8),
+                            Chip(
+                              key: Key(
+                                  'tool-system-not-configured-${system.id}'),
+                              label: const Text('Not configured'),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 4),
                       for (final tool in system.tools)
@@ -102,14 +115,16 @@ class _BotToolsScreenState extends State<BotToolsScreen> {
                           key: Key('tool-grant-${tool.id}'),
                           contentPadding: EdgeInsets.zero,
                           title: Text(tool.label),
-                          subtitle: Text(
-                            tool.grantable
-                                ? tool.description
-                                : '${tool.description}\nLocked — this tool cannot be changed here.',
-                          ),
-                          isThreeLine: !tool.grantable,
+                          subtitle: Text(system.configured == false
+                              ? '${tool.description}\nAsk the workspace owner to configure this connector'
+                              : tool.grantable
+                                  ? tool.description
+                                  : '${tool.description}\nLocked — this tool cannot be changed here.'),
+                          isThreeLine:
+                              system.configured == false || !tool.grantable,
                           value: tool.granted,
-                          onChanged: !tool.grantable ||
+                          onChanged: system.configured == false ||
+                                  !tool.grantable ||
                                   _savingToolIds.contains(tool.id)
                               ? null
                               : (granted) => _setGranted(tool, granted),

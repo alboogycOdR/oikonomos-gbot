@@ -61,7 +61,12 @@ export function BotToolsPanel({ roleId }: BotToolsPanelProps) {
       </div>
       {catalog.systems.map((system) => (
         <div key={system.id}>
-          <h3 className="mb-1 text-xs font-medium uppercase text-slate-500">{system.label}</h3>
+          <div className="mb-1 flex items-center gap-2">
+            <h3 className="text-xs font-medium uppercase text-slate-500">{system.label}</h3>
+            {(system as { configured?: unknown }).configured === false ? (
+              <span data-testid={`tool-system-not-configured-${system.id}`} className="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] uppercase text-slate-300">Not configured</span>
+            ) : null}
+          </div>
           <ul className="space-y-2">
             {system.tools.map((tool) => (
               <li key={tool.id} className="rounded-lg bg-surface-raised p-2">
@@ -72,7 +77,7 @@ export function BotToolsPanel({ roleId }: BotToolsPanelProps) {
                       role="switch"
                       aria-label={tool.label}
                       checked={tool.granted}
-                      disabled={!tool.grantable || savingToolId === tool.id}
+                      disabled={(system as { configured?: unknown }).configured === false || !tool.grantable || savingToolId === tool.id}
                       onChange={(event) => void setGranted(tool, event.currentTarget.checked)}
                     />
                     <span>{tool.label}</span>
@@ -80,6 +85,7 @@ export function BotToolsPanel({ roleId }: BotToolsPanelProps) {
                   {!tool.grantable ? <span className="text-[10px] uppercase text-slate-500">Locked</span> : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{tool.description}</p>
+                {(system as { configured?: unknown }).configured === false ? <p className="mt-1 text-xs text-slate-500">Ask the workspace owner to configure this connector</p> : null}
                 {!tool.grantable ? <p className="mt-1 text-xs text-slate-500">Locked — this tool cannot be changed here.</p> : null}
               </li>
             ))}
