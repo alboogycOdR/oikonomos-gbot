@@ -433,6 +433,7 @@ class TestManifestPathsAreLiteral:
                    if not (REPO_ROOT / f).exists()]
         assert not missing, f"manifest lists files absent from the pack: {missing}"
 
+    @pack_self_test  # a project may add its own tests; only the pack must register every one for sync
     def test_every_shipped_test_file_is_registered(self):
         """A test suite that does not propagate is a test suite that silently
         stops protecting downstream projects."""

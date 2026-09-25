@@ -9383,7 +9383,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-MAINT-2026-09-19
 **Title:** Nightly self-audit failure (2026-09-19)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -9396,12 +9396,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** —
 **Progress_Notes:** —
 - [2026-09-23T22:36:43Z] [ORCH] Reassigned GB -> TBD: GB is retired, and this task owns scripts/**, hooks/** and PLAN.md, which the territory firewall forbids to every builder, so it is ORCH work. The validate_plan half of the failure (nightly audit ignored the builder registry, so every CX9 task looked illegal) is fixed in scripts/maintenance.py. Still open: AgentShield scores .claude Agents 0/100 (a protected path, ORCH follow-up). The five daily copies are the same failure.
+- [2026-09-25T13:36:13Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_At:** 2026-09-25T13:36:13Z
 
 ### TASK-313
 **Title:** Scope workspace.retire_bot server-side to the acting manager's project roster (required before any manager may hold it)
@@ -9607,7 +9608,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-MAINT-2026-09-20
 **Title:** Nightly self-audit failure (2026-09-20)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -9620,16 +9621,17 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** —
 **Progress_Notes:** —
 - [2026-09-23T22:36:43Z] [ORCH] Reassigned GB -> TBD: GB is retired, and this task owns scripts/**, hooks/** and PLAN.md, which the territory firewall forbids to every builder, so it is ORCH work. The validate_plan half of the failure (nightly audit ignored the builder registry, so every CX9 task looked illegal) is fixed in scripts/maintenance.py. Still open: AgentShield scores .claude Agents 0/100 (a protected path, ORCH follow-up). The five daily copies are the same failure.
+- [2026-09-25T13:36:14Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_At:** 2026-09-25T13:36:14Z
 
 ### TASK-MAINT-2026-09-21
 **Title:** Nightly self-audit failure (2026-09-21)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -9642,12 +9644,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** —
 **Progress_Notes:** —
 - [2026-09-23T22:36:43Z] [ORCH] Reassigned GB -> TBD: GB is retired, and this task owns scripts/**, hooks/** and PLAN.md, which the territory firewall forbids to every builder, so it is ORCH work. The validate_plan half of the failure (nightly audit ignored the builder registry, so every CX9 task looked illegal) is fixed in scripts/maintenance.py. Still open: AgentShield scores .claude Agents 0/100 (a protected path, ORCH follow-up). The five daily copies are the same failure.
+- [2026-09-25T13:36:14Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_At:** 2026-09-25T13:36:14Z
 
 ### TASK-320
 **Title:** Audit trail: refuse TRUNCATE at the database level, with a liveness test
@@ -9845,7 +9848,7 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 
 ### TASK-MAINT-2026-09-22
 **Title:** Nightly self-audit failure (2026-09-22)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -9858,16 +9861,17 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** —
 **Progress_Notes:** —
 - [2026-09-23T22:36:43Z] [ORCH] Reassigned GB -> TBD: GB is retired, and this task owns scripts/**, hooks/** and PLAN.md, which the territory firewall forbids to every builder, so it is ORCH work. The validate_plan half of the failure (nightly audit ignored the builder registry, so every CX9 task looked illegal) is fixed in scripts/maintenance.py. Still open: AgentShield scores .claude Agents 0/100 (a protected path, ORCH follow-up). The five daily copies are the same failure.
+- [2026-09-25T13:36:14Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_At:** 2026-09-25T13:36:14Z
 
 ### TASK-MAINT-2026-09-23
 **Title:** Nightly self-audit failure (2026-09-23)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -9880,12 +9884,13 @@ CORRECTION 2026-09-17T11:15Z (CX9's 3rd block, ORCH independently verified and f
 **Started_At:** —
 **Progress_Notes:** —
 - [2026-09-23T22:36:43Z] [ORCH] Reassigned GB -> TBD: GB is retired, and this task owns scripts/**, hooks/** and PLAN.md, which the territory firewall forbids to every builder, so it is ORCH work. The validate_plan half of the failure (nightly audit ignored the builder registry, so every CX9 task looked illegal) is fixed in scripts/maintenance.py. Still open: AgentShield scores .claude Agents 0/100 (a protected path, ORCH follow-up). The five daily copies are the same failure.
+- [2026-09-25T13:36:14Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-23T22:36:43Z
+**Updated_At:** 2026-09-25T13:36:14Z
 
 ### TASK-326
 **Title:** Watchdog: detect an unreachable database, not just open ports
@@ -10391,7 +10396,7 @@ Exit status 2
 
 ### TASK-MAINT-2026-09-24
 **Title:** Nightly self-audit failure (2026-09-24)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -10402,13 +10407,14 @@ Exit status 2
 - [ ] All nightly audit steps pass: harness_audit, pytest
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-25T13:36:15Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-24T02:18:01Z
+**Updated_At:** 2026-09-25T13:36:15Z
 
 ### TASK-341
 **Title:** Make master CI green: build before typecheck, full schema and seed for canaries
@@ -10948,7 +10954,7 @@ Exit status 2
 
 ### TASK-MAINT-2026-09-25
 **Title:** Nightly self-audit failure (2026-09-25)
-**Status:** pending
+**Status:** done
 **Assigned_To:** TBD
 **Priority:** high
 **Spec_References:** self-generated — nightly audit failure
@@ -10959,10 +10965,11 @@ Exit status 2
 - [ ] All nightly audit steps pass: harness_audit, pytest
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-25T13:36:15Z] [ORCH opus-5.5] Closed as a duplicate of the single root-cause fix committed 2026-09-25.
 **Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+**Test_Evidence:** ORCH 2026-09-25: full nightly-audit equivalent all green on the fixed tree: harness-audit.ps1 PASS (AgentShield grade A 93/100, 0 critical, was B 79 with 2 critical); validate_plan exit 0; python -m pytest tests 707 passed 7 skipped 0 failed (was 28 failed); node hooks/run-tests.js 36 passed.
+**Review_Findings:** RESOLVED by ORCH (opus-5.5/sonnet-5 session, 2026-09-25). Two independent causes repeated nightly since 2026-09-19: (1) AgentShield critical findings on .claude/agents/devteam-builder.md (no tools allow-list; missing prompt defenses). Fixed by adding tools: Read, Edit, Write, Bash, Glob, Grep and a Security boundaries section; the protected-path change was adversarially reviewed by Codex gpt-5.6-terra (APPROVE WITH CHANGES, both changes applied). Note: this is scanner hygiene; real enforcement remains the territory firewall hook, the broker and approvals. (2) pytest failures: WSL bash launcher shadowed Git Bash (tests/conftest.py); dispatch.sh CRLF and MSYS-path handling; test_validate_plan ignored the builder registry; pack-only self-tests ran in an onboarded project because .devteam/sync_state.json was missing (restored as an empty baseline) and one pack-only registration test was un-guarded. The validate_plan half was already fixed 2026-09-23 in maintenance.py. Copies 09-19..09-25 are one failure.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-25T02:03:01Z
+**Updated_At:** 2026-09-25T13:36:15Z

@@ -183,5 +183,10 @@ def test_globs_intersect_logic():
 
 def test_shipped_plan_md_is_legal():
     plan_path = Path(__file__).resolve().parents[1] / "PLAN.md"
-    rep = validate(plan_path.read_text(encoding="utf-8"))
+    # Apply the project's builder registry (autopilot.json), exactly as the supervisor and the nightly
+    # audit do; without it validate() knows only the legacy GB/CX/S5 units and calls every CX9 task
+    # illegal. (Same root cause as the maintenance.py fix of 2026-09-23.)
+    from validate_plan import _apply_registry
+    repo_root = str(Path(__file__).resolve().parents[1])
+    rep = validate(plan_path.read_text(encoding="utf-8"), registry_views=_apply_registry(repo_root))
     assert rep.ok, rep.errors
