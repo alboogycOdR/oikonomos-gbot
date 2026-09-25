@@ -306,6 +306,23 @@ if ($ControlMode -eq "strict") {
     Write-Host "[dispatch] $ResumeOrClaim $TaskId for $Id (control.mode=strict$DryNote)." -ForegroundColor Cyan
 }
 
+# 2026-09-25 (ORCH): a FRESH claim must start from the integration branch. The builder creates its own
+# task branch from whatever its worktree is on, which after a previous task is THAT task's branch: a stale
+# base plus foreign commits (hit four times in one week: TASK-327, 162, 361/363 and others). So create the
+# branch here, from the base branch tip, when it does not exist yet. Resuming keeps the existing branch.
+if ($ResumeOrClaim -eq "claimed" -and -not $DryRun -and $TaskId -and (Test-Path $Wt)) {
+    $TaskBranch = "task/$TaskId-$Suffix"
+    git -C $Wt rev-parse --verify --quiet "refs/heads/$TaskBranch" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        git -C $Wt branch $TaskBranch $BaseBranch 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[dispatch] created $TaskBranch from $BaseBranch tip (fresh base)." -ForegroundColor Cyan
+        } else {
+            Write-Warning "[dispatch] could not pre-create $TaskBranch from $BaseBranch; the builder will create it from its worktree HEAD."
+        }
+    }
+}
+
 $PlanPath = Join-Path $RepoRoot "PLAN.md"
 $Fence = '```'
 
