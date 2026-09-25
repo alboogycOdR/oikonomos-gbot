@@ -10690,13 +10690,13 @@ Exit status 2
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 15 (third-party plugin loading REJECTED); owner decision 2026-09-24: Plugins = connectors and tools per bot, grant on/off where allowed
 **Depends_On:** TASK-350
 **Owned_Paths:** packages/db/src/capabilities.ts, packages/db/src/capabilities.test.ts, services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/roleTools.routes.test.ts
-**Description:** Add GET /roles/:roleId/tools: the capability catalog grouped by connected system (Gmail, Calendar, Drive, Browser, Workspace, ...), with id, human label and description, default tier, whether the bot holds a grant (and its maxTier), and whether it is grantable from the app (T3 or not-self-grantable = shown, not toggleable). Grant and revoke reuse the existing POST /roles/:roleId/grants and DELETE /roles/:roleId/grants/:capabilityId. Include a per-system connected flag where an account link is needed (e.g. Google OAuth), read from the existing connector state. No third-party code loading.
+**Description:** Add GET /roles/:roleId/tools: the capability catalog grouped by connected system (Gmail, Calendar, Drive, Browser, Workspace, ...), with id, human label and description, default tier, whether the bot holds a grant (and its maxTier), and whether it is grantable from the app (T3 or not-self-grantable = shown, not toggleable). Grant and revoke reuse the existing POST /roles/:roleId/grants and DELETE /roles/:roleId/grants/:capabilityId. DESCOPED 2026-09-25 (ORCH): there is NO per-system connected flag. No tenant-queryable account-link state exists yet, so omit the field entirely (clients treat absent as unknown). A later task adds it. No third-party code loading.
 **Acceptance_Criteria:**
 - [ ] Real-Postgres route test: grouping, grant state after a grant and a revoke, and non-grantable entries marked.
 - [ ] Cross-tenant refused; no secret or credential value appears in the response (asserted).
@@ -10706,12 +10706,13 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-25T02:03:01Z] [SV:CX9] Catalog/grant data is available, but the required account-link connection state is not exposed or persisted for control-api.
+- [2026-09-25T02:21:25Z] [ORCH opus-5.5] MISSING_DEPENDENCY resolved by descoping the connected flag. Don't read OAuth session state. Build the catalog with grant state only.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** MISSING_DEPENDENCY: no tenant-queryable persisted connector/account-link state exists; runtime OAuth session state is outside authorized paths and ControlApiDeps.
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T02:03:01Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T02:21:25Z
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
@@ -10744,9 +10745,9 @@ Exit status 2
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-351 API; memory: grok-bot-mobile-reference (Plugins: "Tools and skills")
 **Depends_On:** TASK-351, TASK-352
 **Owned_Paths:** apps/mobile/lib/screens/chat_screen.dart, apps/mobile/lib/screens/bot_tools_screen.dart, apps/mobile/lib/api/models.dart, apps/mobile/lib/api/api_client.dart, apps/mobile/test/screens/chat_screen_test.dart, apps/mobile/test/screens/bot_tools_screen_test.dart
-**Description:** Add a 'Connectors & tools' entry in bot settings that opens bot_tools_screen.dart: capabilities grouped by system from GET /roles/:id/tools, each with label, description and grant switch; non-grantable entries are locked with a short reason; a system that needs an account link shows 'Not connected'. Toggling calls the existing grant or revoke endpoints and re-fetches; a failure reverts with a message. Link to the existing Skills screen as the 'skills' part rather than duplicating it.
+**Description:** Add a 'Connectors & tools' entry in bot settings that opens bot_tools_screen.dart: capabilities grouped by system from GET /roles/:id/tools, each with label, description and grant switch; non-grantable entries are locked with a short reason. (The 'Not connected' state is DESCOPED 2026-09-25: the API has no connected flag yet.) Toggling calls the existing grant or revoke endpoints and re-fetches; a failure reverts with a message. Link to the existing Skills screen as the 'skills' part rather than duplicating it.
 **Acceptance_Criteria:**
-- [ ] Widget tests: grouped rendering, grant and revoke calls, locked entries not toggleable, not-connected state, failure revert.
+- [ ] Widget tests: grouped rendering, grant and revoke calls, locked entries not toggleable, failure revert (the not-connected state is descoped).
 - [ ] `flutter test` (full mobile suite) and `flutter analyze lib` pass; Dart is outside pnpm -r, so say so in Test_Evidence.
 **Branch:** —
 **Started_At:** —
@@ -10767,9 +10768,9 @@ Exit status 2
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-350 and TASK-351 APIs
 **Depends_On:** TASK-349, TASK-351
 **Owned_Paths:** apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, apps/dashboard/src/components/chat/BotToolsPanel.tsx, apps/dashboard/src/components/chat/BotToolsPanel.test.tsx, apps/dashboard/src/components/chat/ReviewRulesPanel.tsx, apps/dashboard/src/components/chat/ReviewRulesPanel.test.tsx, apps/dashboard/src/components/chat/types.ts, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts
-**Description:** Web parity for TASK-352/353 in the bot's right panel: the Auto-review switch (same wording), a review rules panel (list, add, remove), and a Connectors & tools panel (grouped capabilities, grant switch, locked and not-connected states), following existing panel/API patterns.
+**Description:** Web parity for TASK-352/353 in the bot's right panel: the Auto-review switch (same wording), a review rules panel (list, add, remove), and a Connectors & tools panel (grouped capabilities, grant switch, locked state; not-connected is descoped), following existing panel/API patterns.
 **Acceptance_Criteria:**
-- [ ] Component tests: toggle, rules list, add and remove, grant and revoke, locked and not-connected states.
+- [ ] Component tests: toggle, rules list, add and remove, grant and revoke, locked state.
 - [ ] apps/dashboard tests, lint and build pass; `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
 **Branch:** —
 **Started_At:** —
