@@ -367,11 +367,21 @@ void main() {
     expect(find.text('hi there'), findsOneWidget);
   });
 
-  testWidgets('shows real handoff chips and opens the persisted handoff body',
+  testWidgets(
+      'places grouped handoff chips inline in chronological order and opens them',
       (tester) async {
     final fake = FakeHttpClient();
     final client = await _loggedIn(fake);
-    fake.queueJson(200, <Object?>[]); // transcript
+    fake.queueJson(200, [
+      {
+        ..._messageJson('before', body: 'Before the handoff.'),
+        'createdAt': '2026-09-05T11:59:00Z',
+      },
+      {
+        ..._messageJson('after', body: 'After the handoff.'),
+        'createdAt': '2026-09-05T12:03:00Z',
+      },
+    ]);
     fake.queueJsonFor('GET', '/roles/role-1/messages', 200, [
       {
         'messageId': 'handoff-1',
@@ -379,6 +389,13 @@ void main() {
         'toRoleId': 'role-2',
         'body': 'Please take over the customer follow-up.',
         'createdAt': '2026-09-05T12:00:00Z',
+      },
+      {
+        'messageId': 'handoff-2',
+        'fromRoleId': 'role-2',
+        'toRoleId': 'role-1',
+        'body': 'I have the context and will continue.',
+        'createdAt': '2026-09-05T12:01:00Z',
       },
     ]);
     fake.queueJsonFor('GET', '/roles', 200, [
@@ -396,7 +413,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('handoff-chip-handoff-1')), findsOneWidget);
-    expect(find.text('1 message with Trevor'), findsOneWidget);
+    expect(find.byKey(const Key('handoff-chip-handoff-2')), findsNothing);
+    expect(find.text('2 messages with Trevor'), findsOneWidget);
+    expect(find.byKey(const Key('handoff-chip-list')), findsNothing);
+
+    final before = tester.getTopLeft(find.byKey(const Key('message-before')));
+    final chip =
+        tester.getTopLeft(find.byKey(const Key('handoff-chip-handoff-1')));
+    final after = tester.getTopLeft(find.byKey(const Key('message-after')));
+    expect(before.dy, lessThan(chip.dy));
+    expect(chip.dy, lessThan(after.dy));
+
     await tester.tap(find.byKey(const Key('handoff-chip-handoff-1')));
     await tester.pumpAndSettle();
     expect(
