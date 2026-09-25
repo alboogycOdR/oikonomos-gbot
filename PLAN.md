@@ -10981,7 +10981,7 @@ Exit status 2
 
 ### TASK-361
 **Title:** Connector configuration status in the Connectors & tools catalog (backend)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-351 (descoped the connected flag: no connector state existed); owner decision 2026-09-24: Plugins = Connectors & tools; specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md row 15; CLAUDE.md non-negotiable 5 (Basileia-owned accounts only)
@@ -10997,12 +10997,13 @@ Exit status 2
 **Started_At:** 2026-09-25T18:28:13Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T18:48:01Z] [SV:CX9] Added safe manifest-backed connector configuration status; separate control-api/worker environments report unknown unless explicitly declared shared. Committed 3e23ee3.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/connectorStatus.ts, services/control-api/src/connectorStatus.test.ts, services/control-api/src/roleTools.routes.test.ts, dossiers/TASK-361.md
+**Test_Evidence:** scripts/test-isolated.ps1 -Init completed; isolated control-api suite reports roleTools.routes.test.ts 3/3 passing, including TASK-361 set/unset/empty/unknown and response/log secret non-disclosure. pnpm --filter @oikonomos/control-api typecheck and build exited 0; workspace pnpm typecheck and pnpm build completed without reported failures.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T18:28:13Z
+**Updated_At:** 2026-09-25T18:48:01Z
 
 ### TASK-362
 **Title:** Mobile and web: show "Not configured" for connectors in Connectors & tools
