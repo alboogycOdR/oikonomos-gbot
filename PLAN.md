@@ -4809,7 +4809,7 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 
 ### TASK-162
 **Title:** Investigate flaky/order-dependent real-Postgres control-api and db tests
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** Surfaced by TASK-159's independent verification (2026-09-05): running `services/control-api/src/chat.routes.test.ts` in isolation against master fails 2 tests (TASK-156's PATCH-instructions test expects 200, gets 400; TASK-155's approvals-decide test expects a real sessionId, gets undefined) — but the same file passes 32/32 clean on a different branch pointed at the same real DATABASE_URL. Separately, `packages/db/src/runs.test.ts`'s `listOpenRuns` (TASK-133) intermittently times out at 5s under the full recursive suite. Both point at order/state dependency or resource contention against the shared real-Postgres instance, not a logic defect in either task's actual code.
@@ -4820,8 +4820,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 - [ ] Root cause identified and documented with evidence (not guessed)
 - [ ] Both tests pass reliably under `pnpm -r test`'s full parallel run, repeated at least 3x
 - [ ] Fix does not weaken what either test actually proves
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-162-cx9
+**Started_At:** 2026-09-25T15:28:14Z
 **Progress_Notes:**
 - [2026-09-16T12:43:16Z] [ORCH] Real, live recurrence today at much greater severity than any prior occurrence: the production worker crash-looped on nearly every watchdog restart cycle ("sorry, too many clients already", Postgres error 53300) while ORCH was running a large, worker-stopped bulk-delete cleanup and a heavy diagnostic-script session concurrently -- confirmed via direct `pg_stat_activity`/OS-level TCP checks that the steady-state connection count was always low (6-ish) against `max_connections=100`, meaning the exhaustion is a genuine brief SPIKE at connection-establishment time (multiple independent per-process pools -- packages/db's shared pool, two separate pg-boss instances, per-connector session pools -- with no PgBouncer in front despite `defaultPoolConfig`'s own comment assuming one exists) rather than a sustained high count. Applied a safe, low-risk mitigation: raised `max_connections` 100 -> 300 in `infra/compose/docker-compose.local.yml` (container recreated, data preserved, confirmed live). This resolved the immediate crash-loop (worker held stable across multiple watchdog cycles afterward) but is NOT the underlying architectural fix -- that would mean consolidating the several independent pools into one, or actually deploying PgBouncer as the pool-size comment already assumes. Recommend keeping this task open against that real fix rather than closing it on the mitigation alone.
 - [2026-09-06T15:15:00Z] [CX] Isolated `chat.routes.test.ts`'s original 2-test flake to real ordering/lifecycle races (fixed: consolidated ad-hoc `new Pool()` calls onto a shared `integrationPoolConfig` (`max: 1`), and made the group-thread fanout test wait for the detached chat driver's `waiting_approval` transition before tearing down fixtures instead of racing it) — real fixes, left uncommitted. Hit a second, deeper issue reproducing even in isolation: `sorry, too many clients already` (a genuine Postgres server-side connection-limit error, not a client-side symptom). Post-failure `pg_stat_activity` showed only 6 active connections against `max_connections=100`, pointing at a transient spike during the run rather than a persistent leak. Reported blocked as TOOLING_FAILURE, outside this task's 2-file ownership boundary.
@@ -4833,8 +4833,8 @@ Note for the dossier: it states teardown is "widget-tested". After this round th
 **Review_Findings:** Diagnosis is correct and well-evidenced; root cause is more precisely `packages/db`'s per-call ad-hoc-pool pattern (confirmed by direct code reading) than a "shared pooler" issue, since there is no PgBouncer in this deployment. No findings against CX — the investigation was honest and the two real fixes made along the way are correct and should be committed.
 **Blocked_Reason:** —
 - [2026-09-07T01:20:00Z] [ORCH] TASK-199 (the shared-pool fix this task was blocked on) merged and was independently verified working on ITS OWN branch (see REVIEW.md — 3 isolated reruns showed only one pre-existing unrelated timing race, not the exhaustion symptom, against concurrent load on unmodified master showing 7 cascading failures). However: a fresh subagent rerun just now, on TOP OF merged master (TASK-199 + everything since), still observed `"sorry, too many clients already"` recurring non-deterministically in `chat.routes.test.ts`'s group-thread test across `pnpm -r --no-bail test` invocations, landing on a different specific test each run (also seen once in `packages/db/src/database.test.ts` and once as an unrelated live-clawsrv 401 in `packages/sandbox-client`). Recording honestly rather than assuming TASK-199 fully closed this: the shared-pool fix is real and reduces the failure surface (GB's own before/after comparison proved that), but does not appear to be the ENTIRE story under this session's current load (concurrent CX9/dispatch activity may itself be a contributing factor not present during TASK-199's own isolated verification). Still low priority, still non-blocking of any other backlog item — staying `blocked` rather than escalating, but the next person to pick this up should treat "TASK-199 fixes it" as disproven, not confirmed, and re-baseline against a quiet system before concluding anything further.
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T15:24:43Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T15:28:14Z
 
 ### TASK-163
 **Title:** OIK-110/111 follow-on — cost tracking + budget enforcement for the primary Claude Agent SDK chat path
