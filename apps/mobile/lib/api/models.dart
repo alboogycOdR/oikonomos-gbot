@@ -103,6 +103,72 @@ class RoleGrant {
       );
 }
 
+/// Connector-grouped capability catalog returned by `GET /roles/:roleId/tools`.
+class RoleToolCatalog {
+  const RoleToolCatalog({required this.systems});
+
+  final List<RoleToolSystem> systems;
+
+  factory RoleToolCatalog.fromJson(Map<String, dynamic> json) =>
+      RoleToolCatalog(
+        systems: (json['systems'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(RoleToolSystem.fromJson)
+            .toList(),
+      );
+}
+
+class RoleToolSystem {
+  const RoleToolSystem({
+    required this.id,
+    required this.label,
+    required this.tools,
+  });
+
+  final String id;
+  final String label;
+  final List<RoleTool> tools;
+
+  factory RoleToolSystem.fromJson(Map<String, dynamic> json) => RoleToolSystem(
+        id: json['id'] as String,
+        label: json['label'] as String,
+        tools: (json['tools'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(RoleTool.fromJson)
+            .toList(),
+      );
+}
+
+class RoleTool {
+  const RoleTool({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.defaultTier,
+    required this.granted,
+    required this.grantable,
+    this.maxTier,
+  });
+
+  final String id;
+  final String label;
+  final String description;
+  final String defaultTier;
+  final bool granted;
+  final String? maxTier;
+  final bool grantable;
+
+  factory RoleTool.fromJson(Map<String, dynamic> json) => RoleTool(
+        id: json['id'] as String,
+        label: json['label'] as String,
+        description: json['description'] as String,
+        defaultTier: json['defaultTier'] as String,
+        granted: json['granted'] as bool? ?? false,
+        maxTier: json['maxTier'] as String?,
+        grantable: json['grantable'] as bool? ?? false,
+      );
+}
+
 /// One role-scoped Require-Approval rule exposed by the Auto-review API.
 class ReviewRule {
   const ReviewRule({
