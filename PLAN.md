@@ -11034,7 +11034,7 @@ Exit status 2
 
 ### TASK-363
 **Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group interaction: "Workforce checker bot pattern"); DISPOSITION row 18; TASK-359 (group caps) and TASK-328 (depth cap) emit the events it reads; owner cost concern 2026-09-25 (R350/month ceiling)
@@ -11050,12 +11050,13 @@ Exit status 2
 **Started_At:** 2026-09-25T19:39:12Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+- [2026-09-25T19:48:02Z] [SV:CX9] Pre-flight complete; group.cap_reached events cannot be mapped to an affected group thread.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: services/control-api/src/ports.ts must persist the group thread ID with group.cap_reached, or an approved source-to-thread mapping is required.
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T19:39:12Z
+**Updated_At:** 2026-09-25T19:48:02Z
 
 ### TASK-364
 **Title:** Model routing: a pure function that picks the cheap provider for background work
