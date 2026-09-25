@@ -194,6 +194,48 @@ class ApiClient {
         .toList();
   }
 
+  Future<List<RoleGrant>> listRoleGrants(String roleId) async {
+    final json = await _request('GET', '/roles/${_id(roleId)}/grants');
+    return _parseList(json, RoleGrant.fromJson);
+  }
+
+  /// Returns the server-confirmed switch state and current rules.
+  Future<AutoReviewSettings> getAutoReview(String roleId) async {
+    final json = await _request('GET', '/roles/${_id(roleId)}/auto-review');
+    return AutoReviewSettings.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<AutoReviewSettings> setAutoReview(String roleId, bool enabled) async {
+    final json = await _request(
+      'PUT',
+      '/roles/${_id(roleId)}/auto-review',
+      body: {'enabled': enabled},
+    );
+    return AutoReviewSettings.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<List<ReviewRule>> listReviewRules(String roleId) async {
+    final json = await _request('GET', '/roles/${_id(roleId)}/review-rules');
+    return _parseList(json, ReviewRule.fromJson);
+  }
+
+  Future<ReviewRule> createReviewRule(
+    String roleId,
+    String capabilityId,
+  ) async {
+    final json = await _request(
+      'POST',
+      '/roles/${_id(roleId)}/review-rules',
+      body: {'capabilityId': capabilityId},
+    );
+    return ReviewRule.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<void> removeReviewRule(String roleId, String ruleId) => _request(
+        'DELETE',
+        '/roles/${_id(roleId)}/review-rules/${_id(ruleId)}',
+      );
+
   Future<Role> createRole(
     String name,
     String description, {
