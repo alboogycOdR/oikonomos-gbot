@@ -887,6 +887,37 @@ function validateEditExpiresAt(expiresAt: Date, now: number): string | undefined
   return undefined;
 }
 
+/** The catalog deliberately exposes capability metadata, never grant constraints. */
+function catalogSystem(adapter: string): { id: string; label: string } {
+  const connectorId = adapter.startsWith("mcp:") ? adapter.slice("mcp:".length) : adapter;
+  const knownSystems: Readonly<Record<string, { id: string; label: string }>> = {
+    "google-calendar": { id: "google-calendar", label: "Calendar" },
+    "google-drive": { id: "google-drive", label: "Drive" },
+    "sdk:builtin": { id: "builtin", label: "Built-in tools" },
+    "steel-browser": { id: "steel-browser", label: "Browser" },
+  };
+  return knownSystems[connectorId] ?? { id: connectorId, label: humanizeCatalogIdentifier(connectorId) };
+}
+
+function humanizeCatalogIdentifier(value: string): string {
+  return value
+    .split(/[._-]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+// ADR-018's review keeps this mutating browser action human-grant-only even
+// though its default tier is T2.  New exceptions belong here explicitly.
+const NON_SELF_GRANTABLE_CAPABILITY_IDS = new Set(["browser.interact"]);
+
+function isAppGrantable(capabilityId: string, defaultTier: (typeof riskTiers)[number], enabled: boolean): boolean {
+  return enabled
+    && defaultTier !== "T3_external"
+    && defaultTier !== "T4_irreversible"
+    && !NON_SELF_GRANTABLE_CAPABILITY_IDS.has(capabilityId);
+}
+
 /**
  * Build the control-api Fastify instance against an injected
  * `ControlApiDeps` port (OIK-084: this file never imports `pg` or
@@ -1296,6 +1327,61 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
       await reply.code(200).send(mergeRoleMessages(sent, received));
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+
+  /**
+   * TASK-351 — The Plugins page is a catalog of already-registered
+   * capabilities, grouped by the owning connector/adapter.  It is a read
+   * model only: grants continue to use the established grant routes below.
+   * In particular, constraints are intentionally not returned because they
+   * can contain connector-specific configuration that this page does not need.
+   */
+  app.get<{ Params: { roleId: string } }>("/roles/:roleId/tools", async (request, reply) => {
+    try {
+      if (!await tenantOwnsRole(request.tenantId, request.params.roleId)) {
+        return reply.code(404).send({ error: "role not found" });
+      }
+      const [capabilities, grants] = await Promise.all([
+        deps.listCapabilities(),
+        deps.listRoleGrants(request.params.roleId),
+      ]);
+      const grantsByCapabilityId = new Map(grants.map((grant) => [grant.capabilityId, grant]));
+      const systems = new Map<string, {
+        id: string;
+        label: string;
+        tools: Array<{
+          id: string;
+          label: string;
+          description: string;
+          defaultTier: (typeof riskTiers)[number];
+          granted: boolean;
+          maxTier: (typeof riskTiers)[number] | null;
+          grantable: boolean;
+        }>;
+      }>();
+      for (const capability of capabilities) {
+        const system = catalogSystem(capability.adapter);
+        const group = systems.get(system.id) ?? { ...system, tools: [] };
+        const grant = grantsByCapabilityId.get(capability.capabilityId);
+        group.tools.push({
+          id: capability.capabilityId,
+          label: humanizeCatalogIdentifier(capability.capabilityId),
+          description: capability.description,
+          defaultTier: capability.defaultTier,
+          granted: grant !== undefined,
+          maxTier: grant?.maxTier ?? null,
+          grantable: isAppGrantable(capability.capabilityId, capability.defaultTier, capability.enabled),
+        });
+        systems.set(system.id, group);
+      }
+      return reply.code(200).send({
+        systems: [...systems.values()]
+          .map((system) => ({ ...system, tools: system.tools.sort((left, right) => left.id.localeCompare(right.id)) }))
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
     }
   });
 
