@@ -10879,7 +10879,7 @@ Exit status 2
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group: runaway protection); groupRouting.ts GROUP_MEMBER_CAP; TASK-328 hop cap covers handoffs only
@@ -10891,7 +10891,7 @@ Exit status 2
 - [ ] LIVENESS: the cap test fails if the cap check is removed.
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); full recursive suite via scripts/test-isolated.ps1 (-Init first), run in the FOREGROUND, every failure classified by name.
 **Branch:** task/TASK-359-cx9
-**Started_At:** 2026-09-24T23:28:20Z
+**Started_At:** 2026-09-25T02:48:19Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-24T23:33:01Z] [SV:CX9] Blocked: live group-room enforcement is in unowned services/control-api/src/ports.ts; worker fanout lacks group thread/turn context.
@@ -10900,8 +10900,8 @@ Exit status 2
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T01:21:15Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T02:48:19Z
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
