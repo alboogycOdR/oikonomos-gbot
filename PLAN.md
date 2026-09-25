@@ -10767,7 +10767,7 @@ Exit status 2
 
 ### TASK-354
 **Title:** Web: Auto-review toggle, review rules and Connectors & tools in the bot panel
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05); TASK-350 and TASK-351 APIs
@@ -10784,10 +10784,10 @@ Exit status 2
 - [2026-09-25T06:58:01Z] [SV:CX9] Added web Tools panel with Auto-review, review rules, and connector/tool grants.
 **Artifacts:** apps/dashboard/src/components/chat/RightPanel.tsx, apps/dashboard/src/components/chat/RightPanel.test.tsx, apps/dashboard/src/components/chat/BotToolsPanel.tsx, apps/dashboard/src/components/chat/BotToolsPanel.test.tsx, apps/dashboard/src/components/chat/ReviewRulesPanel.tsx, apps/dashboard/src/components/chat/ReviewRulesPanel.test.tsx, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/api.test.ts, dossiers/TASK-354.md
 **Test_Evidence:** Isolated dashboard suite: 27 files / 171 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0; scripts/test-isolated.ps1 -Init: exit 0; full foreground scripts/test-isolated.ps1: exit 0.
-**Review_Findings:** —
+**Review_Findings:** APPROVED first-pass (ORCH opus-4-8, 2026-09-25T07:20Z). Author CX9 (non-Claude); Owned_Paths all apps/dashboard/** — NOT protected, no cross-model gate → normal full review + merge. Territory clean: net diff master...task/TASK-354-cx9 = RightPanel.{tsx,test.tsx} + BotToolsPanel.{tsx,test.tsx} + ReviewRulesPanel.{tsx,test.tsx} + api.{ts,test.ts} (all in Owned_Paths) + own dossier; single commit b6a48d41 tagged [TASK-354]; no PLAN.md edits on branch; c8b9872 preflight in dossier work log. API alignment verified against the REAL merged backend (services/control-api/src/app.ts): GET /roles/:id/tools → RoleToolCatalog {systems:[{id,label,tools:[{id,label,description,defaultTier,granted,maxTier,grantable}]}]} matches exactly; GET/PUT /roles/:id/auto-review → {enabled,rules} matches; GET/POST/DELETE /roles/:id/review-rules and ReviewRule {ruleId,capabilityId,enabled,createdBy} match server row mappings; grant reuses POST /roles/:id/grants {capabilityId,maxTier:defaultTier}, revoke DELETE /roles/:id/grants/:capabilityId. Server-authoritative: BotToolsPanel reloads the catalog after each mutation; per-tool savingToolId + panel-level guards prevent double-submit; locked (grantable=false) renders disabled switch + issues no request (test confirms); ReviewRulesPanel only offers granted capabilities for new rules (mirrors server 400 "capability must be granted"); Auto-review switch optimistic with revert-to-previous + role=alert on failure. No new server-side control here (UI parity over already-merged/reviewed backend controls) → standing-rule-5 N/A; component tests still drive the REAL api.ts production path (grantRoleTool→createRoleGrant→request→fetch, setAutoReview PUT) over a global.fetch mock, asserting actual URLs/methods/bodies — not task-written shortcuts. ORCH independent run in wt-codex9 (subagent, scripts/test-isolated.ps1 -Filter @oikonomos/dashboard): 27 files / 171 tests passed, 0 failed, incl. BotToolsPanel.test.tsx 2/2, ReviewRulesPanel.test.tsx 1/1, RightPanel.test.tsx 8/8, api.test.ts 5/5; pnpm typecheck exit 0; pnpm build exit 0 (pre-existing App.test.tsx act() warnings only, non-fatal, all pass) — matches Test_Evidence. Merged --no-ff 59bb1f1f into master. Branch NOT deleted: checked out in builder worktree wt-codex9; worktree left intact per standing rule 6. TASK-358 (dep 356+354) still waits on TASK-356.
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T06:58:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T07:20:00Z
 
 ### TASK-355
 **Title:** Mobile: handoff chips inline in the chat timeline
