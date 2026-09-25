@@ -11008,7 +11008,7 @@ Exit status 2
 
 ### TASK-362
 **Title:** Mobile and web: show "Not configured" for connectors in Connectors & tools
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-361 API; TASK-353 (mobile screen) and TASK-354 (web panel) both had the not-connected state descoped; memory: grok-bot-mobile-reference (Plugins page)
@@ -11019,16 +11019,16 @@ Exit status 2
 - [ ] Mobile widget tests and web component tests: false shows the badge and disabled switches with the reason; true, unknown and absent render as before; older-server payload without the field works.
 - [ ] `flutter test` (full mobile suite) and `flutter analyze lib` pass; Dart is outside pnpm -r, so say so in Test_Evidence.
 - [ ] apps/dashboard tests, lint and build pass; `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-362-cx9
+**Started_At:** 2026-09-25T19:11:45Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T18:23:37Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T19:11:45Z
 
 ### TASK-363
 **Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
