@@ -10690,7 +10690,7 @@ Exit status 2
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 15 (third-party plugin loading REJECTED); owner decision 2026-09-24: Plugins = connectors and tools per bot, grant on/off where allowed
@@ -10705,12 +10705,13 @@ Exit status 2
 **Started_At:** 2026-09-25T02:00:23Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
+- [2026-09-25T02:03:01Z] [SV:CX9] Catalog/grant data is available, but the required account-link connection state is not exposed or persisted for control-api.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** MISSING_DEPENDENCY: no tenant-queryable persisted connector/account-link state exists; runtime OAuth session state is outside authorized paths and ControlApiDeps.
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T02:00:23Z
+**Updated_At:** 2026-09-25T02:03:01Z
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
