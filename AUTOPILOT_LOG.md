@@ -1814,3 +1814,6 @@ Local time: 21:48 South Africa Standard Time
 - [2026-09-25T19:53:02Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
 - [2026-09-25T19:58:02Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
 - [2026-09-25T20:03:04Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
+- [2026-09-25T20:08:07Z] CONTROL: TASK-363-2026-09-25T20-05-47Z.json -> applied (CONTROL TASK-363: CX9 -> needs_review)
+- [2026-09-25T20:08:09Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:4 needs_review:1}
+- [2026-09-25T20:08:27Z] REVIEW: TASK-363 awaiting review

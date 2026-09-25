@@ -15,12 +15,17 @@
 #   * Autopilot merges reviewed work to master. It NEVER deploys: applying migrations to
 #     production, rebuilding and restarting services stay a deliberate, separate step.
 $ErrorActionPreference = 'Continue'
-Set-Location -LiteralPath 'E:\DELL-PROJECTS\GROKBOT-CLONE'
+# Location-independent (2026-09-25): resolve the repo root from this script's own path, so the same file
+# works on any machine (this PC, a laptop) without editing.
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location -LiteralPath $RepoRoot
 
-if (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { $env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + $env:Path }
+# Optional per-machine Node 22 folder: set OIKONOMOS_NODE22_DIR (a folder containing node.exe) if Node 22 is not already first on PATH.
+if ($env:OIKONOMOS_NODE22_DIR -and (Test-Path (Join-Path $env:OIKONOMOS_NODE22_DIR 'node.exe'))) { $env:Path = $env:OIKONOMOS_NODE22_DIR + ';' + $env:Path }
+elseif (Test-Path 'C:\tool\node22\node-v22.23.2-win-x64\node.exe') { $env:Path = 'C:\tool\node22\node-v22.23.2-win-x64;' + $env:Path }
 if (-not $env:DATABASE_URL) { $env:DATABASE_URL = [Environment]::GetEnvironmentVariable('DATABASE_URL', 'User') }
 
-$LogDir = 'E:\DELL-PROJECTS\GROKBOT-CLONE\infra\compose\logs'
+$LogDir = Join-Path $RepoRoot 'infra\compose\logs'
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 $Log = Join-Path $LogDir 'autopilot-tick.log'
 
