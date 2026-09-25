@@ -10841,7 +10841,7 @@ Exit status 2
 
 ### TASK-357
 **Title:** Mobile: bot-to-bot entries and "Messaged X" previews in the roster
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8; TASK-356 API
@@ -10851,16 +10851,16 @@ Exit status 2
 **Acceptance_Criteria:**
 - [ ] Widget tests: pair entry, read-only transcript opens, outbound icon, legacy fallback.
 - [ ] `flutter test` (full mobile suite) and `flutter analyze lib` pass; Dart is outside pnpm -r, so say so in Test_Evidence.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-357-cx9
+**Started_At:** 2026-09-25T11:03:07Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-24T19:53:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T11:03:07Z
 
 ### TASK-358
 **Title:** Web: bot-to-bot entries and "Messaged X" previews in the sidebar
