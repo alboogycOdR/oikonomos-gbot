@@ -11008,7 +11008,7 @@ Exit status 2
 
 ### TASK-362
 **Title:** Mobile and web: show "Not configured" for connectors in Connectors & tools
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** TASK-361 API; TASK-353 (mobile screen) and TASK-354 (web panel) both had the not-connected state descoped; memory: grok-bot-mobile-reference (Plugins page)
@@ -11023,12 +11023,13 @@ Exit status 2
 **Started_At:** 2026-09-25T19:11:45Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T19:28:02Z] [SV:CX9] Implemented and committed connector configuration state UI on task/TASK-362-cx9 (0f00e10). Literal configured=false shows Not configured, disables switches, and explains the workspace-owner action; true, unknown, and absent remain unchanged.
+**Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/bot_tools_screen.dart, apps/mobile/test/screens/bot_tools_screen_test.dart, apps/dashboard/src/components/chat/BotToolsPanel.tsx, apps/dashboard/src/components/chat/BotToolsPanel.test.tsx, dossiers/TASK-362.md
+**Test_Evidence:** flutter test passed full mobile suite; flutter analyze lib passed. pnpm lint passed with 3 pre-existing unused-disable warnings and zero errors; pnpm typecheck and pnpm build exited 0. Fresh foreground scripts/test-isolated.ps1 -Init -Filter @oikonomos/dashboard passed: 27 files, 178 tests.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T19:11:45Z
+**Updated_At:** 2026-09-25T19:28:02Z
 
 ### TASK-363
 **Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
