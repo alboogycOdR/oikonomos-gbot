@@ -202,7 +202,14 @@ const EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN";
  */
 export type GroupRoutingDecision =
   | { route: GroupRoute; routingRunId: string | null }
-  | { route: null; routingRunId: null; stopReason: "consecutive_bot_cap" | "quiet_room" };
+  | { route: null; routingRunId: null; stopReason: GroupRoomStopReason };
+
+export const GROUP_CAP_REACHED_EVENT_TYPE = "group.cap_reached";
+export const GROUP_CAP_REACHED_NOTICE = "Paused: the bots have said a lot. Reply to continue.";
+export const GROUP_MAX_BOT_MESSAGES_DEFAULT = 8;
+export const GROUP_MAX_ROUNDS_DEFAULT = 3;
+
+type GroupRoomStopReason = "consecutive_bot_cap" | "quiet_room" | "bot_message_cap" | "round_cap";
 
 export const GROUP_ROUTING_FALLBACK_REASONS = [
   "unreachable",
@@ -903,7 +910,26 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
       // truncating the tail to keep the ten newest entries newest-first.
       const routingHistory = messages.slice(-GROUP_ROUTING_HISTORY_WINDOW).reverse();
       const roomLimit = evaluateGroupRoomLimits(messages, body);
-      if (roomLimit !== null) return { route: null, routingRunId: null, stopReason: roomLimit };
+      if (roomLimit !== null) {
+        if (roomLimit === "bot_message_cap" || roomLimit === "round_cap") {
+          // This is deliberately persisted at the composition boundary: the
+          // HTTP handler only stops fanout, while the database-backed port is
+          // the one place that can make the visible notice and audit durable.
+          // A retry before the caller persists its user message sees the
+          // notice and remains idempotent.
+          if (messages.at(-1)?.body !== GROUP_CAP_REACHED_NOTICE) {
+            await dbInsertMessage(options, { threadId, role: "system", body: GROUP_CAP_REACHED_NOTICE });
+            await dbInsertAuditEvent(options, {
+              tenantId,
+              runId: null,
+              actor: "system:group-routing",
+              eventType: GROUP_CAP_REACHED_EVENT_TYPE,
+              payload: { reason: roomLimit },
+            });
+          }
+        }
+        return { route: null, routingRunId: null, stopReason: roomLimit };
+      }
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
       const members = memberRoleIds.map((roleId) => {
         const role = rolesById.get(roleId);
@@ -1073,10 +1099,31 @@ export const GROUP_CONSECUTIVE_BOT_TURN_CAP = 3;
 /** TASK-275's configured count of identical trailing bot replies. */
 export const GROUP_QUIET_ROOM_REPEAT_CAP = 2;
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (raw === undefined || raw.length === 0) return fallback;
+  if (!/^\d+$/u.test(raw)) throw new Error(`${name} must be a positive integer.`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+  return value;
+}
+
 export function evaluateGroupRoomLimits(
   messages: readonly Message[],
   incomingBody: string,
-): "consecutive_bot_cap" | "quiet_room" | null {
+): GroupRoomStopReason | null {
+  // A user turn starts a new budget. These caps intentionally apply even to
+  // direct mentions; mention syntax may override quiet-room heuristics but
+  // must never let a bot-to-bot loop spend without bound.
+  const sinceLastUser = messages.slice((messages.map((message) => message.role).lastIndexOf("user") + 1));
+  const botMessages = sinceLastUser.filter((message) => message.role === "bot");
+  const maxBotMessages = positiveIntegerEnv("OIK_GROUP_MAX_BOT_MESSAGES", GROUP_MAX_BOT_MESSAGES_DEFAULT);
+  if (botMessages.length >= maxBotMessages) return "bot_message_cap";
+  const maxRounds = positiveIntegerEnv("OIK_GROUP_MAX_ROUNDS", GROUP_MAX_ROUNDS_DEFAULT);
+  // The first bot response answers the human; every later consecutive bot
+  // reply is a bot-reacting-to-bot round.
+  if (Math.max(0, botMessages.length - 1) >= maxRounds) return "round_cap";
+
   // Grok Bot's direct-address convention deliberately overrides chatter
   // controls; all unmentioned routing remains server-side fail-closed.
   if (/@[\p{L}\p{N}_-]+/u.test(incomingBody)) return null;

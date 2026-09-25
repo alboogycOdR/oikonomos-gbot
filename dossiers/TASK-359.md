@@ -11,3 +11,17 @@ A group room can loop bot replies triggered by bot replies, bounded only by spen
 **Approach:** Read the Description and Acceptance_Criteria in PLAN.md, then the current code in Owned_Paths, before changing anything. Work on the pre-cut branch from master. Run tests in the FOREGROUND and wait for them to finish before emitting the control block. Review requires `pnpm build` and `pnpm typecheck` to exit 0 (Flutter tasks: `flutter test` plus `flutter analyze lib`). A failure already on master is still named and classified, never waved off as "baseline".
 
 ## Work Log
+
+- [2026-09-25T03:00:00Z] [CX9] Preflight read against the worktree's older PLAN snapshot: worker groupRouting.ts, groupRouting.test.ts, groupFanout.ts and groupFanout.test.ts all existed; authoritative dispatch/main PLAN additionally grants ports.ts and ports.test.ts, which contain the live routing composition. Implemented caps there: environment-tunable defaults of 8 bot messages and 3 bot-to-bot rounds per user turn; cap enforcement applies even to direct mentions, writes the specified visible notice and one `group.cap_reached` audit event idempotently, and resets on the next user message. Added liveness/reset unit coverage plus a real-Postgres production-composition test for notice/audit idempotence and reset. Verified: `powershell -ExecutionPolicy Bypass -File scripts\\test-isolated.ps1 -Filter @oikonomos/control-api` — 29 files / 387 tests passed; `pnpm build` — exit 0; `pnpm typecheck` — exit 0.
+
+- [2026-09-25T00:00:00Z] [CX9] Preflight completed:
+  ```text
+  [preflight] TASK-359 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
+  [preflight] 4 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   services/worker/src/groupRouting.ts  -> exists, 159 line(s), 6441 bytes
+    FILE   services/worker/src/groupRouting.test.ts  -> exists, 94 line(s), 3865 bytes
+    FILE   services/worker/src/groupFanout.ts  -> exists, 107 line(s), 4770 bytes
+    FILE   services/worker/src/groupFanout.test.ts  -> exists, 140 line(s), 6192 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
+- [2026-09-25T00:00:00Z] [CX9] Blocked before code changes: `services/control-api/src/ports.ts` owns the only live group-thread routing path (`routeGroupMessage`) and existing `evaluateGroupRoomLimits` enforcement. It has the `threadId`, reads the group transcript, returns stop reasons, and can post the required visible system notice/audit. The owned worker `deliverBotToBotMessage` instead accepts only role IDs and writes separate 1:1 recipient threads; it has neither a group thread ID nor a stable per-user-message/round identity, so it cannot implement or test the requested per-group-thread caps, reset, visible notice, or audit event. Expanding worker-only interfaces would be disconnected from the live path. Required territory expansion: `services/control-api/src/ports.ts` and its relevant route/integration tests (or a separately assigned integration task).
