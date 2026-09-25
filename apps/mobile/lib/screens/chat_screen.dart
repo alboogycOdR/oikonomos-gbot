@@ -772,57 +772,77 @@ class ChatScreenState extends State<ChatScreen> {
         child: Text('No messages yet — say hello.'),
       );
     }
-    return Column(
-      children: [
-        if (_handoffs.isNotEmpty)
-          SizedBox(
-            height: 56,
-            child: ListView.builder(
-              key: const Key('handoff-chip-list'),
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              itemCount: _handoffs.length,
-              itemBuilder: (context, index) {
-                final handoff = _handoffs[index];
-                final otherId = handoff.fromRoleId == widget.bot.roleId
-                    ? handoff.toRoleId
-                    : handoff.fromRoleId;
-                final other = _rolesById[otherId];
-                return _HandoffChip(
-                  handoff: handoff,
-                  otherName: other?.name ?? otherId,
-                  avatarSeed: other?.avatarSeed ?? otherId,
-                  avatarColor: other?.avatarColor,
-                  avatarShape: other?.avatarShape,
-                  onTap: () => _showHandoff(handoff, other?.name ?? otherId),
-                );
-              },
+    final timeline = _buildTimeline();
+    return ListView.builder(
+      key: const Key('message-list'),
+      padding: const EdgeInsets.all(12),
+      itemCount: timeline.length,
+      itemBuilder: (context, index) {
+        final item = timeline[index];
+        final showDateDivider = index == 0 ||
+            !_isSameDay(timeline[index - 1].createdAt, item.createdAt);
+        final content = item.message == null
+            ? _buildHandoffChip(item.handoffs)
+            : _buildMessageBubble(context, item.message!);
+        if (!showDateDivider) return content;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DateDivider(
+              key: Key('date-divider-${item.id}'),
+              label: _dateDividerLabel(item.createdAt),
             ),
-          ),
-        Expanded(
-            child: ListView.builder(
-          key: const Key('message-list'),
-          padding: const EdgeInsets.all(12),
-          itemCount: _messages.length,
-          itemBuilder: (context, index) {
-            final message = _messages[index];
-            final showDateDivider = index == 0 ||
-                !_isSameDay(_messages[index - 1].createdAt, message.createdAt);
-            final bubble = _buildMessageBubble(context, message);
-            if (!showDateDivider) return bubble;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DateDivider(
-                  key: Key('date-divider-${message.id}'),
-                  label: _dateDividerLabel(message.createdAt),
-                ),
-                bubble,
-              ],
-            );
-          },
-        )),
-      ],
+            content,
+          ],
+        );
+      },
+    );
+  }
+
+  /// Merges the separately fetched handoffs into the transcript's chronology.
+  /// Consecutive exchanges with the same bot are represented by one compact
+  /// chip, so a rapid back-and-forth does not take over the conversation.
+  List<_ChatTimelineItem> _buildTimeline() {
+    final timeline = <_ChatTimelineItem>[
+      ..._messages.map(_ChatTimelineItem.message),
+      ..._handoffs.map(
+        (handoff) => _ChatTimelineItem.handoff(
+          handoff,
+          handoff.fromRoleId == widget.bot.roleId
+              ? handoff.toRoleId
+              : handoff.fromRoleId,
+        ),
+      ),
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    final grouped = <_ChatTimelineItem>[];
+    for (final item in timeline) {
+      if (item.isHandoff &&
+          grouped.isNotEmpty &&
+          grouped.last.isHandoff &&
+          grouped.last.otherRoleId == item.otherRoleId) {
+        grouped[grouped.length - 1] =
+            grouped.last.addHandoff(item.handoffs.single);
+      } else {
+        grouped.add(item);
+      }
+    }
+    return grouped;
+  }
+
+  Widget _buildHandoffChip(List<RoleHandoff> handoffs) {
+    final handoff = handoffs.first;
+    final otherId = handoff.fromRoleId == widget.bot.roleId
+        ? handoff.toRoleId
+        : handoff.fromRoleId;
+    final other = _rolesById[otherId];
+    return _HandoffChip(
+      handoffs: handoffs,
+      otherName: other?.name ?? otherId,
+      avatarSeed: other?.avatarSeed ?? otherId,
+      avatarColor: other?.avatarColor,
+      avatarShape: other?.avatarShape,
+      onTap: () => _showHandoff(handoff, other?.name ?? otherId),
     );
   }
 
@@ -1076,14 +1096,14 @@ class _DateDivider extends StatelessWidget {
 
 class _HandoffChip extends StatelessWidget {
   const _HandoffChip(
-      {required this.handoff,
+      {required this.handoffs,
       required this.otherName,
       required this.avatarSeed,
       this.avatarColor,
       this.avatarShape,
       required this.onTap});
 
-  final RoleHandoff handoff;
+  final List<RoleHandoff> handoffs;
   final String otherName;
   final String avatarSeed;
   final String? avatarColor;
@@ -1094,7 +1114,7 @@ class _HandoffChip extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ActionChip(
-          key: Key('handoff-chip-${handoff.id}'),
+          key: Key('handoff-chip-${handoffs.first.id}'),
           avatar: BotAvatar(
             seed: avatarSeed,
             name: otherName,
@@ -1102,10 +1122,36 @@ class _HandoffChip extends StatelessWidget {
             avatarShape: avatarShape,
             size: 22,
           ),
-          label: Text('1 message with $otherName'),
+          label: Text(
+            '${handoffs.length} ${handoffs.length == 1 ? 'message' : 'messages'} with $otherName',
+          ),
           onPressed: onTap,
         ),
       );
+}
+
+class _ChatTimelineItem {
+  const _ChatTimelineItem.message(this.message)
+      : handoffs = const [],
+        otherRoleId = null;
+
+  _ChatTimelineItem.handoff(RoleHandoff handoff, this.otherRoleId)
+      : message = null,
+        handoffs = [handoff];
+
+  _ChatTimelineItem._handoffGroup(this.handoffs, this.otherRoleId)
+      : message = null;
+
+  final ThreadMessage? message;
+  final List<RoleHandoff> handoffs;
+  final String? otherRoleId;
+
+  bool get isHandoff => message == null;
+  String get createdAt => message?.createdAt ?? handoffs.first.createdAt;
+  String get id => message?.id ?? handoffs.first.id;
+
+  _ChatTimelineItem addHandoff(RoleHandoff handoff) =>
+      _ChatTimelineItem._handoffGroup([...handoffs, handoff], otherRoleId);
 }
 
 class _ApprovalCard extends StatelessWidget {
