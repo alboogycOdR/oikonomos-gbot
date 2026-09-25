@@ -11034,7 +11034,7 @@ Exit status 2
 
 ### TASK-363
 **Title:** Workforce checker: a zero-inference watch that catches runaway group and handoff activity
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group interaction: "Workforce checker bot pattern"); DISPOSITION row 18; TASK-359 (group caps) and TASK-328 (depth cap) emit the events it reads; owner cost concern 2026-09-25 (R350/month ceiling)
@@ -11047,7 +11047,7 @@ Exit status 2
 - [ ] No model provider is called anywhere in the check (asserted by a test with a provider that throws).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
 **Branch:** task/TASK-363-cx9
-**Started_At:** 2026-09-25T19:39:12Z
+**Started_At:** 2026-09-25T19:50:32Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-25T19:48:02Z] [SV:CX9] Pre-flight complete; group.cap_reached events cannot be mapped to an affected group thread.
@@ -11056,8 +11056,8 @@ Exit status 2
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** RESOLVED 2026-09-25T20:55Z — ORCH widened Owned_Paths to services/control-api/src/ports.ts(+test) so the checker can persist and read the group thread id on group.cap_reached. Ready to re-dispatch to CX9.
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T20:55:00Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-25T19:50:32Z
 
 ### TASK-364
 **Title:** Model routing: a pure function that picks the cheap provider for background work
