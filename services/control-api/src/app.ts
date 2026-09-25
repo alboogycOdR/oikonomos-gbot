@@ -803,6 +803,71 @@ function mergeRoleMessages(sent: RoleMessage[], received: RoleMessage[]): RoleMe
   );
 }
 
+type ThreadListPreview = {
+  text: string;
+  authorKind: "user" | "bot" | "system" | "bot_outbound";
+};
+
+type BotPairThreadListEntry = {
+  id: string;
+  kind: "bot_pair";
+  memberRoleIds: string[];
+  memberNames: string[];
+  title: string;
+  preview: ThreadListPreview;
+  lastMessageAt: Date;
+  lastMessagePreview: string;
+  unreadCount: 0;
+  pinnedAt: null;
+  updatedAt: Date;
+};
+
+function threadPreviewText(body: string): string {
+  return body.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+/**
+ * Builds the Chat-2 bot-pair rows from the durable handoff mailbox. These
+ * are intentionally read-side only: worker delivery remains one recipient
+ * thread per existing handoff, while the roster presents one deterministic
+ * synthetic row for each pair of tenant-owned bots.
+ */
+function buildBotPairThreadEntries(messages: RoleMessage[], rolesById: Map<string, Role>): BotPairThreadListEntry[] {
+  const latestByPair = new Map<string, RoleMessage>();
+  for (const message of messages) {
+    if (message.fromRoleId === message.toRoleId
+      || !rolesById.has(message.fromRoleId)
+      || !rolesById.has(message.toRoleId)) continue;
+    const memberRoleIds = [message.fromRoleId, message.toRoleId].sort();
+    const key = memberRoleIds.join("\u0000");
+    const existing = latestByPair.get(key);
+    if (existing === undefined
+      || message.createdAt > existing.createdAt
+      || (message.createdAt.getTime() === existing.createdAt.getTime() && message.messageId > existing.messageId)) {
+      latestByPair.set(key, message);
+    }
+  }
+
+  return [...latestByPair.entries()].map(([key, latest]) => {
+    const memberRoleIds = key.split("\u0000");
+    const memberNames = memberRoleIds.map((roleId) => rolesById.get(roleId)!.name).sort((left, right) => left.localeCompare(right));
+    const preview = { text: threadPreviewText(latest.body), authorKind: "bot" as const };
+    return {
+      id: `bot_pair:${memberRoleIds.join(":")}`,
+      kind: "bot_pair",
+      memberRoleIds,
+      memberNames,
+      title: memberNames.join(" and "),
+      preview,
+      lastMessageAt: latest.createdAt,
+      lastMessagePreview: preview.text,
+      unreadCount: 0,
+      pinnedAt: null,
+      updatedAt: latest.createdAt,
+    };
+  });
+}
+
 function isRunStatus(value: string): value is RunStatus {
   return (runStatuses as readonly string[]).includes(value);
 }
@@ -1720,13 +1785,26 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
 
   app.get("/threads", async (request, reply) => {
     try {
-      const [threads, roles] = await Promise.all([
+      const [threads, roles, roleMessages] = await Promise.all([
         deps.listAllThreadsWithMembers(request.tenantId),
         deps.listRoles({ tenantId: request.tenantId, status: "active" }),
+        deps.listRoleMessages({ tenantId: request.tenantId }),
       ]);
       const rolesById = new Map(roles.map((role) => [role.roleId, role]));
       const ownedRoleIds = new Set(rolesById.keys());
-      const result = await Promise.all(threads
+      const latestOutboundByRoleId = new Map<string, RoleMessage>();
+      for (const message of roleMessages) {
+        if (message.fromRoleId === message.toRoleId
+          || !ownedRoleIds.has(message.fromRoleId)
+          || !ownedRoleIds.has(message.toRoleId)) continue;
+        const existing = latestOutboundByRoleId.get(message.fromRoleId);
+        if (existing === undefined
+          || message.createdAt > existing.createdAt
+          || (message.createdAt.getTime() === existing.createdAt.getTime() && message.messageId > existing.messageId)) {
+          latestOutboundByRoleId.set(message.fromRoleId, message);
+        }
+      }
+      const threadEntries = await Promise.all(threads
         .filter((thread) => "memberRoleIds" in thread
           ? thread.memberRoleIds.every((roleId) => ownedRoleIds.has(roleId))
           : ownedRoleIds.has(thread.roleId))
@@ -1758,6 +1836,15 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             };
           }
           const role = rolesById.get(thread.roleId);
+          const outbound = latestOutboundByRoleId.get(thread.roleId);
+          const outboundWins = outbound !== undefined
+            && (lastMessageAt === null || outbound.createdAt > lastMessageAt);
+          const outboundPreview: ThreadListPreview | undefined = outbound === undefined ? undefined : {
+            text: `Messaged ${rolesById.get(outbound.toRoleId)!.name}: ${threadPreviewText(outbound.body)}`,
+            authorKind: "bot_outbound",
+          };
+          const effectivePreview = outboundWins ? outboundPreview! : preview;
+          const effectiveLastMessageAt = outboundWins ? outbound.createdAt : lastMessageAt;
           return {
             id: thread.id,
             roleId: thread.roleId,
@@ -1767,14 +1854,23 @@ export function buildApp(deps: ControlApiDeps, options: BuildAppOptions = {}): F
             avatarColor: role?.avatarColor ?? null,
             avatarShape: role?.avatarShape ?? null,
             title: thread.title,
-            preview,
-            lastMessageAt,
-            lastMessagePreview: preview?.text ?? "",
+            preview: effectivePreview,
+            lastMessageAt: effectiveLastMessageAt,
+            lastMessagePreview: effectivePreview?.text ?? "",
             unreadCount: thread.unreadCount ?? 0,
             pinnedAt: thread.pinnedAt ?? null,
             updatedAt: thread.updatedAt,
           };
         }));
+      const result = [...threadEntries, ...buildBotPairThreadEntries(roleMessages, rolesById)]
+        .sort((left, right) => {
+          const leftPinned = left.pinnedAt === null ? 0 : 1;
+          const rightPinned = right.pinnedAt === null ? 0 : 1;
+          if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+          const leftActivity = (left.lastMessageAt ?? left.updatedAt).getTime();
+          const rightActivity = (right.lastMessageAt ?? right.updatedAt).getTime();
+          return rightActivity - leftActivity || left.id.localeCompare(right.id);
+        });
       await reply.code(200).send(result);
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message });
