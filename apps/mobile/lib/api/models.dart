@@ -361,6 +361,7 @@ class GroupThread extends ThreadSummary {
     required super.id,
     required this.memberRoleIds,
     required this.memberNames,
+    this.kind,
     required super.title,
     required super.lastMessagePreview,
     required super.updatedAt,
@@ -374,11 +375,19 @@ class GroupThread extends ThreadSummary {
   final List<String> memberRoleIds;
   final List<String> memberNames;
 
+  /// TASK-357 — `bot_pair` is a synthetic, read-only thread-list row from
+  /// newer servers. A missing kind remains an ordinary group thread so older
+  /// server responses retain the previous roster behaviour.
+  final String? kind;
+
+  bool get isBotPair => kind == 'bot_pair';
+
   factory GroupThread.fromJson(Map<String, dynamic> json) {
     return GroupThread(
       id: json['id'] as String,
       memberRoleIds: (json['memberRoleIds'] as List<dynamic>).cast<String>(),
       memberNames: (json['memberNames'] as List<dynamic>).cast<String>(),
+      kind: ThreadSummary._optString(json['kind']),
       title: json['title'] as String?,
       lastMessagePreview: json['lastMessagePreview'] as String? ?? '',
       updatedAt: json['updatedAt'] as String,
