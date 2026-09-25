@@ -7,12 +7,15 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRole,
+  createGroupThread,
   createSecretRequest,
   createSecretVault,
   defaultPoolConfig,
   getAuditEventsForRun,
   getSecretRequest,
   getRun,
+  insertMessage,
+  listMessages,
   type Approval,
   type DeviceToken,
   type Run,
@@ -28,6 +31,10 @@ import {
   createDatabaseBackedSecretRequests,
   createFilesystemAttachmentStore,
   createGatedChatRunTask,
+  evaluateGroupRoomLimits,
+  GROUP_CAP_REACHED_NOTICE,
+  GROUP_MAX_BOT_MESSAGES_DEFAULT,
+  GROUP_MAX_ROUNDS_DEFAULT,
   routeGroupMessageWithFallback,
   runGatedGroupFanout,
   notifyAfterChatRun,
@@ -270,6 +277,87 @@ describe("group routing fallback evidence and system holders (TASK-335)", () => 
     expect(result).toMatchObject({ recipients: [members[0]] });
     expect(scorer).toHaveBeenCalledTimes(2);
     expect(audits).toEqual([]);
+  });
+});
+
+describe("group-room runaway limits (TASK-359)", () => {
+  const history = (roles: readonly ("user" | "bot" | "system")[]) => roles.map((role, index) => ({
+    id: `message-${index}`, threadId: "group-thread", role, body: role === "system" ? GROUP_CAP_REACHED_NOTICE : `message ${index}`,
+    runId: null, createdAt: new Date(),
+  }));
+
+  it("stops a bot-message loop at its configured per-user-turn cap (liveness)", () => {
+    vi.stubEnv("OIK_GROUP_MAX_BOT_MESSAGES", "2");
+    vi.stubEnv("OIK_GROUP_MAX_ROUNDS", "99");
+    try {
+      expect(evaluateGroupRoomLimits(history(["user", "bot", "bot"]), "@Alpha continue")).toBe("bot_message_cap");
+      // A new user message is the reset boundary for the next routing turn.
+      expect(evaluateGroupRoomLimits(history(["user", "bot", "bot", "user"]), "@Alpha continue")).toBeNull();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("stops bot-to-bot rounds independently of the message cap", () => {
+    vi.stubEnv("OIK_GROUP_MAX_BOT_MESSAGES", "99");
+    vi.stubEnv("OIK_GROUP_MAX_ROUNDS", "3");
+    try {
+      expect(evaluateGroupRoomLimits(history(["user", "bot", "bot", "bot", "bot"]), "@Alpha continue")).toBe("round_cap");
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("uses the owner-tunable defaults when no environment override exists", () => {
+    vi.stubEnv("OIK_GROUP_MAX_BOT_MESSAGES", "");
+    vi.stubEnv("OIK_GROUP_MAX_ROUNDS", "");
+    try {
+      expect(GROUP_MAX_BOT_MESSAGES_DEFAULT).toBe(8);
+      expect(GROUP_MAX_ROUNDS_DEFAULT).toBe(3);
+    } finally { vi.unstubAllEnvs(); }
+  });
+});
+
+const groupCapsConnectionString = process.env.DATABASE_URL;
+const groupCapsIntegration = groupCapsConnectionString === undefined ? describe.skip : describe;
+groupCapsIntegration("group-room cap persistence (TASK-359)", () => {
+  const tenantId = `task-359-${randomUUID()}`;
+  const alpha = `task-359-alpha-${randomUUID()}`;
+  const beta = `task-359-beta-${randomUUID()}`;
+  let pool: Pool;
+  let threadId: string | null = null;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: groupCapsConnectionString!, ...defaultPoolConfig });
+    await createRole({ connectionString: groupCapsConnectionString! }, { tenantId, roleId: alpha, name: "Alpha", title: "Alpha" });
+    await createRole({ connectionString: groupCapsConnectionString! }, { tenantId, roleId: beta, name: "Beta", title: "Beta" });
+  });
+  afterAll(async () => {
+    await pool.query("DELETE FROM audit_events WHERE tenant_id = $1", [tenantId]);
+    if (threadId !== null) {
+      await pool.query("DELETE FROM messages WHERE thread_id = $1", [threadId]);
+      await pool.query("DELETE FROM thread_members WHERE thread_id = $1", [threadId]);
+      await pool.query("DELETE FROM threads WHERE id = $1", [threadId]);
+    }
+    await pool.query("DELETE FROM roles WHERE tenant_id = $1", [tenantId]);
+    await pool.end();
+  });
+
+  it("writes exactly one visible notice and audit at the cap, then resets after a user message", async () => {
+    vi.stubEnv("OIK_GROUP_MAX_BOT_MESSAGES", "2");
+    vi.stubEnv("OIK_GROUP_MAX_ROUNDS", "99");
+    try {
+      const options = { connectionString: groupCapsConnectionString! };
+      const thread = await createGroupThread(options, { roleIds: [alpha, beta], title: "TASK-359" });
+      threadId = thread.id;
+      for (const role of ["user", "bot", "bot"] as const) await insertMessage(options, { threadId: thread.id, role, body: `${role}-${randomUUID()}` });
+      const deps = createDatabaseBackedDeps(options);
+      const input = { tenantId, threadId: thread.id, memberRoleIds: [alpha, beta], body: "@Alpha continue", title: "cap", goal: "cap" };
+      await expect(deps.routeGroupMessage!(input)).resolves.toMatchObject({ route: null, stopReason: "bot_message_cap" });
+      await expect(deps.routeGroupMessage!(input)).resolves.toMatchObject({ route: null, stopReason: "bot_message_cap" });
+      const messages = await listMessages(options, thread.id);
+      expect(messages.filter((message) => message.role === "system" && message.body === GROUP_CAP_REACHED_NOTICE)).toHaveLength(1);
+      const audits = await pool.query<{ count: string }>("SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND event_type = 'group.cap_reached'", [tenantId]);
+      expect(audits.rows[0]!.count).toBe("1");
+      await insertMessage(options, { threadId: thread.id, role: "user", body: "new user turn" });
+      await expect(deps.routeGroupMessage!(input)).resolves.toMatchObject({ route: expect.any(Object) });
+    } finally { vi.unstubAllEnvs(); }
   });
 });
 

@@ -12,6 +12,8 @@ A group room can loop bot replies triggered by bot replies, bounded only by spen
 
 ## Work Log
 
+- [2026-09-25T03:00:00Z] [CX9] Preflight read against the worktree's older PLAN snapshot: worker groupRouting.ts, groupRouting.test.ts, groupFanout.ts and groupFanout.test.ts all existed; authoritative dispatch/main PLAN additionally grants ports.ts and ports.test.ts, which contain the live routing composition. Implemented caps there: environment-tunable defaults of 8 bot messages and 3 bot-to-bot rounds per user turn; cap enforcement applies even to direct mentions, writes the specified visible notice and one `group.cap_reached` audit event idempotently, and resets on the next user message. Added liveness/reset unit coverage plus a real-Postgres production-composition test for notice/audit idempotence and reset. Verified: `powershell -ExecutionPolicy Bypass -File scripts\\test-isolated.ps1 -Filter @oikonomos/control-api` — 29 files / 387 tests passed; `pnpm build` — exit 0; `pnpm typecheck` — exit 0.
+
 - [2026-09-25T00:00:00Z] [CX9] Preflight completed:
   ```text
   [preflight] TASK-359 Owned_Paths inspected in E:/DELL-PROJECTS/wt-codex9-GROKBOT-CLONE
