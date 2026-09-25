@@ -8,12 +8,14 @@
 // (TASK-107, outside this task's Owned_Paths) asserts `onCreateBot` fires
 // directly on click with no dialog involved, so that call is preserved
 // exactly as before.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { BotSummary, WorkspaceBadgeKind } from "./types";
+import type { BotSummary, ChatMessage, WorkspaceBadgeKind } from "./types";
 import { Avatar } from "./Avatar";
+import { ConversationPane } from "./ConversationPane";
 import { CreateBotDialog } from "./CreateBotDialog";
 import { GroupThreadDialog } from "./GroupThreadDialog";
+import { listRoleHandoffs, listRoles } from "../../lib/api";
 
 /** TASK-239 (spec §4.2) — label + color per badge kind, applied to every background workspace's sidebar row. */
 const BADGE_LABEL: Record<WorkspaceBadgeKind, string> = {
@@ -35,11 +37,6 @@ const BADGE_CLASS: Record<WorkspaceBadgeKind, string> = {
  * awareness is a local structural extension of `BotSummary`, not a
  * `types.ts` edit (outside this task's Owned_Paths).
  */
-interface GroupAwareBotSummary extends BotSummary {
-  isGroup?: boolean;
-  memberNames?: string[];
-}
-
 function formatRelative(iso: string): string {
   const then = new Date(iso).getTime();
   const diffMinutes = Math.round((Date.now() - then) / 60000);
@@ -75,8 +72,45 @@ export function BotSidebar({
 }: BotSidebarProps) {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
   const [isGroupDialogOpen, setGroupDialogOpen] = useState(false);
-  const groupAwareBots = bots as GroupAwareBotSummary[];
+  const [selectedPair, setSelectedPair] = useState<BotSummary | null>(null);
+  const [pairMessages, setPairMessages] = useState<ChatMessage[]>([]);
+  const [pairError, setPairError] = useState<string | null>(null);
+  const groupAwareBots = bots;
   const realBots = groupAwareBots.filter((bot) => bot.isGroup !== true);
+
+  useEffect(() => {
+    if (selectedPair === null) return undefined;
+    const sourceRoleId = selectedPair.memberRoleIds?.[0];
+    if (sourceRoleId === undefined) {
+      setPairMessages([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setPairMessages([]);
+    setPairError(null);
+    void Promise.all([listRoleHandoffs(sourceRoleId), listRoles()])
+      .then(([handoffs, roles]) => {
+        if (cancelled) return;
+        const members = new Set(selectedPair.memberRoleIds);
+        const names = new Map(roles.map((role) => [role.id, role.name]));
+        setPairMessages(handoffs
+          .filter((handoff) => members.has(handoff.fromRoleId) && members.has(handoff.toRoleId))
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .map((handoff) => ({
+            id: handoff.messageId,
+            threadId: selectedPair.id,
+            role: "bot" as const,
+            body: handoff.body,
+            createdAt: handoff.createdAt,
+            senderRoleId: handoff.fromRoleId,
+            senderName: names.get(handoff.fromRoleId) ?? handoff.fromRoleId,
+          })));
+      })
+      .catch(() => {
+        if (!cancelled) setPairError("Could not load messages.");
+      });
+    return () => { cancelled = true; };
+  }, [selectedPair]);
 
   return (
     <aside
@@ -126,6 +160,16 @@ export function BotSidebar({
         }}
         onUnauthorized={onUnauthorized}
       />
+      {selectedPair !== null ? (
+        <div role="dialog" aria-modal="true" aria-label={`${selectedPair.name} messages`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="flex h-[min(42rem,calc(100vh-3rem))] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-chrome-border bg-surface shadow-2xl">
+            <div className="flex justify-end border-b border-chrome-border px-3 py-2">
+              <button type="button" onClick={() => setSelectedPair(null)} className="rounded px-2 py-1 text-sm text-slate-300 hover:bg-surface-raised">Close</button>
+            </div>
+            {pairError !== null ? <p role="alert" className="p-5 text-sm text-rose-300">{pairError}</p> : <ConversationPane bot={selectedPair} messages={pairMessages} onUnauthorized={onUnauthorized} />}
+          </div>
+        </div>
+      ) : null}
       <ul className="flex-1 overflow-y-auto" role="listbox" aria-label="Bot threads">
         {groupAwareBots.map((bot) => {
           const isActive = bot.id === activeBotId;
@@ -135,18 +179,25 @@ export function BotSidebar({
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                onClick={() => onSelectBot?.(bot.id)}
+                onClick={() => {
+                  if (bot.isBotPair) setSelectedPair(bot);
+                  else onSelectBot?.(bot.id);
+                }}
                 className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
                   isActive
                     ? "bg-surface-raised"
                     : "hover:bg-surface-raised/60"
                 }`}
               >
-                <Avatar seed={bot.avatarSeed} name={bot.name} avatarColor={bot.avatarColor} avatarShape={bot.avatarShape} />
+                {bot.isBotPair ? (
+                  <span className="flex -space-x-3" aria-label={`${bot.name} pair avatars`}>
+                    {(bot.memberNames ?? []).slice(0, 2).map((name, index) => <Avatar key={name} seed={bot.memberRoleIds?.[index] ?? name} name={name} size="sm" />)}
+                  </span>
+                ) : <Avatar seed={bot.avatarSeed} name={bot.name} avatarColor={bot.avatarColor} avatarShape={bot.avatarShape} />}
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium text-slate-100">
-                      {bot.isGroup === true ? "👥 " : ""}
+                      {bot.isGroup === true && !bot.isBotPair ? "👥 " : ""}
                       {bot.name}
                     </span>
                     <span className="shrink-0 text-[10px] text-slate-500">
@@ -156,6 +207,7 @@ export function BotSidebar({
                   <span className="flex items-center gap-2">
                     {bot.lastMessagePreview ? (
                       <span className="block min-w-0 flex-1 truncate text-xs text-slate-400">
+                        {bot.previewAuthorKind === "bot_outbound" ? <span aria-label="Outbound message">↗ </span> : null}
                         {bot.lastMessagePreview}
                       </span>
                     ) : null}

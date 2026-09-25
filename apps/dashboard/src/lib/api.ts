@@ -459,6 +459,7 @@ export interface Thread {
   avatarShape?: import("../components/chat/Avatar").AvatarShapeToken | null;
   title: string | null;
   lastMessagePreview: string;
+  preview?: ThreadListPreview | null;
   updatedAt: string;
 }
 
@@ -473,9 +474,24 @@ export interface GroupThread {
   id: string;
   memberRoleIds: string[];
   memberNames: string[];
+  kind?: "bot_pair";
   title: string | null;
   lastMessagePreview: string;
+  preview?: ThreadListPreview | null;
   updatedAt: string;
+}
+
+export interface ThreadListPreview {
+  text: string;
+  authorKind: "user" | "bot" | "system" | "bot_outbound";
+}
+
+export interface RoleHandoff {
+  messageId: string;
+  fromRoleId: string;
+  toRoleId: string;
+  body: string;
+  createdAt: string;
 }
 
 export function isGroupThread(thread: Thread | GroupThread): thread is GroupThread {
@@ -484,6 +500,10 @@ export function isGroupThread(thread: Thread | GroupThread): thread is GroupThre
 
 export async function listThreads(): Promise<Array<Thread | GroupThread>> {
   return request<Array<Thread | GroupThread>>("/threads");
+}
+
+export async function listRoleHandoffs(roleId: string): Promise<RoleHandoff[]> {
+  return request<RoleHandoff[]>(`/roles/${encodeURIComponent(roleId)}/messages`);
 }
 
 /**

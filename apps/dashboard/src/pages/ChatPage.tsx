@@ -134,8 +134,10 @@ function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
       description: `Group · ${thread.memberNames.join(", ")}`,
       avatarSeed: thread.id,
       lastMessagePreview: thread.lastMessagePreview,
+      previewAuthorKind: thread.preview?.authorKind,
       updatedAt: thread.updatedAt,
       isGroup: true,
+      isBotPair: thread.kind === "bot_pair",
       memberNames: thread.memberNames,
       memberRoleIds: thread.memberRoleIds,
     };
@@ -149,6 +151,7 @@ function toBotSummary(thread: Thread | GroupThread): GroupAwareBotSummary {
     avatarColor: thread.avatarColor,
     avatarShape: thread.avatarShape,
     lastMessagePreview: thread.lastMessagePreview,
+    previewAuthorKind: thread.preview?.authorKind,
     updatedAt: thread.updatedAt,
   };
 }
@@ -370,11 +373,11 @@ export function ChatPage() {
 
   const sortedByRecency = useMemo(
     () =>
-      [...bots].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
+      bots.filter((bot) => !bot.isBotPair).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
     [bots],
   );
 
-  const threadExists = routeThreadId !== undefined && bots.some((bot) => bot.id === routeThreadId);
+  const threadExists = routeThreadId !== undefined && bots.some((bot) => bot.id === routeThreadId && !bot.isBotPair);
   const notFound = !loading && routeThreadId !== undefined && !threadExists;
 
   /**

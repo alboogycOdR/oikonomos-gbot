@@ -31,7 +31,13 @@ export interface BotSummary {
   avatarColor?: import("./Avatar").AvatarColorToken | null;
   avatarShape?: import("./Avatar").AvatarShapeToken | null;
   lastMessagePreview?: string;
+  previewAuthorKind?: "user" | "bot" | "system" | "bot_outbound";
   updatedAt: string;
+  isGroup?: boolean;
+  /** Synthetic `bot_pair` rows are observational and open read-only. */
+  isBotPair?: boolean;
+  memberRoleIds?: string[];
+  memberNames?: string[];
   /** TASK-239 (spec §4.2) — background-workspace status badge; absent for the active thread and for a thread with nothing to report. */
   status?: WorkspaceStatus;
 }
@@ -53,6 +59,8 @@ export interface ChatMessage {
   role: MessageRole;
   body: string;
   createdAt: string;
+  senderRoleId?: string | null;
+  senderName?: string | null;
   /** Present when this bot message is awaiting or reflects an approval decision (spec §4). */
   approval?: ApprovalRender;
 }
