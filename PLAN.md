@@ -10841,7 +10841,7 @@ Exit status 2
 
 ### TASK-357
 **Title:** Mobile: bot-to-bot entries and "Messaged X" previews in the roster
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8; TASK-356 API
@@ -10855,12 +10855,13 @@ Exit status 2
 **Started_At:** 2026-09-25T11:03:07Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T11:13:01Z] [SV:CX9] Implemented bot-pair roster entries, read-only handoff transcript, outbound preview icon, and legacy fallback; committed as 42d20d4.
+**Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart
+**Test_Evidence:** apps/mobile: flutter analyze lib â€” no issues; flutter test â€” exit 0 (full mobile suite). Dart is outside the pnpm recursive workspace, so no pnpm command applies.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T11:03:07Z
+**Updated_At:** 2026-09-25T11:13:01Z
 
 ### TASK-358
 **Title:** Web: bot-to-bot entries and "Messaged X" previews in the sidebar
