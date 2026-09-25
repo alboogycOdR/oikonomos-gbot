@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect, useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -246,6 +246,34 @@ describe("ChatPage", () => {
     // Fixture-only names must never leak in once real data has loaded.
     expect(screen.queryByText("Ops Bot")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("hi there")).toBeInTheDocument());
+  });
+
+  it("preserves bot-pair and outbound-preview metadata from GET /threads", async () => {
+    const pair = {
+      id: "bot_pair:role-1:role-2", memberRoleIds: ["role-1", "role-2"], memberNames: ["Research Assistant", "Ops Bot"],
+      kind: "bot_pair", title: "Research Assistant and Ops Bot", lastMessagePreview: "Please check this.",
+      preview: { text: "Please check this.", authorKind: "bot" }, updatedAt: "2026-09-25T10:01:00.000Z",
+    };
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) return new Response(JSON.stringify({ authenticated: true }), { status: 200 });
+      if (url.endsWith("/roles/role-1/messages")) return new Response(JSON.stringify([{ messageId: "handoff-1", fromRoleId: "role-1", toRoleId: "role-2", body: "Please check this.", createdAt: "2026-09-25T10:01:00.000Z" }]), { status: 200 });
+      if (url.endsWith("/roles")) return new Response(JSON.stringify([{ id: "role-1", name: "Research Assistant" }, { id: "role-2", name: "Ops Bot" }]), { status: 200 });
+      if (url.endsWith("/workspace/summary")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/threads")) return new Response(JSON.stringify([{ ...THREAD, preview: { text: "Messaged Ops Bot: status", authorKind: "bot_outbound" } }, pair]), { status: 200 });
+      if (url.includes("/threads/thread-1/stream")) return openStream();
+      if (url.includes("/threads/thread-1/messages")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+    const user = userEvent.setup({ delay: null });
+
+    renderPage();
+
+    expect(await screen.findByLabelText("Outbound message")).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /research assistant and ops bot/i }));
+    const dialog = await screen.findByRole("dialog", { name: /research assistant and ops bot messages/i });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Message")).not.toBeInTheDocument();
   });
 
   it("threads real approval grant data through to Always Allow for the active role", async () => {
