@@ -558,7 +558,8 @@ export function getOpenApiDocument(): Record<string, unknown> {
           type: "object",
           required: ["id", "title", "preview", "lastMessageAt", "updatedAt"],
           properties: {
-            id: { type: "string", format: "uuid" },
+            id: { type: "string", description: "Persisted thread UUID, or a deterministic bot_pair read-model id." },
+            kind: { type: "string", enum: ["bot_pair"], description: "Present only for read-side bot-to-bot conversation entries." },
             title: { type: "string", nullable: true, description: "Stored title, or the first user message shortened to about six words." },
             preview: {
               nullable: true,
@@ -566,7 +567,7 @@ export function getOpenApiDocument(): Record<string, unknown> {
               required: ["text", "authorKind"],
               properties: {
                 text: { type: "string", maxLength: 120, description: "Latest message with whitespace collapsed." },
-                authorKind: { type: "string", enum: ["user", "bot", "system"] },
+                authorKind: { type: "string", enum: ["user", "bot", "system", "bot_outbound"] },
               },
             },
             lastMessageAt: { type: "string", format: "date-time", nullable: true },
