@@ -10690,7 +10690,7 @@ Exit status 2
 
 ### TASK-351
 **Title:** Connectors and tools catalog API for the per-bot Plugins page (backend)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_DISPOSITION_v1.0.md; memory: grok-bot-mobile-reference (owner screenshots 2026-09-04/05) row 15 (third-party plugin loading REJECTED); owner decision 2026-09-24: Plugins = connectors and tools per bot, grant on/off where allowed
@@ -10708,12 +10708,13 @@ Exit status 2
 - [2026-09-25T02:03:01Z] [SV:CX9] Catalog/grant data is available, but the required account-link connection state is not exposed or persisted for control-api.
 - [2026-09-25T02:21:25Z] [ORCH opus-5.5] MISSING_DEPENDENCY resolved by descoping the connected flag. Don't read OAuth session state. Build the catalog with grant state only.
 - [2026-09-25T02:48:01Z] [SV:CX9] Added tenant-scoped connector/tool catalog route, OpenAPI contract, grant-state projection, and real-Postgres lifecycle/isolation tests.
+- [2026-09-25T04:30:00Z] [ORCH opus-4.8] APPROVED, first-pass, merged --no-ff. Territory clean (app.ts/openapi.ts/roleTools.routes.test.ts all in Owned_Paths; only dossier besides; no protected path; CX9 non-Claude → normal review). Real-path route driven by production listCapabilities/listRoleGrants; cross-tenant→404; response asserts no `secret://`/`constraints` leak; ADR-018 browser.interact denylist has a genuine liveness assertion. Freshly-built isolated recursive suite: control-api fully GREEN incl. roleTools.routes.test.ts 2/2; the only 2 failures were services/worker pg-boss lifecycle flakes (workerJobQueue.test.ts) in a package this branch does not touch — one an exact match to the fresh-master baseline, the other a same-file order-dependent pg-boss race (TASK-162 class); TASK-359's green full run on identical worker code confirms nondeterminism. Zero branch-introduced regressions.
 **Artifacts:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/roleTools.routes.test.ts, dossiers/TASK-351.md
 **Test_Evidence:** scripts/test-isolated.ps1 -Init passed; scripts/test-isolated.ps1 -Filter @oikonomos/control-api passed (including TASK-351 2/2); full foreground scripts/test-isolated.ps1 completed successfully; pnpm build and pnpm typecheck exited 0; git diff --check clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T02:48:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T04:30:00Z
 
 ### TASK-352
 **Title:** Mobile: Auto-review toggle and Review rules screen in bot settings
@@ -10879,7 +10880,7 @@ Exit status 2
 
 ### TASK-359
 **Title:** Group rooms cannot run away: per-turn bot message and round caps
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Bot-to-bot & group: runaway protection); groupRouting.ts GROUP_MEMBER_CAP; TASK-328 hop cap covers handoffs only
@@ -10897,12 +10898,13 @@ Exit status 2
 - [2026-09-24T23:33:01Z] [SV:CX9] Blocked: live group-room enforcement is in unowned services/control-api/src/ports.ts; worker fanout lacks group thread/turn context.
 - [2026-09-25T01:21:15Z] [ORCH opus-5.5] OWNERSHIP_CONFLICT resolved by ORCH: added services/control-api/src/ports.ts and ports.test.ts (the group-routing composition, TASK-335) to Owned_Paths. No active task owns them (350 owns app.ts and openapi.ts). If you ALSO need chat.routes.test.ts or another control-api test, say exactly which in a new block rather than widening yourself.
 - [2026-09-25T02:58:02Z] [SV:CX9] Implemented and committed group-room caps with visible pause notice, audit evidence, idempotence, and user-turn reset.
+- [2026-09-25T04:30:00Z] [ORCH opus-4.8] APPROVED, first-pass, merged --no-ff. Territory clean (ports.ts/ports.test.ts in Owned_Paths after the 2026-09-25 grant; only dossier besides; no protected path; CX9 non-Claude → normal review). Caps evaluated in the REAL routeGroupMessage composition (createDatabaseBackedDeps); real-Postgres test asserts exactly one visible notice + one group.cap_reached audit at the cap and a user-message reset, driving the production port callers use (standing-rule-5 satisfied); unit LIVENESS test returns bot_message_cap/round_cap and fails if the cap check is removed; env parser rejects non-positive integers. Freshly-built isolated recursive suite: fully GREEN, 0 failures, all 4 TASK-359 tests ran+passed. Zero branch-introduced regressions.
 **Artifacts:** services/control-api/src/ports.ts, services/control-api/src/ports.test.ts, dossiers/TASK-359.md
 **Test_Evidence:** powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Filter @oikonomos/control-api: 29 files / 387 tests passed; pnpm build: exit 0; pnpm typecheck: exit 0.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T02:58:02Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T04:30:00Z
 
 ### TASK-360
 **Title:** Broker: honour Require-Approval rules for capabilities not yet on the enforcement gate (unblocks Auto-review) ⚑ protected
