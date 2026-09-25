@@ -670,6 +670,7 @@ export function getOpenApiDocument(): Record<string, unknown> {
                 properties: {
                   id: { type: "string", description: "Registered connector or adapter identifier." },
                   label: { type: "string" },
+                  configured: { oneOf: [{ type: "boolean" }, { type: "string", enum: ["unknown"] }], description: "Operator connector configuration state. Omitted for systems without manifest secrets." },
                   tools: {
                     type: "array",
                     items: {

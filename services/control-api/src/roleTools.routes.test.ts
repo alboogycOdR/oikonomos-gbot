@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Writable } from "node:stream";
 
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -94,5 +95,52 @@ integration("TASK-351 role tools route", () => {
     const response = await app.inject({ method: "GET", url: `/roles/${otherRoleId}/tools`, headers: auth });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: "role not found" });
+  });
+
+  it("reports only safe operator connector configuration states", async () => {
+    const previousShared = process.env.OIK_CONNECTOR_STATUS_ENVIRONMENT;
+    const previousGmailUrl = process.env.OIK_SECRET_MCP_GMAIL_URL;
+    const secretValue = "task-361-secret-value";
+    const secretRef = "secret://mcp/gmail/url";
+    let logs = "";
+    const logStream = new Writable({
+      write(chunk, _encoding, callback) {
+        logs += chunk.toString();
+        callback();
+      },
+    });
+    const loggingApp = buildApp(createDatabaseBackedDeps({ connectionString: connectionString! }), { authToken, logStream });
+
+    try {
+      process.env.OIK_CONNECTOR_STATUS_ENVIRONMENT = "shared";
+      process.env.OIK_SECRET_MCP_GMAIL_URL = secretValue;
+      expect(tool((await app.inject({ method: "GET", url: `/roles/${roleId}/tools`, headers: auth })).json(), gmailCapabilityId)).toBeDefined();
+      const configured = await app.inject({ method: "GET", url: `/roles/${roleId}/tools`, headers: auth });
+      expect(configured.json().systems.find((system: { id: string }) => system.id === "gmail")).toMatchObject({ configured: true });
+
+      delete process.env.OIK_SECRET_MCP_GMAIL_URL;
+      const unset = await app.inject({ method: "GET", url: `/roles/${roleId}/tools`, headers: auth });
+      expect(unset.json().systems.find((system: { id: string }) => system.id === "gmail")).toMatchObject({ configured: false });
+
+      process.env.OIK_SECRET_MCP_GMAIL_URL = "";
+      const empty = await app.inject({ method: "GET", url: `/roles/${roleId}/tools`, headers: auth });
+      expect(empty.json().systems.find((system: { id: string }) => system.id === "gmail")).toMatchObject({ configured: false });
+
+      process.env.OIK_CONNECTOR_STATUS_ENVIRONMENT = "isolated";
+      const unknown = await loggingApp.inject({ method: "GET", url: `/roles/${roleId}/tools`, headers: auth });
+      const body = unknown.body;
+      expect(unknown.json().systems.find((system: { id: string }) => system.id === "gmail")).toMatchObject({ configured: "unknown" });
+      expect(unknown.json().systems.find((system: { id: string }) => system.id === "builtin")).not.toHaveProperty("configured");
+      expect(body).not.toContain(secretValue);
+      expect(body).not.toContain(secretRef);
+      expect(logs).not.toContain(secretValue);
+      expect(logs).not.toContain(secretRef);
+    } finally {
+      await loggingApp.close();
+      if (previousShared === undefined) delete process.env.OIK_CONNECTOR_STATUS_ENVIRONMENT;
+      else process.env.OIK_CONNECTOR_STATUS_ENVIRONMENT = previousShared;
+      if (previousGmailUrl === undefined) delete process.env.OIK_SECRET_MCP_GMAIL_URL;
+      else process.env.OIK_SECRET_MCP_GMAIL_URL = previousGmailUrl;
+    }
   });
 });
