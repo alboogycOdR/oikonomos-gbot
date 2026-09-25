@@ -10816,7 +10816,7 @@ Exit status 2
 
 ### TASK-356
 **Title:** Thread list shows bot-to-bot conversations and "Messaged X" previews (backend)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8 (bot-to-bot threads; agent-initiated previews in the thread list)
@@ -10830,12 +10830,13 @@ Exit status 2
 **Started_At:** 2026-09-25T07:16:33Z
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-25T07:33:01Z] [SV:CX9] GET /threads now derives tenant-scoped bot_pair rows from handoffs and exposes bot_outbound sender previews; delivery remains unchanged.
+**Artifacts:** services/control-api/src/app.ts, services/control-api/src/openapi.ts, services/control-api/src/threadList.botToBot.routes.test.ts, dossiers/TASK-356.md
+**Test_Evidence:** pnpm typecheck: exit 0; pnpm build: exit 0; scripts/test-isolated.ps1 -Init: passed; scripts/test-isolated.ps1 -Filter @oikonomos/control-api: passed including real-Postgres TASK-356 test; foreground scripts/test-isolated.ps1: completed with no failures (React act() warnings only).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-25T07:16:33Z
+**Updated_At:** 2026-09-25T07:33:01Z
 
 ### TASK-357
 **Title:** Mobile: bot-to-bot entries and "Messaged X" previews in the roster
