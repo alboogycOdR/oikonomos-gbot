@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../api/api_client.dart';
 import '../api/exceptions.dart';
@@ -19,11 +20,9 @@ import 'settings_screen.dart';
 /// TASK-147 (Mobile Wave 1b) — bot roster, the landing screen after login.
 /// Mirrors `apps/dashboard/src/components/chat/BotSidebar.tsx` /
 /// `ChatPage.tsx`'s `toBotSummary`: v1 is one thread per bot, so the
-/// roster is `GET /threads` filtered to single-role threads
-/// ([SingleThread]). Group threads ([GroupThread]) are deliberately
-/// excluded here — the group-chat screen is out of scope for this task
-/// (WORKFLOW_MOBILE_W1_W2_2026-09-04.md's deferred list) rather than
-/// rendered with a shape this screen doesn't understand.
+/// roster is `GET /threads` filtered to single-role threads ([SingleThread])
+/// plus TASK-357's read-only `bot_pair` entries. Ordinary [GroupThread] rows
+/// remain excluded, preserving the legacy fallback for older servers.
 class RosterScreen extends StatefulWidget {
   const RosterScreen({
     super.key,
@@ -75,7 +74,7 @@ class RosterScreen extends StatefulWidget {
 }
 
 class _RosterScreenState extends State<RosterScreen> {
-  List<SingleThread> _bots = [];
+  List<ThreadSummary> _bots = [];
   bool _loading = true;
   String? _error;
   late final PushRegistrar _pushRegistrar;
@@ -142,7 +141,11 @@ class _RosterScreenState extends State<RosterScreen> {
     });
     try {
       final threads = await widget.apiClient.listThreads();
-      final bots = threads.whereType<SingleThread>().toList()
+      final bots = threads
+          .where((thread) =>
+              thread is SingleThread ||
+              (thread is GroupThread && thread.isBotPair))
+          .toList()
         ..sort(_compareBots);
       if (!mounted) return;
       setState(() {
@@ -166,7 +169,7 @@ class _RosterScreenState extends State<RosterScreen> {
     }
   }
 
-  int _compareBots(SingleThread a, SingleThread b) {
+  int _compareBots(ThreadSummary a, ThreadSummary b) {
     final pinned = (b.pinnedAt != null ? 1 : 0).compareTo(
       a.pinnedAt != null ? 1 : 0,
     );
@@ -219,6 +222,17 @@ class _RosterScreenState extends State<RosterScreen> {
       ),
     );
     if (mounted) await _load();
+  }
+
+  void _openBotPairTranscript(GroupThread pair) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _BotPairTranscriptScreen(
+          apiClient: widget.apiClient,
+          pair: pair,
+        ),
+      ),
+    );
   }
 
   Future<void> _togglePin(SingleThread bot) async {
@@ -312,27 +326,49 @@ class _RosterScreenState extends State<RosterScreen> {
       itemCount: _bots.length,
       itemBuilder: (context, index) {
         final bot = _bots[index];
+        final pair = bot is GroupThread ? bot : null;
+        final single = bot is SingleThread ? bot : null;
+        final isPair = pair != null;
         return ListTile(
           key: Key('bot-tile-${bot.id}'),
-          leading: BotAvatar(
-            seed: bot.avatarSeed,
-            name: bot.botName,
-            avatarColor: bot.avatarColor,
-            avatarShape: bot.avatarShape,
-          ),
+          leading: isPair
+              ? _PairAvatar(pair: pair)
+              : BotAvatar(
+                  seed: single!.avatarSeed,
+                  name: single.botName,
+                  avatarColor: single.avatarColor,
+                  avatarShape: single.avatarShape,
+                ),
           title: Text(
             (bot.title != null && bot.title!.trim().isNotEmpty)
                 ? bot.title!
-                : bot.botName,
+                : isPair
+                    ? pair.memberNames.join(' and ')
+                    : single!.botName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: bot.displayPreview.isEmpty
               ? null
-              : Text(
-                  bot.displayPreview,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              : Row(
+                  children: [
+                    if (bot.previewAuthorKind == 'bot_outbound')
+                      const Icon(
+                        Icons.north_east,
+                        key: Key('bot-outbound-preview-icon'),
+                        size: 16,
+                        semanticLabel: 'Outbound message',
+                      ),
+                    if (bot.previewAuthorKind == 'bot_outbound')
+                      const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        bot.displayPreview,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -355,7 +391,7 @@ class _RosterScreenState extends State<RosterScreen> {
                     ),
                   ),
                 ),
-              if (bot.pinnedAt != null)
+              if (!isPair && bot.pinnedAt != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Icon(
@@ -368,10 +404,189 @@ class _RosterScreenState extends State<RosterScreen> {
               Text(_formatRelative(bot.displayTime)),
             ],
           ),
-          onTap: () => _openChat(bot),
-          onLongPress: () => _togglePin(bot),
+          onTap: () =>
+              isPair ? _openBotPairTranscript(pair) : _openChat(single!),
+          onLongPress: isPair ? null : () => _togglePin(single!),
         );
       },
     );
   }
+}
+
+/// Two compact, deliberately overlapping avatars identify a synthetic
+/// bot-to-bot row without introducing a new avatar asset or server field.
+class _PairAvatar extends StatelessWidget {
+  const _PairAvatar({required this.pair});
+
+  final GroupThread pair;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = pair.memberNames;
+    final ids = pair.memberRoleIds;
+    return SizedBox(
+      key: Key('bot-pair-avatar-${pair.id}'),
+      width: 52,
+      height: 40,
+      child: Stack(
+        children: [
+          if (names.isNotEmpty)
+            Positioned(
+              left: 0,
+              child: BotAvatar(
+                seed: ids.isNotEmpty ? ids.first : names.first,
+                name: names.first,
+                size: 32,
+              ),
+            ),
+          if (names.length > 1)
+            Positioned(
+              right: 0,
+              top: 8,
+              child: BotAvatar(
+                seed: ids.length > 1 ? ids[1] : names[1],
+                name: names[1],
+                size: 32,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only view of the mailbox traffic which produced a `bot_pair` row.
+/// It intentionally fetches one member's handoffs and filters to the pair:
+/// the role-message route returns both inbound and outbound traffic, while a
+/// synthetic pair id has no thread route and must never expose a composer.
+class _BotPairTranscriptScreen extends StatefulWidget {
+  const _BotPairTranscriptScreen({required this.apiClient, required this.pair});
+
+  final ApiClient apiClient;
+  final GroupThread pair;
+
+  @override
+  State<_BotPairTranscriptScreen> createState() =>
+      _BotPairTranscriptScreenState();
+}
+
+class _BotPairTranscriptScreenState extends State<_BotPairTranscriptScreen> {
+  List<RoleHandoff>? _handoffs;
+  Map<String, String> _roleNames = const {};
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (widget.pair.memberRoleIds.isEmpty) {
+      setState(() => _handoffs = const []);
+      return;
+    }
+    try {
+      final members = widget.pair.memberRoleIds.toSet();
+      final handoffs = await widget.apiClient
+          .listRoleHandoffs(widget.pair.memberRoleIds.first);
+      // `memberNames` is a display list, not an id-to-name map: the API sorts
+      // names for a stable title independently of ids. Resolve sender labels
+      // from roles where available instead of pairing those two lists by index.
+      Map<String, String> roleNames = const {};
+      try {
+        final roles = await widget.apiClient.listRoles();
+        roleNames = {for (final role in roles) role.id: role.name};
+      } catch (_) {
+        // The transcript is still useful with role-id sender fallbacks.
+      }
+      if (!mounted) return;
+      setState(() {
+        _roleNames = roleNames;
+        _handoffs = handoffs
+            .where((handoff) =>
+                members.contains(handoff.fromRoleId) &&
+                members.contains(handoff.toRoleId))
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      });
+    } on UnauthorizedError {
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load messages.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.pair.title?.trim().isNotEmpty == true
+        ? widget.pair.title!
+        : widget.pair.memberNames.join(' and ');
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: _error != null
+          ? Center(child: Text(_error!, key: const Key('bot-pair-error')))
+          : _handoffs == null
+              ? const Center(child: CircularProgressIndicator())
+              : _handoffs!.isEmpty
+                  ? const Center(
+                      key: Key('bot-pair-empty'),
+                      child: Text('No messages yet.'),
+                    )
+                  : ListView.builder(
+                      key: const Key('bot-pair-message-list'),
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _handoffs!.length,
+                      itemBuilder: (context, index) => _PairMessageBubble(
+                        handoff: _handoffs![index],
+                        senderName: _nameFor(_handoffs![index].fromRoleId),
+                      ),
+                    ),
+    );
+  }
+
+  String _nameFor(String roleId) {
+    return _roleNames[roleId] ?? roleId;
+  }
+}
+
+/// Mirrors ChatScreen's left-aligned bot bubble treatment, but has no action
+/// controls: bot-pair transcripts are observational and therefore read-only.
+class _PairMessageBubble extends StatelessWidget {
+  const _PairMessageBubble({required this.handoff, required this.senderName});
+
+  final RoleHandoff handoff;
+  final String senderName;
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          key: Key('bot-pair-message-${handoff.id}'),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(senderName, style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
+              MarkdownBody(
+                key: Key('bot-pair-message-body-${handoff.id}'),
+                data: handoff.body,
+                shrinkWrap: true,
+                selectable: false,
+                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                    .copyWith(p: Theme.of(context).textTheme.bodyMedium),
+              ),
+            ],
+          ),
+        ),
+      );
 }

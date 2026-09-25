@@ -346,6 +346,138 @@ void main() {
     });
   });
 
+  group('TASK-357 bot-pair roster rows', () {
+    Map<String, Object?> botPair() => {
+          'id': 'bot_pair:role-a:role-b',
+          'kind': 'bot_pair',
+          'memberRoleIds': ['role-a', 'role-b'],
+          'memberNames': ['Atlas', 'Beryl'],
+          'title': 'Atlas and Beryl',
+          'lastMessagePreview': 'Shared-browser probe',
+          'preview': {'text': 'Shared-browser probe', 'authorKind': 'bot'},
+          'updatedAt': DateTime.now().toIso8601String(),
+        };
+
+    test('model distinguishes bot-pair rows from legacy group rows', () {
+      final pair = ThreadSummary.fromJson(botPair());
+      expect(pair, isA<GroupThread>());
+      expect((pair as GroupThread).isBotPair, isTrue);
+
+      final legacy = ThreadSummary.fromJson({
+        ...botPair(),
+        'id': 'group-1',
+        'kind': null,
+      });
+      expect((legacy as GroupThread).isBotPair, isFalse);
+    });
+
+    testWidgets('shows a pair row and opens its read-only transcript', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [botPair()]);
+      fake.queueJsonFor('GET', '/roles/role-a/messages', 200, [
+        {
+          'messageId': 'handoff-1',
+          'fromRoleId': 'role-a',
+          'toRoleId': 'role-b',
+          'body': '**Finished** the probe.',
+          'createdAt': DateTime.now().toIso8601String(),
+        },
+      ]);
+      fake.queueJsonFor('GET', '/roles', 200, [
+        {
+          'id': 'role-a',
+          'name': 'Atlas',
+          'description': '',
+          'avatarSeed': 'role-a',
+        },
+        {
+          'id': 'role-b',
+          'name': 'Beryl',
+          'description': '',
+          'avatarSeed': 'role-b',
+        },
+      ]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('bot-tile-bot_pair:role-a:role-b')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('bot-pair-avatar-bot_pair:role-a:role-b')),
+        findsOneWidget,
+      );
+      expect(find.text('Atlas and Beryl'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('bot-tile-bot_pair:role-a:role-b')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('bot-pair-message-list')), findsOneWidget);
+      expect(
+          find.byKey(const Key('bot-pair-message-handoff-1')), findsOneWidget);
+      expect(find.text('Atlas'), findsOneWidget);
+      expect(find.byKey(const Key('composer-pill')), findsNothing);
+      expect(find.byKey(const Key('compose-field')), findsNothing);
+    });
+
+    testWidgets('adds the outbound icon only for bot_outbound previews', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      fake.queueJson(200, [
+        {
+          'id': 'outbound-thread',
+          'roleId': 'role-a',
+          'botName': 'Atlas',
+          'botDescription': '',
+          'avatarSeed': 'role-a',
+          'title': null,
+          'lastMessagePreview': 'Messaged Beryl: hello',
+          'preview': {
+            'text': 'Messaged Beryl: hello',
+            'authorKind': 'bot_outbound',
+          },
+          'updatedAt': DateTime.now().toIso8601String(),
+        },
+      ]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.byKey(const Key('bot-outbound-preview-icon')), findsOneWidget);
+      expect(find.text('Messaged Beryl: hello'), findsOneWidget);
+    });
+
+    testWidgets('keeps ordinary group rows hidden as the legacy fallback', (
+      tester,
+    ) async {
+      final fake = FakeHttpClient();
+      final client = await _loggedIn(fake);
+      final legacy = botPair()
+        ..remove('kind')
+        ..['id'] = 'legacy-group';
+      fake.queueJson(200, [legacy]);
+
+      await tester
+          .pumpWidget(MaterialApp(home: RosterScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('bot-tile-legacy-group')), findsNothing);
+      expect(find.byKey(const Key('roster-empty')), findsOneWidget);
+    });
+  });
+
   group('TASK-334 unread badges and pins', () {
     Map<String, Object?> bot(
       String id, {
