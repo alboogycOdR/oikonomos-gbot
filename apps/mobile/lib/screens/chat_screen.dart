@@ -18,6 +18,7 @@ import '../widgets/secret_request_card.dart';
 import '../widgets/skill_picker.dart';
 import '../widgets/takeover_card.dart';
 import 'browser_takeover_screen.dart';
+import 'bot_tools_screen.dart';
 import 'create_routine_screen.dart';
 import 'routine_detail_screen.dart';
 import 'review_rules_screen.dart';
@@ -1505,6 +1506,22 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                     'Read-only — no update endpoint exists for this yet.',
               ),
             ),
+          const SizedBox(height: 12),
+          ListTile(
+            key: const Key('connectors-tools-button'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Connectors & tools'),
+            subtitle: const Text('Choose the tools this bot can use.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => BotToolsScreen(
+                  apiClient: widget.apiClient,
+                  roleId: widget.bot.roleId,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
           const Text(
             'Instructions',

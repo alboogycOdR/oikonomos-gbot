@@ -199,6 +199,26 @@ class ApiClient {
     return _parseList(json, RoleGrant.fromJson);
   }
 
+  Future<RoleToolCatalog> listRoleTools(String roleId) async {
+    final json = await _request('GET', '/roles/${_id(roleId)}/tools');
+    return RoleToolCatalog.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<void> grantRoleTool(
+    String roleId,
+    RoleTool tool,
+  ) =>
+      _request(
+        'POST',
+        '/roles/${_id(roleId)}/grants',
+        body: {'capabilityId': tool.id, 'maxTier': tool.defaultTier},
+      );
+
+  Future<void> revokeRoleTool(String roleId, String capabilityId) => _request(
+        'DELETE',
+        '/roles/${_id(roleId)}/grants/${_id(capabilityId)}',
+      );
+
   /// Returns the server-confirmed switch state and current rules.
   Future<AutoReviewSettings> getAutoReview(String roleId) async {
     final json = await _request('GET', '/roles/${_id(roleId)}/auto-review');
