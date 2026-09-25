@@ -10841,7 +10841,7 @@ Exit status 2
 
 ### TASK-357
 **Title:** Mobile: bot-to-bot entries and "Messaged X" previews in the roster
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_CHAT_SURFACE_v1.0.md section 8; TASK-356 API
@@ -10856,12 +10856,13 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-24T19:53:52Z] [ORCH opus-5.5] Filed in the 2026-09-24 chat-product wave (plan v40.0) from a verified spec-versus-code gap analysis. Owner decisions that day: Auto-review = UI over existing approvals; Plugins = Connectors & tools; avatar saved at 12x8; voice not this wave.
 - [2026-09-25T11:13:01Z] [SV:CX9] Implemented bot-pair roster entries, read-only handoff transcript, outbound preview icon, and legacy fallback; committed as 42d20d4.
+- [2026-09-25T11:40:00Z] [ORCH opus-4.8] APPROVED, first-pass, merged --no-ff. CX9-authored on apps/mobile/** (non-protected) → normal full review, no cross-model gate. Territory clean: 3 Owned_Paths files + own dossier; no PLAN.md edits on branch. Referenced symbols (previewAuthorKind, RoleHandoff, listRoleHandoffs, _optString) all exist on master from merged TASK-356. Spec §8 shape confirmed (bot_pair "A and B" row; "↗ Messaged X" outbound prefix); read-only transcript reuses handoff rendering with NO composer (test asserts composer-pill/compose-field absent); legacy group rows without kind stay hidden. flutter analyze lib: clean (No issues found!); flutter test: 220/220, 0 failures; all four TASK-357 tests ran+passed. Dart is outside pnpm -r, no DB suite applies. Branch left checked out in reusable CX9 worktree (not deleted per standing rule 6).
 **Artifacts:** apps/mobile/lib/api/models.dart, apps/mobile/lib/screens/roster_screen.dart, apps/mobile/test/screens/roster_screen_test.dart
 **Test_Evidence:** apps/mobile: flutter analyze lib â€” no issues; flutter test â€” exit 0 (full mobile suite). Dart is outside the pnpm recursive workspace, so no pnpm command applies.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** SV
-**Updated_At:** 2026-09-25T11:13:01Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-25T11:40:00Z
 
 ### TASK-358
 **Title:** Web: bot-to-bot entries and "Messaged X" previews in the sidebar
