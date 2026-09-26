@@ -11158,3 +11158,27 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-26T13:14:52Z
+
+### TASK-368
+**Title:** DECISION (owner): which model may take high-risk (T3) actions like creating bots?
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** low
+**Spec_References:** docs/testing/mobile-0.2.0-feedback.md item #1 triage options 1 and 3; docs/decisions/ADR-011-multi-provider-llm-support.md section 8; TASK-367
+**Depends_On:** TASK-367
+**Owned_Paths:** docs/decisions/ADR-011-multi-provider-llm-support.md
+**Description:** OWNER DECISION TICKET, not builder work. Parked by the owner on 2026-09-26 to decide at a later stage. It is assigned to TBD so the autopilot never dispatches it. Background: owner test feedback #1 (docs/testing/mobile-0.2.0-feedback.md) showed that BossMan (Chief of Staff, Gemini lane) cannot create bots, because the Gemini lane refuses every tool above T2 before the broker (ADR-011 section 8; packages/harness-factory/src/providers/gemini.ts:243-247). TASK-367 fixes the misleading behaviour but not the capability. Two options to decide, not mutually exclusive: (A) Switch BossMan's provider to Claude (per-bot setting, no code). BossMan can then create bots through a real approval card. Cost is roughly 25x Gemini per message, for BossMan only, against the R350/month ceiling. (B) Let the Gemini lane run approval-needing (T3) actions through the broker's approval-card flow (nonce-bound, single use). Needs an ADR-011 amendment (ORCH), then a protected-path change in packages/harness-factory that CX9 builds and ORCH reviews cross-model. Risk: the cheapest model gains access to external-effect actions, each still gated by a human approval.
+**Acceptance_Criteria:**
+- [ ] The owner has chosen A, B, both, or neither, recorded in Progress_Notes with the date.
+- [ ] If A: BossMan provider set to claude (a live config change, done by ORCH with owner approval) and create_bot verified with an approval card.
+- [ ] If B: an ADR-011 amendment is written and accepted, and a separate CX9 implementation task is filed.
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-26T13:20:21Z] [ORCH opus-5.5] Filed at the owner's request: 'add this as a ticket, as a task to be decided upon at a later stage'. Not for dispatch.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-26T13:20:21Z
