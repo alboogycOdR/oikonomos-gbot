@@ -11062,7 +11062,7 @@ Exit status 2
 
 ### TASK-364
 **Title:** Model routing: a pure function that picks the cheap provider for background work
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md (Model routing & cost: pure-function Tier-0 model routing with explicit inputs: routine kind, budget remaining, override, default); CLAUDE.md Budget (hard ceiling R350/month)
@@ -11078,12 +11078,13 @@ Exit status 2
 **Started_At:** 2026-09-26T13:52:58Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-26T14:13:02Z] [SV:CX9] Added pure background model routing, routine-only persistence wiring, category-only audit evidence, and real-Postgres coverage.
+**Artifacts:** services/worker/src/modelRouting.ts, services/worker/src/modelRouting.test.ts, services/worker/src/jobs/routineJob.ts, services/worker/src/jobs/routineJob.test.ts, dossiers/TASK-364.md
+**Test_Evidence:** PASS: pnpm typecheck; pnpm build; powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Filter @oikonomos/worker (worker suite passed, including 4/4 routing tests and real-Postgres routing/audit proof); full foreground scripts\test-isolated.ps1 recursive suite completed after final change.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-26T13:52:58Z
+**Updated_At:** 2026-09-26T14:13:02Z
 
 ### TASK-365
 **Title:** Group room end-to-end scenario tests (verifies G-04 group routing, never exercised for real)
