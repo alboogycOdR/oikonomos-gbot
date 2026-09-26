@@ -11115,7 +11115,7 @@ Exit status 2
 
 ### TASK-366
 **Title:** Browser lane and human takeover end-to-end scenario tests (verifies G-06 and G-07)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": G-06 browser lane and G-07 human takeover are wired but unverified); TASK-336 (navigation guard); TASK-225 (Steel takeover parking); CLAUDE.md non-negotiable 6 (challenges trigger human takeover, never circumvention)
@@ -11131,6 +11131,7 @@ Exit status 2
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 - [2026-09-26T15:08:01Z] [SV:CX9] Added deterministic fixture-Steel browser/takeover scenarios with real-Postgres persistence coverage and liveness assertions.
+- [2026-09-26T18:50:00Z] [ORCH opus-4.8] APPROVED + MERGED --no-ff. CX9-authored, non-protected paths → normal full review, no cross-model gate. Territory clean (2 Owned_Paths + dossiers/TASK-366.md; no PLAN.md edits). Branch green: 42 files / 386 passed / 1 skipped, three consecutive fresh -Init runs; browserTakeover.scenario.test.ts 5/5 each run. Rule 5 verified against the REAL path: (b)/(c) drive createSteelGeminiTools's production executor — guardNavigationTarget runs and denies BEFORE any Steel CDP command (fixture.calls===[] proves it) and detectTakeover parks the run; only the SandboxClient boundary is faked, so an inert guard/takeover fails the assertions. 3 master-baseline worker failures classified as stale packages/db/dist in the main checkout (master source has getWorkforceEventCounts from merged TASK-363; main checkout's dist predates it) — NOT on the freshly-built branch, not a regression.
 **Artifacts:** services/worker/src/scenarios/browserTakeover.scenario.test.ts, services/worker/src/scenarios/scenarioHarness.ts, dossiers/TASK-366.md
 **Test_Evidence:** PASS: pnpm --filter @oikonomos/worker typecheck; pnpm --filter @oikonomos/worker build; pnpm build; pnpm typecheck. PASS: scripts/test-isolated.ps1 -Init -Filter @oikonomos/worker, three consecutive fresh-database foreground runs; browserTakeover.scenario.test.ts 5 tests passed each run. Expected non-fatal sandbox-reaper unset-secret stderr only.
 **Review_Findings:** —
