@@ -1,6 +1,7 @@
 import {
   createTaskExecutionRun,
   getLatestAuditEvent,
+  getPlatformSpendUsd,
   getOrCreateThreadForRole,
   getRole,
   getSkill,
@@ -18,6 +19,8 @@ import {
   type RoutineFireOutcome,
 } from "@oikonomos/db";
 
+import { DEFAULT_PLATFORM_CEILING_ZAR, DEFAULT_USD_TO_ZAR_RATE } from "../subprocessProviders.js";
+import { BACKGROUND_MODEL_ENV, BACKGROUND_PROVIDER_ENV, routeModel } from "../modelRouting.js";
 import { nextFireAtFromCron } from "../routineTool.js";
 import { RoleRunScheduler, type RoutineFire } from "../scheduler/scheduler.js";
 import { enqueueRunExecution } from "./workerJobQueue.js";
@@ -201,7 +204,29 @@ async function createAndEnqueueRoutineRun(
   const role = await getRole(options, input.roleId);
   if (role === null) throw new Error(`Cannot fire routine: role '${input.roleId}' not found.`);
   const thread = await getOrCreateThreadForRole(options, { roleId: input.roleId });
-  const { provider } = resolveRoleRuntime(role);
+  const defaults = resolveRoleRuntime({ provider: null, model: null });
+  const cheap = {
+    provider: process.env[BACKGROUND_PROVIDER_ENV] ?? null,
+    model: process.env[BACKGROUND_MODEL_ENV] ?? null,
+  };
+  const cheapConfigured = (cheap.provider?.trim().length ?? 0) > 0 || (cheap.model?.trim().length ?? 0) > 0;
+  const usdToZarRate = Number(process.env.USD_TO_ZAR_RATE ?? DEFAULT_USD_TO_ZAR_RATE);
+  const budgetCeilingUsd = cheapConfigured && Number.isFinite(usdToZarRate) && usdToZarRate > 0
+    ? DEFAULT_PLATFORM_CEILING_ZAR / usdToZarRate
+    : null;
+  const platformSpendUsd = budgetCeilingUsd === null ? null : await getPlatformSpendUsd(options);
+  const budgetRemainingUsd = budgetCeilingUsd === null || platformSpendUsd === null
+    ? null
+    : budgetCeilingUsd - platformSpendUsd;
+  const route = routeModel({
+    kind: "background",
+    budgetRemainingUsd,
+    budgetCeilingUsd,
+    roleProvider: role.provider,
+    roleModel: role.model,
+    defaults,
+    cheap,
+  });
   const { runId } = await createTaskExecutionRun(options, {
     task: {
       tenantId: input.tenantId,
@@ -212,7 +237,14 @@ async function createAndEnqueueRoutineRun(
       requestedBy: `routine:${input.routineId}`,
     },
     execution: { version: 1, kind: "chat", threadId: thread.id },
-    provider,
+    provider: route.provider,
+  });
+  await insertAuditEvent(options, {
+    tenantId: input.tenantId,
+    runId,
+    actor: "system:routine-poller",
+    eventType: "routine.model_routed",
+    payload: { reason: route.reason },
   });
   await enqueueRunExecution(options.connectionString, runId);
 }

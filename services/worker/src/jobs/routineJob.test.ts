@@ -302,6 +302,64 @@ integration("routine parity poller (TASK-182)", () => {
     });
   }, 20_000);
 
+  it("TASK-364: routes providerless background runs cheaply when configured, otherwise keeps the default, and audits only the category", async () => {
+    await withPgBossQueueLock(pool, async () => {
+      await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      const saved = {
+        defaultProvider: process.env.OIK_DEFAULT_ROLE_PROVIDER,
+        defaultModel: process.env.OIK_DEFAULT_ROLE_MODEL,
+        backgroundProvider: process.env.OIK_BACKGROUND_PROVIDER,
+        backgroundModel: process.env.OIK_BACKGROUND_MODEL,
+      };
+      const restore = () => {
+        for (const [key, value] of Object.entries({
+          OIK_DEFAULT_ROLE_PROVIDER: saved.defaultProvider,
+          OIK_DEFAULT_ROLE_MODEL: saved.defaultModel,
+          OIK_BACKGROUND_PROVIDER: saved.backgroundProvider,
+          OIK_BACKGROUND_MODEL: saved.backgroundModel,
+        })) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+      try {
+        process.env.OIK_DEFAULT_ROLE_PROVIDER = "claude";
+        delete process.env.OIK_DEFAULT_ROLE_MODEL;
+        process.env.OIK_BACKGROUND_PROVIDER = "gemini";
+        process.env.OIK_BACKGROUND_MODEL = "gemini-3.1-flash-lite";
+        const cheapRoleId = `task-364-cheap-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: cheapRoleId, tenantId, name: "Cheap", title: "Cheap" });
+        const cheapRoutine = await createRoutine({ connectionString: connectionString! }, {
+          roleId: cheapRoleId, tenantId, name: "Cheap background", definition: { goal: "Use cheap route" }, nextFireAt: new Date(Date.now() - 1_000),
+        });
+        await expect(runDueRoutinePoll({ connectionString: connectionString!, tenantId })).resolves.toContainEqual({ routineId: cheapRoutine.routineId, outcome: "queued" });
+        const cheapRun = await pool.query<{ provider: string; payload: Record<string, unknown> }>(
+          `SELECT r.provider, a.payload FROM runs r JOIN audit_events a ON a.run_id = r.run_id WHERE r.task_id IN (SELECT task_id FROM tasks WHERE routine_id = $1) AND a.event_type = 'routine.model_routed'`,
+          [cheapRoutine.routineId],
+        );
+        expect(cheapRun.rows).toEqual([{ provider: "gemini", payload: { reason: "background" } }]);
+
+        delete process.env.OIK_BACKGROUND_PROVIDER;
+        delete process.env.OIK_BACKGROUND_MODEL;
+        const defaultRoleId = `task-364-default-${crypto.randomUUID()}`;
+        await createRole({ connectionString: connectionString! }, { roleId: defaultRoleId, tenantId, name: "Default", title: "Default" });
+        const defaultRoutine = await createRoutine({ connectionString: connectionString! }, {
+          roleId: defaultRoleId, tenantId, name: "Default background", definition: { goal: "Use normal route" }, nextFireAt: new Date(Date.now() - 1_000),
+        });
+        await expect(runDueRoutinePoll({ connectionString: connectionString!, tenantId })).resolves.toContainEqual({ routineId: defaultRoutine.routineId, outcome: "queued" });
+        const defaultRun = await pool.query<{ provider: string; payload: Record<string, unknown> }>(
+          `SELECT r.provider, a.payload FROM runs r JOIN audit_events a ON a.run_id = r.run_id WHERE r.task_id IN (SELECT task_id FROM tasks WHERE routine_id = $1) AND a.event_type = 'routine.model_routed'`,
+          [defaultRoutine.routineId],
+        );
+        expect(defaultRun.rows).toEqual([{ provider: "claude", payload: { reason: "default" } }]);
+        expect(Object.keys(defaultRun.rows[0]!.payload)).toEqual(["reason"]);
+      } finally {
+        restore();
+        await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
+      }
+    });
+  }, 20_000);
+
   it("TASK-305 / spec §11: a changes_only status routine sends nothing when STATUS.md is unchanged and fires when it changes", async () => {
     await withPgBossQueueLock(pool, async () => {
       await purgePgBossQueue(pool, WORKER_RUN_EXECUTION_JOB);
