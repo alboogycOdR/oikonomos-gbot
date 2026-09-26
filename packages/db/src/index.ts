@@ -36,11 +36,13 @@ export {
   admitProjectFanout,
   getAuditEventsForRun,
   getLatestAuditEvent,
+  getWorkforceEventCounts,
   insertAuditEvent,
   type AuditEvent,
   type NewAuditEvent,
   type ProjectFanoutAdmission,
   type ProjectFanoutAdmissionInput,
+  type WorkforceEventCount,
 } from "./auditEvents.js";
 export {
   approvalStatuses,

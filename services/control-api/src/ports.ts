@@ -924,7 +924,9 @@ export function createDatabaseBackedDeps(options: CreateDatabaseBackedDepsOption
               runId: null,
               actor: "system:group-routing",
               eventType: GROUP_CAP_REACHED_EVENT_TYPE,
-              payload: { reason: roomLimit },
+              // TASK-363 needs the actual durable room identity; never try
+              // to reconstruct it later from a tenant-wide audit stream.
+              payload: { reason: roomLimit, threadId },
             });
           }
         }

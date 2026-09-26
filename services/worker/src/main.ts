@@ -11,9 +11,11 @@ import { deliverBotToBotMessage } from "./groupFanout.js";
 import { createRoleMessageDeliveryPoller } from "./roleMessageDelivery.js";
 import { createSandboxReaperScheduler, type SandboxReaperScheduler } from "./sandboxReaper.js";
 import { DEFAULT_HUMAN_REQUEST_EXPIRY_MS, HUMAN_REQUEST_EXPIRED_EVENT_TYPE, getTakeoverState, listExpiredTakeovers } from "./takeover.js";
+import { runWorkforceCheck } from "./workforceChecker.js";
 
 const HUMAN_REQUEST_EXPIRY_FAILURE_NOTE = "Human input request expired without an answer.";
 const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 60_000;
+const DEFAULT_WORKFORCE_CHECK_INTERVAL_MS = 10 * 60_000;
 
 /**
  * TASK-226 (OIK-106) — the worker's real process entrypoint.
@@ -78,6 +80,8 @@ export interface RunWorkerOptions {
   /** Test/operations seams; production defaults to ten minutes and sweeps once a minute. */
   humanRequestExpiryMs?: number;
   humanRequestSweepIntervalMs?: number;
+  /** Test/operations seam; production uses the ten-minute workforce watch. */
+  workforceCheckIntervalMs?: number;
 }
 
 function positiveMs(value: number | undefined, fallback: number): number {
@@ -211,7 +215,10 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
   sandboxReaperScheduler?.start();
   const expiryMs = positiveMs(options.humanRequestExpiryMs ?? Number(process.env.OIK_HUMAN_REQUEST_EXPIRY_MS), DEFAULT_HUMAN_REQUEST_EXPIRY_MS);
   const expiryIntervalMs = positiveMs(options.humanRequestSweepIntervalMs ?? Number(process.env.OIK_HUMAN_REQUEST_SWEEP_INTERVAL_MS), DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS);
+  const workforceIntervalMs = positiveMs(options.workforceCheckIntervalMs ?? Number(process.env.OIK_WORKFORCE_CHECK_INTERVAL_MS), DEFAULT_WORKFORCE_CHECK_INTERVAL_MS);
   let expirySweeping = false;
+  let workforceChecking = false;
+  let nextWorkforceCheckAt = 0;
   const expire = async (): Promise<void> => {
     if (expirySweeping) return;
     expirySweeping = true;
@@ -222,9 +229,26 @@ export async function runWorker(options: RunWorkerOptions): Promise<{ stop(): Pr
       console.error("human-request expiry sweep error:", error);
     } finally { expirySweeping = false; }
   };
-  const humanRequestExpiryTimer = setInterval(() => { void expire(); }, expiryIntervalMs);
+  const workforce = async (): Promise<void> => {
+    if (workforceChecking || Date.now() < nextWorkforceCheckAt) return;
+    workforceChecking = true;
+    // Advance before the query so a transient database failure cannot turn
+    // the ordinary maintenance poll into a tight retry loop.
+    nextWorkforceCheckAt = Date.now() + workforceIntervalMs;
+    try {
+      const alerts = await runWorkforceCheck({ ...database, tenantId: options.tenantId });
+      if (alerts > 0) log(`workforce checker posted ${alerts} alert(s).`);
+    } catch (error) {
+      console.error("workforce checker error:", error);
+    } finally { workforceChecking = false; }
+  };
+  // Reuse the worker's existing maintenance poll rather than adding another
+  // scheduler. The workforce branch self-throttles to its ten-minute cadence.
+  const maintenanceIntervalMs = Math.min(expiryIntervalMs, workforceIntervalMs);
+  const humanRequestExpiryTimer = setInterval(() => { void expire(); void workforce(); }, maintenanceIntervalMs);
   humanRequestExpiryTimer.unref?.();
   void expire();
+  void workforce();
   const reconciled = await reconcileInterruptedRuns(database, options.reconcileFilter ?? {}, async (run) => {
     if (run.provider === "claude" && run.sessionRef !== null) {
       await queue.enqueueRunExecution(run.runId);
