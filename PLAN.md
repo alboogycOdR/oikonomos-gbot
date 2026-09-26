@@ -11115,7 +11115,7 @@ Exit status 2
 
 ### TASK-366
 **Title:** Browser lane and human takeover end-to-end scenario tests (verifies G-06 and G-07)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** low
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": G-06 browser lane and G-07 human takeover are wired but unverified); TASK-336 (navigation guard); TASK-225 (Steel takeover parking); CLAUDE.md non-negotiable 6 (challenges trigger human takeover, never circumvention)
@@ -11130,12 +11130,13 @@ Exit status 2
 **Started_At:** 2026-09-26T14:53:08Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-26T15:08:01Z] [SV:CX9] Added deterministic fixture-Steel browser/takeover scenarios with real-Postgres persistence coverage and liveness assertions.
+**Artifacts:** services/worker/src/scenarios/browserTakeover.scenario.test.ts, services/worker/src/scenarios/scenarioHarness.ts, dossiers/TASK-366.md
+**Test_Evidence:** PASS: pnpm --filter @oikonomos/worker typecheck; pnpm --filter @oikonomos/worker build; pnpm build; pnpm typecheck. PASS: scripts/test-isolated.ps1 -Init -Filter @oikonomos/worker, three consecutive fresh-database foreground runs; browserTakeover.scenario.test.ts 5 tests passed each run. Expected non-fatal sandbox-reaper unset-secret stderr only.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-26T14:53:08Z
+**Updated_At:** 2026-09-26T15:08:01Z
 
 ### TASK-367
 **Title:** Gemini lane: never offer tools above its tier ceiling, and say plainly what needs a different model
