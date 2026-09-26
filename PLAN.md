@@ -11135,7 +11135,7 @@ Exit status 2
 
 ### TASK-367
 **Title:** Gemini lane: never offer tools above its tier ceiling, and say plainly what needs a different model
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/testing/mobile-0.2.0-feedback.md item #1 and its triage; docs/decisions/ADR-011-multi-provider-llm-support.md section 8 (Stage 2 ceiling is T2 by design); owner decision 2026-09-26: fix the misleading behaviour (option 2)
@@ -11152,12 +11152,13 @@ Exit status 2
 **Started_At:** 2026-09-26T13:28:05Z
 **Progress_Notes:**
 - [2026-09-26T13:14:52Z] [ORCH opus-5.5] Filed from owner test feedback #1. Options 1 (switch BossMan to Claude) and 3 (Gemini T3 via approval cards, needs an ADR) await the owner.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-26T13:38:03Z] [SV:CX9] Gemini now omits above-T2 tool declarations and receives model-switch guidance for dropped actions; liveness coverage inspects the adapter payload.
+**Artifacts:** services/worker/src/chatRunDriver.ts, services/worker/src/chatRunDriver.test.ts, dossiers/TASK-367.md
+**Test_Evidence:** PASS: pnpm typecheck; pnpm build; powershell -ExecutionPolicy Bypass -File scripts\test-isolated.ps1 -Init -Filter @oikonomos/worker (worker suite passed; expected non-fatal sandbox-reaper warnings only).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** SV
-**Updated_At:** 2026-09-26T13:28:05Z
+**Updated_At:** 2026-09-26T13:38:03Z
 
 ### TASK-368
 **Title:** DECISION (owner): which model may take high-risk (T3) actions like creating bots?
