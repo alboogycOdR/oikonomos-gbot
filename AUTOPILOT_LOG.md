@@ -1817,3 +1817,60 @@ Local time: 21:48 South Africa Standard Time
 - [2026-09-25T20:08:07Z] CONTROL: TASK-363-2026-09-25T20-05-47Z.json -> applied (CONTROL TASK-363: CX9 -> needs_review)
 - [2026-09-25T20:08:09Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:4 needs_review:1}
 - [2026-09-25T20:08:27Z] REVIEW: TASK-363 awaiting review
+- [2026-09-26T13:19:06Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:5 needs_review:1}
+- [2026-09-26T13:20:09Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:5 needs_review:1}
+- [2026-09-26T13:22:33Z] MAINTENANCE: Self-audit: FAIL — 2 finding(s) → TASK-MAINT-2026-09-26 filed
+- [2026-09-26T13:22:33Z] **P0** Merged (since last update):
+- none
+In progress:
+- TASK-363 Workforce checker: a zero-inference watch that catches runaway... (in review)
+Queue:
+- ready: TASK-364 Model routing: a pure function that picks the c...
+- ready: TASK-365 Group room end-to-end scenario tests (verifies...
+- ready: TASK-366 Browser lane and human takeover end-to-end scen...
+- ready: TASK-367 Gemini lane: never offer tools above its tier c...
+- 3 unassigned (backlog/maintenance)
+Pending action:
+- TASK-234 blocked: OTHER: Two independent blockers, not one: (1) `firebase_auth`/`firebase_core` have no new...
+- TASK-288 blocked: OTHER: awaiting the user's own live check -- the one remaining AC (a live browser re-reco...
+Prod: not touched by the autopilot (deploys are manual)
+Local time: 15:18 South Africa Standard Time
+- [2026-09-26T13:22:35Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:7 needs_review:1}
+- [2026-09-26T13:22:56Z] REVIEW: TASK-363 awaiting review
+- [2026-09-26T13:28:03Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:7 needs_review:1}
+- [2026-09-26T13:28:04Z] ESCALATE_P2: TASK-234 blocked: OTHER: Two independent blockers, not one: (1) `firebase_auth`/`firebase_core` have no newer published version to move to — nothing this task can do without an upstream release. (2) `file_picker`'s fix requires migrating `channel_file_picker.dart` off the removed `FilePicker.platform` API, a real (if probably small) code change this session chose not to ship untested rather than risk the file-attach flow on a low-priority task. Whoever picks this up next: start from the `file_picker ^12.3.0` + `package_info_plus ^10.2.1` combination (proven to resolve and to isolate the KGP warning to just firebase), migrate `channel_file_picker.dart` to file_picker 12's real API, and re-verify the file-attach widget test + a real device pick before calling this done — the firebase half stays open regardless until upstream ships a fix.
+- [2026-09-26T13:28:04Z] **P2** TASK-234 blocked: OTHER: Two independent blockers, not one: (1) `firebase_auth`/`firebase_core` have no newer published version to move to — nothing this task can do without an upstream release. (2) `file_picker`'s fix requires migrating `channel_file_picker.dart` off the removed `FilePicker.platform` API, a real (if probably small) code change this session chose not to ship untested rather than risk the file-attach flow on a low-priority task. Whoever picks this up next: start from the `file_picker ^12.3.0` + `package_info_plus ^10.2.1` combination (proven to resolve and to isolate the KGP warning to just firebase), migrate `channel_file_picker.dart` to file_picker 12's real API, and re-verify the file-attach widget test + a real device pick before calling this done — the firebase half stays open regardless until upstream ships a fix.
+Reply: /answer TASK-234 <your decision>
+- [2026-09-26T13:28:04Z] ESCALATE_P2: TASK-288 blocked: OTHER: awaiting the user's own live check -- the one remaining AC (a live browser re-recording of C01 against a real authenticated session and a real active sandbox) requires the user's own action -- no builder or ORCH tooling can supply a real dashboard login/session. Not a task for further dispatch; close manually once the user has done the live check.
+- [2026-09-26T13:28:04Z] **P2** TASK-288 blocked: OTHER: awaiting the user's own live check -- the one remaining AC (a live browser re-recording of C01 against a real authenticated session and a real active sandbox) requires the user's own action -- no builder or ORCH tooling can supply a real dashboard login/session. Not a task for further dispatch; close manually once the user has done the live check.
+Reply: /answer TASK-288 <your decision>
+- [2026-09-26T13:28:04Z] DISPATCH: CX9 idle; dispatching onto TASK-367 (Gemini lane: never offer tools above its tier ceiling, and say plainly what needs a different model)
+- [2026-09-26T13:33:02Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
+- [2026-09-26T13:38:07Z] CONTROL: TASK-367-2026-09-26T13-36-10Z.json -> applied (CONTROL TASK-367: CX9 -> needs_review)
+- [2026-09-26T13:38:09Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:6 needs_review:2}
+- [2026-09-26T13:38:27Z] REVIEW: TASK-363 awaiting review
+- [2026-09-26T13:52:56Z] REVIEW_NO_VERDICT: TASK-363 still needs_review after a clean review session; it will not be re-reviewed until it is resubmitted
+- [2026-09-26T13:52:56Z] REVIEW_NO_VERDICT: TASK-367 still needs_review after a clean review session; it will not be re-reviewed until it is resubmitted
+- [2026-09-26T13:52:56Z] DISPATCH: CX9 idle; dispatching onto TASK-364 (Model routing: a pure function that picks the cheap provider for background work)
+- [2026-09-26T13:58:02Z] **P0** Merged (since last update):
+- none
+In progress:
+- TASK-364 Model routing: a pure function that picks the cheap provider fo... (CX9, building)
+- TASK-363 Workforce checker: a zero-inference watch that catches runaway... (in review)
+- TASK-367 Gemini lane: never offer tools above its tier ceiling, and say... (in review)
+Queue:
+- ready: TASK-365 Group room end-to-end scenario tests (verifies...
+- ready: TASK-366 Browser lane and human takeover end-to-end scen...
+- 3 unassigned (backlog/maintenance)
+Pending action:
+- TASK-234 blocked: OTHER: Two independent blockers, not one: (1) `firebase_auth`/`firebase_core` have no new...
+- TASK-288 blocked: OTHER: awaiting the user's own live check -- the one remaining AC (a live browser re-reco...
+Prod: not touched by the autopilot (deploys are manual)
+Local time: 15:58 South Africa Standard Time
+- [2026-09-26T13:58:04Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:5 needs_review:2 claimed:1}
+- [2026-09-26T13:58:23Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
+- [2026-09-26T14:03:04Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
+- [2026-09-26T14:08:04Z] IDLE: All lanes busy or waiting on dependencies — nothing to do this tick
+- [2026-09-26T14:13:07Z] CONTROL: TASK-364-2026-09-26T14-10-18Z.json -> applied (CONTROL TASK-364: CX9 -> needs_review)
+- [2026-09-26T14:13:09Z] SESSION_END unit=ORCH plan={done:366 blocked:2 pending:5 needs_review:3}
+- [2026-09-26T14:13:26Z] REVIEW: TASK-364 awaiting review
