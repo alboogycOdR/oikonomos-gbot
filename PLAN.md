@@ -11090,7 +11090,7 @@ Exit status 2
 
 ### TASK-365
 **Title:** Group room end-to-end scenario tests (verifies G-04 group routing, never exercised for real)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": live verification of G-04 group routing is an open question); TASK-121 group threads; TASK-335 routing fallbacks; TASK-359 room caps
@@ -11101,16 +11101,16 @@ Exit status 2
 - [ ] All five scenarios pass on a fresh -Init database, three consecutive runs, with no network and no real provider key.
 - [ ] LIVENESS: each scenario fails if its guarded behaviour is removed (say which line you removed to prove it, for two of the five at minimum).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name (a failure already on master is named, never waved off as "baseline").
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-365-cx9
+**Started_At:** 2026-09-26T14:43:27Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-25T18:23:37Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-26T14:43:27Z
 
 ### TASK-366
 **Title:** Browser lane and human takeover end-to-end scenario tests (verifies G-06 and G-07)
