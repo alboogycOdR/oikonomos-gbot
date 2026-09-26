@@ -11090,7 +11090,7 @@ Exit status 2
 
 ### TASK-365
 **Title:** Group room end-to-end scenario tests (verifies G-04 group routing, never exercised for real)
-**Status:** claimed
+**Status:** blocked
 **Assigned_To:** CX9
 **Priority:** medium
 **Spec_References:** specs/OIKONOMOS_GROKBOT_PARITY_REMAINING_WORK_2026-09-16.md ("Not covered by this pass": live verification of G-04 group routing is an open question); TASK-121 group threads; TASK-335 routing fallbacks; TASK-359 room caps
@@ -11105,12 +11105,13 @@ Exit status 2
 **Started_At:** 2026-09-26T14:43:27Z
 **Progress_Notes:**
 - [2026-09-25T18:23:37Z] [ORCH sonnet-5] Filed in the 2026-09-25 wave (plan v42.0) from the remaining-specs gap analysis. Owner asked for a new feature wave; sandbox hardening, priority interrupt and event-triggered routines are deferred (need design). Territories are exact: if you need a file outside them, stop with OWNERSHIP_CONFLICT naming it.
+- [2026-09-26T14:53:01Z] [SV:CX9] Added a retained real-Postgres expected-failure worker-fanout scenario and fixture; it exposes a G-04 wiring defect before provider use.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OTHER: Real G-04 worker fanout is broken: services/worker/src/main.ts:194 passes fromRoleId "human" to deliverBotToBotMessage, which writes it as FK-backed messages.sender_role_id in services/worker/src/groupFanout.ts. No "human" role exists, so delivery rejects before a reply can land. Additionally, required test/scenarios/** is excluded by the shared Vitest includeSource config outside Owned_Paths.
 **Updated_By:** SV
-**Updated_At:** 2026-09-26T14:43:27Z
+**Updated_At:** 2026-09-26T14:53:01Z
 
 ### TASK-366
 **Title:** Browser lane and human takeover end-to-end scenario tests (verifies G-06 and G-07)
