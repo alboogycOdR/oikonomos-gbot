@@ -11135,7 +11135,7 @@ Exit status 2
 
 ### TASK-367
 **Title:** Gemini lane: never offer tools above its tier ceiling, and say plainly what needs a different model
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX9
 **Priority:** high
 **Spec_References:** docs/testing/mobile-0.2.0-feedback.md item #1 and its triage; docs/decisions/ADR-011-multi-provider-llm-support.md section 8 (Stage 2 ceiling is T2 by design); owner decision 2026-09-26: fix the misleading behaviour (option 2)
@@ -11148,16 +11148,16 @@ Exit status 2
 - [ ] LIVENESS: the test fails if the filter is removed (a T3 tool reaches the adapter).
 - [ ] The Claude lane is untouched (its tests pass unchanged).
 - [ ] `pnpm build` and `pnpm typecheck` exit 0 on the branch (quoted); tests via scripts/test-isolated.ps1 (-Init first) run in the FOREGROUND and finished before you emit the control block; every failure classified by name.
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-367-cx9
+**Started_At:** 2026-09-26T13:28:05Z
 **Progress_Notes:**
 - [2026-09-26T13:14:52Z] [ORCH opus-5.5] Filed from owner test feedback #1. Options 1 (switch BossMan to Claude) and 3 (Gemini T3 via approval cards, needs an ADR) await the owner.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:14:52Z
+**Updated_By:** SV
+**Updated_At:** 2026-09-26T13:28:05Z
 
 ### TASK-368
 **Title:** DECISION (owner): which model may take high-risk (T3) actions like creating bots?
