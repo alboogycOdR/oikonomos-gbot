@@ -11182,3 +11182,24 @@ Exit status 2
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-26T13:20:21Z
+
+### TASK-MAINT-2026-09-26
+**Title:** Nightly self-audit failure (2026-09-26)
+**Status:** pending
+**Assigned_To:** TBD
+**Priority:** high
+**Spec_References:** self-generated — nightly audit failure
+**Owned_Paths:** scripts/**, hooks/**, tests/**
+**Depends_On:** —
+**Description:** harness_audit: harness-audit FAILED (exit 1): === 1/3 AgentShield harness scan === AgentShield Security Report 2026-09-26T13:18:07.791Z Target: E:\DELL-PROJECTS\GROKBOT-CLONE\.claude Grade: A (93/100) Score Breakdown Secrets ████████████████████ 100 Permissions ███████████████████░ 93 Hooks ████████████████████ 100 MCP Servers ████████████████████ 100 Agents ██████████████░░░░░░ 70 Harness Adapters Matched: 2/9 Claude Code (strong) Evidence: settings.json Project-local Templates (strong) Evidence: commands Summary Files scanned: 7 Findings: 6 total — 0 critical, 1 high, 4 medium, 1 low, 0 info Findings ● HIGH (1) ● Missing prompt defense:…[truncated] | pytest: pytest FAILED: ........................................................................ [ 10%] ....................................…[truncated]
+**Acceptance_Criteria:**
+- [ ] All nightly audit steps pass: harness_audit, pytest
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-26T13:18:03Z
